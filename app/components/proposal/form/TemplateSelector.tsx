@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
  *
  * When pricingDocument exists (Excel with Margin Analysis was imported),
  * shows a toggle to switch between:
- *   - ANC Standard (Hybrid) — clean specs + pricing layout
+ *   - Hybrid — clean specs + pricing layout
  *   - Mirror Mode — Scotia Bank pricing tables
  */
 const TemplateSelector = () => {
@@ -30,7 +30,7 @@ const TemplateSelector = () => {
         }
     };
 
-    // No pricing data — just show the standard badge
+    // No pricing data — just show the standard badge (Hybrid template)
     if (!hasPricingData) {
         return (
             <div className="flex items-center gap-2 h-8 px-3 border border-border/50 rounded-md bg-muted/30">
@@ -38,13 +38,13 @@ const TemplateSelector = () => {
                     className="w-3 h-3 rounded-sm"
                     style={{ background: "#002C73" }}
                 />
-                <span className="text-xs font-medium text-foreground">ANC Standard</span>
+                <span className="text-xs font-medium text-foreground">Hybrid</span>
                 <Sparkles className="w-3 h-3 text-muted-foreground" />
             </div>
         );
     }
 
-    // Pricing data exists — show toggle between Standard and Mirror
+    // Pricing data exists — show toggle between Hybrid and Mirror
     return (
         <div className="flex items-center h-8 border border-border/50 rounded-md bg-muted/30 overflow-hidden">
             <button
@@ -57,7 +57,7 @@ const TemplateSelector = () => {
                 )}
             >
                 <LayoutGrid className="w-3 h-3" />
-                Standard
+                Hybrid
             </button>
             <button
                 onClick={() => toggleMode("MIRROR")}

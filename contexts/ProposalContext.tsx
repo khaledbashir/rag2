@@ -872,8 +872,9 @@ export const ProposalContextProvider = ({
 
   /**
    * Clears state and redirects to start a fresh project.
+   * Memoized to avoid infinite loops when used in useEffect deps (e.g. /projects/new).
    */
-  const newProposal = (opts?: { silent?: boolean }) => {
+  const newProposal = useCallback((opts?: { silent?: boolean }) => {
     reset(FORM_DEFAULT_VALUES);
     setProposalPdf(new Blob());
     setExcelPreview(null);
@@ -895,7 +896,7 @@ export const ProposalContextProvider = ({
     if (typeof window !== "undefined" && window.location.pathname !== "/projects/new") {
       window.location.href = "/projects/new";
     }
-  };
+  }, [reset, newProposalSuccess]);
 
   /**
    * Resets the current form to the last saved state from the database.

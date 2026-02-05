@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import ProposalPage from "@/app/components/ProposalPage";
 import { useProposalContext } from "@/contexts/ProposalContext";
-import { useFormContext } from "react-hook-form";
-import type { ProposalType } from "@/types";
 
 export default function NewProjectPage() {
     const { newProposal } = useProposalContext();
-    const { getValues } = useFormContext<ProposalType>();
+    const hasReset = useRef(false);
 
     useEffect(() => {
+        // Guard: only run once per mount to prevent React #185 (max update depth).
+        if (hasReset.current) return;
+        hasReset.current = true;
         // ALWAYS reset when landing on /projects/new — no conditions.
         // This must fire before Providers' draft hydration (child effects fire first)
         // and clears localStorage so parent hydration finds nothing.
