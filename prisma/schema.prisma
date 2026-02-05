@@ -120,6 +120,9 @@ model Proposal {
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @default(now()) @updatedAt
   
+  // Excel preview data persisted for refresh survival
+  excelPreviewData       Json?
+
   // NEW: Verification fields
   verificationManifest   Json?
   reconciliationReport   Json?

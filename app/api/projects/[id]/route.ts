@@ -102,7 +102,8 @@ export async function PATCH(
             totalSellingPrice, // NEW: For version history
             averageMargin, // NEW: For version history
             aiFilledFields, // REQ-126: AI verification tracking
-            verifiedFields  // REQ-126: Human-verified fields
+            verifiedFields,  // REQ-126: Human-verified fields
+            excelPreviewData // Excel preview persistence across refresh
         } = body;
 
         // Map address from receiverData (nested) or flat fields
@@ -188,6 +189,7 @@ export async function PATCH(
         if (additionalNotes !== undefined) updateData.additionalNotes = additionalNotes;
         if (signatureBlockText !== undefined) updateData.signatureBlockText = signatureBlockText;
         if (customProposalNotes !== undefined) updateData.customProposalNotes = customProposalNotes;
+        if (excelPreviewData !== undefined) updateData.excelPreviewData = excelPreviewData;
 
         const project = await prisma.$transaction(async (tx) => {
             // Handle snapshot creation if requested

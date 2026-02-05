@@ -101,6 +101,9 @@ function mapDbToFormSchema(dbProject: any) {
             tableHeaderOverrides: dbProject.tableHeaderOverrides || {},
             customProposalNotes: dbProject.customProposalNotes || "",
         },
+
+        // Excel preview data for refresh survival
+        excelPreviewData: dbProject.excelPreviewData || null,
     };
 }
 

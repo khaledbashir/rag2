@@ -573,6 +573,11 @@ export const ProposalContextProvider = ({
       setAiCitations((d.aiCitations as Record<string, string>) || details.metadata?.aiCitations || {}); // Hydrate citations for Blue Glow tooltips
       setVerifiedFields((d.verifiedFields as any) || details.metadata?.verifiedFields || {}); // Hydrate Verified fields
       setProposalPdf(new Blob());
+
+      // Restore Excel preview from database (survives page refresh)
+      if (d.excelPreviewData) {
+        setExcelPreview(d.excelPreviewData as ExcelPreview);
+      }
     }
   }, [initialData, reset, setValue]);
 
@@ -1409,6 +1414,7 @@ export const ProposalContextProvider = ({
         quoteItems: (formValues as any)?.details?.quoteItems,
         paymentTerms: (formValues as any)?.details?.paymentTerms,
         additionalNotes: (formValues as any)?.details?.additionalNotes,
+        excelPreviewData: excelPreview,
       };
       const res = await fetch(`/api/projects/${effectiveId}`, {
         method: "PATCH",
@@ -1432,7 +1438,7 @@ export const ProposalContextProvider = ({
       const msg = e instanceof Error ? e.message : "Save failed";
       return { created: false, error: msg };
     }
-  }, [getValues, router, calculationMode, aiFields, modifiedProposalSuccess]);
+  }, [getValues, router, calculationMode, aiFields, modifiedProposalSuccess, excelPreview]);
 
   /**
    * Delete a proposal from local storage based on the given index.
