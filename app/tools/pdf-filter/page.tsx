@@ -1,16 +1,11 @@
-"use client";
-
-import dynamic from "next/dynamic";
-
-const PdfFilterClient = dynamic(() => import("./PdfFilterClient"), {
-  ssr: false,
-  loading: () => (
-    <div className="min-h-screen bg-background flex items-center justify-center">
-      <div className="text-sm text-muted-foreground">Loading PDF Filter...</div>
-    </div>
-  ),
-});
+import { redirect } from "next/navigation";
+import { FEATURES } from "@/lib/featureFlags";
+import PdfFilterClientWrapper from "./PdfFilterClientWrapper";
 
 export default function PdfFilterPage() {
-  return <PdfFilterClient />;
+  if (!FEATURES.RFP_INTELLIGENCE) {
+    redirect("/projects");
+  }
+
+  return <PdfFilterClientWrapper />;
 }

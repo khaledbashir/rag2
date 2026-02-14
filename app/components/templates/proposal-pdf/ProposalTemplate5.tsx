@@ -33,6 +33,17 @@ import type { DocumentMode as CatalogDocumentMode } from "@/services/rfp/product
 import { ProposalType } from "@/types";
 import { PricingTable, RespMatrix, RespMatrixCategory, RespMatrixItem } from "@/types/pricing";
 import { computeTableTotals, computeDocumentTotalFromTables } from "@/lib/pricingMath";
+import {
+    SectionHeader as SectionHeaderComponent,
+    SignatureBlock as SignatureBlockComponent,
+    PaymentTermsSection as PaymentTermsSectionComponent,
+    NotesSection as NotesSectionComponent,
+    ScopeOfWorkSection as ScopeOfWorkSectionComponent,
+    HybridFooter as HybridFooterComponent,
+    ContinuationPageHeader as ContinuationPageHeaderComponent,
+    ProjectScheduleSection as ProjectScheduleSectionComponent,
+    RespMatrixSOW as RespMatrixSOWComponent,
+} from "./pdf-sections";
 
 interface ProposalTemplate5Props extends ProposalType {
     forceWhiteLogo?: boolean;
@@ -131,6 +142,20 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const rowPaddingY = clamp(Math.round((tableRowHeight - 16) / 2), 2, 12);
     const accentColor = (templateConfig?.accentColor || "").toString().trim();
     const primaryColor = /^#[0-9A-Fa-f]{6}$/.test(accentColor) ? accentColor : "#0A52EF";
+    const autoPushLargeTables = Boolean(templateConfig?.autoPushLargeTables ?? false);
+    const tableSplitThreshold = clamp(Number(templateConfig?.tableSplitThreshold ?? 14) || 14, 10, 26);
+    const tableSplitRiskDetected = (() => {
+        const tables = (pricingDocument?.tables || []) as any[];
+        if (!tables.length) return false;
+        return tables.some((table: any) => {
+            const items = Array.isArray(table?.items) ? table.items : [];
+            const alternates = Array.isArray(table?.alternates) ? table.alternates : [];
+            const longRows = items.filter((row: any) => ((row?.description || "").toString().length > 88)).length;
+            const estimatedRows = items.length + alternates.length + 4 + Math.min(3, longRows);
+            return estimatedRows > tableSplitThreshold;
+        });
+    })();
+    const shouldPushPricingToNewPage = autoPushLargeTables && tableSplitRiskDetected;
 
     // Hybrid color palette - Modern base with Bold accents
     const colors = {
@@ -236,18 +261,9 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     // ===== COMPONENTS =====
 
     // Unified Section Header — blue vertical bar accent + text (Natalia-approved)
+    const templateSpacing = { contentPaddingX, headerToIntroGap, introToBodyGap, sectionSpacing, pricingTableGap, tableRowHeight, rowPaddingY };
     const SectionHeader = ({ title, subtitle }: { title: string; subtitle?: string }) => (
-        <div className="break-inside-avoid" style={{ breakAfter: 'avoid', marginTop: `${Math.max(6, sectionSpacing - 4)}px`, marginBottom: `${Math.max(8, sectionSpacing - 2)}px` }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <div style={{ width: '3px', height: '12px', borderRadius: '1px', background: colors.primary, flexShrink: 0 }} />
-                <h2 className="text-[10px] font-semibold tracking-wider uppercase"
-                    style={{ color: colors.primaryDark, margin: 0 }}
-                >
-                    {title}
-                </h2>
-            </div>
-            {subtitle && <p className="text-[8px] mt-0.5" style={{ color: colors.textMuted, marginLeft: '9px' }}>{subtitle}</p>}
-        </div>
+        <SectionHeaderComponent title={title} subtitle={subtitle} colors={colors} spacing={templateSpacing} />
     );
 
     // Calculate project total (shared between LOI summary and pricing section)
@@ -287,7 +303,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         const total = calculateProjectTotal();
 
         return (
-            <div className="px-6 mt-2 break-inside-avoid" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+            <div data-preview-section="pricing" className="px-6 mt-2 break-inside-avoid" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
                 <SectionHeader title="Project Summary" />
                 <div className="rounded-lg border overflow-hidden" style={{ borderColor: colors.border }}>
                     <div
@@ -327,7 +343,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         const { subtotal, tax, bond, grandTotal } = masterTotals;
 
         return (
-            <div className="px-6 mt-4 break-inside-avoid" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+            <div data-preview-section="pricing" className="px-6 mt-4 break-inside-avoid" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
                     <div style={{ width: '3px', height: '12px', borderRadius: '1px', background: colors.primary, flexShrink: 0 }} />
                     <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>Project Pricing</span>
@@ -455,7 +471,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                 const { subtotal, taxLabel, tax: taxAmount, bond, grandTotal } = detailTotals;
 
                 return (
-                    <div key={tableId || `table-${origIdx}`} className="break-inside-avoid" style={{ pageBreakInside: 'avoid', breakInside: 'avoid', marginTop: `${pricingTableGap}px` }}>
+                    <div data-preview-section="pricing" key={tableId || `table-${origIdx}`} className="break-inside-avoid" style={{ pageBreakInside: 'avoid', breakInside: 'avoid', marginTop: `${pricingTableGap}px` }}>
                         <div className="rounded-lg border overflow-hidden" style={{ borderColor: colors.border }}>
                             {/* Table header — text + thin blue underline */}
                             <div
@@ -675,7 +691,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         const subtotal = primaryItems.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
 
         return (
-            <div className="mt-2 break-inside-avoid" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+            <div data-preview-section="pricing" className="mt-2 break-inside-avoid" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
                 {/* Modern table container */}
                 <div className="rounded-lg border overflow-hidden" style={{ borderColor: colors.border }}>
                     {/* Header — text + thin blue underline */}
@@ -778,106 +794,29 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     };
 
     // Payment Terms Section
-    const PaymentTermsSection = () => {
-        // FR-4.3: Use custom payment terms if provided, otherwise use default
-        const defaultTerms = "50% on Deposit\n40% on Mobilization\n10% on Substantial Completion";
-        const raw = (customPaymentTerms?.trim() || defaultTerms).toString();
-        const lines = raw.split(/\r?\n|,/g).map((l: string) => l.trim()).filter(Boolean);
-        if (lines.length === 0) return null;
-        return (
-            <div className="mt-2">
-                <SectionHeader title="Payment Terms" />
-                <div className="rounded-lg p-3 text-[10px] leading-snug" style={{ background: colors.surface, color: colors.textMuted }}>
-                    {lines.map((line: string, idx: number) => <div key={idx}>{line}</div>)}
-                </div>
-            </div>
-        );
-    };
+    const PaymentTermsSection = () => (
+        <PaymentTermsSectionComponent colors={colors} spacing={templateSpacing} customPaymentTerms={customPaymentTerms} />
+    );
 
     // Notes Section - Universal (available for all document types)
-    const NotesSection = () => {
-        const raw = (details?.additionalNotes || "").toString().trim();
-        if (!raw) return null;
-        return (
-            <div className="mt-2">
-                <SectionHeader title="Notes" />
-                <div className="rounded-lg p-3 text-[10px] leading-snug whitespace-pre-wrap" style={{ background: colors.surface, color: colors.text }}>
-                    {raw}
-                </div>
-            </div>
-        );
-    };
+    const NotesSection = () => (
+        <NotesSectionComponent colors={colors} spacing={templateSpacing} additionalNotes={details?.additionalNotes} />
+    );
 
     // Scope of Work Section - Universal (available for all document types)
-    const ScopeOfWorkSection = () => {
-        const sowText = (details as any)?.scopeOfWorkText;
-        return (
-            <div className="mt-2">
-                <SectionHeader title="Scope of Work" />
-                <div className="text-[10px] leading-snug whitespace-pre-wrap" style={{ color: colors.text }}>
-                    {sowText || "No scope of work specified."}
-                </div>
-            </div>
-        );
-    };
-
-    // Default LOI signature legal text (per-project override via details.signatureBlockText)
-    const DEFAULT_SIGNATURE_BLOCK_TEXT =
-        "Please sign below to indicate Purchaser's agreement to purchase the Display System as described herein and to authorize ANC to commence production. If, for any reason, Purchaser terminates this Agreement prior to the completion of the work, ANC will immediately cease all work and Purchaser will pay ANC for any work performed, work in progress, and materials purchased, if any. This document will be considered binding on both parties; however, it will be followed by a formal agreement containing standard contract language, including terms of liability, indemnification, and warranty. Payment is due within thirty (30) days of ANC's invoice(s).";
+    const ScopeOfWorkSection = () => (
+        <ScopeOfWorkSectionComponent colors={colors} spacing={templateSpacing} scopeOfWorkText={(details as any)?.scopeOfWorkText} />
+    );
 
     // Signature Block - Universal (available for all document types)
     const SignatureBlock = () => (
-        <div className="mt-4 break-inside-avoid" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
-            <div className="text-[10px] leading-snug text-justify mb-3 break-inside-avoid" style={{ color: colors.textMuted }}>
-                {((details as any)?.signatureBlockText || "").trim() || DEFAULT_SIGNATURE_BLOCK_TEXT}
-            </div>
-            <h4 className="font-bold text-[10px] uppercase mb-3 border-b-2 pb-0.5 break-inside-avoid" style={{ borderColor: colors.text, color: colors.text }}>
-                Agreed To And Accepted:
-            </h4>
-            <div className="grid grid-cols-2 gap-4 break-inside-avoid">
-                {[
-                    { title: "ANC Sports Enterprises, LLC", subtitle: "Seller" },
-                    { title: receiver?.name || "Purchaser", subtitle: "Purchaser" }
-                ].map((party, idx) => (
-                    <div key={idx} className="space-y-2 break-inside-avoid">
-                        <div className="break-inside-avoid">
-                            <div className="font-bold text-[10px]" style={{ color: colors.primary }}>{party.title}</div>
-                            <div className="text-[9px]" style={{ color: colors.textMuted }}>{party.subtitle}</div>
-                        </div>
-                        <div className="break-inside-avoid">
-                            <div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: colors.textMuted }}>Signature</div>
-                            <div className="h-6 border-b-2" style={{ borderColor: colors.border }} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 break-inside-avoid">
-                            <div className="break-inside-avoid">
-                                <div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: colors.textMuted }}>Name</div>
-                                <div className="h-5 border-b" style={{ borderColor: colors.border }} />
-                            </div>
-                            <div className="break-inside-avoid">
-                                <div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: colors.textMuted }}>Date</div>
-                                <div className="h-5 border-b" style={{ borderColor: colors.border }} />
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
+        <SignatureBlockComponent colors={colors} receiverName={receiver?.name} signatureBlockText={(details as any)?.signatureBlockText} />
     );
 
     // Continuation page header — thin blue underline with client + project name
-    const ContinuationPageHeader = () => {
-        const label = details?.proposalName
-            ? `${purchaserName} — ${details.proposalName}`.toUpperCase()
-            : purchaserName.toUpperCase();
-        return (
-            <div
-                className="text-center py-1 text-[8px] font-semibold uppercase tracking-widest border-b-2 break-inside-avoid mb-2"
-                style={{ borderColor: colors.primary, color: colors.primaryDark, background: 'transparent' }}
-            >
-                {label}
-            </div>
-        );
-    };
+    const ContinuationPageHeader = () => (
+        <ContinuationPageHeaderComponent colors={colors} purchaserName={purchaserName} proposalName={details?.proposalName} />
+    );
 
     // Resp Matrix Statement of Work — from Excel "Resp Matrix" sheet OR Intelligence Mode explicit opt-in
     // Fix 10: Only use intelligence resp matrix if explicitly opted in (not just "not false")
@@ -891,172 +830,31 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         ? { ...respMatrixRaw, format: respMatrixFormatOverride !== "auto" ? (respMatrixFormatOverride as RespMatrix["format"]) : respMatrixRaw.format }
         : null;
 
-    const RespMatrixSOW = () => {
-        if (!respMatrix || !respMatrix.categories || respMatrix.categories.length === 0) return null;
-        // Filter out categories with no actual items to prevent empty page generation
-        const nonEmptyCategories = respMatrix.categories.filter(cat => cat.items && cat.items.length > 0);
-        if (nonEmptyCategories.length === 0) return null;
-
-        const isIncludeStatement = (anc: string) => {
-            const upper = anc.toUpperCase().trim();
-            return upper === "INCLUDE STATEMENT" || upper === "INCLUDED STATEMENT";
-        };
-        const isXMark = (val: string) => val.trim().toUpperCase().startsWith("X");
-
-        const categorizeSection = (cat: RespMatrixCategory): "table" | "paragraph" => {
-            const xItems = cat.items.filter(i => isXMark(i.anc) || isXMark(i.purchaser));
-            const includeItems = cat.items.filter(i => isIncludeStatement(i.anc));
-            return xItems.length >= includeItems.length ? "table" : "paragraph";
-        };
-
-        return (
-            <div className="px-6" style={{ pageBreakBefore: 'always', breakBefore: 'page' }}>
-                <SectionHeader title="Exhibit B — Statement of Work" />
-                <div className="border rounded overflow-hidden break-inside-avoid" style={{ borderColor: colors.border, pageBreakInside: 'avoid', breakInside: 'avoid' }}>
-                    {nonEmptyCategories.map((cat, catIdx) => {
-                        const sectionType = respMatrix.format === "short"
-                            ? "paragraph"
-                            : respMatrix.format === "long"
-                                ? "table"
-                                : categorizeSection(cat);
-
-                        return (
-                            <div key={catIdx}>
-                                {/* Category header — text + thin blue underline */}
-                                <div
-                                    className="grid grid-cols-12 px-4 py-1 text-[9px] font-semibold uppercase tracking-wider border-b-2 break-inside-avoid"
-                                    style={{ borderColor: colors.primary, color: colors.primaryDark, background: 'transparent' }}
-                                >
-                                    <div className={sectionType === "table" ? "col-span-8" : "col-span-12"}>{cat.name}</div>
-                                    {sectionType === "table" && (
-                                        <>
-                                            <div className="col-span-2 text-center">ANC</div>
-                                            <div className="col-span-2 text-center">PURCHASER</div>
-                                        </>
-                                    )}
-                                </div>
-                                {/* Items */}
-                                {sectionType === "table" ? (
-                                    cat.items.map((item, idx) => (
-                                        <div
-                                            key={idx}
-                                            className="grid grid-cols-12 px-3 py-0.5 text-[8px] border-b items-start"
-                                            style={{ borderColor: colors.borderLight, background: idx % 2 === 1 ? colors.surface : colors.white }}
-                                        >
-                                            <div className="col-span-8 leading-snug pr-2" style={{ color: colors.text }}>{item.description}</div>
-                                            <div className="col-span-2 text-center font-medium" style={{ color: colors.text }}>
-                                                {item.anc && !isIncludeStatement(item.anc) && item.anc.toUpperCase() !== "NA" ? item.anc : ""}
-                                            </div>
-                                            <div className="col-span-2 text-center font-medium" style={{ color: colors.text }}>
-                                                {item.purchaser && item.purchaser.toUpperCase() !== "EDITABLE" ? item.purchaser : ""}
-                                            </div>
-                                        </div>
-                                    ))
-                                ) : (
-                                    cat.items.filter(item => isIncludeStatement(item.anc)).map((item, idx) => (
-                                        <div
-                                            key={idx}
-                                            className="px-3 py-0.5 text-[8px] leading-snug border-b"
-                                            style={{ borderColor: colors.borderLight, color: colors.text, background: idx % 2 === 1 ? colors.surface : colors.white }}
-                                        >
-                                            {item.description}
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-        );
-    };
+    const RespMatrixSOW = () => (
+        <RespMatrixSOWComponent colors={colors} spacing={templateSpacing} respMatrix={respMatrix} />
+    );
 
     const ProjectScheduleSection = () => {
         if (!hasGeneratedSchedule) return null;
-
-        const ntpLabel = (details as any)?.ntpDate;
-        const completionLabel = generatedSchedule?.completionDate;
-        const totalDuration = Number(generatedSchedule?.totalDurationDays || 0);
-        const phaseOrder = ["design", "manufacturing", "shipping", "install"];
-        const grouped = phaseOrder.map((phase) => ({
-            phase,
-            tasks: generatedScheduleTasks.filter((task: any) => (task?.phase || "").toString().toLowerCase() === phase),
-        })).filter((group) => group.tasks.length > 0);
-        let taskNumber = 0;
-
         return (
-            <div className="mt-2 break-inside-avoid" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
-                <SectionHeader title="Project Schedule" subtitle="Generated from NTP date and screen configuration" />
-                <div className="rounded-lg border overflow-hidden" style={{ borderColor: colors.border }}>
-                    <div className="grid grid-cols-12 px-4 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ background: colors.primaryLight, color: colors.primaryDark }}>
-                        <div className="col-span-4">NTP: {ntpLabel || "—"}</div>
-                        <div className="col-span-4 text-center">Completion: {completionLabel || "—"}</div>
-                        <div className="col-span-4 text-right">Duration: {totalDuration > 0 ? `${totalDuration} business days` : "—"}</div>
-                    </div>
-
-                    <div className="grid grid-cols-12 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider border-b-2" style={{ borderColor: colors.primary, color: colors.primaryDark, background: 'transparent' }}>
-                        <div className="col-span-1">#</div>
-                        <div className="col-span-4">Task</div>
-                        <div className="col-span-2">Location</div>
-                        <div className="col-span-2">Start</div>
-                        <div className="col-span-2">End</div>
-                        <div className="col-span-1 text-right">Days</div>
-                    </div>
-
-                    {grouped.map((group) => (
-                        <React.Fragment key={`phase-${group.phase}`}>
-                            <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider border-t" style={{ borderColor: colors.borderLight, background: colors.surface, color: colors.primaryDark }}>
-                                {group.phase}
-                            </div>
-                            {group.tasks.map((task: any, idx: number) => {
-                                taskNumber += 1;
-                                return (
-                                    <div
-                                        key={`${group.phase}-${idx}-${task?.taskName || "task"}`}
-                                        className="grid grid-cols-12 px-4 py-2 text-[10px] border-t items-center"
-                                        style={{ borderColor: colors.borderLight, background: idx % 2 === 1 ? colors.surface : colors.white }}
-                                    >
-                                        <div className="col-span-1" style={{ color: colors.textMuted }}>{taskNumber}</div>
-                                        <div className="col-span-4 font-semibold" style={{ color: colors.text }}>
-                                            {task?.isParallel ? "↳ " : ""}{task?.taskName || "Task"}
-                                        </div>
-                                        <div className="col-span-2" style={{ color: colors.textMuted }}>{task?.locationName || "Global"}</div>
-                                        <div className="col-span-2" style={{ color: colors.text }}>{task?.startDate || "—"}</div>
-                                        <div className="col-span-2" style={{ color: colors.text }}>{task?.endDate || "—"}</div>
-                                        <div className="col-span-1 text-right" style={{ color: colors.text }}>{task?.durationDays ?? "—"}</div>
-                                    </div>
-                                );
-                            })}
-                        </React.Fragment>
-                    ))}
-                </div>
-            </div>
+            <ProjectScheduleSectionComponent
+                colors={colors}
+                spacing={templateSpacing}
+                generatedSchedule={generatedSchedule}
+                ntpDate={(details as any)?.ntpDate}
+            />
         );
     };
 
     // Simplified Footer — www.anc.com + blue vertical accent (matches header style)
     const HybridFooter = () => (
-        <div className="mt-4 pt-2 border-t break-inside-avoid" style={{ borderColor: colors.border }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div className="text-[9px] font-semibold tracking-wide" style={{ color: colors.primary }}>
-                    www.anc.com
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    {[...Array(3)].map((_, i) => (
-                        <div
-                            key={i}
-                            style={{ width: '3px', height: '12px', borderRadius: '1px', background: colors.primary, opacity: 0.4, transform: 'skewX(-12deg)' }}
-                        />
-                    ))}
-                </div>
-            </div>
-        </div>
+        <HybridFooterComponent colors={colors} />
     );
 
     return (
         <ProposalLayout data={data} disableFixedFooter>
             {/* Compact Header — logo + document label, half the original height */}
-            <div className="flex justify-between items-center pt-2 pb-1 border-b break-inside-avoid" style={{ borderColor: colors.border, background: 'transparent', marginBottom: `${headerToIntroGap}px`, paddingLeft: `${contentPaddingX}px`, paddingRight: `${contentPaddingX}px` }}>
+            <div data-preview-section="header" className="flex justify-between items-center pt-2 pb-1 border-b break-inside-avoid" style={{ borderColor: colors.border, background: 'transparent', marginBottom: `${headerToIntroGap}px`, paddingLeft: `${contentPaddingX}px`, paddingRight: `${contentPaddingX}px` }}>
                 <LogoSelectorServer theme="light" width={70} height={35} className="p-0" />
                 <div className="text-right break-inside-avoid" style={{ background: 'transparent' }}>
                     <div className="text-[8px] uppercase tracking-widest font-semibold" style={{ color: colors.primary, background: 'transparent' }}>{docLabel}</div>
@@ -1066,7 +864,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
 
             {/* Intro - 10pt font */}
             {showIntroText && (
-                <div className="break-inside-avoid" style={{ marginBottom: `${introToBodyGap}px`, paddingLeft: `${contentPaddingX}px`, paddingRight: `${contentPaddingX}px` }}>
+                <div data-preview-section="intro" className="break-inside-avoid" style={{ marginBottom: `${introToBodyGap}px`, paddingLeft: `${contentPaddingX}px`, paddingRight: `${contentPaddingX}px` }}>
                     <div className="text-[10px] leading-snug" style={{ color: colors.textMuted }}>
                         {(shouldRenderLegalIntro && (details as any)?.loiHeaderText?.trim()) ? (
                             <p className="text-justify whitespace-pre-wrap">{(details as any).loiHeaderText.trim()}</p>
@@ -1091,7 +889,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
 
             {/* Prompt 58: Custom Proposal Notes (Fix 3) */}
             {((details as any)?.customProposalNotes) && (
-                <div className="break-inside-avoid" style={{ marginBottom: `${introToBodyGap}px`, paddingLeft: `${contentPaddingX}px`, paddingRight: `${contentPaddingX}px` }}>
+                <div data-preview-section="intro" className="break-inside-avoid" style={{ marginBottom: `${introToBodyGap}px`, paddingLeft: `${contentPaddingX}px`, paddingRight: `${contentPaddingX}px` }}>
                     <div className="text-[10px] leading-snug whitespace-pre-wrap" style={{ color: colors.textMuted }}>
                         {(details as any).customProposalNotes}
                     </div>
@@ -1109,6 +907,12 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                     <>
                         {/* ═══ BUSINESS (Page 1): Pricing Summary + Detail Breakdown ═══ */}
                         {showPricingTables && <MasterTableSummary />}
+                        {showPricingTables && shouldPushPricingToNewPage && (
+                            <>
+                                <PageBreak />
+                                <ContinuationPageHeader />
+                            </>
+                        )}
                         {showPricingTables && (
                             <div className="px-6">
                                 <PricingSection />
@@ -1139,7 +943,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                             <>
                                 <PageBreak />
                                 <ContinuationPageHeader />
-                                <div className="px-6">
+                                <div data-preview-section="exhibit-a" className="px-6">
                                     <ExhibitA_TechnicalSpecs data={data} showSOW={showScopeOfWork} headingMode="exhibit" />
                                 </div>
                             </>
@@ -1167,6 +971,12 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                     /* ── Structure B: No master table — detail tables first ── */
                     <>
                         {/* Pricing tables immediately after intro */}
+                        {showPricingTables && shouldPushPricingToNewPage && (
+                            <>
+                                <PageBreak />
+                                <ContinuationPageHeader />
+                            </>
+                        )}
                         {showPricingTables && (
                             <div className="px-6">
                                 <PricingSection />
@@ -1195,7 +1005,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                             <>
                                 <PageBreak />
                                 <ContinuationPageHeader />
-                                <div className="px-6">
+                                <div data-preview-section="exhibit-a" className="px-6">
                                     <ExhibitA_TechnicalSpecs data={data} showSOW={showScopeOfWork} headingMode="exhibit" />
                                 </div>
                             </>
@@ -1231,6 +1041,8 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                     {/* Page break: detail section breakdowns start on a new page */}
                     {showPricingTables && masterTableIndex !== null && <PageBreak />}
                     {showPricingTables && masterTableIndex !== null && <ContinuationPageHeader />}
+                    {showPricingTables && masterTableIndex === null && shouldPushPricingToNewPage && <PageBreak />}
+                    {showPricingTables && masterTableIndex === null && shouldPushPricingToNewPage && <ContinuationPageHeader />}
 
                     {/* Pricing tables */}
                     {showPricingTables && (
@@ -1248,7 +1060,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                         <>
                             <PageBreak />
                             <ContinuationPageHeader />
-                            <div className="px-6">
+                            <div data-preview-section="exhibit-a" className="px-6">
                                 <ExhibitA_TechnicalSpecs data={data} showSOW={showScopeOfWork} headingMode="plain" />
                             </div>
                         </>

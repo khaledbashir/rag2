@@ -15,4 +15,8 @@ export const FEATURES = {
   CLIENT_REQUESTS: false,
   /** Review step: Verification Studio (Excel vs PDF compare) */
   VERIFICATION_STUDIO: false,
+  /** RFP Intelligence: PDF filter tool, RFP extraction, spec extraction */
+  RFP_INTELLIGENCE: false,
+  /** Estimator Studio: Typeform questionnaire → Excel preview → export */
+  ESTIMATOR: false,
 } as const;
