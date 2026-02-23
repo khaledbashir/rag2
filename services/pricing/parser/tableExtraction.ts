@@ -37,6 +37,8 @@ export function extractTable(
     // Other isHeader rows within this boundary were rejected by isViableSectionStart
     // and should be treated as line items (e.g. "Control System" with no price).
     if (row.isHeader && i === boundary.startRow) continue;
+    // Also skip alternate header at startRow (for standalone alternate boundaries)
+    if (row.isAlternateHeader && i === boundary.startRow) continue;
 
     // Subtotal rows — ALWAYS skip (never become line items)
     if (row.isSubtotal) {
@@ -74,8 +76,21 @@ export function extractTable(
       continue;
     }
 
-    // Regular line item
+    // Alternate line items
     if (row.isAlternateLine) {
+      // If this boundary IS an alternate section (promoted to standalone),
+      // treat alternate lines as regular line items, not nested alternates
+      if (boundary.isAlternateSection && row.label && (Number.isFinite(row.sell) || Number.isFinite(row.cost))) {
+        const effectiveSell = Number.isFinite(row.sell) ? row.sell
+          : Number.isFinite(row.cost) ? row.cost : 0;
+        items.push({
+          description: row.label,
+          sellingPrice: effectiveSell,
+          isIncluded: false,
+          sourceRow: row.rowIndex,
+        });
+        continue;
+      }
       // If no explicit alternates section, still preserve alternates
       if (boundary.alternatesStartRow === null && row.label && Number.isFinite(row.sell)) {
         alternates.push({

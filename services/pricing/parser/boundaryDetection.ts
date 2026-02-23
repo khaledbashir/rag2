@@ -10,6 +10,8 @@ export interface TableBoundary {
   endRow: number;
   alternatesStartRow: number | null;
   alternatesEndRow: number | null;
+  /** True when this boundary represents a promoted alternates section */
+  isAlternateSection?: boolean;
 }
 
 /**
@@ -84,12 +86,12 @@ export function findTableBoundaries(rows: RawRow[], headerRowLabel?: string): Ta
             }
             if (!subName) subName = `Section ${g + 1}`;
           }
-          // Find alternates within this sub-range
-          let altStart: number | null = null;
+          // Find alternates within this sub-range — promote to standalone boundary
+          let altHeaderIdx: number | null = null;
           let altEnd: number | null = null;
           for (let j = subStart; j <= gtIdx; j++) {
-            if (rows[j].isAlternateHeader) altStart = j;
-            if (rows[j].isAlternateLine && altStart !== null) altEnd = j;
+            if (rows[j].isAlternateHeader) altHeaderIdx = j;
+            if (rows[j].isAlternateLine && altHeaderIdx !== null) altEnd = j;
           }
           // endRow: extend past grandTotal to include TAX/BOND/empty rows
           // up to the next sub-section start or orphan range end
@@ -102,16 +104,47 @@ export function findTableBoundaries(rows: RawRow[], headerRowLabel?: string): Ta
             if (!rows[j].isEmpty) endRow = j;
             else break;
           }
-          boundaries.push({
-            name: subName,
-            startRow: subStart,
-            endRow,
-            alternatesStartRow: altStart,
-            alternatesEndRow: altEnd,
-          });
-          console.log(
-            `[PRICING PARSER] Orphan sub-section "${subName}" detected: rows ${subStart}–${endRow}`
-          );
+
+          // If alternates found, create main boundary WITHOUT alternates, then a standalone alternates boundary
+          if (altHeaderIdx !== null) {
+            // Main section ends just before alternates header (or at grandTotal if it's before)
+            const mainEnd = Math.min(endRow, altHeaderIdx - 1);
+            boundaries.push({
+              name: subName,
+              startRow: subStart,
+              endRow: mainEnd,
+              alternatesStartRow: null,
+              alternatesEndRow: null,
+            });
+            console.log(
+              `[PRICING PARSER] Orphan sub-section "${subName}" detected: rows ${subStart}–${mainEnd}`
+            );
+            // Standalone alternates boundary
+            const altName = rows[altHeaderIdx].label || "Alternates";
+            const altEndRow = altEnd ?? endRow;
+            boundaries.push({
+              name: altName,
+              startRow: altHeaderIdx,
+              endRow: altEndRow,
+              alternatesStartRow: null,
+              alternatesEndRow: null,
+              isAlternateSection: true,
+            });
+            console.log(
+              `[PRICING PARSER] Standalone alternates "${altName}" detected: rows ${altHeaderIdx}–${altEndRow}`
+            );
+          } else {
+            boundaries.push({
+              name: subName,
+              startRow: subStart,
+              endRow,
+              alternatesStartRow: null,
+              alternatesEndRow: null,
+            });
+            console.log(
+              `[PRICING PARSER] Orphan sub-section "${subName}" detected: rows ${subStart}–${endRow}`
+            );
+          }
           // Next sub-section starts after this grandTotal's trailing rows
           subStart = endRow + 1;
           // Skip empty rows to find real start of next sub-section
@@ -187,9 +220,32 @@ export function findTableBoundaries(rows: RawRow[], headerRowLabel?: string): Ta
       continue;
     }
 
-    // Alternates header
+    // Alternates header — promote to standalone boundary
     if (row.isAlternateHeader && currentTable) {
-      currentTable.alternatesStartRow = i;
+      // Close the current main table at the grand total (or just before alternates)
+      if (currentTable.endRow === -1) {
+        // Find the nearest preceding grandTotal row or use i-1
+        let closeRow = i - 1;
+        for (let j = i - 1; j >= (currentTable.startRow || 0); j--) {
+          if (rows[j].isGrandTotal) { closeRow = j; break; }
+          if (!rows[j].isEmpty) { closeRow = j; break; }
+        }
+        currentTable.endRow = closeRow;
+      }
+      // Don't nest alternates — push main table as-is (no alternatesStartRow)
+      currentTable.alternatesStartRow = null;
+      currentTable.alternatesEndRow = null;
+      boundaries.push(currentTable as TableBoundary);
+
+      // Start a NEW standalone boundary for the alternates section
+      currentTable = {
+        name: row.label || "Alternates",
+        startRow: i,
+        endRow: -1,
+        alternatesStartRow: null,
+        alternatesEndRow: null,
+        isAlternateSection: true,
+      };
       inAlternates = true;
       continue;
     }
@@ -199,9 +255,9 @@ export function findTableBoundaries(rows: RawRow[], headerRowLabel?: string): Ta
       currentTable.endRow = i;
     }
 
-    // Track alternates end
-    if (inAlternates && currentTable && row.isAlternateLine) {
-      currentTable.alternatesEndRow = i;
+    // For alternate sections, track the end but DON'T nest — they're standalone
+    if (inAlternates && currentTable && (row.isAlternateLine || (!row.isEmpty && row.label))) {
+      // Keep extending the standalone alternates boundary
     }
   }
 
@@ -218,31 +274,53 @@ export function findTableBoundaries(rows: RawRow[], headerRowLabel?: string): Ta
 
 export function buildSingleTableBoundary(rows: RawRow[], name: string): TableBoundary[] {
   if (!rows.length) return [];
-  let alternatesStartRow: number | null = null;
-  let alternatesEndRow: number | null = null;
-  let inAlternates = false;
+  const result: TableBoundary[] = [];
+
+  // Find alternates header to split into standalone boundary
+  let altHeaderIdx: number | null = null;
+  let altEndIdx: number | null = null;
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    if (row.isAlternateHeader) {
-      alternatesStartRow = i;
-      inAlternates = true;
-      continue;
+    if (row.isAlternateHeader && altHeaderIdx === null) {
+      altHeaderIdx = i;
     }
-    if (inAlternates && row.isAlternateLine) {
-      alternatesEndRow = i;
+    if (altHeaderIdx !== null && row.isAlternateLine) {
+      altEndIdx = i;
     }
   }
 
-  return [
-    {
+  if (altHeaderIdx !== null) {
+    // Main table ends just before alternates
+    const mainEnd = altHeaderIdx - 1;
+    result.push({
+      name,
+      startRow: 0,
+      endRow: mainEnd >= 0 ? mainEnd : 0,
+      alternatesStartRow: null,
+      alternatesEndRow: null,
+    });
+    // Standalone alternates boundary
+    const altName = rows[altHeaderIdx].label || "Alternates";
+    result.push({
+      name: altName,
+      startRow: altHeaderIdx,
+      endRow: altEndIdx ?? rows.length - 1,
+      alternatesStartRow: null,
+      alternatesEndRow: null,
+      isAlternateSection: true,
+    });
+  } else {
+    result.push({
       name,
       startRow: 0,
       endRow: rows.length - 1,
-      alternatesStartRow,
-      alternatesEndRow,
-    },
-  ];
+      alternatesStartRow: null,
+      alternatesEndRow: null,
+    });
+  }
+
+  return result;
 }
 
 /**
