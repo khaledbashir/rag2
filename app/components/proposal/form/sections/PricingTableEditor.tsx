@@ -5,7 +5,7 @@ import { useFormContext, useWatch } from "react-hook-form";
 import { ProposalType } from "@/types";
 import { PricingDocument, PricingTable } from "@/types/pricing";
 import { Textarea } from "@/components/ui/textarea";
-import { DollarSign, FileText, ChevronDown, ChevronUp, RotateCcw, EyeOff, Eye } from "lucide-react";
+import { DollarSign, FileText, ChevronDown, ChevronUp, RotateCcw, EyeOff, Eye, Plus, Trash2 } from "lucide-react";
 import { formatCurrency } from "@/lib/helpers";
 
 // ─── Debounced Inputs ────────────────────────────────────────────────────────
@@ -300,6 +300,97 @@ export default function PricingTableEditor() {
         setValue("details.priceOverrides" as any, {}, { shouldDirty: true });
     };
 
+    // ── Add / Delete Section ──
+
+    const handleAddSection = () => {
+        const current = getValues("details.pricingDocument" as any) as PricingDocument | null;
+        if (!current) return;
+        const newTable: PricingTable = {
+            id: `table-manual-${Date.now()}`,
+            name: "New Section",
+            currency: current.currency || "USD",
+            items: [],
+            subtotal: 0,
+            tax: null,
+            bond: 0,
+            grandTotal: 0,
+            alternates: [],
+        };
+        setValue(
+            "details.pricingDocument" as any,
+            { ...current, tables: [...(current.tables || []), newTable] },
+            { shouldDirty: true }
+        );
+    };
+
+    const handleDeleteSection = (tableId: string) => {
+        const current = getValues("details.pricingDocument" as any) as PricingDocument | null;
+        if (!current?.tables) return;
+        const nextTables = current.tables.filter((t) => t.id !== tableId);
+        if (nextTables.length === 0) return; // Don't allow deleting all sections
+        // Clean up overrides for deleted table
+        const nextHeaderOverrides = { ...tableHeaderOverrides };
+        delete nextHeaderOverrides[tableId];
+        const nextDescOverrides = { ...descriptionOverrides };
+        const nextPriceOverrides = { ...priceOverrides };
+        Object.keys(nextDescOverrides).forEach((k) => { if (k.startsWith(tableId + ":")) delete nextDescOverrides[k]; });
+        Object.keys(nextPriceOverrides).forEach((k) => { if (k.startsWith(tableId + ":")) delete nextPriceOverrides[k]; });
+        setValue("details.pricingDocument" as any, { ...current, tables: nextTables }, { shouldDirty: true });
+        setValue("details.tableHeaderOverrides" as any, nextHeaderOverrides, { shouldDirty: true });
+        setValue("details.descriptionOverrides" as any, nextDescOverrides, { shouldDirty: true });
+        setValue("details.priceOverrides" as any, nextPriceOverrides, { shouldDirty: true });
+    };
+
+    // ── Add / Delete Line Item ──
+
+    const handleAddItem = (tableId: string) => {
+        const current = getValues("details.pricingDocument" as any) as PricingDocument | null;
+        if (!current?.tables) return;
+        const nextTables = current.tables.map((table) => {
+            if (table.id !== tableId) return table;
+            const newItem = { description: "New Line Item", sellingPrice: 0, isIncluded: false };
+            const nextItems = [...(table.items || []), newItem];
+            const nextSubtotal = nextItems.reduce((s, it) => it.isIncluded ? s : s + (it.sellingPrice || 0), 0);
+            return { ...table, items: nextItems, subtotal: nextSubtotal, grandTotal: nextSubtotal + (table.tax?.amount || 0) + (table.bond || 0) };
+        });
+        setValue("details.pricingDocument" as any, { ...current, tables: nextTables }, { shouldDirty: true });
+    };
+
+    const handleDeleteItem = (tableId: string, itemIndex: number) => {
+        const current = getValues("details.pricingDocument" as any) as PricingDocument | null;
+        if (!current?.tables) return;
+        // Clean up overrides that shift due to deletion
+        const nextDescOverrides = { ...descriptionOverrides };
+        const nextPriceOverrides = { ...priceOverrides };
+        // Remove the deleted item's overrides and shift higher indices down
+        const maxIdx = 500; // safe upper bound
+        for (let i = itemIndex; i < maxIdx; i++) {
+            const currentKey = `${tableId}:${i}`;
+            const nextKey = `${tableId}:${i + 1}`;
+            if (nextDescOverrides[nextKey] !== undefined) {
+                nextDescOverrides[currentKey] = nextDescOverrides[nextKey];
+            } else {
+                delete nextDescOverrides[currentKey];
+            }
+            if (nextPriceOverrides[nextKey] !== undefined) {
+                nextPriceOverrides[currentKey] = nextPriceOverrides[nextKey];
+            } else {
+                delete nextPriceOverrides[currentKey];
+            }
+            if (!nextDescOverrides[nextKey] && !nextPriceOverrides[nextKey]) break;
+        }
+
+        const nextTables = current.tables.map((table) => {
+            if (table.id !== tableId) return table;
+            const nextItems = table.items.filter((_, idx) => idx !== itemIndex);
+            const nextSubtotal = nextItems.reduce((s, it) => it.isIncluded ? s : s + (it.sellingPrice || 0), 0);
+            return { ...table, items: nextItems, subtotal: nextSubtotal, grandTotal: nextSubtotal + (table.tax?.amount || 0) + (table.bond || 0) };
+        });
+        setValue("details.pricingDocument" as any, { ...current, tables: nextTables }, { shouldDirty: true });
+        setValue("details.descriptionOverrides" as any, nextDescOverrides, { shouldDirty: true });
+        setValue("details.priceOverrides" as any, nextPriceOverrides, { shouldDirty: true });
+    };
+
     // ── Effective document total ──
     const effectiveDocumentTotal = tables.reduce(
         (sum, t) => sum + computeEffectiveGrandTotal(t, priceOverrides),
@@ -358,8 +449,22 @@ export default function PricingTableEditor() {
                     onPriceChange={handlePriceChange}
                     onPriceReset={handlePriceReset}
                     onToggleItemInclusion={handleToggleItemInclusion}
+                    onAddItem={handleAddItem}
+                    onDeleteItem={handleDeleteItem}
+                    onDeleteSection={handleDeleteSection}
+                    canDelete={tables.length > 1}
                 />
             ))}
+
+            {/* ── Add Section Button ── */}
+            <button
+                type="button"
+                onClick={handleAddSection}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-border rounded-lg text-sm text-muted-foreground hover:text-foreground hover:border-[#0A52EF]/40 hover:bg-[#0A52EF]/5 transition-colors"
+            >
+                <Plus className="w-4 h-4" />
+                Add Section
+            </button>
 
             {/* ── Custom Proposal Notes ── */}
             <div className="px-4 py-3 rounded-lg border border-border bg-card/50 space-y-2">
@@ -405,6 +510,10 @@ function PricingSection({
     onPriceChange,
     onPriceReset,
     onToggleItemInclusion,
+    onAddItem,
+    onDeleteItem,
+    onDeleteSection,
+    canDelete,
 }: {
     table: PricingTable;
     tableHeaderOverrides: Record<string, string>;
@@ -416,6 +525,10 @@ function PricingSection({
     onPriceChange: (tableId: string, idx: number, price: number) => void;
     onPriceReset: (tableId: string, idx: number) => void;
     onToggleItemInclusion: (tableId: string, idx: number) => void;
+    onAddItem: (tableId: string) => void;
+    onDeleteItem: (tableId: string, idx: number) => void;
+    onDeleteSection: (tableId: string) => void;
+    canDelete: boolean;
 }) {
     const [isExpanded, setIsExpanded] = useState(true);
     const items = table.items || [];
@@ -455,9 +568,21 @@ function PricingSection({
                         </span>
                     )}
                 </div>
-                <span className="text-sm font-bold text-foreground shrink-0 ml-3">
-                    {formatCurrency(effectiveGrandTotal)}
-                </span>
+                <div className="flex items-center gap-2 shrink-0 ml-3">
+                    <span className="text-sm font-bold text-foreground">
+                        {formatCurrency(effectiveGrandTotal)}
+                    </span>
+                    {canDelete && (
+                        <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onDeleteSection(table.id); }}
+                            className="p-1 text-muted-foreground/50 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"
+                            title="Delete section"
+                        >
+                            <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                    )}
+                </div>
             </button>
 
             {isExpanded && (
@@ -483,9 +608,10 @@ function PricingSection({
                     </div>
 
                     {/* Column Headers */}
-                    <div className="grid grid-cols-[1fr_120px_56px] gap-2 px-1">
+                    <div className="grid grid-cols-[1fr_120px_56px_28px] gap-2 px-1">
                         <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Description</span>
                         <span className="text-[10px] text-muted-foreground uppercase tracking-wider text-right">Amount</span>
+                        <span />
                         <span />
                     </div>
 
@@ -508,7 +634,7 @@ function PricingSection({
                             return (
                                 <div
                                     key={key}
-                                    className={`grid grid-cols-[1fr_120px_56px] gap-2 items-center rounded-md px-1 py-0.5 ${
+                                    className={`grid grid-cols-[1fr_120px_56px_28px] gap-2 items-center rounded-md px-1 py-0.5 ${
                                         anyOverride ? "bg-amber-500/5" : ""
                                     }`}
                                 >
@@ -540,7 +666,7 @@ function PricingSection({
                                             } focus:border-[#0A52EF] focus:ring-1 focus:ring-[#0A52EF]/20`}
                                         />
                                     )}
-                                    {/* Reset */}
+                                    {/* Toggle / Reset */}
                                     <div className="flex items-center justify-end gap-1">
                                         <button
                                             type="button"
@@ -570,10 +696,29 @@ function PricingSection({
                                             <div className="w-7" />
                                         )}
                                     </div>
+                                    {/* Delete */}
+                                    <button
+                                        type="button"
+                                        onClick={() => onDeleteItem(table.id, idx)}
+                                        className="flex items-center justify-center w-7 h-7 text-muted-foreground/40 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"
+                                        title="Remove line item"
+                                    >
+                                        <Trash2 className="w-3 h-3" />
+                                    </button>
                                 </div>
                             );
                         })}
                     </div>
+
+                    {/* Add Line Item */}
+                    <button
+                        type="button"
+                        onClick={() => onAddItem(table.id)}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 border border-dashed border-border rounded-md text-[11px] text-muted-foreground hover:text-foreground hover:border-[#0A52EF]/40 hover:bg-[#0A52EF]/5 transition-colors"
+                    >
+                        <Plus className="w-3 h-3" />
+                        Add Line Item
+                    </button>
 
                     {/* Totals Footer */}
                     <div className="border-t border-border pt-2 mt-2 space-y-1">
