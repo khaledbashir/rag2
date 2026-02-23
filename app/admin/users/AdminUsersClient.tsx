@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Check, X, Lock, Users as UsersIcon, AlertTriangle, Plus } from "lucide-react";
+import { Check, X, Lock, Users as UsersIcon, AlertTriangle, Plus, Pencil, Trash2, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -58,6 +58,13 @@ export default function AdminUsersClient({ initialUsers }: AdminUsersClientProps
   const [showAddUser, setShowAddUser] = useState(false);
   const [newUser, setNewUser] = useState({ email: "", name: "", password: "", role: "VIEWER" as UserRole });
   const [isAdding, setIsAdding] = useState(false);
+  // Edit user state
+  const [editUser, setEditUser] = useState<{ id: string; email: string; name: string; password: string; role: UserRole } | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [showEditPassword, setShowEditPassword] = useState(false);
+  // Delete user state
+  const [deleteUser, setDeleteUser] = useState<User | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleAddUser = async () => {
     if (!newUser.email || !newUser.password) return;
@@ -81,6 +88,62 @@ export default function AdminUsersClient({ initialUsers }: AdminUsersClientProps
       toast({ variant: "destructive", title: "Failed", description: error.message });
     } finally {
       setIsAdding(false);
+    }
+  };
+
+  const handleEditUser = async () => {
+    if (!editUser) return;
+    setIsEditing(true);
+    try {
+      const payload: Record<string, string> = {};
+      const original = users.find(u => u.id === editUser.id);
+      if (editUser.name !== (original?.name || "")) payload.name = editUser.name;
+      if (editUser.email !== original?.email) payload.email = editUser.email;
+      if (editUser.password) payload.password = editUser.password;
+      if (editUser.role !== original?.role) payload.role = editUser.role;
+
+      if (Object.keys(payload).length === 0) {
+        setEditUser(null);
+        return;
+      }
+
+      const res = await fetch(`/api/admin/users/${editUser.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to update user");
+      }
+      const { user } = await res.json();
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, ...user } : u));
+      toast({ title: "User Updated", description: `${user.email} has been updated.` });
+      setEditUser(null);
+      setShowEditPassword(false);
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Update Failed", description: error.message });
+    } finally {
+      setIsEditing(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteUser) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/users/${deleteUser.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to delete user");
+      }
+      setUsers(prev => prev.filter(u => u.id !== deleteUser.id));
+      toast({ title: "User Deleted", description: `${deleteUser.email} has been removed.` });
+      setDeleteUser(null);
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Delete Failed", description: error.message });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -207,6 +270,7 @@ export default function AdminUsersClient({ initialUsers }: AdminUsersClientProps
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Email</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Current Role</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Last Login</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -245,6 +309,35 @@ export default function AdminUsersClient({ initialUsers }: AdminUsersClientProps
                       </td>
                       <td className="py-3 px-4 text-sm text-muted-foreground">
                         {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : "Never"}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                            onClick={() => {
+                              setEditUser({
+                                id: user.id,
+                                email: user.email,
+                                name: user.name || "",
+                                password: "",
+                                role: user.role,
+                              });
+                              setShowEditPassword(false);
+                            }}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                            onClick={() => setDeleteUser(user)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -402,6 +495,129 @@ export default function AdminUsersClient({ initialUsers }: AdminUsersClientProps
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit User Dialog */}
+      {editUser && (
+        <Dialog open={!!editUser} onOpenChange={() => { setEditUser(null); setShowEditPassword(false); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit User</DialogTitle>
+              <DialogDescription>
+                Update user details. Leave password blank to keep it unchanged.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              <div className="space-y-2">
+                <Label htmlFor="edit-name">Name</Label>
+                <Input
+                  id="edit-name"
+                  value={editUser.name}
+                  onChange={(e) => setEditUser(prev => prev ? { ...prev, name: e.target.value } : null)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-email">Email</Label>
+                <Input
+                  id="edit-email"
+                  type="email"
+                  value={editUser.email}
+                  onChange={(e) => setEditUser(prev => prev ? { ...prev, email: e.target.value } : null)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-role">Role</Label>
+                <Select
+                  value={editUser.role}
+                  onValueChange={(val: UserRole) => setEditUser(prev => prev ? { ...prev, role: val } : null)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allRoles.map((role) => {
+                      const info = getRoleInfo(role);
+                      return (
+                        <SelectItem key={role} value={role}>
+                          <div className="flex items-center gap-2">
+                            <div className={cn("w-2 h-2 rounded-full", `bg-${info.color}-500`)} />
+                            <span>{info.label}</span>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="edit-password">New Password</Label>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowEditPassword(!showEditPassword)}
+                  >
+                    {showEditPassword ? <EyeOff className="w-3.5 h-3.5 inline mr-1" /> : <Eye className="w-3.5 h-3.5 inline mr-1" />}
+                    {showEditPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
+                <Input
+                  id="edit-password"
+                  type={showEditPassword ? "text" : "password"}
+                  placeholder="Leave blank to keep current"
+                  value={editUser.password}
+                  onChange={(e) => setEditUser(prev => prev ? { ...prev, password: e.target.value } : null)}
+                />
+                {editUser.password && editUser.password.length > 0 && editUser.password.length < 6 && (
+                  <p className="text-xs text-destructive">Must be at least 6 characters</p>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setEditUser(null); setShowEditPassword(false); }} disabled={isEditing}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleEditUser}
+                disabled={isEditing || !editUser.email || (editUser.password.length > 0 && editUser.password.length < 6)}
+              >
+                {isEditing ? "Saving..." : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Delete User Confirmation Dialog */}
+      {deleteUser && (
+        <Dialog open={!!deleteUser} onOpenChange={() => setDeleteUser(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete User?</DialogTitle>
+              <DialogDescription>
+                <div className="space-y-3 pt-2">
+                  <p>
+                    Are you sure you want to permanently delete <span className="font-semibold">{deleteUser.name || deleteUser.email}</span>?
+                  </p>
+                  <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-sm text-destructive">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <span>This action cannot be undone. The user will lose all access and their sessions will be terminated.</span>
+                    </div>
+                  </div>
+                </div>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteUser(null)} disabled={isDeleting}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleDeleteUser} disabled={isDeleting}>
+                {isDeleting ? "Deleting..." : "Delete User"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Confirmation Dialog */}
       {selectedRole && (
