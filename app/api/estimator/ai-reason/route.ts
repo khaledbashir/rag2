@@ -1,8 +1,9 @@
 /**
  * POST /api/estimator/ai-reason
  *
- * AI Reasoning Estimate — Primary: GLM (Z.AI) with streaming reasoning.
- * Fallback: AnythingLLM (self-hosted) if primary fails.
+ * AI Reasoning Estimate
+ * Primary: AnythingLLM "reasoning" workspace (self-hosted, always available)
+ * Fallback: GLM (Z.AI) streaming if primary fails
  *
  * Input:  { description: string }
  * Output: SSE stream with reasoning/extraction/fallback events
@@ -61,7 +62,7 @@ Rules:
 - Default to budget docType and USD currency unless specified
 - Infer installComplexity from context (center-hung = complex, wall mount = simple, etc.)`;
 
-const FALLBACK_WORKSPACE = "reasoning";
+const PRIMARY_WORKSPACE = "reasoning";
 
 export async function POST(req: NextRequest) {
     try {
@@ -80,18 +81,26 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Try primary model (GLM streaming)
-        const primaryResult = GLM_KEY
-            ? await tryPrimaryModel(description.trim())
-            : null;
+        // Try primary: AnythingLLM "reasoning" workspace
+        const primaryResult = await tryAnythingLLM(description.trim());
 
         if (primaryResult) {
             return primaryResult;
         }
 
-        // Primary failed or not configured — fall back to AnythingLLM
-        console.log("[ai-reason] Primary model unavailable, falling back to AnythingLLM");
-        return buildFallbackStream(description.trim());
+        // Primary failed — try fallback: GLM streaming
+        if (GLM_KEY) {
+            console.log("[ai-reason] AnythingLLM unavailable, falling back to GLM");
+            const glmResult = await tryGLMFallback(description.trim());
+            if (glmResult) return glmResult;
+        }
+
+        // Both failed
+        console.error("[ai-reason] All models unavailable");
+        return new Response(
+            JSON.stringify({ error: "AI models are unavailable. Please try again later." }),
+            { status: 503, headers: { "Content-Type": "application/json" } }
+        );
     } catch (error: any) {
         console.error("[ai-reason] Error:", error);
         return new Response(
@@ -101,12 +110,144 @@ export async function POST(req: NextRequest) {
     }
 }
 
-/** Try the primary GLM streaming model. Returns Response on success, null on failure. */
-async function tryPrimaryModel(description: string): Promise<Response | null> {
+/** Primary: AnythingLLM reasoning workspace — streams progress steps + extraction */
+async function tryAnythingLLM(description: string): Promise<Response | null> {
+    const encoder = new TextEncoder();
+
     try {
-        console.log(
-            `[ai-reason] Primary model call, model: ${GLM_MODEL}, desc length: ${description.length}`
-        );
+        console.log(`[ai-reason] Primary: AnythingLLM '${PRIMARY_WORKSPACE}', desc length: ${description.length}`);
+
+        // Call AnythingLLM (blocking) — but we wrap it in an SSE stream with progress steps
+        const readable = new ReadableStream({
+            async start(controller) {
+                const send = (data: any) => {
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+                };
+
+                // Stream progress steps so the user sees reasoning activity
+                const steps = [
+                    "Reading project description...",
+                    "Identifying venue type and client details...",
+                    "Extracting display specifications (dimensions, pixel pitch, type)...",
+                    "Determining environment, installation type, and labor requirements...",
+                    "Mapping display types to standard categories...",
+                    "Building structured estimate data...",
+                ];
+
+                // Start steps in the background, interleaved with the actual API call
+                let stepIndex = 0;
+                const stepInterval = setInterval(() => {
+                    if (stepIndex < steps.length) {
+                        send({ type: "reasoning", text: steps[stepIndex] + "\n" });
+                        stepIndex++;
+                    }
+                }, 600);
+
+                try {
+                    const response = await queryVault(PRIMARY_WORKSPACE, description, "chat");
+
+                    // Stop step timer, flush remaining steps
+                    clearInterval(stepInterval);
+                    while (stepIndex < steps.length) {
+                        send({ type: "reasoning", text: steps[stepIndex] + "\n" });
+                        stepIndex++;
+                    }
+
+                    if (!response || response.startsWith("Error")) {
+                        console.error("[ai-reason] AnythingLLM error:", response);
+                        controller.close();
+                        return; // Will return null from outer function
+                    }
+
+                    send({ type: "reasoning", text: "Parsing extraction results...\n" });
+
+                    const parsed = parseExtraction(response);
+
+                    if (parsed) {
+                        send({ type: "reasoning", text: "Extraction complete.\n" });
+                        send({ type: "extraction", ...parsed });
+                        send({ type: "done" });
+                    } else {
+                        // AnythingLLM responded but couldn't parse — still a valid primary response
+                        send({ type: "reasoning", text: "Could not parse structured data from response.\n" });
+                        send({ type: "error", message: "AI couldn't extract project data. Try being more specific." });
+                    }
+                } catch (err: any) {
+                    clearInterval(stepInterval);
+                    console.error("[ai-reason] AnythingLLM exception:", err.message);
+                    send({ type: "error", message: "AI service error. Retrying with backup..." });
+                } finally {
+                    controller.close();
+                }
+            },
+        });
+
+        // We need to check if AnythingLLM actually succeeded.
+        // Since ReadableStream is lazy, we can't check ahead of time.
+        // Instead, we'll do a preflight check.
+        const preflightResponse = await queryVault(PRIMARY_WORKSPACE, description, "chat");
+
+        if (!preflightResponse || preflightResponse.startsWith("Error")) {
+            console.error("[ai-reason] AnythingLLM preflight failed:", preflightResponse);
+            return null;
+        }
+
+        // AnythingLLM responded — build the real stream with the response we already have
+        const realStream = new ReadableStream({
+            async start(controller) {
+                const send = (data: any) => {
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+                };
+
+                const steps = [
+                    "Reading project description...",
+                    "Identifying venue type and client details...",
+                    "Extracting display specifications (dimensions, pixel pitch, type)...",
+                    "Determining environment, installation type, and labor requirements...",
+                    "Mapping display types to standard categories...",
+                    "Building structured estimate data...",
+                ];
+
+                for (const step of steps) {
+                    send({ type: "reasoning", text: step + "\n" });
+                    await sleep(500);
+                }
+
+                send({ type: "reasoning", text: "Parsing extraction results...\n" });
+                await sleep(300);
+
+                const parsed = parseExtraction(preflightResponse);
+
+                if (parsed) {
+                    send({ type: "reasoning", text: "Extraction complete.\n" });
+                    send({ type: "extraction", ...parsed });
+                } else {
+                    send({ type: "reasoning", text: "Could not parse structured data from response.\n" });
+                    send({ type: "error", message: "AI couldn't extract project data. Try being more specific." });
+                }
+
+                send({ type: "done" });
+                controller.close();
+            },
+        });
+
+        return new Response(realStream, {
+            headers: {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                Connection: "keep-alive",
+            },
+        });
+    } catch (err: any) {
+        console.error("[ai-reason] AnythingLLM exception:", err.message);
+        return null;
+    }
+}
+
+/** Fallback: GLM streaming with amber fallback indicator */
+async function tryGLMFallback(description: string): Promise<Response | null> {
+    try {
+        console.log(`[ai-reason] Fallback: GLM model=${GLM_MODEL}, desc length: ${description.length}`);
 
         const upstreamRes = await fetch(`${GLM_BASE}/chat/completions`, {
             method: "POST",
@@ -128,11 +269,8 @@ async function tryPrimaryModel(description: string): Promise<Response | null> {
 
         if (!upstreamRes.ok) {
             const errorText = await upstreamRes.text();
-            console.error(
-                `[ai-reason] Primary model error (${upstreamRes.status}):`,
-                errorText
-            );
-            return null; // Signal to use fallback
+            console.error(`[ai-reason] GLM fallback error (${upstreamRes.status}):`, errorText);
+            return null;
         }
 
         const encoder = new TextEncoder();
@@ -141,13 +279,16 @@ async function tryPrimaryModel(description: string): Promise<Response | null> {
 
         const readable = new ReadableStream({
             async start(controller) {
+                const send = (data: any) => {
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+                };
+
+                // Tell client this is fallback
+                send({ type: "fallback", message: "Primary AI unavailable — using backup reasoning model" });
+
                 const reader = upstreamRes.body?.getReader();
                 if (!reader) {
-                    controller.enqueue(
-                        encoder.encode(
-                            `data: ${JSON.stringify({ type: "error", message: "No stream body" })}\n\n`
-                        )
-                    );
+                    send({ type: "error", message: "No stream body" });
                     controller.close();
                     return;
                 }
@@ -165,8 +306,7 @@ async function tryPrimaryModel(description: string): Promise<Response | null> {
 
                         for (const line of lines) {
                             const trimmed = line.trim();
-                            if (!trimmed || !trimmed.startsWith("data: "))
-                                continue;
+                            if (!trimmed || !trimmed.startsWith("data: ")) continue;
 
                             const payload = trimmed.slice(6);
                             if (payload === "[DONE]") break;
@@ -175,16 +315,11 @@ async function tryPrimaryModel(description: string): Promise<Response | null> {
                                 const chunk = JSON.parse(payload);
                                 const delta = chunk.choices?.[0]?.delta;
                                 if (delta) {
-                                    const reasoning =
-                                        delta.reasoning_content || "";
+                                    const reasoning = delta.reasoning_content || "";
                                     const content = delta.content || "";
 
                                     if (reasoning) {
-                                        controller.enqueue(
-                                            encoder.encode(
-                                                `data: ${JSON.stringify({ type: "reasoning", text: reasoning })}\n\n`
-                                            )
-                                        );
+                                        send({ type: "reasoning", text: reasoning });
                                     }
                                     if (content) {
                                         fullContent += content;
@@ -199,30 +334,14 @@ async function tryPrimaryModel(description: string): Promise<Response | null> {
                     const parsed = parseExtraction(fullContent);
 
                     if (parsed) {
-                        controller.enqueue(
-                            encoder.encode(
-                                `data: ${JSON.stringify({ type: "extraction", ...parsed })}\n\n`
-                            )
-                        );
+                        send({ type: "extraction", ...parsed });
                     } else {
-                        controller.enqueue(
-                            encoder.encode(
-                                `data: ${JSON.stringify({ type: "error", message: "Could not parse AI output. Try rephrasing." })}\n\n`
-                            )
-                        );
+                        send({ type: "error", message: "Could not parse AI output. Try rephrasing." });
                     }
 
-                    controller.enqueue(
-                        encoder.encode(
-                            `data: ${JSON.stringify({ type: "done" })}\n\n`
-                        )
-                    );
+                    send({ type: "done" });
                 } catch (err: any) {
-                    controller.enqueue(
-                        encoder.encode(
-                            `data: ${JSON.stringify({ type: "error", message: err?.message || "Stream failed" })}\n\n`
-                        )
-                    );
+                    send({ type: "error", message: err?.message || "Stream failed" });
                 } finally {
                     reader.releaseLock();
                     controller.close();
@@ -238,79 +357,9 @@ async function tryPrimaryModel(description: string): Promise<Response | null> {
             },
         });
     } catch (err: any) {
-        console.error("[ai-reason] Primary model exception:", err.message);
+        console.error("[ai-reason] GLM fallback exception:", err.message);
         return null;
     }
-}
-
-/** Build a fallback SSE stream using AnythingLLM (non-streaming, but we simulate progress steps) */
-async function buildFallbackStream(description: string): Promise<Response> {
-    const encoder = new TextEncoder();
-
-    const readable = new ReadableStream({
-        async start(controller) {
-            const send = (data: any) => {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-            };
-
-            // Tell the client this is fallback mode
-            send({ type: "fallback", message: "Primary AI model unavailable — using fallback extraction" });
-
-            // Stream progress steps so the user sees activity
-            const steps = [
-                "Reading project description...",
-                "Identifying venue type and client details...",
-                "Extracting display specifications (dimensions, pixel pitch, type)...",
-                "Determining environment, installation type, and labor requirements...",
-                "Mapping display types to standard categories...",
-                "Building structured estimate data...",
-            ];
-
-            for (const step of steps) {
-                send({ type: "reasoning", text: step + "\n" });
-                // Small delay between steps so it doesn't flash instantly
-                await sleep(400);
-            }
-
-            try {
-                // Call AnythingLLM for the actual extraction
-                const response = await queryVault(FALLBACK_WORKSPACE, description, "chat");
-
-                if (!response || response.startsWith("Error")) {
-                    send({ type: "reasoning", text: "\nFallback model also failed to respond.\n" });
-                    send({ type: "error", message: "Both AI models are unavailable. Please try again later." });
-                    controller.close();
-                    return;
-                }
-
-                send({ type: "reasoning", text: "Parsing extraction results...\n" });
-
-                const parsed = parseExtraction(response);
-
-                if (parsed) {
-                    send({ type: "reasoning", text: "Extraction complete.\n" });
-                    send({ type: "extraction", ...parsed });
-                } else {
-                    send({ type: "reasoning", text: "Could not parse a structured result from the fallback model.\n" });
-                    send({ type: "error", message: "Fallback AI couldn't extract project data. Try being more specific." });
-                }
-
-                send({ type: "done" });
-            } catch (err: any) {
-                send({ type: "error", message: err?.message || "Fallback extraction failed" });
-            } finally {
-                controller.close();
-            }
-        },
-    });
-
-    return new Response(readable, {
-        headers: {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            Connection: "keep-alive",
-        },
-    });
 }
 
 function sleep(ms: number): Promise<void> {
