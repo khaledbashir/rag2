@@ -48,6 +48,7 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
     const [aiPhase, setAiPhase] = useState<"input" | "reasoning" | "preview">("input");
     const [reasoningText, setReasoningText] = useState("");
     const [extractedData, setExtractedData] = useState<{ answers: Record<string, any>; displays: any[] } | null>(null);
+    const [isFallback, setIsFallback] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const reasoningEndRef = useRef<HTMLDivElement>(null);
 
@@ -58,7 +59,7 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
         }
     }, [reasoningText, aiPhase]);
 
-    // AI Streaming Estimate — uses GLM-5 reasoning model
+    // AI Streaming Estimate — primary model with automatic fallback
     const handleAiReasonEstimate = useCallback(async () => {
         if (!aiDescription.trim() || aiDescription.trim().length < 10) {
             setAiError("Please describe the project in at least 10 characters.");
@@ -68,6 +69,7 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
         setAiError("");
         setReasoningText("");
         setExtractedData(null);
+        setIsFallback(false);
         setAiPhase("reasoning");
 
         try {
@@ -103,7 +105,9 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                     try {
                         const chunk = JSON.parse(trimmed.slice(6));
 
-                        if (chunk.type === "reasoning") {
+                        if (chunk.type === "fallback") {
+                            setIsFallback(true);
+                        } else if (chunk.type === "reasoning") {
                             setReasoningText((prev) => prev + chunk.text);
                         } else if (chunk.type === "extraction") {
                             setExtractedData({ answers: chunk.answers, displays: chunk.displays });
@@ -367,8 +371,8 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                                 <Wand2 className="w-3 h-3" /> Describe
                             </div>
                             <ChevronRight className="w-3 h-3 text-muted-foreground/40" />
-                            <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold", aiPhase === "reasoning" ? "bg-[#0A52EF] text-white" : aiPhase === "preview" ? "bg-[#0A52EF]/10 text-[#0A52EF]" : "text-muted-foreground/40")}>
-                                <Brain className="w-3 h-3" /> Reasoning
+                            <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold", aiPhase === "reasoning" ? (isFallback ? "bg-amber-500 text-white" : "bg-[#0A52EF] text-white") : aiPhase === "preview" ? (isFallback ? "bg-amber-100 text-amber-700" : "bg-[#0A52EF]/10 text-[#0A52EF]") : "text-muted-foreground/40")}>
+                                <Brain className="w-3 h-3" /> {isFallback ? "Extracting" : "Reasoning"}
                             </div>
                             <ChevronRight className="w-3 h-3 text-muted-foreground/40" />
                             <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold", aiPhase === "preview" ? "bg-[#0A52EF] text-white" : "text-muted-foreground/40")}>
@@ -413,7 +417,7 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                                         Analyze with AI
                                     </button>
                                     <button
-                                        onClick={() => { setAiMode(false); setAiError(""); setAiPhase("input"); }}
+                                        onClick={() => { setAiMode(false); setAiError(""); setAiPhase("input"); setIsFallback(false); }}
                                         className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                                     >
                                         Back
@@ -429,10 +433,15 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                         {aiPhase === "reasoning" && (
                             <>
                                 <div className="flex items-center gap-2 mb-3">
-                                    <Brain className="w-4 h-4 text-[#0A52EF] animate-pulse" />
+                                    <Brain className={cn("w-4 h-4 animate-pulse", isFallback ? "text-amber-500" : "text-[#0A52EF]")} />
                                     <h2 className="text-lg font-semibold text-foreground">
                                         Analyzing your project...
                                     </h2>
+                                    {isFallback && (
+                                        <span className="ml-auto px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                                            FALLBACK MODE
+                                        </span>
+                                    )}
                                 </div>
 
                                 {/* User's description — collapsed */}
@@ -440,18 +449,24 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                                     <p className="text-xs text-muted-foreground line-clamp-2">{aiDescription}</p>
                                 </div>
 
+                                {isFallback && (
+                                    <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+                                        Primary reasoning model unavailable — using backup extraction. Results are accurate but without detailed reasoning.
+                                    </div>
+                                )}
+
                                 {/* Streaming reasoning text */}
-                                <div className="rounded-lg border border-[#0A52EF]/20 bg-[#0A52EF]/[0.02] p-4 max-h-[50vh] overflow-y-auto">
-                                    <div className="text-[10px] font-semibold uppercase tracking-widest text-[#0A52EF]/60 mb-2 flex items-center gap-1.5">
+                                <div className={cn("rounded-lg p-4 max-h-[50vh] overflow-y-auto border", isFallback ? "border-amber-200 bg-amber-50/30" : "border-[#0A52EF]/20 bg-[#0A52EF]/[0.02]")}>
+                                    <div className={cn("text-[10px] font-semibold uppercase tracking-widest mb-2 flex items-center gap-1.5", isFallback ? "text-amber-500/60" : "text-[#0A52EF]/60")}>
                                         <Brain className="w-3 h-3" />
-                                        AI Reasoning
+                                        {isFallback ? "Extraction Progress" : "AI Reasoning"}
                                     </div>
                                     <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap font-mono">
                                         {reasoningText || (
-                                            <span className="text-muted-foreground italic">Thinking...</span>
+                                            <span className="text-muted-foreground italic">{isFallback ? "Processing..." : "Thinking..."}</span>
                                         )}
                                         {aiLoading && (
-                                            <span className="inline-block w-2 h-4 bg-[#0A52EF] ml-0.5 animate-pulse rounded-sm" />
+                                            <span className={cn("inline-block w-2 h-4 ml-0.5 animate-pulse rounded-sm", isFallback ? "bg-amber-500" : "bg-[#0A52EF]")} />
                                         )}
                                     </div>
                                     <div ref={reasoningEndRef} />
@@ -585,7 +600,7 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                                         Apply to Estimate
                                     </button>
                                     <button
-                                        onClick={() => { setAiPhase("input"); setReasoningText(""); setExtractedData(null); }}
+                                        onClick={() => { setAiPhase("input"); setReasoningText(""); setExtractedData(null); setIsFallback(false); }}
                                         className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
                                     >
                                         <RotateCcw className="w-3.5 h-3.5" />

@@ -1,16 +1,15 @@
 /**
  * POST /api/estimator/ai-reason
  *
- * AI Reasoning Estimate — Uses GLM-5 (Z.AI) with streaming to:
- * 1. Stream reasoning tokens (visible to user as "thinking")
- * 2. Output structured JSON for form filling
+ * AI Reasoning Estimate — Primary: GLM (Z.AI) with streaming reasoning.
+ * Fallback: AnythingLLM (self-hosted) if primary fails.
  *
  * Input:  { description: string }
- * Output: SSE stream with { reasoning: string } and { content: string } chunks,
- *         final chunk: { done: true, answers: {...}, displays: [...] }
+ * Output: SSE stream with reasoning/extraction/fallback events
  */
 
 import { NextRequest } from "next/server";
+import { queryVault } from "@/lib/anything-llm";
 
 const GLM_BASE =
     process.env.Z_AI_BASE_URL ||
@@ -62,6 +61,8 @@ Rules:
 - Default to budget docType and USD currency unless specified
 - Infer installComplexity from context (center-hung = complex, wall mount = simple, etc.)`;
 
+const FALLBACK_WORKSPACE = "anc-estimator";
+
 export async function POST(req: NextRequest) {
     try {
         const { description } = await req.json();
@@ -79,17 +80,32 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        if (!GLM_KEY) {
-            return new Response(
-                JSON.stringify({
-                    error: "AI reasoning model not configured. Set Z_AI_API_KEY env var.",
-                }),
-                { status: 500, headers: { "Content-Type": "application/json" } }
-            );
+        // Try primary model (GLM streaming)
+        const primaryResult = GLM_KEY
+            ? await tryPrimaryModel(description.trim())
+            : null;
+
+        if (primaryResult) {
+            return primaryResult;
         }
 
+        // Primary failed or not configured — fall back to AnythingLLM
+        console.log("[ai-reason] Primary model unavailable, falling back to AnythingLLM");
+        return buildFallbackStream(description.trim());
+    } catch (error: any) {
+        console.error("[ai-reason] Error:", error);
+        return new Response(
+            JSON.stringify({ error: error.message }),
+            { status: 500, headers: { "Content-Type": "application/json" } }
+        );
+    }
+}
+
+/** Try the primary GLM streaming model. Returns Response on success, null on failure. */
+async function tryPrimaryModel(description: string): Promise<Response | null> {
+    try {
         console.log(
-            `[ai-reason] GLM-5 streaming call, model: ${GLM_MODEL}, desc length: ${description.length}`
+            `[ai-reason] Primary model call, model: ${GLM_MODEL}, desc length: ${description.length}`
         );
 
         const upstreamRes = await fetch(`${GLM_BASE}/chat/completions`, {
@@ -102,7 +118,7 @@ export async function POST(req: NextRequest) {
                 model: GLM_MODEL,
                 messages: [
                     { role: "system", content: SYSTEM_PROMPT },
-                    { role: "user", content: description.trim() },
+                    { role: "user", content: description },
                 ],
                 stream: true,
                 temperature: 0.2,
@@ -113,32 +129,15 @@ export async function POST(req: NextRequest) {
         if (!upstreamRes.ok) {
             const errorText = await upstreamRes.text();
             console.error(
-                `[ai-reason] GLM error (${upstreamRes.status}):`,
+                `[ai-reason] Primary model error (${upstreamRes.status}):`,
                 errorText
             );
-            // Surface the actual upstream error so the user sees what went wrong
-            let detail = "";
-            try {
-                const parsed = JSON.parse(errorText);
-                detail = parsed?.error?.message || parsed?.message || errorText.slice(0, 200);
-            } catch {
-                detail = errorText.slice(0, 200);
-            }
-            return new Response(
-                JSON.stringify({ error: `AI model error (${upstreamRes.status}): ${detail}` }),
-                {
-                    status: upstreamRes.status,
-                    headers: { "Content-Type": "application/json" },
-                }
-            );
+            return null; // Signal to use fallback
         }
 
         const encoder = new TextEncoder();
         const decoder = new TextDecoder();
-
-        // Accumulate full content to parse JSON at the end
         let fullContent = "";
-        let fullReasoning = "";
 
         const readable = new ReadableStream({
             async start(controller) {
@@ -181,7 +180,6 @@ export async function POST(req: NextRequest) {
                                     const content = delta.content || "";
 
                                     if (reasoning) {
-                                        fullReasoning += reasoning;
                                         controller.enqueue(
                                             encoder.encode(
                                                 `data: ${JSON.stringify({ type: "reasoning", text: reasoning })}\n\n`
@@ -190,7 +188,6 @@ export async function POST(req: NextRequest) {
                                     }
                                     if (content) {
                                         fullContent += content;
-                                        // Don't stream raw JSON content — we'll parse it at the end
                                     }
                                 }
                             } catch {
@@ -199,7 +196,6 @@ export async function POST(req: NextRequest) {
                         }
                     }
 
-                    // Parse the accumulated content as JSON
                     const parsed = parseExtraction(fullContent);
 
                     if (parsed) {
@@ -216,7 +212,6 @@ export async function POST(req: NextRequest) {
                         );
                     }
 
-                    // Done signal
                     controller.enqueue(
                         encoder.encode(
                             `data: ${JSON.stringify({ type: "done" })}\n\n`
@@ -242,13 +237,84 @@ export async function POST(req: NextRequest) {
                 Connection: "keep-alive",
             },
         });
-    } catch (error: any) {
-        console.error("[ai-reason] Error:", error);
-        return new Response(
-            JSON.stringify({ error: error.message }),
-            { status: 500, headers: { "Content-Type": "application/json" } }
-        );
+    } catch (err: any) {
+        console.error("[ai-reason] Primary model exception:", err.message);
+        return null;
     }
+}
+
+/** Build a fallback SSE stream using AnythingLLM (non-streaming, but we simulate progress steps) */
+async function buildFallbackStream(description: string): Promise<Response> {
+    const encoder = new TextEncoder();
+
+    const readable = new ReadableStream({
+        async start(controller) {
+            const send = (data: any) => {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+            };
+
+            // Tell the client this is fallback mode
+            send({ type: "fallback", message: "Primary AI model unavailable — using fallback extraction" });
+
+            // Stream progress steps so the user sees activity
+            const steps = [
+                "Reading project description...",
+                "Identifying venue type and client details...",
+                "Extracting display specifications (dimensions, pixel pitch, type)...",
+                "Determining environment, installation type, and labor requirements...",
+                "Mapping display types to standard categories...",
+                "Building structured estimate data...",
+            ];
+
+            for (const step of steps) {
+                send({ type: "reasoning", text: step + "\n" });
+                // Small delay between steps so it doesn't flash instantly
+                await sleep(400);
+            }
+
+            try {
+                // Call AnythingLLM for the actual extraction
+                const response = await queryVault(FALLBACK_WORKSPACE, description, "chat");
+
+                if (!response || response.startsWith("Error")) {
+                    send({ type: "reasoning", text: "\nFallback model also failed to respond.\n" });
+                    send({ type: "error", message: "Both AI models are unavailable. Please try again later." });
+                    controller.close();
+                    return;
+                }
+
+                send({ type: "reasoning", text: "Parsing extraction results...\n" });
+
+                const parsed = parseExtraction(response);
+
+                if (parsed) {
+                    send({ type: "reasoning", text: "Extraction complete.\n" });
+                    send({ type: "extraction", ...parsed });
+                } else {
+                    send({ type: "reasoning", text: "Could not parse a structured result from the fallback model.\n" });
+                    send({ type: "error", message: "Fallback AI couldn't extract project data. Try being more specific." });
+                }
+
+                send({ type: "done" });
+            } catch (err: any) {
+                send({ type: "error", message: err?.message || "Fallback extraction failed" });
+            } finally {
+                controller.close();
+            }
+        },
+    });
+
+    return new Response(readable, {
+        headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+        },
+    });
+}
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** Parse the model's content output into structured answers + displays */
