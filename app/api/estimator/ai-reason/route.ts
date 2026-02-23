@@ -114,134 +114,84 @@ export async function POST(req: NextRequest) {
 async function tryAnythingLLM(description: string): Promise<Response | null> {
     const encoder = new TextEncoder();
 
-    try {
-        console.log(`[ai-reason] Primary: AnythingLLM '${PRIMARY_WORKSPACE}', desc length: ${description.length}`);
+    console.log(`[ai-reason] Primary: AnythingLLM '${PRIMARY_WORKSPACE}', desc length: ${description.length}`);
 
-        // Call AnythingLLM (blocking) — but we wrap it in an SSE stream with progress steps
-        const readable = new ReadableStream({
-            async start(controller) {
-                const send = (data: any) => {
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-                };
+    // Return the SSE stream immediately — queryVault runs inside it
+    const readable = new ReadableStream({
+        async start(controller) {
+            const send = (data: any) => {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+            };
 
-                // Stream progress steps so the user sees reasoning activity
-                const steps = [
-                    "Reading project description...",
-                    "Identifying venue type and client details...",
-                    "Extracting display specifications (dimensions, pixel pitch, type)...",
-                    "Determining environment, installation type, and labor requirements...",
-                    "Mapping display types to standard categories...",
-                    "Building structured estimate data...",
-                ];
+            const steps = [
+                "Reading project description...",
+                "Identifying venue type and client details...",
+                "Extracting display specifications (dimensions, pixel pitch, type)...",
+                "Determining environment, installation type, and labor requirements...",
+                "Mapping display types to standard categories...",
+                "Building structured estimate data...",
+            ];
 
-                // Start steps in the background, interleaved with the actual API call
-                let stepIndex = 0;
-                const stepInterval = setInterval(() => {
-                    if (stepIndex < steps.length) {
-                        send({ type: "reasoning", text: steps[stepIndex] + "\n" });
-                        stepIndex++;
-                    }
-                }, 600);
+            // Start the AnythingLLM call in the background
+            const llmPromise = queryVault(PRIMARY_WORKSPACE, description, "chat");
 
-                try {
-                    const response = await queryVault(PRIMARY_WORKSPACE, description, "chat");
-
-                    // Stop step timer, flush remaining steps
-                    clearInterval(stepInterval);
-                    while (stepIndex < steps.length) {
-                        send({ type: "reasoning", text: steps[stepIndex] + "\n" });
-                        stepIndex++;
-                    }
-
-                    if (!response || response.startsWith("Error")) {
-                        console.error("[ai-reason] AnythingLLM error:", response);
-                        controller.close();
-                        return; // Will return null from outer function
-                    }
-
-                    send({ type: "reasoning", text: "Parsing extraction results...\n" });
-
-                    const parsed = parseExtraction(response);
-
-                    if (parsed) {
-                        send({ type: "reasoning", text: "Extraction complete.\n" });
-                        send({ type: "extraction", ...parsed });
-                        send({ type: "done" });
-                    } else {
-                        // AnythingLLM responded but couldn't parse — still a valid primary response
-                        send({ type: "reasoning", text: "Could not parse structured data from response.\n" });
-                        send({ type: "error", message: "AI couldn't extract project data. Try being more specific." });
-                    }
-                } catch (err: any) {
-                    clearInterval(stepInterval);
-                    console.error("[ai-reason] AnythingLLM exception:", err.message);
-                    send({ type: "error", message: "AI service error. Retrying with backup..." });
-                } finally {
-                    controller.close();
+            // Stream progress steps while waiting
+            let stepIndex = 0;
+            const stepInterval = setInterval(() => {
+                if (stepIndex < steps.length) {
+                    send({ type: "reasoning", text: steps[stepIndex] + "\n" });
+                    stepIndex++;
                 }
-            },
-        });
+            }, 800);
 
-        // We need to check if AnythingLLM actually succeeded.
-        // Since ReadableStream is lazy, we can't check ahead of time.
-        // Instead, we'll do a preflight check.
-        const preflightResponse = await queryVault(PRIMARY_WORKSPACE, description, "chat");
+            try {
+                const response = await llmPromise;
 
-        if (!preflightResponse || preflightResponse.startsWith("Error")) {
-            console.error("[ai-reason] AnythingLLM preflight failed:", preflightResponse);
-            return null;
-        }
+                // Done waiting — flush remaining steps
+                clearInterval(stepInterval);
+                while (stepIndex < steps.length) {
+                    send({ type: "reasoning", text: steps[stepIndex] + "\n" });
+                    stepIndex++;
+                    await sleep(150);
+                }
 
-        // AnythingLLM responded — build the real stream with the response we already have
-        const realStream = new ReadableStream({
-            async start(controller) {
-                const send = (data: any) => {
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-                };
-
-                const steps = [
-                    "Reading project description...",
-                    "Identifying venue type and client details...",
-                    "Extracting display specifications (dimensions, pixel pitch, type)...",
-                    "Determining environment, installation type, and labor requirements...",
-                    "Mapping display types to standard categories...",
-                    "Building structured estimate data...",
-                ];
-
-                for (const step of steps) {
-                    send({ type: "reasoning", text: step + "\n" });
-                    await sleep(500);
+                if (!response || response.startsWith("Error")) {
+                    console.error("[ai-reason] AnythingLLM error:", response);
+                    send({ type: "error", message: "AI service returned an error. Retrying with backup..." });
+                    controller.close();
+                    return;
                 }
 
                 send({ type: "reasoning", text: "Parsing extraction results...\n" });
-                await sleep(300);
+                await sleep(200);
 
-                const parsed = parseExtraction(preflightResponse);
+                const parsed = parseExtraction(response);
 
                 if (parsed) {
                     send({ type: "reasoning", text: "Extraction complete.\n" });
                     send({ type: "extraction", ...parsed });
+                    send({ type: "done" });
                 } else {
-                    send({ type: "reasoning", text: "Could not parse structured data from response.\n" });
+                    send({ type: "reasoning", text: "Could not parse structured data from AI response.\n" });
                     send({ type: "error", message: "AI couldn't extract project data. Try being more specific." });
                 }
-
-                send({ type: "done" });
+            } catch (err: any) {
+                clearInterval(stepInterval);
+                console.error("[ai-reason] AnythingLLM exception:", err.message);
+                send({ type: "error", message: "AI service error: " + (err.message || "unknown") });
+            } finally {
                 controller.close();
-            },
-        });
+            }
+        },
+    });
 
-        return new Response(realStream, {
-            headers: {
-                "Content-Type": "text/event-stream",
-                "Cache-Control": "no-cache",
-                Connection: "keep-alive",
-            },
-        });
-    } catch (err: any) {
-        console.error("[ai-reason] AnythingLLM exception:", err.message);
-        return null;
-    }
+    return new Response(readable, {
+        headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+        },
+    });
 }
 
 /** Fallback: GLM streaming with amber fallback indicator */
