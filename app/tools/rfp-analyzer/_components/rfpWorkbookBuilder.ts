@@ -277,14 +277,14 @@ function buildRequirements(input: RfpWorkbookInput): SheetTab {
 
   const dataRows: SheetRow[] = input.requirements.map((r) => ({
     cells: [
-      c(r.priority.toUpperCase(), {
+      c((r.status || "info").toUpperCase(), {
         bold: true,
         align: "center",
-        className: r.priority === "critical"
+        className: r.status === "critical"
           ? "text-red-600"
-          : r.priority === "risk"
+          : r.status === "risk"
             ? "text-amber-600"
-            : r.priority === "verified"
+            : r.status === "verified"
               ? "text-emerald-600"
               : "text-blue-600",
       }),

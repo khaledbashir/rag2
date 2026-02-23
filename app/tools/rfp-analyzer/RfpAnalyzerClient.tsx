@@ -872,7 +872,7 @@ export default function RfpAnalyzerClient() {
 
         {/* ============ RESULTS ============ */}
         {phase === "results" && result && (() => {
-          const criticalReqs = requirements.filter((r) => r.priority === "critical").length;
+          const criticalReqs = requirements.filter((r) => r.status === "critical").length;
 
           return (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 ease-out space-y-6">
