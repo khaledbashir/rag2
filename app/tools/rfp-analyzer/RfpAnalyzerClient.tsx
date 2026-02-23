@@ -639,6 +639,68 @@ export default function RfpAnalyzerClient() {
   };
 
   // ========================================================================
+  // Fill Bid Form — auto-populate vendor column in client-provided bid form
+  // ========================================================================
+
+  const bidFormInputRef = useRef<HTMLInputElement>(null);
+  const [bidFormResult, setBidFormResult] = useState<{
+    matches: Array<{ sheetName: string; displayName: string; matchedScreen: string; confidence: number; fieldsFilled: string[] }>;
+    unmatchedBlocks: string[];
+    unmatchedScreens: string[];
+  } | null>(null);
+
+  const handleFillBidForm = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !result?.id) return;
+    setDownloading("bidform");
+    setBidFormResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("bidForm", file);
+      formData.append("analysisId", result.id);
+      // Send user-edited specs if available
+      if (editableSpecs.length > 0) {
+        formData.append("specs", JSON.stringify(editableSpecs));
+      }
+      const res = await fetch("/api/rfp/pipeline/fill-bid-form", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.error || `Fill failed (${res.status})`);
+      }
+
+      // Parse match metadata from headers
+      const matchesHeader = res.headers.get("X-Bid-Form-Matches");
+      const unmatchedBlocksHeader = res.headers.get("X-Bid-Form-Unmatched-Blocks");
+      const unmatchedScreensHeader = res.headers.get("X-Bid-Form-Unmatched-Screens");
+
+      if (matchesHeader) {
+        setBidFormResult({
+          matches: JSON.parse(matchesHeader),
+          unmatchedBlocks: unmatchedBlocksHeader ? JSON.parse(unmatchedBlocksHeader) : [],
+          unmatchedScreens: unmatchedScreensHeader ? JSON.parse(unmatchedScreensHeader) : [],
+        });
+      }
+
+      // Download the filled file
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = res.headers.get("Content-Disposition")?.split("filename=")[1]?.replace(/"/g, "") || "BidForm_Filled.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setDownloading(null);
+      e.target.value = "";
+    }
+  };
+
+  // ========================================================================
   // Reset
   // ========================================================================
 
@@ -655,6 +717,7 @@ export default function RfpAnalyzerClient() {
     setDrawingUpload({ uploading: false, results: [] });
     setQuotePreviewOpen(false);
     setEditableSpecs([]);
+    setBidFormResult(null);
   };
 
   // ========================================================================
@@ -848,6 +911,46 @@ export default function RfpAnalyzerClient() {
               <ProjectInfoCard project={result.project} />
             )}
 
+            {/* Bid Form Fill Result */}
+            {bidFormResult && (
+              <div className="border border-amber-500/30 bg-amber-50 dark:bg-amber-950/20 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <FileSpreadsheet className="w-4 h-4 text-amber-600" />
+                  <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                    Bid Form Filled — {bidFormResult.matches.length} display{bidFormResult.matches.length !== 1 ? "s" : ""} matched
+                  </span>
+                  <button onClick={() => setBidFormResult(null)} className="ml-auto text-xs text-amber-600 hover:text-amber-800">Dismiss</button>
+                </div>
+                <div className="space-y-1 text-xs">
+                  {bidFormResult.matches.map((m, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                      <span className="text-foreground/80">
+                        <strong>{m.sheetName}</strong>: {m.displayName} → {m.matchedScreen}
+                        <span className="text-muted-foreground ml-1">({m.fieldsFilled.length} fields, {Math.round(m.confidence * 100)}% match)</span>
+                      </span>
+                    </div>
+                  ))}
+                  {bidFormResult.unmatchedBlocks.length > 0 && (
+                    <div className="mt-1.5 pt-1.5 border-t border-amber-300/30">
+                      <span className="text-amber-700 dark:text-amber-400 font-medium">Unmatched bid form blocks:</span>
+                      {bidFormResult.unmatchedBlocks.map((b, i) => (
+                        <span key={i} className="ml-2 text-amber-600">{b}</span>
+                      ))}
+                    </div>
+                  )}
+                  {bidFormResult.unmatchedScreens.length > 0 && (
+                    <div className="mt-1">
+                      <span className="text-amber-700 dark:text-amber-400 font-medium">Unmatched RFP screens:</span>
+                      {bidFormResult.unmatchedScreens.map((s, i) => (
+                        <span key={i} className="ml-2 text-amber-600">{s}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* ============ WORKBOOK VIEW ============ */}
             <div className="flex gap-3">
             {/* Left: Workbook */}
@@ -907,6 +1010,22 @@ export default function RfpAnalyzerClient() {
                       {downloading === "extraction" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
                       Specs .xlsx
                     </button>
+                    <button
+                      onClick={() => bidFormInputRef.current?.click()}
+                      disabled={downloading === "bidform" || !result?.id}
+                      className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/80 hover:bg-amber-500 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                      title="Upload a blank bid form Excel and auto-fill vendor specs"
+                    >
+                      {downloading === "bidform" ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileSpreadsheet className="w-3 h-3" />}
+                      Fill Bid Form
+                    </button>
+                    <input
+                      ref={bidFormInputRef}
+                      type="file"
+                      accept=".xlsx,.xls"
+                      onChange={handleFillBidForm}
+                      className="hidden"
+                    />
                     <button
                       onClick={handleCreateProposal}
                       disabled={downloading === "creating" || !result?.id || !session?.user?.email}
