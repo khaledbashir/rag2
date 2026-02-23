@@ -107,8 +107,6 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
 
                         if (chunk.type === "fallback") {
                             setIsFallback(true);
-                        } else if (chunk.type === "clear_reasoning") {
-                            setReasoningText("");
                         } else if (chunk.type === "reasoning") {
                             setReasoningText((prev) => prev + chunk.text);
                         } else if (chunk.type === "extraction") {

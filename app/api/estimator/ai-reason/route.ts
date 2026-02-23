@@ -10,7 +10,6 @@
  */
 
 import { NextRequest } from "next/server";
-import { queryVault } from "@/lib/anything-llm";
 
 const GLM_BASE =
     process.env.Z_AI_BASE_URL ||
@@ -110,91 +109,141 @@ export async function POST(req: NextRequest) {
     }
 }
 
-/** Primary: AnythingLLM reasoning workspace — streams progress steps + extraction */
+/** Primary: AnythingLLM reasoning workspace — streams REAL model reasoning live */
 async function tryAnythingLLM(description: string): Promise<Response | null> {
     const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
 
     console.log(`[ai-reason] Primary: AnythingLLM '${PRIMARY_WORKSPACE}', desc length: ${description.length}`);
 
-    // Return the SSE stream immediately — queryVault runs inside it
+    // Hit AnythingLLM's streaming endpoint directly
+    const ALLM_BASE = process.env.ANYTHING_LLM_BASE_URL || "";
+    const ALLM_KEY = process.env.ANYTHING_LLM_KEY || "";
+    const normalizedBase = ALLM_BASE.endsWith("/api/v1")
+        ? ALLM_BASE
+        : `${ALLM_BASE.replace(/\/+$/, "")}/api/v1`;
+
+    if (!normalizedBase || !ALLM_KEY) {
+        console.error("[ai-reason] AnythingLLM not configured");
+        return null;
+    }
+
+    const streamUrl = `${normalizedBase}/workspace/${PRIMARY_WORKSPACE}/stream-chat`;
+
+    let upstreamRes: Response;
+    try {
+        upstreamRes = await fetch(streamUrl, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${ALLM_KEY}`,
+            },
+            body: JSON.stringify({ message: description, mode: "chat" }),
+        });
+
+        if (!upstreamRes.ok) {
+            const errText = await upstreamRes.text();
+            console.error(`[ai-reason] AnythingLLM stream error (${upstreamRes.status}):`, errText);
+            return null;
+        }
+    } catch (err: any) {
+        console.error("[ai-reason] AnythingLLM stream fetch failed:", err.message);
+        return null;
+    }
+
+    // Accumulate the full response to parse JSON at the end
+    let fullText = "";
+    let inThinkBlock = false;
+
     const readable = new ReadableStream({
         async start(controller) {
             const send = (data: any) => {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
             };
 
-            const steps = [
-                "Reading project description...",
-                "Identifying venue type and client details...",
-                "Extracting display specifications (dimensions, pixel pitch, type)...",
-                "Determining environment, installation type, and labor requirements...",
-                "Mapping display types to standard categories...",
-                "Building structured estimate data...",
-            ];
+            const reader = upstreamRes.body?.getReader();
+            if (!reader) {
+                send({ type: "error", message: "No stream body from AI service" });
+                controller.close();
+                return;
+            }
 
-            // Start the AnythingLLM call in the background
-            const llmPromise = queryVault(PRIMARY_WORKSPACE, description, "chat");
-
-            // Stream progress steps while waiting
-            let stepIndex = 0;
-            const stepInterval = setInterval(() => {
-                if (stepIndex < steps.length) {
-                    send({ type: "reasoning", text: steps[stepIndex] + "\n" });
-                    stepIndex++;
-                }
-            }, 800);
+            let buffer = "";
 
             try {
-                const response = await llmPromise;
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
 
-                // Done waiting — flush remaining steps quickly
-                clearInterval(stepInterval);
-                while (stepIndex < steps.length) {
-                    send({ type: "reasoning", text: steps[stepIndex] + "\n" });
-                    stepIndex++;
-                    await sleep(100);
-                }
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split("\n");
+                    buffer = lines.pop() || "";
 
-                if (!response || response.startsWith("Error")) {
-                    console.error("[ai-reason] AnythingLLM error:", response);
-                    send({ type: "error", message: "AI service returned an error. Retrying with backup..." });
-                    controller.close();
-                    return;
-                }
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed || !trimmed.startsWith("data: ")) continue;
 
-                // Extract the REAL reasoning from the response
-                // The model outputs reasoning text THEN a JSON block
-                const realReasoning = extractReasoning(response);
-                if (realReasoning) {
-                    // Clear the generic steps, send real reasoning
-                    send({ type: "clear_reasoning" });
-                    // Stream the real reasoning in chunks for typewriter effect
-                    const chunks = realReasoning.match(/.{1,80}/gs) || [realReasoning];
-                    for (const chunk of chunks) {
-                        send({ type: "reasoning", text: chunk });
-                        await sleep(30);
+                        try {
+                            const chunk = JSON.parse(trimmed.slice(6));
+
+                            if (chunk.type === "textResponseChunk" && chunk.textResponse) {
+                                let token = chunk.textResponse;
+                                fullText += token;
+
+                                // Handle <think>...</think> blocks — stream as reasoning
+                                if (token.includes("<think>")) {
+                                    inThinkBlock = true;
+                                    token = token.replace("<think>", "");
+                                }
+                                if (token.includes("</think>")) {
+                                    inThinkBlock = false;
+                                    token = token.replace("</think>", "");
+                                    if (token.trim()) {
+                                        send({ type: "reasoning", text: token });
+                                    }
+                                    continue;
+                                }
+
+                                // Stream reasoning tokens (everything before the JSON)
+                                // Once we detect JSON starting, stop streaming reasoning
+                                if (inThinkBlock || !fullText.includes('"clientName"')) {
+                                    // Skip the raw <think> tag itself
+                                    if (token && token !== "<think>" && token !== "</think>") {
+                                        send({ type: "reasoning", text: token });
+                                    }
+                                }
+                                // JSON tokens are accumulated silently in fullText
+                            }
+
+                            if (chunk.close) {
+                                // Stream complete — parse the extraction
+                                break;
+                            }
+
+                            if (chunk.error) {
+                                send({ type: "error", message: "AI returned an error" });
+                                break;
+                            }
+                        } catch {
+                            // Skip malformed chunks
+                        }
                     }
-                    send({ type: "reasoning", text: "\n" });
                 }
 
-                send({ type: "reasoning", text: "\n---\nParsing extraction results...\n" });
-                await sleep(200);
-
-                const parsed = parseExtraction(response);
+                // Parse the accumulated text for the JSON extraction
+                const parsed = parseExtraction(fullText);
 
                 if (parsed) {
-                    send({ type: "reasoning", text: "Extraction complete.\n" });
                     send({ type: "extraction", ...parsed });
                     send({ type: "done" });
                 } else {
-                    send({ type: "reasoning", text: "Could not parse structured data from AI response.\n" });
                     send({ type: "error", message: "AI couldn't extract project data. Try being more specific." });
                 }
             } catch (err: any) {
-                clearInterval(stepInterval);
-                console.error("[ai-reason] AnythingLLM exception:", err.message);
-                send({ type: "error", message: "AI service error: " + (err.message || "unknown") });
+                console.error("[ai-reason] AnythingLLM stream error:", err.message);
+                send({ type: "error", message: "AI stream error: " + (err.message || "unknown") });
             } finally {
+                reader.releaseLock();
                 controller.close();
             }
         },
@@ -329,28 +378,6 @@ async function tryGLMFallback(description: string): Promise<Response | null> {
 
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Extract the reasoning text from before the JSON block in the response */
-function extractReasoning(raw: string): string | null {
-    try {
-        let cleaned = raw
-            .replace(/```json\s*/gi, "")
-            .replace(/```\s*/g, "")
-            .trim();
-
-        // Find the JSON block start
-        const jsonStart = cleaned.search(/\{[\s\S]*"clientName"/);
-        if (jsonStart <= 0) return null;
-
-        // Everything before the JSON is reasoning
-        const reasoning = cleaned.slice(0, jsonStart).trim();
-        if (reasoning.length < 20) return null; // Too short to be real reasoning
-
-        return reasoning;
-    } catch {
-        return null;
-    }
 }
 
 /** Parse the model's content output into structured answers + displays */
