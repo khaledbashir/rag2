@@ -239,11 +239,16 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
     const pixelsW = Math.round((w * 304.8) / pitch);
     const pixelsH = Math.round((h * 304.8) / pitch);
 
-    // LED cost per sqft: user override > rate card > hardcoded pitch table
-    const pitchKey = `led_cost.${d.pixelPitch.replace(".", "_")}mm`;
+    // LED cost per sqft: user override > rate card (env-aware) > hardcoded pitch table
+    const pitchNorm = d.pixelPitch.replace(".", "_");
+    const isOutdoor = answers.isIndoor === false;
+    // Try environment-specific key first (e.g. led_cost.10mm_outdoor), fall back to base key
+    const outdoorKey = `led_cost.${pitchNorm}mm_outdoor`;
+    const indoorKey = `led_cost.${pitchNorm}mm`;
+    const pitchKey = isOutdoor ? outdoorKey : indoorKey;
     const costPerSqFt = answers.costPerSqFtOverride > 0
         ? answers.costPerSqFtOverride
-        : rc(rates, pitchKey, DEFAULT_COST_PER_SQFT[d.pixelPitch] || 120);
+        : rc(rates, pitchKey, rc(rates, indoorKey, DEFAULT_COST_PER_SQFT[d.pixelPitch] || 120));
 
     const sparePartsPct = rc(rates, "spare_parts.led_pct", 0.05);
     const hardwareBase = area * costPerSqFt;
