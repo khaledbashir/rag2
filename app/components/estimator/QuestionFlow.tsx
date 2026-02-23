@@ -13,6 +13,7 @@
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
+import ReactMarkdown from "react-markdown";
 import { ChevronDown, ChevronUp, Plus, Check, ArrowRight, Package, Loader2, Building2, Monitor, DollarSign, Sparkles, Ruler, ArrowUpDown, Wand2, PenLine, Zap, Trophy, Music, GraduationCap, Landmark, Brain, MapPin, Eye, ChevronRight, RotateCcw } from "lucide-react";
 import {
     PROJECT_QUESTIONS,
@@ -457,18 +458,25 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
 
                                 {/* Streaming reasoning text */}
                                 <div className={cn("rounded-lg p-4 max-h-[50vh] overflow-y-auto border", isFallback ? "border-amber-200 bg-amber-50/30" : "border-[#0A52EF]/20 bg-[#0A52EF]/[0.02]")}>
-                                    <div className={cn("text-[10px] font-semibold uppercase tracking-widest mb-2 flex items-center gap-1.5", isFallback ? "text-amber-500/60" : "text-[#0A52EF]/60")}>
+                                    <div className={cn("text-[10px] font-semibold uppercase tracking-widest mb-3 flex items-center gap-1.5", isFallback ? "text-amber-500/60" : "text-[#0A52EF]/60")}>
                                         <Brain className="w-3 h-3" />
                                         {isFallback ? "Extraction Progress" : "AI Reasoning"}
                                     </div>
-                                    <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap font-mono">
-                                        {reasoningText || (
-                                            <span className="text-muted-foreground italic">{isFallback ? "Processing..." : "Thinking..."}</span>
-                                        )}
-                                        {aiLoading && (
-                                            <span className={cn("inline-block w-2 h-4 ml-0.5 animate-pulse rounded-sm", isFallback ? "bg-amber-500" : "bg-[#0A52EF]")} />
-                                        )}
-                                    </div>
+                                    {reasoningText ? (
+                                        <div className="prose prose-sm max-w-none text-foreground/80 [&>p]:my-1 [&>ul]:my-1.5 [&>ol]:my-1.5 [&>li]:my-0.5 [&>h1]:text-sm [&>h1]:font-bold [&>h1]:mt-3 [&>h1]:mb-1 [&>h2]:text-sm [&>h2]:font-semibold [&>h2]:mt-3 [&>h2]:mb-1 [&>h3]:text-xs [&>h3]:font-semibold [&>h3]:mt-2 [&>h3]:mb-1 [&_strong]:text-foreground [&_strong]:font-semibold [&>ul]:pl-4 [&>ol]:pl-4 [&>ul]:list-disc [&>ol]:list-decimal [&_li]:text-xs [&_p]:text-xs [&_code]:text-[10px] [&_code]:bg-accent [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded">
+                                            <ReactMarkdown>{reasoningText}</ReactMarkdown>
+                                            {aiLoading && (
+                                                <span className={cn("inline-block w-2 h-4 ml-0.5 animate-pulse rounded-sm", isFallback ? "bg-amber-500" : "bg-[#0A52EF]")} />
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-muted-foreground italic">
+                                            {isFallback ? "Processing..." : "Thinking..."}
+                                            {aiLoading && (
+                                                <span className={cn("inline-block w-2 h-4 ml-0.5 animate-pulse rounded-sm", isFallback ? "bg-amber-500" : "bg-[#0A52EF]")} />
+                                            )}
+                                        </div>
+                                    )}
                                     <div ref={reasoningEndRef} />
                                 </div>
 
@@ -508,9 +516,9 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                                             <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
                                         </summary>
                                         <div className="mt-2 rounded-lg border border-[#0A52EF]/20 bg-[#0A52EF]/[0.02] p-4 max-h-[50vh] overflow-y-auto">
-                                            <p className="text-xs text-foreground/70 leading-relaxed whitespace-pre-wrap font-mono">
-                                                {reasoningText}
-                                            </p>
+                                            <div className="prose prose-sm max-w-none text-foreground/70 [&>p]:my-1 [&>ul]:my-1.5 [&>ol]:my-1.5 [&>li]:my-0.5 [&>h1]:text-sm [&>h1]:font-bold [&>h1]:mt-3 [&>h1]:mb-1 [&>h2]:text-sm [&>h2]:font-semibold [&>h2]:mt-3 [&>h2]:mb-1 [&>h3]:text-xs [&>h3]:font-semibold [&>h3]:mt-2 [&>h3]:mb-1 [&_strong]:text-foreground/90 [&_strong]:font-semibold [&>ul]:pl-4 [&>ol]:pl-4 [&>ul]:list-disc [&>ol]:list-decimal [&_li]:text-xs [&_p]:text-xs [&_code]:text-[10px] [&_code]:bg-accent [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded">
+                                                <ReactMarkdown>{reasoningText}</ReactMarkdown>
+                                            </div>
                                         </div>
                                     </details>
                                 )}
