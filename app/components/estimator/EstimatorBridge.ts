@@ -239,16 +239,40 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
     const pixelsW = Math.round((w * 304.8) / pitch);
     const pixelsH = Math.round((h * 304.8) / pitch);
 
-    // LED cost per sqft: user override > rate card (env-aware) > hardcoded pitch table
+    // LED cost per sqft: user override > rate card (form-factor + env aware) > hardcoded pitch table
+    // Priority: fascia > perimeter > outdoor/indoor > base
     const pitchNorm = d.pixelPitch.replace(".", "_");
     const isOutdoor = answers.isIndoor === false;
-    // Try environment-specific key first (e.g. led_cost.10mm_outdoor), fall back to base key
-    const outdoorKey = `led_cost.${pitchNorm}mm_outdoor`;
+    const locType = (d.locationType || "wall").toLowerCase();
+    const dispType = (d.displayType || "custom").toLowerCase();
+    const isFascia = locType === "fascia" || dispType.includes("fascia");
+    const isPerimeter = dispType.includes("perimeter") || locType === "ribbon";
+
     const indoorKey = `led_cost.${pitchNorm}mm`;
-    const pitchKey = isOutdoor ? outdoorKey : indoorKey;
-    const costPerSqFt = answers.costPerSqFtOverride > 0
-        ? answers.costPerSqFtOverride
-        : rc(rates, pitchKey, rc(rates, indoorKey, DEFAULT_COST_PER_SQFT[d.pixelPitch] || 120));
+    const outdoorKey = `led_cost.${pitchNorm}mm_outdoor`;
+    const fasciaIndoorKey = `led_cost.${pitchNorm}mm_fascia_indoor`;
+    const fasciaOutdoorKey = `led_cost.${pitchNorm}mm_fascia_outdoor`;
+    const perimeterKey = `led_cost.${pitchNorm}mm_perimeter`;
+
+    // Resolve cost: most specific key first, cascade to general
+    let resolvedCostPerSqFt: number;
+    if (answers.costPerSqFtOverride > 0) {
+        resolvedCostPerSqFt = answers.costPerSqFtOverride;
+    } else if (isFascia) {
+        const fasciaKey = isOutdoor ? fasciaOutdoorKey : fasciaIndoorKey;
+        resolvedCostPerSqFt = rc(rates, fasciaKey,
+            rc(rates, isOutdoor ? outdoorKey : indoorKey,
+                DEFAULT_COST_PER_SQFT[d.pixelPitch] || 120));
+    } else if (isPerimeter) {
+        resolvedCostPerSqFt = rc(rates, perimeterKey,
+            rc(rates, isOutdoor ? outdoorKey : indoorKey,
+                DEFAULT_COST_PER_SQFT[d.pixelPitch] || 120));
+    } else {
+        const pitchKey = isOutdoor ? outdoorKey : indoorKey;
+        resolvedCostPerSqFt = rc(rates, pitchKey,
+            rc(rates, indoorKey, DEFAULT_COST_PER_SQFT[d.pixelPitch] || 120));
+    }
+    const costPerSqFt = resolvedCostPerSqFt;
 
     const sparePartsPct = rc(rates, "spare_parts.led_pct", 0.05);
     const hardwareBase = area * costPerSqFt;
@@ -289,10 +313,13 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         ? rc(rates, "equipment.fiber_conversion", 3000) : 0;
 
     // PM complexity: standard=1×, complex=2×, major=3×
+    // Complex zone modifier (1.2x) applies to complex/heavy installs per rate card
     const pmComplexity = answers.pmComplexity || "standard";
     const pmMult = pmComplexity === "standard" ? 1 : pmComplexity === "complex" ? 2 : 3;
-    const pmCost = rc(rates, "other.pm_base_fee", 5882.35) * pmMult;
-    const engineeringCost = rc(rates, "other.eng_base_fee", 4705.88) * pmMult;
+    const complexMod = (d.installComplexity === "complex" || d.installComplexity === "heavy")
+        ? rc(rates, "other.complex_modifier", 1.2) : 1.0;
+    const pmCost = rc(rates, "other.pm_base_fee", 5882.35) * pmMult * complexMod;
+    const engineeringCost = rc(rates, "other.eng_base_fee", 4705.88) * pmMult * complexMod;
     const shippingCost = estimatedWeightLbs * 0.5; // ~$0.50/lb shipping estimate
     const demolitionCost = d.isReplacement ? 5000 : 0;
 
@@ -327,8 +354,13 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         + bundle.totalCost;
 
     // Tiered margins: separate LED hardware vs services margins
+    // Small project tier: <100sqft gets higher services margin per rate card
     const ledMarginPct = (answers.ledMargin || answers.defaultMargin || 30) / 100;
-    const svcMarginPct = (answers.servicesMargin || answers.defaultMargin || 30) / 100;
+    const smallProjectThreshold = 100; // sqft
+    const smallSvcMargin = rc(rates, "margin.services_small", 0.30);
+    const baseSvcMarginPct = (answers.servicesMargin || answers.defaultMargin || 30) / 100;
+    const svcMarginPct = (area < smallProjectThreshold && baseSvcMarginPct < smallSvcMargin)
+        ? smallSvcMargin : baseSvcMarginPct;
     const serviceCost = adjStructureCost + adjInstallCost + adjElectricalCost
         + equipmentCost + dataCablingCost + pmCost + engineeringCost + shippingCost + demolitionCost
         + bundle.totalCost;
