@@ -61,7 +61,7 @@ Rules:
 - Default to budget docType and USD currency unless specified
 - Infer installComplexity from context (center-hung = complex, wall mount = simple, etc.)`;
 
-const FALLBACK_WORKSPACE = "anc-estimator";
+const FALLBACK_WORKSPACE = "reasoning";
 
 export async function POST(req: NextRequest) {
     try {
