@@ -117,11 +117,11 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
     console.log(`[ai-reason] Primary: AnythingLLM '${PRIMARY_WORKSPACE}', desc length: ${description.length}`);
 
     // Hit AnythingLLM's streaming endpoint directly
-    const ALLM_BASE = process.env.ANYTHING_LLM_BASE_URL || "";
+    const rawUrl = (process.env.ANYTHING_LLM_URL || process.env.ANYTHING_LLM_BASE_URL || "").trim();
     const ALLM_KEY = process.env.ANYTHING_LLM_KEY || "";
-    const normalizedBase = ALLM_BASE.endsWith("/api/v1")
-        ? ALLM_BASE
-        : `${ALLM_BASE.replace(/\/+$/, "")}/api/v1`;
+    const normalizedBase = !rawUrl ? "" : rawUrl.endsWith("/api/v1")
+        ? rawUrl
+        : `${rawUrl.replace(/\/+$/, "")}/api/v1`;
 
     if (!normalizedBase || !ALLM_KEY) {
         console.error("[ai-reason] AnythingLLM not configured");
