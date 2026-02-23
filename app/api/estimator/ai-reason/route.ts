@@ -153,7 +153,9 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
 
     // Accumulate the full response to parse JSON at the end
     let fullText = "";
+    // State: are we inside a <think> block? Have we seen one at all?
     let inThinkBlock = false;
+    let thinkBlockEnded = false;
 
     const readable = new ReadableStream({
         async start(controller) {
@@ -187,39 +189,44 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
                             const chunk = JSON.parse(trimmed.slice(6));
 
                             if (chunk.type === "textResponseChunk" && chunk.textResponse) {
-                                let token = chunk.textResponse;
+                                const token = chunk.textResponse;
                                 fullText += token;
 
-                                // Handle <think>...</think> blocks — stream as reasoning
+                                // Detect <think> open — everything inside is reasoning
                                 if (token.includes("<think>")) {
                                     inThinkBlock = true;
-                                    token = token.replace("<think>", "");
-                                }
-                                if (token.includes("</think>")) {
-                                    inThinkBlock = false;
-                                    token = token.replace("</think>", "");
-                                    if (token.trim()) {
-                                        send({ type: "reasoning", text: token });
-                                    }
+                                    // Send any text after the tag in this token
+                                    const after = token.split("<think>").pop() || "";
+                                    if (after) send({ type: "reasoning", text: after });
                                     continue;
                                 }
 
-                                // Stream reasoning tokens (everything before the JSON)
-                                // Once we detect JSON starting, stop streaming reasoning
-                                if (inThinkBlock || !fullText.includes('"clientName"')) {
-                                    // Skip the raw <think> tag itself
-                                    if (token && token !== "<think>" && token !== "</think>") {
-                                        send({ type: "reasoning", text: token });
-                                    }
+                                // Detect </think> close — reasoning is done, JSON follows
+                                if (token.includes("</think>")) {
+                                    inThinkBlock = false;
+                                    thinkBlockEnded = true;
+                                    // Send any text before the closing tag
+                                    const before = token.split("</think>")[0] || "";
+                                    if (before) send({ type: "reasoning", text: before });
+                                    continue;
                                 }
-                                // JSON tokens are accumulated silently in fullText
+
+                                // Inside think block → stream raw, unfiltered
+                                if (inThinkBlock) {
+                                    send({ type: "reasoning", text: token });
+                                    continue;
+                                }
+
+                                // No think block at all (model doesn't use them) →
+                                // stream everything as reasoning until JSON starts
+                                if (!thinkBlockEnded && !fullText.includes("{")) {
+                                    send({ type: "reasoning", text: token });
+                                }
+
+                                // After think block ended or JSON started → silent accumulation
                             }
 
-                            if (chunk.close) {
-                                // Stream complete — parse the extraction
-                                break;
-                            }
-
+                            if (chunk.close) break;
                             if (chunk.error) {
                                 send({ type: "error", message: "AI returned an error" });
                                 break;
