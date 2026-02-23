@@ -147,12 +147,12 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
             try {
                 const response = await llmPromise;
 
-                // Done waiting — flush remaining steps
+                // Done waiting — flush remaining steps quickly
                 clearInterval(stepInterval);
                 while (stepIndex < steps.length) {
                     send({ type: "reasoning", text: steps[stepIndex] + "\n" });
                     stepIndex++;
-                    await sleep(150);
+                    await sleep(100);
                 }
 
                 if (!response || response.startsWith("Error")) {
@@ -162,7 +162,22 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
                     return;
                 }
 
-                send({ type: "reasoning", text: "Parsing extraction results...\n" });
+                // Extract the REAL reasoning from the response
+                // The model outputs reasoning text THEN a JSON block
+                const realReasoning = extractReasoning(response);
+                if (realReasoning) {
+                    // Clear the generic steps, send real reasoning
+                    send({ type: "clear_reasoning" });
+                    // Stream the real reasoning in chunks for typewriter effect
+                    const chunks = realReasoning.match(/.{1,80}/gs) || [realReasoning];
+                    for (const chunk of chunks) {
+                        send({ type: "reasoning", text: chunk });
+                        await sleep(30);
+                    }
+                    send({ type: "reasoning", text: "\n" });
+                }
+
+                send({ type: "reasoning", text: "\n---\nParsing extraction results...\n" });
                 await sleep(200);
 
                 const parsed = parseExtraction(response);
@@ -314,6 +329,28 @@ async function tryGLMFallback(description: string): Promise<Response | null> {
 
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Extract the reasoning text from before the JSON block in the response */
+function extractReasoning(raw: string): string | null {
+    try {
+        let cleaned = raw
+            .replace(/```json\s*/gi, "")
+            .replace(/```\s*/g, "")
+            .trim();
+
+        // Find the JSON block start
+        const jsonStart = cleaned.search(/\{[\s\S]*"clientName"/);
+        if (jsonStart <= 0) return null;
+
+        // Everything before the JSON is reasoning
+        const reasoning = cleaned.slice(0, jsonStart).trim();
+        if (reasoning.length < 20) return null; // Too short to be real reasoning
+
+        return reasoning;
+    } catch {
+        return null;
+    }
 }
 
 /** Parse the model's content output into structured answers + displays */

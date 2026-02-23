@@ -107,6 +107,8 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
 
                         if (chunk.type === "fallback") {
                             setIsFallback(true);
+                        } else if (chunk.type === "clear_reasoning") {
+                            setReasoningText("");
                         } else if (chunk.type === "reasoning") {
                             setReasoningText((prev) => prev + chunk.text);
                         } else if (chunk.type === "extraction") {
@@ -499,16 +501,16 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                                     Review the extraction below, then click Apply to fill the estimator form.
                                 </p>
 
-                                {/* Collapsible reasoning */}
+                                {/* Collapsible reasoning — real AI analysis */}
                                 {reasoningText && (
-                                    <details className="mb-4 group">
-                                        <summary className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1.5">
-                                            <Brain className="w-3 h-3" />
-                                            View AI reasoning
+                                    <details className="mb-4 group" open>
+                                        <summary className="text-[11px] font-semibold uppercase tracking-widest text-[#0A52EF] cursor-pointer hover:text-[#0A52EF]/80 flex items-center gap-1.5 py-1">
+                                            <Brain className="w-3.5 h-3.5" />
+                                            AI Reasoning
                                             <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
                                         </summary>
-                                        <div className="mt-2 rounded-lg border border-border bg-accent/30 p-3 max-h-40 overflow-y-auto">
-                                            <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap font-mono">
+                                        <div className="mt-2 rounded-lg border border-[#0A52EF]/20 bg-[#0A52EF]/[0.02] p-4 max-h-[50vh] overflow-y-auto">
+                                            <p className="text-xs text-foreground/70 leading-relaxed whitespace-pre-wrap font-mono">
                                                 {reasoningText}
                                             </p>
                                         </div>
