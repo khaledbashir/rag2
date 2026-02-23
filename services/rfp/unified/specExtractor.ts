@@ -132,7 +132,7 @@ async function callMistralChat(userMessage: string): Promise<string> {
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 120_000); // 2 min per batch
+  const timer = setTimeout(() => controller.abort(), 180_000); // 3 min per batch
 
   try {
     const res = await fetch(`${MISTRAL_API_BASE}/v1/chat/completions`, {
@@ -326,11 +326,21 @@ export async function extractLEDSpecsBatched(
   let completed = 0;
 
   const runBatch = async (i: number) => {
-    try {
-      results[i] = await extractLEDSpecs(batches[i]);
-    } catch (err) {
-      console.error(`[SpecExtractor] Batch ${i + 1}/${batches.length} failed:`, err);
-      results[i] = { screens: [], project: emptyProject(), requirements: [] };
+    const MAX_RETRIES = 2;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        results[i] = await extractLEDSpecs(batches[i]);
+        break; // success
+      } catch (err: any) {
+        const isTimeout = err.message?.includes("aborted") || err.message?.includes("timeout");
+        console.error(`[SpecExtractor] Batch ${i + 1}/${batches.length} attempt ${attempt + 1} failed${isTimeout ? " (TIMEOUT)" : ""}:`, err.message);
+        if (attempt < MAX_RETRIES && isTimeout) {
+          console.log(`[SpecExtractor] Retrying batch ${i + 1} in 3s...`);
+          await new Promise((r) => setTimeout(r, 3000));
+        } else {
+          results[i] = { screens: [], project: emptyProject(), requirements: [] };
+        }
+      }
     }
     completed++;
     onProgress?.(completed, batches.length);
