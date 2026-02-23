@@ -116,8 +116,16 @@ export async function POST(req: NextRequest) {
                 `[ai-reason] GLM error (${upstreamRes.status}):`,
                 errorText
             );
+            // Surface the actual upstream error so the user sees what went wrong
+            let detail = "";
+            try {
+                const parsed = JSON.parse(errorText);
+                detail = parsed?.error?.message || parsed?.message || errorText.slice(0, 200);
+            } catch {
+                detail = errorText.slice(0, 200);
+            }
             return new Response(
-                JSON.stringify({ error: "AI reasoning model error", details: errorText }),
+                JSON.stringify({ error: `AI model error (${upstreamRes.status}): ${detail}` }),
                 {
                     status: upstreamRes.status,
                     headers: { "Content-Type": "application/json" },
