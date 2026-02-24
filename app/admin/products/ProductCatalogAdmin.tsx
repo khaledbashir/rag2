@@ -5,6 +5,7 @@ import { useConfirm } from "@/hooks/useConfirm";
 import {
     Search,
     Upload,
+    Download,
     Plus,
     Trash2,
     ChevronDown,
@@ -333,6 +334,16 @@ export default function ProductCatalogAdmin() {
                         <Plus className="w-4 h-4" />
                         Add Product
                     </button>
+
+                    {/* Download Template */}
+                    <a
+                        href="/api/products/template?type=all"
+                        download
+                        className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-border text-foreground rounded-lg hover:bg-muted transition-colors"
+                    >
+                        <Download className="w-4 h-4" />
+                        Template
+                    </a>
 
                     {/* Import */}
                     <label className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer">

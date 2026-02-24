@@ -28,25 +28,34 @@ const COLUMN_MAP: Record<string, string[]> = {
     productFamily:        ["product_family", "family", "series", "product_line", "product line", "productfamily"],
     modelNumber:          ["model_number", "model", "part_number", "part number", "sku", "modelnumber", "part_no", "part#"],
     displayName:          ["display_name", "name", "product_name", "product name", "displayname", "description"],
+    productType:          ["product_type", "producttype", "type"],
     pixelPitch:           ["pixel_pitch", "pitch", "pitch_mm", "pixel pitch", "pixelpitch", "mm_pitch", "pitch (mm)"],
     cabinetWidthMm:       ["cabinet_width_mm", "width_mm", "width", "cabinet_width", "cab_width", "module_width", "panel_width", "cabinetwidthmm", "width (mm)"],
     cabinetHeightMm:      ["cabinet_height_mm", "height_mm", "height", "cabinet_height", "cab_height", "module_height", "panel_height", "cabinetheightmm", "height (mm)"],
     cabinetDepthMm:       ["cabinet_depth_mm", "depth_mm", "depth", "cabinet_depth", "cabinetdepthmm", "depth (mm)"],
     weightKgPerCabinet:   ["weight_kg", "weight_kg_per_cabinet", "weight", "cabinet_weight", "module_weight", "weight_per_cab", "weightkg", "weight (kg)"],
+    weightLbs:            ["weight_lbs", "weight_pounds", "lbs", "weightlbs"],
     maxNits:              ["max_nits", "nits", "brightness", "max_brightness", "brightness_max", "maxnits", "nits_max", "brightness (nits)"],
     typicalNits:          ["typical_nits", "typical_brightness", "typicalnits", "brightness_typical"],
     refreshRate:          ["refresh_rate", "refresh", "hz", "refreshrate", "refresh (hz)"],
     maxPowerWattsPerCab:  ["max_power_watts", "max_power", "power_max", "power_watts", "maxpowerwatts", "wattage", "power (w)", "max power (w)"],
     typicalPowerWattsPerCab: ["typical_power_watts", "typical_power", "power_typical", "typicalpowerwatts", "typical power (w)"],
-    environment:          ["environment", "env", "indoor_outdoor", "usage", "application", "type"],
+    environment:          ["environment", "env", "indoor_outdoor", "usage", "application"],
     ipRating:             ["ip_rating", "ip", "ingress_protection", "iprating", "ip rating"],
     operatingTempMin:     ["operating_temp_min", "temp_min", "min_temp", "operatingtempmin", "min temp (c)"],
     operatingTempMax:     ["operating_temp_max", "temp_max", "max_temp", "operatingtempmax", "max temp (c)"],
     serviceType:          ["service_type", "service", "access", "servicetype", "service access", "maintenance_access"],
     supportsHalfModule:   ["supports_half_module", "half_module", "halfmodule", "half module"],
     isCurved:             ["is_curved", "curved", "curve", "flexible", "iscurved"],
-    costPerSqFt:          ["cost_per_sqft", "cost_sqft", "cost", "buy_price", "unit_cost", "costpersqft", "cost/sqft"],
+    costPerSqFt:          ["cost_per_sqft", "cost_sqft", "cost", "buy_price", "costpersqft", "cost/sqft"],
     msrpPerSqFt:          ["msrp_per_sqft", "msrp", "list_price", "retail_price", "msrppersqft", "msrp/sqft"],
+    // CMS-specific fields (mapped into extendedSpecs)
+    unitCost:             ["unit_cost", "unitcost", "cost_each", "price_each"],
+    unitSellPrice:        ["unit_sell_price", "unitsellprice", "sell_price", "selling_price"],
+    marginPercent:        ["margin_percent", "marginpercent", "margin", "margin_%"],
+    category:             ["category", "product_category", "cat"],
+    specs:                ["specs", "specifications", "spec", "description"],
+    quoteRef:             ["quote_ref", "quoteref", "quote", "quote_number", "reference"],
 };
 
 // ============================================================================
@@ -221,32 +230,45 @@ function mapRowToProduct(
 ) {
     const manufacturer = (getVal(row, mapping, "manufacturer") as string) || defaultManufacturer;
     const modelNumber = getVal(row, mapping, "modelNumber") as string;
+    const productType = ((getVal(row, mapping, "productType") as string) || "led").toLowerCase().trim();
+    const isCMS = productType === "cms" || productType === "tv";
+
     const pixelPitch = toFloat(getVal(row, mapping, "pixelPitch"));
     const cabinetWidthMm = toFloat(getVal(row, mapping, "cabinetWidthMm"));
     const cabinetHeightMm = toFloat(getVal(row, mapping, "cabinetHeightMm"));
     const weightKg = toFloat(getVal(row, mapping, "weightKgPerCabinet"));
+    const weightLbs = toFloat(getVal(row, mapping, "weightLbs"));
     const maxNits = toFloat(getVal(row, mapping, "maxNits"));
     const maxPower = toFloat(getVal(row, mapping, "maxPowerWattsPerCab"));
 
-    // Required fields — skip row if missing
-    if (!manufacturer || !modelNumber || !pixelPitch || !cabinetWidthMm || !cabinetHeightMm || !maxPower) {
+    // Required fields — different for LED vs CMS
+    if (!manufacturer || !modelNumber) return null;
+    if (!isCMS && (!pixelPitch || !cabinetWidthMm || !cabinetHeightMm || !maxPower)) {
         return null;
     }
 
     // Infer environment from nits if not explicitly provided
     let environment = (getVal(row, mapping, "environment") as string)?.toLowerCase()?.trim();
     if (!environment) {
-        // High nits (>=5000) usually means outdoor capable
-        environment = (maxNits && maxNits >= 5000) ? "outdoor" : "indoor";
+        environment = (maxNits && maxNits >= 5000) ? "outdoor" : isCMS ? "outdoor" : "indoor";
     }
-    // Normalize environment values
     if (["outdoor", "out", "exterior"].includes(environment)) environment = "outdoor";
     else if (["indoor", "in", "interior"].includes(environment)) environment = "indoor";
     else if (["both", "indoor/outdoor", "indoor_outdoor", "versatile"].includes(environment)) environment = "indoor_outdoor";
 
     // Infer display name
     const displayName = (getVal(row, mapping, "displayName") as string) ||
-        `${manufacturer} ${getVal(row, mapping, "productFamily") || ""} ${pixelPitch}mm`.trim();
+        (isCMS
+            ? `${manufacturer} ${modelNumber}`
+            : `${manufacturer} ${getVal(row, mapping, "productFamily") || ""} ${pixelPitch}mm`.trim());
+
+    // CMS-specific fields for extendedSpecs
+    const unitCost = toFloat(getVal(row, mapping, "unitCost"));
+    const unitSellPrice = toFloat(getVal(row, mapping, "unitSellPrice"));
+    const marginPercent = toFloat(getVal(row, mapping, "marginPercent"));
+    const category = (getVal(row, mapping, "category") as string) || null;
+    const specs = (getVal(row, mapping, "specs") as string) || null;
+    const quoteRef = (getVal(row, mapping, "quoteRef") as string) || null;
 
     // Collect any unmapped columns as extendedSpecs
     const mappedHeaders = new Set(Object.values(mapping));
@@ -257,20 +279,39 @@ function mapRowToProduct(
         }
     }
 
+    // For CMS products, merge pricing into extendedSpecs
+    if (isCMS) {
+        if (unitCost) extendedSpecs.unitCost = unitCost;
+        if (unitSellPrice) extendedSpecs.unitSellPrice = unitSellPrice;
+        if (marginPercent) extendedSpecs.margin = marginPercent / 100; // Store as decimal
+        if (category) extendedSpecs.category = category;
+        if (specs) extendedSpecs.specs = specs;
+        if (quoteRef) extendedSpecs.quoteRef = quoteRef;
+        if (weightLbs) extendedSpecs.weightLbs = weightLbs;
+        // Auto-compute sell price if cost and margin given but no sell price
+        if (unitCost && marginPercent && !unitSellPrice) {
+            extendedSpecs.unitSellPrice = Math.round((unitCost / (1 - marginPercent / 100)) * 100) / 100;
+        }
+    }
+
+    // Convert lbs to kg if weight_lbs provided but weight_kg not
+    const resolvedWeightKg = weightKg || (weightLbs ? Math.round(weightLbs * 0.4536 * 10) / 10 : 10);
+
     return {
         manufacturer,
-        productFamily: (getVal(row, mapping, "productFamily") as string) || "Unknown",
+        productFamily: (getVal(row, mapping, "productFamily") as string) || (isCMS ? "Scoring & Timing" : "Unknown"),
         modelNumber,
         displayName,
-        pixelPitch,
-        cabinetWidthMm,
-        cabinetHeightMm,
+        productType: isCMS ? "cms" : "led",
+        pixelPitch: pixelPitch || 0,
+        cabinetWidthMm: cabinetWidthMm || 0,
+        cabinetHeightMm: cabinetHeightMm || 0,
         cabinetDepthMm: toFloat(getVal(row, mapping, "cabinetDepthMm")),
-        weightKgPerCabinet: weightKg || 10, // Default 10kg if unknown
-        maxNits: maxNits || 1000,
+        weightKgPerCabinet: resolvedWeightKg,
+        maxNits: maxNits || (isCMS ? 0 : 1000),
         typicalNits: toFloat(getVal(row, mapping, "typicalNits")),
         refreshRate: toInt(getVal(row, mapping, "refreshRate")),
-        maxPowerWattsPerCab: maxPower,
+        maxPowerWattsPerCab: maxPower || 0,
         typicalPowerWattsPerCab: toFloat(getVal(row, mapping, "typicalPowerWattsPerCab")),
         environment,
         ipRating: (getVal(row, mapping, "ipRating") as string) || null,
