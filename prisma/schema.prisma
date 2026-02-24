@@ -446,6 +446,7 @@ model ManufacturerProduct {
   productFamily String // "GSQA", "LAA", "S3", "A Series"
   modelNumber   String @unique
   displayName   String // Human-readable: "LG GSQA 3.9mm Indoor"
+  productType   String @default("led") // "led", "tv", "cms"
 
   // Physical specs
   pixelPitch         Float // mm (e.g., 3.9, 6.0, 10.0)

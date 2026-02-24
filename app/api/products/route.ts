@@ -20,11 +20,13 @@ export async function GET(request: NextRequest) {
         const pitchMin = searchParams.get("pitchMin");
         const pitchMax = searchParams.get("pitchMax");
         const search = searchParams.get("search");
+        const productType = searchParams.get("productType");
         const activeOnly = searchParams.get("active") !== "false"; // default true
 
         const where: any = {};
 
         if (activeOnly) where.isActive = true;
+        if (productType) where.productType = productType;
         if (manufacturer) where.manufacturer = { equals: manufacturer, mode: "insensitive" };
         if (environment) where.environment = environment;
         if (pitchMin || pitchMax) {

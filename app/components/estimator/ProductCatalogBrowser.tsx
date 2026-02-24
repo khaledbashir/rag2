@@ -18,8 +18,8 @@ import {
   ChevronDown,
   ChevronUp,
   Zap,
-  Weight,
   Ruler,
+  Monitor,
   Sun,
   Loader2,
 } from "lucide-react";
@@ -34,6 +34,7 @@ interface ProductRecord {
   productFamily: string | null;
   modelNumber: string;
   displayName: string;
+  productType: string; // "led" | "tv" | "cms"
   pixelPitch: number;
   cabinetWidthMm: number;
   cabinetHeightMm: number;
@@ -51,6 +52,7 @@ interface ProductRecord {
   isCurved: boolean;
   costPerSqFt: number | null;
   msrpPerSqFt: number | null;
+  extendedSpecs: any;
 }
 
 interface ProductCatalogBrowserProps {
@@ -132,6 +134,7 @@ export default function ProductCatalogBrowser({
   const [searchText, setSearchText] = useState("");
   const [selectedMfr, setSelectedMfr] = useState("all");
   const [selectedEnv, setSelectedEnv] = useState("all");
+  const [selectedType, setSelectedType] = useState("all"); // "all" | "led" | "tv"
   const [recommendedOnly, setRecommendedOnly] = useState(false);
 
   // Expanded card
@@ -168,6 +171,7 @@ export default function ProductCatalogBrowser({
       setSearchText("");
       setSelectedMfr("all");
       setSelectedEnv("all");
+      setSelectedType("all");
       setRecommendedOnly(false);
       setExpandedId(null);
     }
@@ -192,6 +196,9 @@ export default function ProductCatalogBrowser({
     const searchLower = searchText.toLowerCase().trim();
 
     const filtered = products.filter((p) => {
+      // Product type filter
+      const pType = p.productType || "led";
+      if (selectedType !== "all" && pType !== selectedType) return false;
       // Manufacturer filter
       if (selectedMfr !== "all" && p.manufacturer !== selectedMfr) return false;
       // Environment filter
@@ -241,6 +248,7 @@ export default function ProductCatalogBrowser({
     products,
     selectedMfr,
     selectedEnv,
+    selectedType,
     recommendedOnly,
     searchText,
     isRecommended,
@@ -361,6 +369,27 @@ export default function ProductCatalogBrowser({
             {/* Divider */}
             <div className="w-px h-5 bg-[#E8E8E8]" />
 
+            {/* Product type toggle */}
+            <div className="flex items-center gap-1">
+              {(["all", "led", "tv"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setSelectedType(t)}
+                  className={cn(
+                    "px-2.5 py-1 text-xs rounded-full transition-colors uppercase",
+                    selectedType === t
+                      ? "bg-[#1C1C1C] text-white"
+                      : "bg-[#F7F7F7] text-[#616161] hover:bg-[#E8E8E8]"
+                  )}
+                >
+                  {t === "all" ? "All Types" : t}
+                </button>
+              ))}
+            </div>
+
+            {/* Divider */}
+            <div className="w-px h-5 bg-[#E8E8E8]" />
+
             {/* Environment toggle */}
             <div className="flex items-center gap-1">
               {(["all", "indoor", "outdoor"] as const).map((env) => (
@@ -455,7 +484,8 @@ export default function ProductCatalogBrowser({
                       const recommended = isRecommended(p);
                       const selected = p.id === selectedProductId;
                       const expanded = expandedId === p.id;
-                      const layout = getLayoutPreview(p);
+                      const isTV = (p.productType || "led") === "tv";
+                      const layout = isTV ? null : getLayoutPreview(p);
                       const envLabel =
                         p.environment === "indoor_outdoor"
                           ? "Indoor/Outdoor"
@@ -502,40 +532,58 @@ export default function ProductCatalogBrowser({
 
                             {/* Spec chips */}
                             <div className="flex flex-wrap gap-1.5 mb-2.5">
-                              <SpecChip
-                                label="Pitch"
-                                value={`${p.pixelPitch}mm`}
-                              />
-                              {p.maxNits && (
-                                <SpecChip
-                                  icon={
-                                    <Sun className="h-3 w-3 text-amber-500" />
-                                  }
-                                  label="Nits"
-                                  value={p.maxNits.toLocaleString()}
-                                />
-                              )}
-                              <SpecChip
-                                icon={
-                                  <Ruler className="h-3 w-3 text-[#878787]" />
-                                }
-                                label="Cabinet"
-                                value={`${p.cabinetWidthMm}×${p.cabinetHeightMm}mm`}
-                              />
-                              {p.maxPowerWattsPerCab && (
-                                <SpecChip
-                                  icon={
-                                    <Zap className="h-3 w-3 text-yellow-500" />
-                                  }
-                                  label="Power"
-                                  value={`${p.maxPowerWattsPerCab}W`}
-                                />
-                              )}
-                              {p.costPerSqFt && (
-                                <SpecChip
-                                  label="Cost"
-                                  value={`$${p.costPerSqFt}/sqft`}
-                                />
+                              {isTV ? (
+                                <>
+                                  <SpecChip
+                                    icon={<Monitor className="h-3 w-3 text-[#0A52EF]" />}
+                                    label="Size"
+                                    value={`${p.extendedSpecs?.tvSizeInches || "?"}"`}
+                                  />
+                                  <SpecChip
+                                    label="Unit Cost"
+                                    value={`$${(p.extendedSpecs?.unitCost || 0).toLocaleString()}`}
+                                  />
+                                  <SpecChip
+                                    label="Sell"
+                                    value={`$${(p.extendedSpecs?.unitSellPrice || 0).toLocaleString()}`}
+                                  />
+                                  <SpecChip
+                                    label="Margin"
+                                    value={`${((p.extendedSpecs?.margin || 0) * 100).toFixed(0)}%`}
+                                  />
+                                </>
+                              ) : (
+                                <>
+                                  <SpecChip
+                                    label="Pitch"
+                                    value={`${p.pixelPitch}mm`}
+                                  />
+                                  {p.maxNits && (
+                                    <SpecChip
+                                      icon={<Sun className="h-3 w-3 text-amber-500" />}
+                                      label="Nits"
+                                      value={p.maxNits.toLocaleString()}
+                                    />
+                                  )}
+                                  <SpecChip
+                                    icon={<Ruler className="h-3 w-3 text-[#878787]" />}
+                                    label="Cabinet"
+                                    value={`${p.cabinetWidthMm}×${p.cabinetHeightMm}mm`}
+                                  />
+                                  {p.maxPowerWattsPerCab && (
+                                    <SpecChip
+                                      icon={<Zap className="h-3 w-3 text-yellow-500" />}
+                                      label="Power"
+                                      value={`${p.maxPowerWattsPerCab}W`}
+                                    />
+                                  )}
+                                  {p.costPerSqFt && (
+                                    <SpecChip
+                                      label="Cost"
+                                      value={`$${p.costPerSqFt}/sqft`}
+                                    />
+                                  )}
+                                </>
                               )}
                             </div>
 
