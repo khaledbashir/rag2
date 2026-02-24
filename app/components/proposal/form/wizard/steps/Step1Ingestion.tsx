@@ -32,9 +32,6 @@ import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ModeSelector, { type WorkflowMode } from "@/app/components/proposal/form/wizard/ModeSelector";
 import RfpIngestion from "@/app/components/proposal/form/wizard/RfpIngestion";
-import ColumnMapper from "@/app/components/proposal/form/wizard/ColumnMapper";
-import MappingWizard from "@/app/components/import/MappingWizard";
-import SpecSheetButton from "@/app/components/proposal/form/wizard/SpecSheetButton";
 import { isModeUnselected, isMirrorMode as checkMirrorMode } from "@/lib/modeDetection";
 
 const Step1Ingestion = () => {
@@ -49,11 +46,6 @@ const Step1Ingestion = () => {
         rfpDocuments,
         deleteRfpDocument,
         aiWorkspaceSlug,
-        columnMapperNeeded,
-        applyManualPricingDocument,
-        mappingWizardData,
-        clearMappingWizard,
-        importedExcelFile,
     } = useProposalContext();
 
     const { getValues, watch, control, setValue } = useFormContext();
@@ -162,10 +154,6 @@ const Step1Ingestion = () => {
                                 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-background shadow-[0_0_6px_rgba(52,211,153,0.5)]" />
                             )}
                         </button>
-                    )}
-
-                    {excelPreview && importedExcelFile && (
-                        <SpecSheetButton file={importedExcelFile} />
                     )}
 
                     {excelPreview && (
@@ -351,42 +339,6 @@ const Step1Ingestion = () => {
                                         )}
                                     </div>
                                 </div>
-
-                                {/* Frankenstein Mapping Wizard — shown when normalizer detects unknown format */}
-                                {mappingWizardData && importedExcelFile && (
-                                    <div className="rounded-2xl border-2 border-[#0A52EF]/30 bg-card overflow-hidden" style={{ minHeight: 500 }}>
-                                        <MappingWizard
-                                            fingerprint={mappingWizardData.fingerprint}
-                                            rawPreview={mappingWizardData.rawPreview}
-                                            fileName={mappingWizardData.fileName}
-                                            file={importedExcelFile}
-                                            onComplete={(result) => {
-                                                console.log("[MAPPING WIZARD] Profile saved, extracted:", result);
-                                                clearMappingWizard();
-                                            }}
-                                            onCancel={() => clearMappingWizard()}
-                                        />
-                                    </div>
-                                )}
-
-                                {/* Column Mapper — shown when standard parser fails */}
-                                {columnMapperNeeded && excelPreview?.sheets && (
-                                    <div className="rounded-2xl border-2 border-amber-500/30 bg-card overflow-hidden" style={{ minHeight: 500 }}>
-                                        <ColumnMapper
-                                            sheets={excelPreview.sheets.map((s: any) => ({
-                                                name: s.name,
-                                                grid: s.grid || [],
-                                            }))}
-                                            fileName={excelPreview.fileName || "Unknown.xlsx"}
-                                            onApply={(doc) => {
-                                                applyManualPricingDocument(doc);
-                                            }}
-                                            onCancel={() => {
-                                                // Hide mapper, keep preview
-                                            }}
-                                        />
-                                    </div>
-                                )}
 
                                 <div className="rounded-2xl border border-border bg-card/30 overflow-hidden">
                                     <Tabs defaultValue="excel">
