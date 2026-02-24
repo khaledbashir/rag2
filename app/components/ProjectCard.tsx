@@ -209,7 +209,7 @@ export default function ProjectCard({ project, onStatusChange, onBriefMe, onDele
                 </div>
 
                 {/* Created by */}
-                <div className="hidden xl:block w-24 text-[11px] text-muted-foreground truncate shrink-0">
+                <div className="hidden lg:block w-24 text-[11px] text-muted-foreground truncate shrink-0">
                     {project.createdBy || "—"}
                 </div>
 
