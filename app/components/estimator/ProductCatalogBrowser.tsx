@@ -86,6 +86,12 @@ const MANUFACTURER_STYLES: Record<
     dot: "bg-blue-600",
     isPartner: true,
   },
+  OES: {
+    bg: "bg-teal-50",
+    text: "text-teal-700",
+    dot: "bg-teal-600",
+    isPartner: false,
+  },
   Absen: {
     bg: "bg-emerald-50",
     text: "text-emerald-700",
@@ -134,7 +140,7 @@ export default function ProductCatalogBrowser({
   const [searchText, setSearchText] = useState("");
   const [selectedMfr, setSelectedMfr] = useState("all");
   const [selectedEnv, setSelectedEnv] = useState("all");
-  const [selectedType, setSelectedType] = useState("all"); // "all" | "led" | "tv"
+  const [selectedType, setSelectedType] = useState("all"); // "all" | "led" | "tv" | "cms"
   const [recommendedOnly, setRecommendedOnly] = useState(false);
 
   // Expanded card
@@ -371,7 +377,7 @@ export default function ProductCatalogBrowser({
 
             {/* Product type toggle */}
             <div className="flex items-center gap-1">
-              {(["all", "led", "tv"] as const).map((t) => (
+              {(["all", "led", "tv", "cms"] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setSelectedType(t)}
@@ -382,7 +388,7 @@ export default function ProductCatalogBrowser({
                       : "bg-[#F7F7F7] text-[#616161] hover:bg-[#E8E8E8]"
                   )}
                 >
-                  {t === "all" ? "All Types" : t}
+                  {t === "all" ? "All Types" : t === "cms" ? "CMS/Scoring" : t}
                 </button>
               ))}
             </div>
@@ -484,8 +490,10 @@ export default function ProductCatalogBrowser({
                       const recommended = isRecommended(p);
                       const selected = p.id === selectedProductId;
                       const expanded = expandedId === p.id;
-                      const isTV = (p.productType || "led") === "tv";
-                      const layout = isTV ? null : getLayoutPreview(p);
+                      const pType = p.productType || "led";
+                      const isTV = pType === "tv";
+                      const isCMS = pType === "cms";
+                      const layout = (isTV || isCMS) ? null : getLayoutPreview(p);
                       const envLabel =
                         p.environment === "indoor_outdoor"
                           ? "Indoor/Outdoor"
@@ -532,7 +540,30 @@ export default function ProductCatalogBrowser({
 
                             {/* Spec chips */}
                             <div className="flex flex-wrap gap-1.5 mb-2.5">
-                              {isTV ? (
+                              {isCMS ? (
+                                <>
+                                  <SpecChip
+                                    label="Type"
+                                    value={(p.extendedSpecs?.category || "equipment").replace(/_/g, " ")}
+                                  />
+                                  <SpecChip
+                                    label="Unit Cost"
+                                    value={`$${(p.extendedSpecs?.unitCost || 0).toLocaleString()}`}
+                                  />
+                                  {p.extendedSpecs?.unitSellPrice && (
+                                    <SpecChip
+                                      label="Sell"
+                                      value={`$${p.extendedSpecs.unitSellPrice.toLocaleString()}`}
+                                    />
+                                  )}
+                                  {p.extendedSpecs?.weightLbs && (
+                                    <SpecChip
+                                      label="Weight"
+                                      value={`${p.extendedSpecs.weightLbs} lbs`}
+                                    />
+                                  )}
+                                </>
+                              ) : isTV ? (
                                 <>
                                   <SpecChip
                                     icon={<Monitor className="h-3 w-3 text-[#0A52EF]" />}
@@ -629,6 +660,34 @@ export default function ProductCatalogBrowser({
                           {expanded && (
                             <div className="border-t border-[#E8E8E8] px-3 py-2.5 bg-[#FAFAFA]">
                               <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                                {isCMS ? (
+                                  <>
+                                    {p.extendedSpecs?.specs && (
+                                      <div className="col-span-2">
+                                        <span className="text-[#878787]">Specs: </span>
+                                        <span className="text-[#1C1C1C]">{p.extendedSpecs.specs}</span>
+                                      </div>
+                                    )}
+                                    {p.cabinetWidthMm > 0 && (
+                                      <DetailRow
+                                        label="Dimensions"
+                                        value={`${p.cabinetWidthMm} × ${p.cabinetHeightMm}${p.cabinetDepthMm ? ` × ${p.cabinetDepthMm}` : ""}mm`}
+                                      />
+                                    )}
+                                    {p.extendedSpecs?.quoteRef && (
+                                      <DetailRow
+                                        label="Source"
+                                        value={p.extendedSpecs.quoteRef}
+                                      />
+                                    )}
+                                    {!p.extendedSpecs?.unitSellPrice && (
+                                      <div className="col-span-2 mt-1 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-700">
+                                        Sell price & margin TBD — waiting on ANC markup rates
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
                                 {p.weightKgPerCabinet && (
                                   <DetailRow
                                     label="Weight"
@@ -677,6 +736,8 @@ export default function ProductCatalogBrowser({
                                     label="Typical Power"
                                     value={`${p.typicalPowerWattsPerCab}W`}
                                   />
+                                )}
+                                  </>
                                 )}
                               </div>
 

@@ -26,10 +26,11 @@ WHERE "documentConfig" IS NOT NULL
   );
 SQL
 
-# Seed product catalog (LED + TV) — idempotent, skips existing products
+# Seed product catalog (LED + TV + OES/CMS) — idempotent, skips existing products
 echo "Seeding product catalog..."
 npx tsx prisma/seed-products.ts 2>/dev/null || echo "LED seed skipped"
 npx tsx prisma/seed-tv-products.ts 2>/dev/null || echo "TV seed skipped"
+npx tsx prisma/seed-oes-products.ts 2>/dev/null || echo "OES seed skipped"
 
 # Start the PDF triage Python service in the background on port 8000
 echo "Starting PDF triage service..."
