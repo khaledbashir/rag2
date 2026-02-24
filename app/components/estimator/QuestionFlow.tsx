@@ -28,6 +28,7 @@ import {
 } from "./questions";
 import { calculateCabinetLayout, type ProductSpec } from "./EstimatorBridge";
 import { feetToFeetInches, formatDeltaInches, mmToFeet } from "@/lib/imperialFormat";
+import ProductCatalogBrowser from "./ProductCatalogBrowser";
 
 interface QuestionFlowProps {
     answers: EstimatorAnswers;
@@ -1220,7 +1221,7 @@ function QuestionInput({
 }
 
 // ============================================================================
-// PRODUCT SELECTOR — Fetches from /api/products, filtered by pitch + environment
+// PRODUCT SELECTOR — Opens full catalog browser dialog
 // ============================================================================
 
 function ProductSelectInput({
@@ -1236,87 +1237,62 @@ function ProductSelectInput({
     setDisplayFields?: (fields: Partial<DisplayAnswers>) => void;
     onNext: () => void;
 }) {
-    const [products, setProducts] = React.useState<any[]>([]);
-    const [loading, setLoading] = React.useState(true);
+    const [browserOpen, setBrowserOpen] = React.useState(false);
 
-    // Current display's pitch for filtering
     const currentDisplay = answers?.displays[(displayIndex ?? 0)] || getDefaultDisplayAnswers();
     const pitch = parseFloat(currentDisplay.pixelPitch) || 4;
     const env = answers?.isIndoor ? "indoor" : "outdoor";
 
-    React.useEffect(() => {
-        let cancelled = false;
-        const fetchProducts = async () => {
-            setLoading(true);
-            try {
-                // Filter by environment + pitch (±0.5mm tolerance for variations)
-                const params = new URLSearchParams({
-                    environment: env,
-                    pitchMin: String(Math.max(0, pitch - 0.5)),
-                    pitchMax: String(pitch + 0.5),
-                });
-                const res = await fetch(`/api/products?${params.toString()}`);
-                if (res.ok && !cancelled) {
-                    const data = await res.json();
-                    setProducts(data.products || []);
-                }
-            } catch (err) {
-                console.error("Failed to fetch products:", err);
-            } finally {
-                if (!cancelled) setLoading(false);
-            }
-        };
-        fetchProducts();
-        return () => { cancelled = true; };
-    }, [pitch, env]);
-
-    if (loading) {
-        return (
-            <div className="flex items-center gap-2 mt-4 text-sm text-muted-foreground">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Loading catalog...
-            </div>
-        );
-    }
+    const handleSelect = React.useCallback((productId: string, productName: string) => {
+        if (setDisplayFields) {
+            setDisplayFields({ productId, productName });
+        }
+        setBrowserOpen(false);
+        if (productId) {
+            setTimeout(onNext, 200);
+        }
+    }, [setDisplayFields, onNext]);
 
     return (
         <div className="space-y-2 mt-2">
-            {products.length === 0 && (
-                <p className="text-sm text-muted-foreground mb-3">
-                    No {env} products found at {pitch}mm pitch. You can skip this step.
-                </p>
-            )}
-            {products.map((p: any) => (
-                <button
-                    key={p.id}
-                    onClick={() => {
-                        if (setDisplayFields) {
-                            setDisplayFields({ productId: p.id, productName: p.displayName });
-                        }
-                        setTimeout(onNext, 200);
-                    }}
-                    className={cn(
-                        "w-full text-left px-4 py-3 rounded-lg border-2 transition-all",
-                        value === p.id
-                            ? "border-[#0A52EF] bg-[#0A52EF]/5"
-                            : "border-border hover:border-[#0A52EF]/40 hover:bg-accent/20"
-                    )}
-                >
-                    <div className="flex items-center gap-3">
-                        <Package className="w-5 h-5 text-muted-foreground shrink-0" />
-                        <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">{p.displayName}</div>
-                            <div className="text-xs text-muted-foreground mt-0.5 flex gap-3">
-                                <span>{p.manufacturer}</span>
-                                <span>{p.pixelPitch}mm</span>
-                                {p.maxNits && <span>{p.maxNits} nits</span>}
-                                {p.costPerSqFt && <span>${p.costPerSqFt}/sqft</span>}
-                            </div>
-                        </div>
-                        {value === p.id && <Check className="w-4 h-4 text-[#0A52EF] shrink-0" />}
+            {/* Currently selected product */}
+            {value && currentDisplay.productName && (
+                <div className="flex items-center gap-3 px-4 py-3 rounded-lg border-2 border-[#0A52EF] bg-[#0A52EF]/5">
+                    <Check className="w-5 h-5 text-[#0A52EF] shrink-0" />
+                    <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{currentDisplay.productName}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">Selected product</div>
                     </div>
-                </button>
-            ))}
+                    <button
+                        onClick={() => setBrowserOpen(true)}
+                        className="text-xs text-[#0A52EF] hover:underline shrink-0"
+                    >
+                        Change
+                    </button>
+                </div>
+            )}
+
+            {/* Browse catalog button */}
+            <button
+                onClick={() => setBrowserOpen(true)}
+                className={cn(
+                    "w-full text-left px-4 py-3 rounded-lg border-2 transition-all",
+                    "border-border hover:border-[#0A52EF]/40 hover:bg-accent/20"
+                )}
+            >
+                <div className="flex items-center gap-3">
+                    <Package className="w-5 h-5 text-[#0A52EF] shrink-0" />
+                    <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium">Browse Product Catalog</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                            Search by manufacturer, pitch, environment — all products
+                        </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                </div>
+            </button>
+
+            {/* Skip option */}
             <button
                 onClick={() => {
                     if (setDisplayFields) {
@@ -1326,8 +1302,20 @@ function ProductSelectInput({
                 }}
                 className="w-full text-left px-4 py-3 rounded-lg border-2 border-dashed border-border hover:border-[#0A52EF]/40 hover:bg-accent/20 transition-all"
             >
-                <div className="text-sm text-muted-foreground">Skip — use rate card pricing instead</div>
+                <div className="text-sm text-muted-foreground">Skip — use rate card pricing</div>
             </button>
+
+            {/* Catalog browser dialog */}
+            <ProductCatalogBrowser
+                open={browserOpen}
+                onClose={() => setBrowserOpen(false)}
+                onSelect={handleSelect}
+                currentPitch={pitch}
+                currentEnvironment={env}
+                currentWidthFt={currentDisplay.widthFt}
+                currentHeightFt={currentDisplay.heightFt}
+                selectedProductId={value}
+            />
         </div>
     );
 }
