@@ -12,7 +12,8 @@
  *
  * CMS/Scoring equipment priced per unit (like TVs, not per sqft).
  * Unit pricing stored in extendedSpecs: { unitCost, category, weightLbs, dimensions }
- * Margin TBD — waiting on Ross percentage from ANC team.
+ * OES margin = 15% (confirmed from State Farm Center budgetary workbook, Jul 2014).
+ * Formula: sellPrice = cost / (1 - 0.15) = cost / 0.85
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -296,35 +297,40 @@ const OES_PRODUCTS = [
   },
 ];
 
+const OES_MARGIN = 0.15; // 15% — confirmed from State Farm Center budgetary workbook
+
 function buildProducts() {
-  return OES_PRODUCTS.map((p) => ({
-    manufacturer: "OES",
-    productFamily: "Scoring & Timing",
-    modelNumber: p.model,
-    displayName: p.displayName,
-    productType: "cms",
-    pixelPitch: 0, // Not applicable for CMS equipment
-    cabinetWidthMm: p.widthMm,
-    cabinetHeightMm: p.heightMm,
-    cabinetDepthMm: p.depthMm,
-    weightKgPerCabinet: Math.round(p.weightLbs * 0.4536 * 10) / 10, // lbs → kg
-    maxNits: 0,
-    maxPowerWattsPerCab: 0,
-    environment: "outdoor" as const, // Default — Cincinnati arena products are indoor but keeping uniform for catalog
-    serviceType: "front",
-    supportsHalfModule: false,
-    isCurved: false,
-    extendedSpecs: {
-      unitCost: p.cost,
-      unitSellPrice: null, // TBD — waiting on Ross percentage from ANC
-      margin: null,        // TBD
-      category: p.category,
-      weightLbs: p.weightLbs,
-      specs: p.specs,
-      quoteRef: (p as any).quoteRef || "42360-P (49ers, Mar 2024)",
-    },
-    sourceSpreadsheet: "OES Quotes (42360-P + 36175-P + 30786-P + 29376-P)",
-  }));
+  return OES_PRODUCTS.map((p) => {
+    const sellPrice = Math.round((p.cost / (1 - OES_MARGIN)) * 100) / 100;
+    return {
+      manufacturer: "OES",
+      productFamily: "Scoring & Timing",
+      modelNumber: p.model,
+      displayName: p.displayName,
+      productType: "cms",
+      pixelPitch: 0, // Not applicable for CMS equipment
+      cabinetWidthMm: p.widthMm,
+      cabinetHeightMm: p.heightMm,
+      cabinetDepthMm: p.depthMm,
+      weightKgPerCabinet: Math.round(p.weightLbs * 0.4536 * 10) / 10, // lbs → kg
+      maxNits: 0,
+      maxPowerWattsPerCab: 0,
+      environment: "outdoor" as const,
+      serviceType: "front",
+      supportsHalfModule: false,
+      isCurved: false,
+      extendedSpecs: {
+        unitCost: p.cost,
+        unitSellPrice: sellPrice,
+        margin: OES_MARGIN,
+        category: p.category,
+        weightLbs: p.weightLbs,
+        specs: p.specs,
+        quoteRef: (p as any).quoteRef || "42360-P (49ers, Mar 2024)",
+      },
+      sourceSpreadsheet: "OES Quotes (42360-P + 36175-P + 30786-P + 29376-P)",
+    };
+  });
 }
 
 async function main() {
@@ -340,17 +346,21 @@ async function main() {
     });
 
     if (existing) {
-      console.log(`  SKIP ${product.modelNumber} (already exists)`);
+      // Update extendedSpecs with margin data if it was previously null
+      await prisma.manufacturerProduct.update({
+        where: { modelNumber: product.modelNumber },
+        data: { extendedSpecs: product.extendedSpecs },
+      });
+      console.log(`  UPDATE ${product.modelNumber} — margin ${OES_MARGIN * 100}% → sell $${(product.extendedSpecs as any).unitSellPrice}`);
       skipped++;
       continue;
     }
 
     await prisma.manufacturerProduct.create({ data: product });
-    console.log(`  CREATE ${product.modelNumber} — ${product.displayName} — $${(product.extendedSpecs as any).unitCost} cost`);
+    console.log(`  CREATE ${product.modelNumber} — ${product.displayName} — $${(product.extendedSpecs as any).unitCost} cost → $${(product.extendedSpecs as any).unitSellPrice} sell`);
     created++;
-  }
 
-  console.log(`\nDone: ${created} created, ${skipped} skipped.`);
+  console.log(`\nDone: ${created} created, ${skipped} updated with ${OES_MARGIN * 100}% margin.`);
   const total = await prisma.manufacturerProduct.count();
   console.log(`Total products in database: ${total}`);
 }
