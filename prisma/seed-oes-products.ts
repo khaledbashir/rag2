@@ -8,6 +8,8 @@
  *   OES Quote #36175-P — Union HS (Tulsa, OK), Jan 2021
  *   OES Quote #30786-P — UAB Soccer (AL), Aug 2018
  *   OES Quote #29376-P — U of Cincinnati Arena, 2018
+ *   OES Quote #33555-P — U of California Irvine, Oct 2019
+ *   OES Quote #44029-P — U of Illinois Memorial Stadium, Jan 2025
  * Provided by Jireh Billings, Feb 24 2026.
  *
  * CMS/Scoring equipment priced per unit (like TVs, not per sqft).
@@ -295,6 +297,94 @@ const OES_PRODUCTS = [
     specs: "Red LED strip light kit for basketball End of Period indication. Includes 60\" + 30\" + 25\" strips with interconnect cables. 24Vdc 2A input. Mounts behind backboard",
     quoteRef: "29376-P (UC Cincinnati Arena, 2018)",
   },
+
+  // ── UC Irvine Quote #33555-P (Oct 2019) ───────────────────────
+  {
+    model: "M39XXOWV",
+    displayName: "Swimming Scoreboard (19'3\" × 9'3¾\")",
+    cost: 24875,
+    category: "scoreboard",
+    widthMm: 5867,   // 19'3"
+    heightMm: 2838,  // 9'3-3/4"
+    depthMm: 152,    // 6"
+    weightLbs: 875,
+    specs: "Swimming-specific. 10\" LED Digits for All, 6\" White Vinyl Lettering. Lanes, Places, Times, Heats, Events, Record Time, Home/Guest scores. Horn included. 120VAC 19A/60Hz. Ref drawing MC33555A-R1",
+    quoteRef: "33555-P (UC Irvine, Oct 2019)",
+  },
+
+  // ── U of Illinois Memorial Stadium Quote #44029-P (Jan 2025) ──
+  {
+    model: "M43969A-R3",
+    displayName: "Custom Football Scoreboard (97'6\" × 6')",
+    cost: 41227,
+    category: "scoreboard",
+    widthMm: 29718,  // 97'6"
+    heightMm: 1829,  // 6'
+    depthMm: 152,    // 6"
+    weightLbs: 2524,
+    specs: "Custom Football. 4 sections: A(29'6\") B(19'8\") C(18'10\") D(29'6\"). 48\" Time/Score digits, 36\" T.O.L/Down/ToGo/BallOn/QTR, 15\" Electronic Team Names (8 char), LED Football Indicators. 3×120VAC 20A/60Hz, 37.2A max. Ref drawing M43969A-R3",
+    quoteRef: "44029-P (U of Illinois, Jan 2025)",
+  },
+  {
+    model: "ISCRMT-ST",
+    displayName: "ISC Remote - Shot Time",
+    cost: 203,
+    category: "controller",
+    widthMm: 150,
+    heightMm: 80,
+    depthMm: 40,
+    weightLbs: 1,
+    specs: "ISC remote control for shot time operation",
+    quoteRef: "44029-P (U of Illinois, Jan 2025)",
+  },
+  {
+    model: "ISCRMT-GT",
+    displayName: "ISC Remote - Game Time",
+    cost: 203,
+    category: "controller",
+    widthMm: 150,
+    heightMm: 80,
+    depthMm: 40,
+    weightLbs: 1,
+    specs: "ISC remote control for game time operation",
+    quoteRef: "44029-P (U of Illinois, Jan 2025)",
+  },
+  {
+    model: "HW186Q+",
+    displayName: "ISC EDGE Protective Case",
+    cost: 223,
+    category: "accessory",
+    widthMm: 500,
+    heightMm: 350,
+    depthMm: 200,
+    weightLbs: 5,
+    specs: "Protective carry case for ISC-EDGE controller",
+    quoteRef: "44029-P (U of Illinois, Jan 2025)",
+  },
+  {
+    model: "SHOTS36UCS-RP",
+    displayName: "36\" PRO Play Clock (Outdoor, Rear Power)",
+    cost: 6205,
+    category: "play_clock",
+    widthMm: 1803,   // 5'-11"
+    heightMm: 1467,  // 4'-9 15/16"
+    depthMm: 152,    // 6"
+    weightLbs: 165,
+    specs: "Unistrut Mounting, 36\" PRO Segmented LED Digits, Vinyl Perimeter Striping. Power and data on back. Enclosure/LED/Vinyl color TBD",
+    quoteRef: "44029-P (U of Illinois, Jan 2025)",
+  },
+  {
+    model: "M1200IRV",
+    displayName: "4\" Locker Room Clock (Red, w/Power Cord)",
+    cost: 617,
+    category: "clock",
+    widthMm: 508,    // 1'-8"
+    heightMm: 203,   // 8"
+    depthMm: 102,    // 4"
+    weightLbs: 10,
+    specs: "4\" Red LED Digits and Colon for Time (88:88), Aluminum Enclosure Black, Mounting Tabs, w/Power Cord. Shatter-Resistant Lexan",
+    quoteRef: "44029-P (U of Illinois, Jan 2025)",
+  },
 ];
 
 const OES_MARGIN = 0.15; // 15% — confirmed from State Farm Center budgetary workbook
@@ -328,7 +418,7 @@ function buildProducts() {
         specs: p.specs,
         quoteRef: (p as any).quoteRef || "42360-P (49ers, Mar 2024)",
       },
-      sourceSpreadsheet: "OES Quotes (42360-P + 36175-P + 30786-P + 29376-P)",
+      sourceSpreadsheet: "OES Quotes (42360-P + 36175-P + 30786-P + 29376-P + 33555-P + 44029-P)",
     };
   });
 }
