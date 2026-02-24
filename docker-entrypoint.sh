@@ -26,6 +26,11 @@ WHERE "documentConfig" IS NOT NULL
   );
 SQL
 
+# Seed product catalog (LED + TV) — idempotent, skips existing products
+echo "Seeding product catalog..."
+npx tsx prisma/seed-products.ts 2>/dev/null || echo "LED seed skipped"
+npx tsx prisma/seed-tv-products.ts 2>/dev/null || echo "TV seed skipped"
+
 # Start the PDF triage Python service in the background on port 8000
 echo "Starting PDF triage service..."
 python3 -m uvicorn --app-dir pdf-triage-service main:app --host 0.0.0.0 --port 8000 &
