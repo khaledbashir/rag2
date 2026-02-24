@@ -413,6 +413,17 @@ export default function ProjectsPage() {
 
                                 {viewMode === "list" ? (
                                     <div className="space-y-px">
+                                        {/* Column headers */}
+                                        <div className="flex items-center gap-3 px-3 py-1.5 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                                            <div className="flex-1 min-w-0">Name</div>
+                                            <div className="hidden sm:block w-20 shrink-0">Type</div>
+                                            <div className="hidden md:block w-24 shrink-0">Status</div>
+                                            <div className="hidden lg:block w-20 text-right shrink-0">Screens</div>
+                                            <div className="hidden lg:block w-24 shrink-0">Created by</div>
+                                            <div className="w-28 text-right shrink-0">Value</div>
+                                            <div className="hidden xl:block w-28 text-right shrink-0">Updated</div>
+                                            <div className="w-16 shrink-0" />
+                                        </div>
                                         {projects.map((project) => (
                                             <ProjectCard
                                                 key={project.id}
