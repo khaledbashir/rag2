@@ -10,6 +10,11 @@
  *   OES Quote #29376-P — U of Cincinnati Arena, 2018
  *   OES Quote #33555-P — U of California Irvine, Oct 2019
  *   OES Quote #44029-P — U of Illinois Memorial Stadium, Jan 2025
+ *   OES Quote #38849-P — U of Michigan, Jun 2022
+ *   OES Quote #15910-P — U of Michigan Crisler Arena, Dec 2010
+ *   OES Quote #27025-P — U of Michigan LAX, Feb 2017
+ *   OES Quote #27025-PB — U of Michigan Indoor Track, Feb 2017
+ *   OES Quote #27025-PD — U of Michigan Sports Perf Ctr, Feb 2017
  * Provided by Jireh Billings, Feb 24 2026.
  *
  * CMS/Scoring equipment priced per unit (like TVs, not per sqft).
@@ -385,6 +390,184 @@ const OES_PRODUCTS = [
     specs: "4\" Red LED Digits and Colon for Time (88:88), Aluminum Enclosure Black, Mounting Tabs, w/Power Cord. Shatter-Resistant Lexan",
     quoteRef: "44029-P (U of Illinois, Jan 2025)",
   },
+
+  // ── U of Michigan Quote #38849-P (Jun 2022) ───────────────────
+  {
+    model: "SHOTS42RTCS",
+    displayName: '42" Shot Clock System (Outdoor)',
+    cost: 9325,
+    category: "shot_clock",
+    widthMm: 2032,   // 6'8.125"
+    heightMm: 1626,  // 5'4"
+    depthMm: 203,    // 8"
+    weightLbs: 120,
+    specs: "42\" Shot Clock system, outdoor rated. Dimensions 6'8.125\" × 5'4\" × 8\". Segmented LED digits, aluminum enclosure",
+    quoteRef: "38849-P (U of Michigan, Jun 2022)",
+  },
+  {
+    model: "M1242ROCS",
+    displayName: '42" TOD Clock (Outdoor)',
+    cost: 11987,
+    category: "tod_clock",
+    widthMm: 4064,   // 13'4.5"
+    heightMm: 1524,  // 5'
+    depthMm: 203,    // 8"
+    weightLbs: 350,
+    specs: "42\" Time of Day clock, outdoor rated. Dimensions 13'4.5\" × 5' × 8\". Segmented LED digits, aluminum enclosure",
+    quoteRef: "38849-P (U of Michigan, Jun 2022)",
+  },
+
+  // ── U of Michigan Crisler Arena Quote #15910-P (Dec 2010) ─────
+  {
+    model: "MODEL6225",
+    displayName: "Hockey Scoreboard (18' × 3'10\")",
+    cost: 6546,
+    category: "scoreboard",
+    widthMm: 5486,   // 18'
+    heightMm: 1168,  // 3'10"
+    depthMm: 102,    // 4"
+    weightLbs: 400,
+    specs: "Hockey scoreboard. 18' × 3'10\" × 4\". Segmented LED digits for period, time, scores, penalties. Aluminum enclosure",
+    quoteRef: "15910-P (U of Michigan Crisler Arena, Dec 2010)",
+  },
+  {
+    model: "MODEL5200",
+    displayName: "Practice Basketball Scoreboard (9' × 3'10\")",
+    cost: 3975,
+    category: "scoreboard",
+    widthMm: 2743,   // 9'
+    heightMm: 1168,  // 3'10"
+    depthMm: 102,    // 4"
+    weightLbs: 200,
+    specs: "Practice basketball scoreboard. 9' × 3'10\" × 4\". Segmented LED digits for time, scores, period. Aluminum enclosure",
+    quoteRef: "15910-P (U of Michigan Crisler Arena, Dec 2010)",
+  },
+  {
+    model: "SHOTSCLK-S",
+    displayName: "One-Sided Shot/Game Clock (32\")",
+    cost: 1795,
+    category: "shot_clock",
+    widthMm: 813,    // 32"
+    heightMm: 813,   // 32"
+    depthMm: 152,    // 6"
+    weightLbs: 35,
+    specs: "One-sided shot clock / game clock combination. 32\" × 32\" × 6\". Segmented LED digits, aluminum enclosure",
+    quoteRef: "15910-P (U of Michigan Crisler Arena, Dec 2010)",
+  },
+  {
+    model: "GL-485",
+    displayName: "Red/Green Hockey Goal Light Set",
+    cost: 1590,
+    category: "lighting",
+    widthMm: 305,    // ~12"
+    heightMm: 305,   // ~12"
+    depthMm: 203,    // ~8"
+    weightLbs: 15,
+    specs: "Red/Green hockey goal light set. RS485 controlled. Includes mounting hardware",
+    quoteRef: "15910-P (U of Michigan Crisler Arena, Dec 2010)",
+  },
+  {
+    model: "232-485 CONVERTER",
+    displayName: "RS232 to RS485 Signal Converter",
+    cost: 325,
+    category: "accessory",
+    widthMm: 100,
+    heightMm: 60,
+    depthMm: 30,
+    weightLbs: 1,
+    specs: "RS232 to RS485 signal converter for scoreboard communication",
+    quoteRef: "15910-P (U of Michigan Crisler Arena, Dec 2010)",
+  },
+  {
+    model: "KEYSWITCH",
+    displayName: "Independent/Simultaneous Mode Switch",
+    cost: 150,
+    category: "accessory",
+    widthMm: 100,
+    heightMm: 80,
+    depthMm: 40,
+    weightLbs: 1,
+    specs: "Keyswitch for toggling between independent and simultaneous scoreboard control modes",
+    quoteRef: "15910-P (U of Michigan Crisler Arena, Dec 2010)",
+  },
+
+  // ── U of Michigan LAX Quote #27025-P (Feb 2017) ───────────────
+  {
+    model: "MC27025B",
+    displayName: "Custom Lacrosse Scoreboard (23' × 11')",
+    cost: 25790,
+    category: "scoreboard",
+    widthMm: 7010,   // 23'
+    heightMm: 3353,  // 11'
+    depthMm: 203,    // 8"
+    weightLbs: 1800,
+    specs: "Custom Lacrosse. 28\" White LED Time, 23\" White LED Score/Period, 15\" White LED Saves/Shots/Player/Penalty, 10\" Electronic Team Names (8 char White LEDs). 4×(110VAC 60Hz 20A). Black enclosure, white vinyl lettering, fans included. Ref drawing MC27025B-R1",
+    quoteRef: "27025-P (U of Michigan LAX, Feb 2017)",
+  },
+  {
+    model: "MC27025A",
+    displayName: "Custom Aux Lacrosse Scoreboard (16' × 4')",
+    cost: 11200,
+    category: "scoreboard",
+    widthMm: 4877,   // 16'
+    heightMm: 1219,  // 4'
+    depthMm: 203,    // 8"
+    weightLbs: 500,
+    specs: "Auxiliary Lacrosse. 17\" White LED Time/Score, 14\" White LED Period, 10\" Electronic Team Names (8 char White LEDs). 1×(110VAC 60Hz 20A). Black enclosure, white vinyl lettering, fans included. Ref drawing MC27025A-R1",
+    quoteRef: "27025-P (U of Michigan LAX, Feb 2017)",
+  },
+  {
+    model: "SHOTS-22W",
+    displayName: '22" Play Clock (White, Lacrosse)',
+    cost: 2155,
+    category: "play_clock",
+    widthMm: 1118,   // 44"
+    heightMm: 907,   // 35.7"
+    depthMm: 152,    // 6"
+    weightLbs: 45,
+    specs: "22\" White LED Segmented Digits, Clear Safety Lexan digit covers, Black Aluminum Enclosure, Horn included",
+    quoteRef: "27025-P (U of Michigan LAX, Feb 2017)",
+  },
+
+  // ── U of Michigan Indoor/Outdoor Track Quote #27025-PB (Feb 2017) ──
+  {
+    model: "GAME-19W",
+    displayName: '19" Game Clock (White)',
+    cost: 2640,
+    category: "clock",
+    widthMm: 1816,   // 71.5"
+    heightMm: 699,   // 27.5"
+    depthMm: 203,    // 8"
+    weightLbs: 60,
+    specs: "19\" White LED Segmented Digits, Clear Safety Lexan digit covers, Black Aluminum Enclosure. Ref drawing MC27025C-R1",
+    quoteRef: "27025-PB (U of Michigan Indoor Track, Feb 2017)",
+  },
+  {
+    model: "CUSTOM-5DGT-TRACK",
+    displayName: '19" 5-Digit Track Clock',
+    cost: 3350,
+    category: "clock",
+    widthMm: 2350,   // 92.5"
+    heightMm: 699,   // 27.5"
+    depthMm: 203,    // 8"
+    weightLbs: 75,
+    specs: "Custom 5-digit track clock. 19\" White LED Segmented Digits, Clear Safety Lexan digit covers, Black Aluminum Enclosure. Ref drawing MC27025D-R1",
+    quoteRef: "27025-PB (U of Michigan Indoor Track, Feb 2017)",
+  },
+
+  // ── U of Michigan Sports Perf Ctr Quote #27025-PD (Feb 2017) ───
+  {
+    model: "MODEL1200A",
+    displayName: '4" Clock Display (Red, Pigtail)',
+    cost: 490,
+    category: "clock",
+    widthMm: 508,    // 20"
+    heightMm: 203,   // 8"
+    depthMm: 102,    // 4"
+    weightLbs: 10,
+    specs: "4\" Red LED Digits, Time 88:88. Aluminum enclosure, pigtail power/comm out back. RS485, 110Vac 1/4A. Program: latest pin8a1_",
+    quoteRef: "27025-PD (U of Michigan Sports Perf Ctr, Feb 2017)",
+  },
 ];
 
 const OES_MARGIN = 0.15; // 15% — confirmed from State Farm Center budgetary workbook
@@ -418,7 +601,7 @@ function buildProducts() {
         specs: p.specs,
         quoteRef: (p as any).quoteRef || "42360-P (49ers, Mar 2024)",
       },
-      sourceSpreadsheet: "OES Quotes (42360-P + 36175-P + 30786-P + 29376-P + 33555-P + 44029-P)",
+      sourceSpreadsheet: "OES Quotes (42360-P + 36175-P + 30786-P + 29376-P + 33555-P + 44029-P + 38849-P + 15910-P + 27025-P/PB/PD)",
     };
   });
 }
@@ -449,6 +632,7 @@ async function main() {
     await prisma.manufacturerProduct.create({ data: product });
     console.log(`  CREATE ${product.modelNumber} — ${product.displayName} — $${(product.extendedSpecs as any).unitCost} cost → $${(product.extendedSpecs as any).unitSellPrice} sell`);
     created++;
+  }
 
   console.log(`\nDone: ${created} created, ${skipped} updated with ${OES_MARGIN * 100}% margin.`);
   const total = await prisma.manufacturerProduct.count();
