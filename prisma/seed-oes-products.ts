@@ -7,6 +7,7 @@
  *   OES Quote #42360-P — Levi Stadium (San Francisco 49ers), Mar 2024
  *   OES Quote #36175-P — Union HS (Tulsa, OK), Jan 2021
  *   OES Quote #30786-P — UAB Soccer (AL), Aug 2018
+ *   OES Quote #29376-P — U of Cincinnati Arena, 2018
  * Provided by Jireh Billings, Feb 24 2026.
  *
  * CMS/Scoring equipment priced per unit (like TVs, not per sqft).
@@ -231,6 +232,68 @@ const OES_PRODUCTS = [
     specs: "1x RS485 Input (XLR 4M), 3x RS485 Output (XLR 4F), 2x RS232 Output (DB9 M), 110-220V 1/4A. Additional panels may be needed per facility wiring",
     quoteRef: "30786-P (UAB Soccer, Aug 2018)",
   },
+
+  // ── UC Cincinnati Arena Quote #29376-P (2018) ─────────────────
+  {
+    model: "SHOTS-ST",
+    displayName: "Shot Clock See-Thru System (3-piece)",
+    cost: 6350,
+    category: "shot_clock",
+    widthMm: 813,    // 32" (large clock face)
+    heightMm: 813,   // 32"
+    depthMm: 152,    // 6"
+    weightLbs: 60,
+    specs: "3-piece system: Large Clock 32\"×32\", Small Clock 22\"×22\", Control Panel. See-through design for arena mounting above backboard. Includes mounting hardware",
+    quoteRef: "29376-P (UC Cincinnati Arena, 2018)",
+  },
+  {
+    model: "SHOTS-14G7",
+    displayName: "Shot Clock 14/7 Display",
+    cost: 1795,
+    category: "shot_clock",
+    widthMm: 813,    // 32"
+    heightMm: 813,   // 32"
+    depthMm: 152,    // 6"
+    weightLbs: 35,
+    specs: "14-second / 7-second shot clock display for basketball. LED segmented digits, aluminum enclosure",
+    quoteRef: "29376-P (UC Cincinnati Arena, 2018)",
+  },
+  {
+    model: "HW182D",
+    displayName: "Horn/Trumpet 120Vac",
+    cost: 815,
+    category: "horn",
+    widthMm: 305,    // ~12"
+    heightMm: 305,   // ~12"
+    depthMm: 305,    // ~12"
+    weightLbs: 15,
+    specs: "120VAC horn/trumpet for arena buzzer system. Mounts to scoreboard or independently",
+    quoteRef: "29376-P (UC Cincinnati Arena, 2018)",
+  },
+  {
+    model: "HN-CTRL",
+    displayName: "Horn Control Module",
+    cost: 850,
+    category: "controller",
+    widthMm: 305,    // 12"
+    heightMm: 254,   // 10"
+    depthMm: 127,    // 5"
+    weightLbs: 20,
+    specs: "Controls 2x 110V horns, RS485 input, configurable trigger patterns. Mounts in equipment room or press box",
+    quoteRef: "29376-P (UC Cincinnati Arena, 2018)",
+  },
+  {
+    model: "SL-BB-EOP",
+    displayName: "Strip Light BB End of Period",
+    cost: 995,
+    category: "lighting",
+    widthMm: 1524,   // 60" (longest strip)
+    heightMm: 50,
+    depthMm: 25,
+    weightLbs: 8,
+    specs: "Red LED strip light kit for basketball End of Period indication. Includes 60\" + 30\" + 25\" strips with interconnect cables. 24Vdc 2A input. Mounts behind backboard",
+    quoteRef: "29376-P (UC Cincinnati Arena, 2018)",
+  },
 ];
 
 function buildProducts() {
@@ -247,7 +310,7 @@ function buildProducts() {
     weightKgPerCabinet: Math.round(p.weightLbs * 0.4536 * 10) / 10, // lbs → kg
     maxNits: 0,
     maxPowerWattsPerCab: 0,
-    environment: "outdoor" as const, // Most OES gear is rated for outdoor stadiums
+    environment: "outdoor" as const, // Default — Cincinnati arena products are indoor but keeping uniform for catalog
     serviceType: "front",
     supportsHalfModule: false,
     isCurved: false,
@@ -260,7 +323,7 @@ function buildProducts() {
       specs: p.specs,
       quoteRef: (p as any).quoteRef || "42360-P (49ers, Mar 2024)",
     },
-    sourceSpreadsheet: "OES Quotes (42360-P 49ers + 36175-P Union HS)",
+    sourceSpreadsheet: "OES Quotes (42360-P + 36175-P + 30786-P + 29376-P)",
   }));
 }
 
