@@ -6,6 +6,7 @@
  * Sources:
  *   OES Quote #42360-P — Levi Stadium (San Francisco 49ers), Mar 2024
  *   OES Quote #36175-P — Union HS (Tulsa, OK), Jan 2021
+ *   OES Quote #30786-P — UAB Soccer (AL), Aug 2018
  * Provided by Jireh Billings, Feb 24 2026.
  *
  * CMS/Scoring equipment priced per unit (like TVs, not per sqft).
@@ -203,6 +204,32 @@ const OES_PRODUCTS = [
     weightLbs: 5,
     specs: "2\" Red LED Digits and Colon for Time (88:88), Shatter-Resistant Lexan, Aluminum Black, Mounting Tabs, RS485, 110 VAC 60Hz 1/4 AMP",
     quoteRef: "36175-P (Union HS, Jan 2021)",
+  },
+
+  // ── UAB Soccer Quote #30786-P (Aug 2018) ────────────────────────
+  {
+    model: "M49XXOWV",
+    displayName: "Soccer Scoreboard (33' × 8')",
+    cost: 23480,
+    category: "scoreboard",
+    widthMm: 10058,  // 33' (396")
+    heightMm: 2896,  // 96" (8')
+    depthMm: 203,    // 8"
+    weightLbs: 1440,
+    specs: "Soccer-specific. 30\" Time/Score digits, 17\" Shots/Saves/Corner Kicks/Fouls/Half, 14\" Vinyl Team Names, Aluminum enclosure black, Lexan digit covers, Angle Iron + Horn included, 120VAC 60Hz 10A. Ref drawing MC30744A-R2",
+    quoteRef: "30786-P (UAB Soccer, Aug 2018)",
+  },
+  {
+    model: "DIST-1I3O",
+    displayName: "Small Distribution Panel",
+    cost: 580,
+    category: "distribution",
+    widthMm: 197,    // 7.75"
+    heightMm: 127,   // 5"
+    depthMm: 51,     // 2"
+    weightLbs: 5,
+    specs: "1x RS485 Input (XLR 4M), 3x RS485 Output (XLR 4F), 2x RS232 Output (DB9 M), 110-220V 1/4A. Additional panels may be needed per facility wiring",
+    quoteRef: "30786-P (UAB Soccer, Aug 2018)",
   },
 ];
 
