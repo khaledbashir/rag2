@@ -31,6 +31,7 @@ export interface ProjectCardData {
     updatedAt: string;
     screenCount: number;
     totalAmount: number;
+    createdBy?: string | null;
 }
 
 interface ProjectCardProps {
@@ -205,6 +206,11 @@ export default function ProjectCard({ project, onStatusChange, onBriefMe, onDele
                 {/* Screens */}
                 <div className="hidden lg:block w-20 text-[11px] text-muted-foreground text-right tabular-nums shrink-0">
                     {project.screenCount > 0 ? `${project.screenCount} screen${project.screenCount !== 1 ? "s" : ""}` : "—"}
+                </div>
+
+                {/* Created by */}
+                <div className="hidden xl:block w-24 text-[11px] text-muted-foreground truncate shrink-0">
+                    {project.createdBy || "—"}
                 </div>
 
                 {/* Value */}

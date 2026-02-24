@@ -85,6 +85,7 @@ model User {
   workspace     Workspace? @relation(fields: [workspaceId], references: [id])
   accounts      Account[]
   sessions      Session[]
+  proposals     Proposal[] // Projects created by this user
 }
 
 // NextAuth Prisma adapter
@@ -169,6 +170,9 @@ model Proposal {
   documentHash     String? // SHA-256 hash at signing
   parentProposalId String? // If cloned from signed version
   versionNumber    Int       @default(1) // v1, v2, etc.
+
+  createdByUserId String? // Who created this project
+  createdByUser   User?   @relation(fields: [createdByUserId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt

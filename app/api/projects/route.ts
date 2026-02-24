@@ -98,6 +98,9 @@ export async function GET(req: NextRequest) {
                     screens: {
                         select: { id: true },
                     },
+                    createdByUser: {
+                        select: { name: true, email: true },
+                    },
                 }
             }),
             prisma.proposal.count({ where }),
@@ -163,6 +166,7 @@ export async function GET(req: NextRequest) {
                 sectionCount,
                 hasExcel: sectionCount > 0,
                 screenCount: project.screens?.length || 0,
+                createdBy: (project as any).createdByUser?.name || (project as any).createdByUser?.email || null,
             };
         });
 
@@ -250,12 +254,17 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        // Get current user for ownership tracking
+        const session = await auth();
+        const userId = session?.user?.id || null;
+
         // Create the project in the database first (so we have an ID for the slug)
         const project = await prisma.proposal.create({
             data: {
                 workspaceId,
                 clientName,
                 status: "DRAFT",
+                ...(userId ? { createdByUserId: userId } : {}),
             },
         });
 
@@ -271,10 +280,9 @@ export async function POST(req: NextRequest) {
             project.aiWorkspaceSlug = aiWorkspaceSlug;
 
             // Assign workspace to the creating user
-            const session = await auth();
-            if (session?.user?.id) {
+            if (userId) {
                 const user = await prisma.user.findUnique({
-                    where: { id: session.user.id },
+                    where: { id: userId },
                     select: { anythingLlmUserId: true },
                 });
                 if (user?.anythingLlmUserId) {
