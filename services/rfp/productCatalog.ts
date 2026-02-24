@@ -397,7 +397,7 @@ const PRODUCTS: Record<string, ProductType> = {
         id: "yaham-r10",
         name: "Yaham Radiance R10 Outdoor",
         manufacturer: "Yaham",
-        pitchMm: 10,
+        pitchMm: 10.417,
         powerDensityWm2: 650,
         weightDensityLbm2: 65.0,
         avgMaxRatio: 0.40,
@@ -457,7 +457,7 @@ const PRODUCTS: Record<string, ProductType> = {
         id: "yaham-ho6t",
         name: "Yaham Halo HO6T Fascia Outdoor",
         manufacturer: "Yaham",
-        pitchMm: 6.25,
+        pitchMm: 6,
         powerDensityWm2: 638.9,
         weightDensityLbm2: 101.0,
         avgMaxRatio: 0.40,
@@ -654,6 +654,7 @@ export const LED_COST_PER_SQFT_BY_PITCH: Record<string, number> = {
     '6.25':  293.20, // Yaham HO6T Outdoor Fascia LGEUS 28%. Rate card 02/04/2026.
     '8.33':  194.07, // Yaham R8 Outdoor LGEUS 28% landed. Rate card 02/04/2026.
     '10':    112.22, // Yaham C10 Indoor LGEUS 28% landed. Rate card 02/04/2026.
+    '10.417': 154.79, // Yaham R10 Outdoor LGEUS 28% landed. Rate card 02/04/2026.
 };
 
 // --- WARRANTY ---

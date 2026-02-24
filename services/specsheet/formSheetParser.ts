@@ -401,6 +401,25 @@ export function parseFormSheet(workbook: xlsx.WorkBook): FormSheetResult {
     }
   }
 
+  // Auto-fill missing pixel pitch from known model names (Yaham catalog)
+  const MODEL_PITCH_MAP: Record<string, number> = {
+    "r2.5": 2.5, "r4": 3.91, "r6": 5.95, "r8": 8.33, "r10": 10.417,
+    "c2.5": 2.5, "c4": 4, "c6": 6, "c10": 10,
+    "a10": 10, "ho10t": 10, "ho6t": 6, "h10t": 10,
+  };
+  for (const d of displays) {
+    if (d.pixelPitch === null && d.model) {
+      const modelNorm = d.model.trim().toLowerCase().replace(/[-_\s]/g, "");
+      for (const [key, pitch] of Object.entries(MODEL_PITCH_MAP)) {
+        if (modelNorm === key || modelNorm.endsWith(key)) {
+          d.pixelPitch = pitch;
+          console.log(`[FORM PARSER] Auto-filled pixelPitch ${pitch}mm for model "${d.model}" (matched "${key}")`);
+          break;
+        }
+      }
+    }
+  }
+
   // Cross-fill dimensions: actual/total are the product-accurate values (per Natalia).
   // Spec values (rows 15-18) are RFP proposed sizes — NEVER copy them into actual/total.
   // Only direction: actual → spec (fallback so renderer has data if only actual exists).
