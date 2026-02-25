@@ -38,6 +38,7 @@ import { formatCurrency } from "@/lib/helpers";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ExcelGridViewer from "@/app/components/ExcelGridViewer";
 import { FEATURES } from "@/lib/featureFlags";
 import type { ProposalType } from "@/types";
@@ -1119,14 +1120,30 @@ const Step4Export = () => {
                                                 </div>
                                                 <Switch id="showScopeOfWork-budget" checked={watch("details.showScopeOfWork") || false} onCheckedChange={(checked) => setValue("details.showScopeOfWork", checked)} className="data-[state=checked]:bg-brand-blue shrink-0 mt-0.5" />
                                             </div>
-                                            <div className="flex items-start justify-between py-3 gap-4">
-                                                <div className="flex flex-col min-w-0">
-                                                    <Label htmlFor="showRespMatrix-budget" className={cn("text-sm font-semibold block", hasRespMatrixData ? "text-foreground" : "text-muted-foreground")}>Responsibility Matrix</Label>
-                                                    <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                                        {hasRespMatrixData ? "Include responsibility matrix table" : "No responsibility matrix found in imported file"}
-                                                    </p>
+                                            <div className="flex flex-col gap-2 py-3">
+                                                <div className="flex items-start justify-between gap-4">
+                                                    <div className="flex flex-col min-w-0">
+                                                        <Label htmlFor="showRespMatrix-budget" className={cn("text-sm font-semibold block", hasRespMatrixData ? "text-foreground" : "text-muted-foreground")}>Responsibility Matrix</Label>
+                                                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                                            {hasRespMatrixData ? "Include responsibility matrix table" : "No responsibility matrix found in imported file"}
+                                                        </p>
+                                                    </div>
+                                                    <Switch id="showRespMatrix-budget" disabled={!hasRespMatrixData} checked={hasRespMatrixData ? (watch("details.showResponsibilityMatrix" as any) ?? true) : false} onCheckedChange={(checked) => setValue("details.showResponsibilityMatrix" as any, checked)} className="data-[state=checked]:bg-brand-blue shrink-0 mt-0.5" />
                                                 </div>
-                                                <Switch id="showRespMatrix-budget" disabled={!hasRespMatrixData} checked={hasRespMatrixData ? (watch("details.showResponsibilityMatrix" as any) ?? true) : false} onCheckedChange={(checked) => setValue("details.showResponsibilityMatrix" as any, checked)} className="data-[state=checked]:bg-brand-blue shrink-0 mt-0.5" />
+                                                {hasRespMatrixData && (watch("details.showResponsibilityMatrix" as any) ?? true) && (
+                                                    <div className="flex items-center gap-2 pl-1">
+                                                        <span className="text-[11px] text-muted-foreground">Format:</span>
+                                                        <Select value={watch("details.respMatrixFormatOverride" as any) || "auto"} onValueChange={(val) => setValue("details.respMatrixFormatOverride" as any, val, { shouldDirty: true })}>
+                                                            <SelectTrigger className="h-7 w-[130px] text-[11px]"><SelectValue /></SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="auto">Auto-detect</SelectItem>
+                                                                <SelectItem value="short">Short (paragraphs)</SelectItem>
+                                                                <SelectItem value="long">Long (table)</SelectItem>
+                                                                <SelectItem value="hybrid">Hybrid (mixed)</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                )}
                                             </div>
                                         </TabsContent>
 
@@ -1190,14 +1207,30 @@ const Step4Export = () => {
                                                 </div>
                                                 <Switch id="showScopeOfWork-proposal" checked={watch("details.showScopeOfWork") || false} onCheckedChange={(checked) => setValue("details.showScopeOfWork", checked)} className="data-[state=checked]:bg-brand-blue" />
                                             </div>
-                                            <div className="flex items-center justify-between py-3">
-                                                <div className="flex flex-col">
-                                                    <Label htmlFor="showRespMatrix-proposal" className={cn("text-sm font-semibold", hasRespMatrixData ? "text-foreground" : "text-muted-foreground")}>Responsibility Matrix</Label>
-                                                    <p className="text-[11px] text-muted-foreground">
-                                                        {hasRespMatrixData ? "Include responsibility matrix table" : "No responsibility matrix found in imported file"}
-                                                    </p>
+                                            <div className="flex flex-col gap-2 py-3">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex flex-col">
+                                                        <Label htmlFor="showRespMatrix-proposal" className={cn("text-sm font-semibold", hasRespMatrixData ? "text-foreground" : "text-muted-foreground")}>Responsibility Matrix</Label>
+                                                        <p className="text-[11px] text-muted-foreground">
+                                                            {hasRespMatrixData ? "Include responsibility matrix table" : "No responsibility matrix found in imported file"}
+                                                        </p>
+                                                    </div>
+                                                    <Switch id="showRespMatrix-proposal" disabled={!hasRespMatrixData} checked={hasRespMatrixData ? (watch("details.showResponsibilityMatrix" as any) ?? true) : false} onCheckedChange={(checked) => setValue("details.showResponsibilityMatrix" as any, checked)} className="data-[state=checked]:bg-brand-blue" />
                                                 </div>
-                                                <Switch id="showRespMatrix-proposal" disabled={!hasRespMatrixData} checked={hasRespMatrixData ? (watch("details.showResponsibilityMatrix" as any) ?? true) : false} onCheckedChange={(checked) => setValue("details.showResponsibilityMatrix" as any, checked)} className="data-[state=checked]:bg-brand-blue" />
+                                                {hasRespMatrixData && (watch("details.showResponsibilityMatrix" as any) ?? true) && (
+                                                    <div className="flex items-center gap-2 pl-1">
+                                                        <span className="text-[11px] text-muted-foreground">Format:</span>
+                                                        <Select value={watch("details.respMatrixFormatOverride" as any) || "auto"} onValueChange={(val) => setValue("details.respMatrixFormatOverride" as any, val, { shouldDirty: true })}>
+                                                            <SelectTrigger className="h-7 w-[130px] text-[11px]"><SelectValue /></SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="auto">Auto-detect</SelectItem>
+                                                                <SelectItem value="short">Short (paragraphs)</SelectItem>
+                                                                <SelectItem value="long">Long (table)</SelectItem>
+                                                                <SelectItem value="hybrid">Hybrid (mixed)</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                )}
                                             </div>
                                         </TabsContent>
 
@@ -1261,14 +1294,30 @@ const Step4Export = () => {
                                                 </div>
                                                 <Switch id="showScopeOfWork" checked={watch("details.showScopeOfWork") || false} onCheckedChange={(checked) => setValue("details.showScopeOfWork", checked)} className="data-[state=checked]:bg-brand-blue" />
                                             </div>
-                                            <div className="flex items-center justify-between py-3 border-b border-border/30">
-                                                <div className="flex flex-col">
-                                                    <Label htmlFor="showRespMatrix-loi" className={cn("text-sm font-semibold", hasRespMatrixData ? "text-foreground" : "text-muted-foreground")}>Responsibility Matrix</Label>
-                                                    <p className="text-[11px] text-muted-foreground">
-                                                        {hasRespMatrixData ? "Include responsibility matrix table" : "No responsibility matrix found in imported file"}
-                                                    </p>
+                                            <div className="flex flex-col gap-2 py-3 border-b border-border/30">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex flex-col">
+                                                        <Label htmlFor="showRespMatrix-loi" className={cn("text-sm font-semibold", hasRespMatrixData ? "text-foreground" : "text-muted-foreground")}>Responsibility Matrix</Label>
+                                                        <p className="text-[11px] text-muted-foreground">
+                                                            {hasRespMatrixData ? "Include responsibility matrix table" : "No responsibility matrix found in imported file"}
+                                                        </p>
+                                                    </div>
+                                                    <Switch id="showRespMatrix-loi" disabled={!hasRespMatrixData} checked={hasRespMatrixData ? (watch("details.showResponsibilityMatrix" as any) ?? true) : false} onCheckedChange={(checked) => setValue("details.showResponsibilityMatrix" as any, checked)} className="data-[state=checked]:bg-brand-blue" />
                                                 </div>
-                                                <Switch id="showRespMatrix-loi" disabled={!hasRespMatrixData} checked={hasRespMatrixData ? (watch("details.showResponsibilityMatrix" as any) ?? true) : false} onCheckedChange={(checked) => setValue("details.showResponsibilityMatrix" as any, checked)} className="data-[state=checked]:bg-brand-blue" />
+                                                {hasRespMatrixData && (watch("details.showResponsibilityMatrix" as any) ?? true) && (
+                                                    <div className="flex items-center gap-2 pl-1">
+                                                        <span className="text-[11px] text-muted-foreground">Format:</span>
+                                                        <Select value={watch("details.respMatrixFormatOverride" as any) || "auto"} onValueChange={(val) => setValue("details.respMatrixFormatOverride" as any, val, { shouldDirty: true })}>
+                                                            <SelectTrigger className="h-7 w-[130px] text-[11px]"><SelectValue /></SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="auto">Auto-detect</SelectItem>
+                                                                <SelectItem value="short">Short (paragraphs)</SelectItem>
+                                                                <SelectItem value="long">Long (table)</SelectItem>
+                                                                <SelectItem value="hybrid">Hybrid (mixed)</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className="flex items-center justify-between py-3">
                                                 <div className="flex flex-col">
