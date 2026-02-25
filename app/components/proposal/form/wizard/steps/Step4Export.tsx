@@ -426,6 +426,18 @@ const Step4Export = () => {
         return false;
     }, [pricingDocument, watch]);
 
+    // Auto-detect master table (roll-up / summary table) on first load
+    const masterTableIndex = watch("details.masterTableIndex" as any);
+    useEffect(() => {
+        if (pricingTables.length > 0 && masterTableIndex == null) {
+            const rollUpRegex = /\b(total|roll.?up|summary|project\s+grand|grand\s+total|project\s+total|cost\s+summary|pricing\s+summary)\b/i;
+            const matchIdx = pricingTables.findIndex((t: any) => rollUpRegex.test(((t as any)?.name || "").toString()));
+            if (matchIdx >= 0) {
+                setValue("details.masterTableIndex" as any, matchIdx, { shouldDirty: false });
+            }
+        }
+    }, [pricingTables, masterTableIndex, setValue]);
+
     const tableSplitThreshold = Number(templateConfig?.tableSplitThreshold ?? visualDefaults.tableSplitThreshold);
     const pricingSplitRisk = useMemo(() => {
         if (pricingTables.length === 0) return null;
@@ -949,6 +961,61 @@ const Step4Export = () => {
                                         <FileSignature className="w-3.5 h-3.5" />
                                         LOI
                                     </button>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* Document Config: Master Table + Page Layout */}
+                        <Card className="bg-card/40 border border-border/60">
+                            <CardContent className="py-3 px-4 space-y-4">
+                                {/* Master Table Selector (Mirror Mode only) */}
+                                {mirrorMode && pricingTables.length > 0 && (
+                                    <div className="flex flex-col gap-1.5">
+                                        <Label className="text-xs font-medium text-muted-foreground">Project Grand Total Table</Label>
+                                        <Select
+                                            value={String(watch("details.masterTableIndex" as any) ?? -1)}
+                                            onValueChange={(val) => setValue("details.masterTableIndex" as any, parseInt(val, 10), { shouldDirty: true })}
+                                        >
+                                            <SelectTrigger className="w-full bg-card border-border text-sm text-foreground">
+                                                <SelectValue placeholder="Select master table" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="-1">None (no master table)</SelectItem>
+                                                {pricingTables.map((t: any, idx: number) => (
+                                                    <SelectItem key={idx} value={String(idx)}>
+                                                        {(t?.name || `Table ${idx + 1}`).toString().trim()}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <span className="text-[10px] text-muted-foreground">This table will appear at the top of the document as the Project Summary</span>
+                                    </div>
+                                )}
+
+                                {/* Page Layout Selector */}
+                                <div className="flex flex-col gap-1.5">
+                                    <Label className="text-xs font-medium text-muted-foreground">Page Layout</Label>
+                                    <Select
+                                        value={(watch("details.pageLayout" as any)) || "portrait-letter"}
+                                        onValueChange={(val) => setValue("details.pageLayout" as any, val, { shouldDirty: true })}
+                                    >
+                                        <SelectTrigger className="w-full bg-card border-border text-sm text-foreground">
+                                            <SelectValue placeholder="Select page layout" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="portrait-letter">Portrait — Letter</SelectItem>
+                                            <SelectItem value="portrait-legal">Portrait — Legal</SelectItem>
+                                            <SelectItem value="portrait-a4">Portrait — A4</SelectItem>
+                                            <SelectItem value="landscape-letter">Landscape — Letter</SelectItem>
+                                            <SelectItem value="landscape-legal">Landscape — Legal</SelectItem>
+                                            <SelectItem value="landscape-a4">Landscape — A4</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <span className="text-[10px] text-muted-foreground">
+                                        {((watch("details.pageLayout" as any)) || "portrait-letter").startsWith("landscape")
+                                            ? "Landscape: pricing sections render two per row"
+                                            : "Standard single-column layout"}
+                                    </span>
                                 </div>
                             </CardContent>
                         </Card>
