@@ -133,7 +133,15 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 		// won't resolve during server-side PDF generation, causing broken logos.
 		const origin = getRequestOrigin(req).replace(/\/+$/, "");
 		const baseHref = `${origin}/`;
-		const html = `<!doctype html><html><head><meta charset="utf-8"/><base href="${baseHref}"/><style>body,.font-sans{font-family:Arial,Helvetica,sans-serif!important;line-height:1.3!important;font-size:10px!important}h1,h2,h3,h4,h5,h6{font-family:Arial,Helvetica,sans-serif!important;line-height:1.3!important}p,div,span,td,th{line-height:1.3!important}.leading-relaxed{line-height:1.35!important}.leading-snug{line-height:1.25!important}</style></head><body>${htmlTemplate}</body></html>`;
+
+		// Build a descriptive document title for PDF metadata (shows in browser tab & Properties)
+		const clientName = ((body.details as any)?.clientName || (body.details as any)?.proposalName || "Proposal").toString()
+			.replace(/[/\\:*?"<>|]/g, "").replace(/\s+/g, "_").trim().slice(0, 50) || "Proposal";
+		const docTypeLabel = documentMode === "LOI" ? "Letter_of_Intent" : documentMode === "PROPOSAL" ? "Proposal" : "Budget_Estimate";
+		const dateStr = new Date().toISOString().slice(0, 10);
+		const pdfTitle = `ANC_${clientName}_${docTypeLabel}_${dateStr}`;
+
+		const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${pdfTitle}</title><base href="${baseHref}"/><style>body,.font-sans{font-family:Arial,Helvetica,sans-serif!important;line-height:1.3!important;font-size:10px!important}h1,h2,h3,h4,h5,h6{font-family:Arial,Helvetica,sans-serif!important;line-height:1.3!important}p,div,span,td,th{line-height:1.3!important}.leading-relaxed{line-height:1.35!important}.leading-snug{line-height:1.25!important}</style></head><body>${htmlTemplate}</body></html>`;
 
 		const puppeteer = (await import("puppeteer-core")).default;
 		const internalUrl = process.env.BROWSERLESS_INTERNAL_URL || "ws://basheer_browserless:3000";
@@ -263,7 +271,7 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 		return new NextResponse(new Blob([pdf as any], { type: "application/pdf" }), {
 			headers: {
 				"Content-Type": "application/pdf",
-				"Content-Disposition": "attachment; filename=proposal.pdf",
+				"Content-Disposition": `inline; filename="${pdfTitle}.pdf"`,
 				"Cache-Control": "no-cache",
 				Pragma: "no-cache",
 			},

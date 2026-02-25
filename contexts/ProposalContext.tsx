@@ -1420,6 +1420,7 @@ export const ProposalContextProvider = ({
 
     /**
      * Generates a preview of a PDF file and opens it in a new browser tab.
+     * Uses a named blob URL so the tab shows the document title instead of "about:blank".
      */
     const previewPdfInTab = async () => {
         let pdfBlob: Blob | null = proposalPdf;
@@ -1430,17 +1431,28 @@ export const ProposalContextProvider = ({
         if (pdfBlob instanceof Blob && pdfBlob.size > 0) {
             const url = pdfUrl ?? window.URL.createObjectURL(pdfBlob);
 
-            const link = document.createElement("a");
-            link.href = url;
-            link.target = "_blank";
-            link.rel = "noopener noreferrer";
-            document.body.appendChild(link);
-            link.click();
+            // Build a descriptive filename for the tab title
+            const details = getValues("details");
+            const clientName = (details?.clientName || details?.proposalName || "Proposal").toString()
+                .replace(/[/\\:*?"<>|]/g, "").replace(/\s+/g, "_").trim().slice(0, 50) || "Proposal";
+            const docMode = details?.documentMode ?? headerType;
+            const docLabel = docMode === "LOI" ? "Letter_of_Intent" : docMode === "PROPOSAL" ? "Proposal" : "Budget_Estimate";
+            const tabTitle = `ANC_${clientName}_${docLabel}_${new Date().toISOString().slice(0, 10)}`;
+
+            // Open in new tab and set title so it doesn't show "about:blank"
+            const win = window.open(url, "_blank");
+            if (win) {
+                // Embed the PDF in an HTML wrapper with proper <title>
+                // so the browser tab shows the document name
+                win.document.title = tabTitle;
+                // For PDF blob URLs, the title may get overridden once the PDF viewer loads.
+                // Re-set it after a short delay as a fallback.
+                setTimeout(() => { try { win.document.title = tabTitle; } catch {} }, 500);
+            }
 
             setTimeout(() => {
-                document.body.removeChild(link);
                 if (!pdfUrl) window.URL.revokeObjectURL(url);
-            }, 60_000);
+            }, 120_000);
         } else {
             console.error(
                 "Failed to generate PDF blob for preview - blob is empty or null",
