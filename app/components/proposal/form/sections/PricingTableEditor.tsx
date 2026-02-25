@@ -4,8 +4,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { ProposalType } from "@/types";
 import { PricingDocument, PricingTable } from "@/types/pricing";
-import { Textarea } from "@/components/ui/textarea";
-import { DollarSign, FileText, ChevronDown, ChevronUp, RotateCcw, EyeOff, Eye, Plus, Trash2 } from "lucide-react";
+import { DollarSign, ChevronDown, ChevronUp, RotateCcw, EyeOff, Eye, Plus, Trash2 } from "lucide-react";
 import { formatCurrency } from "@/lib/helpers";
 
 // ─── Debounced Inputs ────────────────────────────────────────────────────────
@@ -104,39 +103,6 @@ const DebouncedNumberInput = ({
     );
 };
 
-const DebouncedTextarea = ({
-    value,
-    onChange,
-    placeholder,
-    className
-}: {
-    value: string;
-    onChange: (val: string) => void;
-    placeholder: string;
-    className?: string;
-}) => {
-    const [localValue, setLocalValue] = useState(value || "");
-
-    useEffect(() => {
-        setLocalValue(value || "");
-    }, [value]);
-
-    const handleBlur = () => {
-        if (localValue !== value) {
-            onChange(localValue);
-        }
-    };
-
-    return (
-        <Textarea
-            placeholder={placeholder}
-            value={localValue}
-            onChange={(e) => setLocalValue(e.target.value)}
-            onBlur={handleBlur}
-            className={className}
-        />
-    );
-};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -206,16 +172,6 @@ export default function PricingTableEditor() {
         name: "details.priceOverrides" as any,
     }) || {};
 
-    const customProposalNotes: string = useWatch({
-        control,
-        name: "details.customProposalNotes" as any,
-    }) || "";
-
-    const documentMode = useWatch({
-        control,
-        name: "details.documentMode",
-    }) || "BUDGET";
-
     // Don't render if no pricing document
     if (!pricingDocument || !pricingDocument.tables || pricingDocument.tables.length === 0) {
         return null;
@@ -259,10 +215,6 @@ export default function PricingTableEditor() {
         const updated = { ...priceOverrides };
         delete updated[key];
         setValue("details.priceOverrides" as any, updated, { shouldDirty: true });
-    };
-
-    const handleNotesChange = (notes: string) => {
-        setValue("details.customProposalNotes" as any, notes, { shouldDirty: true });
     };
 
     const handleToggleItemInclusion = (tableId: string, itemIndex: number) => {
@@ -465,25 +417,6 @@ export default function PricingTableEditor() {
                 <Plus className="w-4 h-4" />
                 Add Section
             </button>
-
-            {/* ── Custom Proposal Notes ── */}
-            <div className="px-4 py-3 rounded-lg border border-border bg-card/50 space-y-2">
-                <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-xs font-medium text-muted-foreground">Custom Proposal Notes</span>
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                    {documentMode === "LOI"
-                        ? "Appears in the 'Additional Notes' section of the LOI."
-                        : "Appears after the pricing breakdown in the PDF."}
-                </p>
-                <DebouncedTextarea
-                    placeholder="Enter any additional notes, terms, or clarifications..."
-                    value={customProposalNotes}
-                    onChange={handleNotesChange}
-                    className="min-h-[80px] text-sm bg-background border-border resize-y"
-                />
-            </div>
 
             {/* ── Currency Info ── */}
             {pricingDocument.currency && (
