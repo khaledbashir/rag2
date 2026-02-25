@@ -95,21 +95,23 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
         arr.findIndex((s: any) => s.__key === screen.__key) === idx
     );
 
-    // Name collision handling: same name with different specs -> append numbering
+    // Name collision handling: same name with different specs -> append differentiating spec
     const nameCounts: Record<string, number> = {};
-    const normalizedNames = dedupedScreens.map((screen: any) => {
+    dedupedScreens.forEach((screen: any) => {
         const base = screen.__cleanName;
         nameCounts[base] = (nameCounts[base] || 0) + 1;
-        return base;
     });
     const duplicates = new Set(Object.entries(nameCounts).filter(([, count]) => count > 1).map(([name]) => name));
-    const duplicateSeen: Record<string, number> = {};
 
     const numberedScreens = dedupedScreens.map((screen: any) => {
         const base = screen.__cleanName;
         if (!duplicates.has(base)) return { ...screen, __displayName: base };
-        duplicateSeen[base] = (duplicateSeen[base] || 0) + 1;
-        return { ...screen, __displayName: `${base} (${duplicateSeen[base]})` };
+        // Append pitch to differentiate (e.g. "Display Name — 8.33mm")
+        const pitch = normalizePitch(screen?.pitchMm ?? screen?.pixelPitch ?? 0);
+        if (pitch > 0) {
+            return { ...screen, __displayName: `${base} — ${formatPitchMm(pitch)}mm` };
+        }
+        return { ...screen, __displayName: base };
     });
 
     // Only show real screens with actual spec data — synthesized rows from pricing
@@ -147,12 +149,12 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
                             </>
                         ) : (
                             <>
-                                <col style={{ width: "40%" }} />
+                                <col style={{ width: hasAnyBrightness ? "34%" : "38%" }} />
                                 <col style={{ width: "14%" }} />
-                                <col style={{ width: "8%" }} />
+                                <col style={{ width: "12%" }} />
                                 <col style={{ width: "16%" }} />
                                 {hasAnyBrightness && <col style={{ width: "12%" }} />}
-                                <col style={{ width: hasAnyBrightness ? "10%" : "12%" }} />
+                                <col style={{ width: hasAnyBrightness ? "12%" : "8%" }} />
                             </>
                         )}
                     </colgroup>
