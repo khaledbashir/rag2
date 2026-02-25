@@ -415,6 +415,16 @@ const Step4Export = () => {
         ? !allScreensValid || hasOptionPlaceholder || !internalAudit || isGatekeeperLocked
         : !allScreensValid || isGatekeeperLocked;
     const pricingTables = useMemo(() => (((pricingDocument as any)?.tables || []) as any[]), [pricingDocument]);
+
+    // Detect if any responsibility matrix data actually exists (Mirror or Intelligence)
+    const hasRespMatrixData = useMemo(() => {
+        const mirrorMatrix = (pricingDocument as any)?.respMatrix;
+        if (mirrorMatrix?.categories?.some((c: any) => c.items?.length > 0)) return true;
+        const intelMatrix = watch("details.responsibilityMatrix" as any);
+        if (intelMatrix?.categories?.some((c: any) => c.items?.length > 0)) return true;
+        return false;
+    }, [pricingDocument, watch]);
+
     const tableSplitThreshold = Number(templateConfig?.tableSplitThreshold ?? visualDefaults.tableSplitThreshold);
     const pricingSplitRisk = useMemo(() => {
         if (pricingTables.length === 0) return null;
@@ -1111,10 +1121,12 @@ const Step4Export = () => {
                                             </div>
                                             <div className="flex items-start justify-between py-3 gap-4">
                                                 <div className="flex flex-col min-w-0">
-                                                    <Label htmlFor="showRespMatrix-budget" className="text-sm font-semibold text-foreground block">Responsibility Matrix</Label>
-                                                    <p className="text-[11px] text-muted-foreground leading-relaxed">Include responsibility matrix table</p>
+                                                    <Label htmlFor="showRespMatrix-budget" className={cn("text-sm font-semibold block", hasRespMatrixData ? "text-foreground" : "text-muted-foreground")}>Responsibility Matrix</Label>
+                                                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                                        {hasRespMatrixData ? "Include responsibility matrix table" : "No responsibility matrix found in imported file"}
+                                                    </p>
                                                 </div>
-                                                <Switch id="showRespMatrix-budget" checked={watch("details.showResponsibilityMatrix" as any) ?? true} onCheckedChange={(checked) => setValue("details.showResponsibilityMatrix" as any, checked)} className="data-[state=checked]:bg-brand-blue shrink-0 mt-0.5" />
+                                                <Switch id="showRespMatrix-budget" disabled={!hasRespMatrixData} checked={hasRespMatrixData ? (watch("details.showResponsibilityMatrix" as any) ?? true) : false} onCheckedChange={(checked) => setValue("details.showResponsibilityMatrix" as any, checked)} className="data-[state=checked]:bg-brand-blue shrink-0 mt-0.5" />
                                             </div>
                                         </TabsContent>
 
@@ -1180,10 +1192,12 @@ const Step4Export = () => {
                                             </div>
                                             <div className="flex items-center justify-between py-3">
                                                 <div className="flex flex-col">
-                                                    <Label htmlFor="showRespMatrix-proposal" className="text-sm font-semibold text-foreground">Responsibility Matrix</Label>
-                                                    <p className="text-[11px] text-muted-foreground">Include responsibility matrix table</p>
+                                                    <Label htmlFor="showRespMatrix-proposal" className={cn("text-sm font-semibold", hasRespMatrixData ? "text-foreground" : "text-muted-foreground")}>Responsibility Matrix</Label>
+                                                    <p className="text-[11px] text-muted-foreground">
+                                                        {hasRespMatrixData ? "Include responsibility matrix table" : "No responsibility matrix found in imported file"}
+                                                    </p>
                                                 </div>
-                                                <Switch id="showRespMatrix-proposal" checked={watch("details.showResponsibilityMatrix" as any) ?? true} onCheckedChange={(checked) => setValue("details.showResponsibilityMatrix" as any, checked)} className="data-[state=checked]:bg-brand-blue" />
+                                                <Switch id="showRespMatrix-proposal" disabled={!hasRespMatrixData} checked={hasRespMatrixData ? (watch("details.showResponsibilityMatrix" as any) ?? true) : false} onCheckedChange={(checked) => setValue("details.showResponsibilityMatrix" as any, checked)} className="data-[state=checked]:bg-brand-blue" />
                                             </div>
                                         </TabsContent>
 
@@ -1249,10 +1263,12 @@ const Step4Export = () => {
                                             </div>
                                             <div className="flex items-center justify-between py-3 border-b border-border/30">
                                                 <div className="flex flex-col">
-                                                    <Label htmlFor="showRespMatrix-loi" className="text-sm font-semibold text-foreground">Responsibility Matrix</Label>
-                                                    <p className="text-[11px] text-muted-foreground">Include responsibility matrix table</p>
+                                                    <Label htmlFor="showRespMatrix-loi" className={cn("text-sm font-semibold", hasRespMatrixData ? "text-foreground" : "text-muted-foreground")}>Responsibility Matrix</Label>
+                                                    <p className="text-[11px] text-muted-foreground">
+                                                        {hasRespMatrixData ? "Include responsibility matrix table" : "No responsibility matrix found in imported file"}
+                                                    </p>
                                                 </div>
-                                                <Switch id="showRespMatrix-loi" checked={watch("details.showResponsibilityMatrix" as any) ?? true} onCheckedChange={(checked) => setValue("details.showResponsibilityMatrix" as any, checked)} className="data-[state=checked]:bg-brand-blue" />
+                                                <Switch id="showRespMatrix-loi" disabled={!hasRespMatrixData} checked={hasRespMatrixData ? (watch("details.showResponsibilityMatrix" as any) ?? true) : false} onCheckedChange={(checked) => setValue("details.showResponsibilityMatrix" as any, checked)} className="data-[state=checked]:bg-brand-blue" />
                                             </div>
                                             <div className="flex items-center justify-between py-3">
                                                 <div className="flex flex-col">
