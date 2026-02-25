@@ -32,6 +32,35 @@ function getRequestOrigin(req: NextRequest): string {
 	return req.nextUrl.origin;
 }
 
+/**
+ * Inject PDF viewer preferences so the document opens in Single Page / Fit Page mode.
+ * Patches the PDF catalog dictionary with /PageLayout /SinglePage and /PageMode /UseNone.
+ * Uses Buffer.indexOf to find the catalog safely without corrupting binary streams.
+ */
+function setPdfViewerPreferences(pdfBytes: Uint8Array): Uint8Array {
+	const buf = Buffer.from(pdfBytes);
+	// Find "/Type /Catalog" in the PDF — this marks the catalog dictionary
+	const catalogMarker = Buffer.from("/Type /Catalog");
+	const catalogPos = buf.indexOf(catalogMarker);
+	if (catalogPos === -1) return pdfBytes;
+
+	// Find the closing ">>" of the catalog dictionary (search forward from the marker)
+	const closingMarker = Buffer.from(">>");
+	const closePos = buf.indexOf(closingMarker, catalogPos + catalogMarker.length);
+	if (closePos === -1) return pdfBytes;
+
+	// Check what's already in the catalog (scan the region between obj start and >>)
+	const catalogRegion = buf.slice(catalogPos, closePos).toString("ascii");
+	const additions: string[] = [];
+	if (!catalogRegion.includes("/PageLayout")) additions.push("/PageLayout /SinglePage");
+	if (!catalogRegion.includes("/PageMode")) additions.push("/PageMode /UseNone");
+	if (additions.length === 0) return pdfBytes;
+
+	// Splice the patch bytes in right before the closing ">>"
+	const patch = Buffer.from(" " + additions.join(" ") + " ");
+	return Buffer.concat([buf.slice(0, closePos), patch, buf.slice(closePos)]);
+}
+
 export async function generateProposalPdfServiceV2(req: NextRequest) {
 	const body: ProposalType = await req.json();
 	let browser: any;
@@ -244,7 +273,7 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 		} catch {
 		}
 
-		const pdf: Uint8Array = await page.pdf({
+		const rawPdf: Uint8Array = await page.pdf({
 			width: layout.width,
 			height: layout.height,
 			landscape: isLandscapeLayout,
@@ -267,6 +296,9 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 				right: "20px",
 			},
 		});
+
+		// Post-process: inject PDF viewer preferences (Single Page layout, Fit Page zoom)
+		const pdf = setPdfViewerPreferences(rawPdf);
 
 		return new NextResponse(new Blob([pdf as any], { type: "application/pdf" }), {
 			headers: {
