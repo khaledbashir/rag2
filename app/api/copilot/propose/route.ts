@@ -515,6 +515,18 @@ async function llmGuidedFlow(
             }
         }
 
+        // ---- RESPONSE EXTRACTION FALLBACK ----
+        // If the LLM generated project details in its reply (e.g. "Indiana Fever Remix,
+        // Gainbridge Fieldhouse") but didn't emit ACTION blocks, extract and apply them.
+        // Only fires when screenActions AND actions are both empty (LLM just chatted).
+        if (screenActions.length === 0 && actions.length === 0) {
+            const extracted = extractFieldsFromReply(reply, collected);
+            if (extracted.length > 0) {
+                screenActions = extracted;
+                console.log(`[Copilot/Propose] Response extraction generated ${extracted.length} screenActions from LLM reply`);
+            }
+        }
+
         // Clean the reply — remove the JSON block from what the user sees
         let reply = content.replace(/```json[\s\S]*?```/, "").trim();
         if (!reply) reply = content.split("{")[0].trim() || "Got it.";
@@ -827,6 +839,82 @@ function detectFieldChangeIntent(message: string, screenContext?: any): any[] {
     if (actions.length > 0) {
         const lastSetField = [...actions].reverse().find(a => a.action === "set_field" && typeof a.value === "string");
         if (lastSetField) _lastIntentValue = lastSetField.value;
+    }
+
+    return actions;
+}
+
+// ============================================================================
+// RESPONSE EXTRACTION — Parse project details from LLM's creative reply
+// ============================================================================
+
+/**
+ * When the LLM generates project details in its reply (e.g. venue name, address)
+ * but didn't emit ACTION blocks, extract fields and generate screenActions.
+ * Only extracts high-confidence matches to avoid false positives.
+ */
+function extractFieldsFromReply(reply: string, collected: CollectedData): any[] {
+    const actions: any[] = [];
+    if (!reply || reply.length < 10) return actions;
+
+    // Skip if the reply already contains ACTION blocks (they'll be parsed elsewhere)
+    if (reply.includes(":::ACTION:::")) return actions;
+
+    // Pattern: "Client Name — Venue Name" or "Project: X" or structured details
+    // Look for common LLM patterns when generating project info
+
+    // 1. Extract venue/arena/stadium/fieldhouse names
+    const venuePatterns = [
+        /(?:venue|arena|stadium|fieldhouse|center|coliseum|dome|park|field)\s*(?:—|:|\|)\s*(.+?)(?:\n|$|,)/i,
+        /(?:that's|that is|located at|at the)\s+(?:the\s+)?([A-Z][A-Za-z\s]+(?:Arena|Stadium|Fieldhouse|Center|Coliseum|Dome|Park|Field))/,
+        /([A-Z][A-Za-z\s]+(?:Arena|Stadium|Fieldhouse|Center|Coliseum|Dome|Park|Field))/,
+    ];
+    for (const pattern of venuePatterns) {
+        const match = reply.match(pattern);
+        if (match?.[1]) {
+            const venue = match[1].trim().replace(/[.!?,;]+$/, "");
+            if (venue.length > 3 && venue.length < 80) {
+                actions.push({ action: "set_field", field: "venue", value: venue });
+                break;
+            }
+        }
+    }
+
+    // 2. Extract street address (number + street name pattern)
+    const addressMatch = reply.match(/(\d+\s+[A-Z][A-Za-z]+(?:\s+[A-Za-z]+)*\s+(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Way|Lane|Ln|Pl|Place|Pkwy|Parkway))/);
+    if (addressMatch?.[1]) {
+        actions.push({ action: "set_field", field: "clientAddress", value: addressMatch[1].trim() });
+    }
+
+    // 3. Extract city + state + zip: "City, ST 12345"
+    const cityStateZipMatch = reply.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z]{2})\s+(\d{5})/);
+    if (cityStateZipMatch) {
+        actions.push({ action: "set_field", field: "clientCity", value: cityStateZipMatch[1].trim() });
+        actions.push({ action: "set_field", field: "clientState", value: cityStateZipMatch[2] });
+        actions.push({ action: "set_field", field: "clientZip", value: cityStateZipMatch[3] });
+    } else {
+        // Just city, state: "Indianapolis, IN"
+        const cityStateMatch = reply.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z]{2})(?:\s|$|[.,])/);
+        if (cityStateMatch) {
+            actions.push({ action: "set_field", field: "clientCity", value: cityStateMatch[1].trim() });
+            actions.push({ action: "set_field", field: "clientState", value: cityStateMatch[2] });
+        }
+    }
+
+    // 4. Extract project/team name if mentioned with pattern
+    const projectNamePatterns = [
+        /(?:project|proposal)\s*(?:name)?(?:—|:|\|)\s*(.+?)(?:\n|$)/i,
+        /(?:for the|for)\s+(?:the\s+)?([A-Z][A-Za-z\s]+(?:Fever|Lakers|Bulls|Celtics|49ers|Bears|Chiefs|Eagles|Cowboys|Patriots|Broncos|Raiders|Steelers|Pack|Lions|Dolphins|Jets|Giants|Rams|Chargers|Falcons|Saints|Panthers|Buccaneers|Vikings|Commanders|Bengals|Browns|Ravens|Titans|Colts|Jaguars|Texans|Seahawks|Cardinals|49ers|Nuggets|Heat|Nets|Knicks|Warriors|Suns|Jazz|Thunder|Pelicans|Grizzlies|Spurs|Mavericks|Rockets|Blazers|Kings|Timberwolves|Bucks|Cavaliers|Pistons|Pacers|Hawks|Hornets|Magic|Wizards|Raptors))/i,
+    ];
+    for (const pattern of projectNamePatterns) {
+        const match = reply.match(pattern);
+        if (match?.[1]) {
+            const name = match[1].trim().replace(/[.!?,;]+$/, "");
+            if (name.length > 2 && name.length < 60 && !collected.clientName) {
+                actions.push({ action: "set_field", field: "clientName", value: name });
+                break;
+            }
+        }
     }
 
     return actions;

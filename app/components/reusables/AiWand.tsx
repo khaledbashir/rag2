@@ -93,7 +93,7 @@ export default function AiWand({ fieldName, searchQuery, targetFields, proposalI
         setPhase("searching");
         setLastQuery(String(query));
         const controller = new AbortController();
-        let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => controller.abort(), 25000);
+        let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => controller.abort(), 45000);
         try {
             const res = await fetch("/api/agent/enrich", {
                 method: "POST",

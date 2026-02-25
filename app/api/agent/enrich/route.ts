@@ -74,6 +74,29 @@ export async function POST(req: NextRequest) {
 
 
 
+        // ---- FAST PATH: Serper web search first (< 2 seconds) ----
+        // This is the primary path. LLM @agent mode is slow (15-30s+) and often times out.
+        console.log("[Enrich] Trying fast Serper search first for:", normalizedQuery);
+        const serperResults = await searchVenueAddress(normalizedQuery, fields);
+        if (serperResults && Object.keys(serperResults).length > 0) {
+            const candidate = {
+                label: normalizedQuery,
+                confidence: 0.85,
+                notes: "Found via web search",
+                results: serperResults,
+            };
+            console.log("[Enrich] Serper returned results:", Object.keys(serperResults).join(", "));
+            return NextResponse.json({
+                ok: true,
+                correctedQuery: normalizedQuery,
+                candidates: [candidate],
+                results: serperResults,
+            });
+        }
+
+        // ---- SLOW PATH: LLM @agent mode (only if Serper fails or no API key) ----
+        console.log("[Enrich] Serper returned nothing, falling back to LLM agent for:", normalizedQuery);
+
         const keysJson = JSON.stringify(fields);
 
         const prompt = `The user provided a venue/client query that may contain typos: "${query}".
@@ -113,23 +136,6 @@ Search target: "${normalizedQuery}"`;
 
         try {
             if (!jsonText) {
-                // LLM failed - try Serper web search fallback
-                console.log("[Enrich] LLM returned no JSON, trying Serper fallback for:", normalizedQuery);
-                const serperResults = await searchVenueAddress(normalizedQuery, fields);
-                if (serperResults && Object.keys(serperResults).length > 0) {
-                    const candidate = {
-                        label: normalizedQuery,
-                        confidence: 0.75,
-                        notes: "Found via web search",
-                        results: serperResults,
-                    };
-                    return NextResponse.json({
-                        ok: true,
-                        correctedQuery: normalizedQuery,
-                        candidates: [candidate],
-                        results: serperResults,
-                    });
-                }
                 return NextResponse.json({ ok: false, error: "Could not find venue details" }, { status: 404 });
             }
 

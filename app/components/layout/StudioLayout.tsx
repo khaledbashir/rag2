@@ -54,7 +54,7 @@ export function StudioLayout({
     ];
 
     return (
-        <div className="h-screen w-screen overflow-hidden flex flex-col bg-background text-foreground">
+        <div className="proposal-layout h-screen w-screen overflow-hidden flex flex-col bg-background text-foreground transition-[margin-right] duration-300 ease-out">
             {/* Top Nav - Branding & Wizard Progress */}
             <header className="h-20 shrink-0 border-b border-border bg-background/80 backdrop-blur-md flex flex-col z-50">
                 {header}

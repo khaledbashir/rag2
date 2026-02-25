@@ -224,7 +224,16 @@ export default function CopilotPanel({
     onOpenChange,
     onNavigateStep,
 }: CopilotPanelProps) {
-    const [isOpen, setIsOpen] = useState(false);
+    const [isOpen, _setIsOpen] = useState(false);
+    // Sync open state to body class so layout shrinks via CSS (globals.css: body.copilot-open)
+    const setIsOpen = React.useCallback((open: boolean) => {
+        _setIsOpen(open);
+        if (typeof document !== "undefined") {
+            document.body.classList.toggle("copilot-open", open);
+        }
+    }, []);
+    // Clean up body class on unmount
+    React.useEffect(() => () => { document.body.classList.remove("copilot-open"); }, []);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [chatConversations, setChatConversations] = useState<ChatConversation[]>([]);
     const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
