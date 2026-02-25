@@ -310,14 +310,15 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     };
 
     // Notes Section - Universal (available for all document types)
+    // Combines customProposalNotes (primary notes field) — renders after pricing, before payment terms
     const NotesSection = () => {
-        const raw = (details?.additionalNotes || "").toString().trim();
-        if (!raw) return null;
+        const notesText = ((details as any)?.customProposalNotes || "").toString().trim();
+        if (!notesText) return null;
         return (
             <div data-preview-section="notes" className="mt-2">
                 <SectionHeader title="Notes" />
                 <div className="rounded-lg p-3 text-[10px] leading-snug whitespace-pre-wrap" style={{ background: colors.surface, color: colors.text }}>
-                    {raw}
+                    {notesText}
                 </div>
             </div>
         );
@@ -335,11 +336,32 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     };
 
     // Signature Block - delegates to PdfSignatureBlock sub-component
+    // Build receiver address for signature block (matches reference: "250 N Hartford Ave, Columbus, OH 43222")
+    const receiverSignatureAddress = (() => {
+        const street = (receiver?.address || "").trim();
+        const city = (receiver?.city || "").trim();
+        const zip = (receiver?.zipCode || "").trim();
+        const cityStateZip = [city, zip].filter(Boolean).join(" ");
+        return [street, cityStateZip].filter(Boolean).join("\n");
+    })();
+
+    // LOI: loiHeaderText is the legal paragraph that goes BEFORE signature lines (not in intro)
+    const resolvedSignatureText = (() => {
+        const explicit = ((details as any)?.signatureBlockText || "").trim();
+        if (explicit) return explicit;
+        if (isLOI) {
+            const loiLegal = ((details as any)?.loiHeaderText || "").trim();
+            if (loiLegal) return loiLegal;
+        }
+        return "";
+    })();
+
     const SignatureBlock = () => (
         <PdfSignatureBlock
             colors={colors}
-            receiverName={receiver?.name || "Purchaser"}
-            signatureBlockText={(details as any)?.signatureBlockText}
+            receiverName={isLOI ? purchaserLegalName : (receiver?.name || "Purchaser")}
+            receiverAddress={receiverSignatureAddress}
+            signatureBlockText={resolvedSignatureText}
         />
     );
 
@@ -468,13 +490,11 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
             {showIntroText && (
                 <div data-preview-section="intro" className="break-inside-avoid" style={{ marginBottom: `${introToBodyGap}px`, paddingLeft: `${contentPaddingX}px`, paddingRight: `${contentPaddingX}px` }}>
                     <div className="text-[10px] leading-snug" style={{ color: colors.textMuted }}>
-                        {(shouldRenderLegalIntro && (details as any)?.loiHeaderText?.trim()) ? (
-                            <p className="text-justify whitespace-pre-wrap">{(details as any).loiHeaderText.trim()}</p>
-                        ) : customIntroText?.trim() ? (
+                        {customIntroText?.trim() ? (
                             <p className="text-justify whitespace-pre-wrap">{customIntroText.trim()}</p>
-                        ) : shouldRenderLegalIntro ? (
+                        ) : isLOI ? (
                             <p className="text-justify">
-                                This Sales Quotation will set forth the terms by which <strong style={{ color: colors.text }}>{purchaserLegalName}</strong> ("Purchaser"){purchaserAddress ? ` located at ${purchaserAddress}` : ""} and <strong style={{ color: colors.text }}>ANC Sports Enterprises, LLC</strong> ("ANC") located at 2 Manhattanville Road, Suite 402, Purchase, NY 10577 (collectively, the "Parties") agree that ANC will provide following LED Display and services (the "Display System") described below for the <strong style={{ color: colors.text }}>{details?.proposalName || (details as any)?.clientName || receiver?.name || "project"}</strong>.
+                                This Sales Quotation will set forth the terms by which <strong style={{ color: colors.text }}>{purchaserLegalName}</strong> (&quot;Purchaser&quot;){purchaserAddress ? ` located at ${purchaserAddress}` : ""} and <strong style={{ color: colors.text }}>ANC Sports Enterprises, LLC</strong> (&quot;ANC&quot;) located at 2 Manhattanville Road, Suite 402, Purchase, NY 10577 (collectively, the &quot;Parties&quot;) agree that ANC will provide following LED Display and services (the &quot;Display System&quot;) described below for the <strong style={{ color: colors.text }}>{details?.proposalName || (details as any)?.clientName || receiver?.name || "project"}</strong>.
                             </p>
                         ) : documentMode === "PROPOSAL" ? (
                             <p>
@@ -489,14 +509,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                 </div>
             )}
 
-            {/* Prompt 58: Custom Proposal Notes (Fix 3) */}
-            {((details as any)?.customProposalNotes) && (
-                <div data-preview-section="intro" className="break-inside-avoid" style={{ marginBottom: `${introToBodyGap}px`, paddingLeft: `${contentPaddingX}px`, paddingRight: `${contentPaddingX}px` }}>
-                    <div className="text-[10px] leading-snug whitespace-pre-wrap" style={{ color: colors.textMuted }}>
-                        {(details as any).customProposalNotes}
-                    </div>
-                </div>
-            )}
+            {/* Prompt 58: Custom Proposal Notes — now renders in NotesSection (after pricing, before payment) */}
 
             {/* ════════════════════════════════════════════════════════════
                 LOI MODE — Natalia's required page structure (Prompt 41)
@@ -527,17 +540,17 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                             </div>
                         )}
 
-                        {/* ═══ LEGAL (Page 2): Payment Terms + Signatures at top ═══ */}
+                        {/* ═══ LEGAL (Page 2): Notes → Payment Terms → Signatures ═══ */}
                         <PageBreak />
                         <ContinuationPageHeader />
-                        {shouldRenderPaymentTerms && (
-                            <div className="px-6">
-                                <PaymentTermsSection />
-                            </div>
-                        )}
                         {showNotes && (
                             <div className="px-6">
                                 <NotesSection />
+                            </div>
+                        )}
+                        {shouldRenderPaymentTerms && (
+                            <div className="px-6">
+                                <PaymentTermsSection />
                             </div>
                         )}
                         {shouldRenderSignatureBlock && (
@@ -601,15 +614,15 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                             </div>
                         )}
 
-                        {/* Then: Payment Terms + Notes + Signature Block */}
-                        {shouldRenderPaymentTerms && (
-                            <div className="px-6">
-                                <PaymentTermsSection />
-                            </div>
-                        )}
+                        {/* Then: Notes → Payment Terms → Signature Block */}
                         {showNotes && (
                             <div className="px-6">
                                 <NotesSection />
+                            </div>
+                        )}
+                        {shouldRenderPaymentTerms && (
+                            <div className="px-6">
+                                <PaymentTermsSection />
                             </div>
                         )}
                         {shouldRenderSignatureBlock && (

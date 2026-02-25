@@ -333,11 +333,11 @@ If, for any reason, Purchaser terminates this Agreement prior to the completion 
 
                             {/* LOI Tab */}
                             <TabsContent value="loi" className="space-y-4 mt-4">
-                                {/* LOI Header Paragraph - at TOP of LOI tab only */}
+                                {/* LOI Legal Paragraph - renders BEFORE signature lines */}
                                 <div className="space-y-1.5">
                                     <div className="flex items-center justify-between">
                                         <Label className="text-xs font-medium text-muted-foreground">
-                                            LOI Header Paragraph
+                                            Legal Paragraph (Before Signatures)
                                         </Label>
                                         {!loiHeaderText && (
                                             <button
@@ -350,7 +350,7 @@ If, for any reason, Purchaser terminates this Agreement prior to the completion 
                                         )}
                                     </div>
                                     <p className="text-[11px] text-muted-foreground">
-                                        Opening legal paragraph that appears at the top of the LOI.
+                                        Legal paragraph that appears before the signature lines. Leave blank for default.
                                     </p>
                                     <Textarea
                                         placeholder="This Sales Quotation will set forth the terms by which..."
