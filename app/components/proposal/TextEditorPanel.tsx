@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { FileText, ChevronRight, DollarSign, MessageSquare } from "lucide-react";
+import { FileText, ChevronRight, DollarSign, MessageSquare, Scale } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -28,9 +28,10 @@ export function TextEditorPanel() {
     const paymentTerms = watch("details.paymentTerms") || "";
     const additionalNotes = watch("details.customProposalNotes") || "";
     const purchaserLegalName = watch("details.purchaserLegalName") || "";
+    const signatureLegalText = watch("details.signatureBlockText") || "";
     const documentMode = watch("details.documentMode") || "BUDGET";
 
-    const hasContent = introText.length > 0 || paymentTerms.length > 0 || additionalNotes.length > 0 || purchaserLegalName.length > 0;
+    const hasContent = introText.length > 0 || paymentTerms.length > 0 || additionalNotes.length > 0 || purchaserLegalName.length > 0 || signatureLegalText.length > 0;
 
     return (
         <Card className="bg-card/40 border border-border/60">
@@ -116,6 +117,26 @@ export function TextEditorPanel() {
                         />
                         <p className="text-[10px] text-muted-foreground">
                             Optional field. Only renders in PDF if you type text. Use for project-specific constraints.
+                        </p>
+                    </div>
+
+                    {/* Signature Legal Text (renders before signature lines in PDF) */}
+                    <div className="space-y-2">
+                        <Label htmlFor="signatureBlockText" className="text-xs font-semibold text-foreground flex items-center gap-2">
+                            <Scale className="w-3.5 h-3.5 text-violet-500" />
+                            Signature Legal Text
+                            <span className="text-[10px] text-muted-foreground font-normal">
+                                ({signatureLegalText.length} characters)
+                            </span>
+                        </Label>
+                        <Textarea
+                            id="signatureBlockText"
+                            {...register("details.signatureBlockText")}
+                            placeholder="Please sign below to indicate Purchaser's agreement... (Leave blank for default)"
+                            className="min-h-[80px] text-xs resize-y"
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                            Legal paragraph that appears right before the signature lines. Leave blank for default.
                         </p>
                     </div>
 
