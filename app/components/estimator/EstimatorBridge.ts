@@ -783,7 +783,7 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
         rows.push({ cells: [{ value: "" }], isSeparator: true });
         rows.push({
             cells: [
-                { value: "TOTAL", bold: true },
+                { value: "TOTAL COST", bold: true },
                 { value: totalStruct, currency: true, align: "right", bold: true },
                 { value: totalInstall, currency: true, align: "right", bold: true },
                 { value: totalElec, currency: true, align: "right", bold: true },
@@ -794,6 +794,66 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
             ],
             isTotal: true,
         });
+
+        // ── Cost vs Sale Price Summary ──
+        const svcMarginPct = (answers.servicesMargin || answers.defaultMargin || 30) / 100;
+        const totalSellPrice = totalAll / (1 - svcMarginPct);
+        const marginDollars = totalSellPrice - totalAll;
+
+        rows.push({ cells: [{ value: "" }], isSeparator: true });
+        rows.push({
+            cells: [{ value: "FINANCIAL SUMMARY", bold: true, header: true, span: 8, align: "center" }],
+            isHeader: true,
+        });
+        rows.push({ cells: [{ value: "" }], isSeparator: true });
+        rows.push({
+            cells: [
+                { value: "Total Installation Cost", bold: true, span: 7 },
+                { value: totalAll, currency: true, align: "right", bold: true },
+            ],
+        });
+        rows.push({
+            cells: [
+                { value: `Installation Services Margin (${(svcMarginPct * 100).toFixed(0)}%)`, span: 7 },
+                { value: marginDollars, currency: true, align: "right" },
+            ],
+        });
+        rows.push({
+            cells: [
+                { value: "Total Sale Price", bold: true, span: 7 },
+                { value: totalSellPrice, currency: true, align: "right", bold: true },
+            ],
+            isTotal: true,
+        });
+
+        // ── Rate Basis Detail ──
+        const unionLabel = answers.isUnion ? " (union +15%)" : "";
+        rows.push({ cells: [{ value: "" }], isSeparator: true });
+        rows.push({
+            cells: [{ value: "RATE BASIS", bold: true, header: true, span: 8, align: "center" }],
+            isHeader: true,
+        });
+        rows.push({ cells: [{ value: "" }], isSeparator: true });
+        rows.push({ cells: [
+            { value: "Structural", bold: true, span: 4 },
+            { value: `% of hardware cost${unionLabel}`, span: 4 },
+        ]});
+        rows.push({ cells: [
+            { value: "LED Install", bold: true, span: 4 },
+            { value: `Steel fab rate + panel install rate per sqft${unionLabel}`, span: 4 },
+        ]});
+        rows.push({ cells: [
+            { value: "Electrical", bold: true, span: 4 },
+            { value: `Materials per sqft × power distance multiplier${unionLabel}`, span: 4 },
+        ]});
+        rows.push({ cells: [
+            { value: "PM / Engineering", bold: true, span: 4 },
+            { value: `Base fee × complexity multiplier (${answers.pmComplexity || "standard"})`, span: 4 },
+        ]});
+        rows.push({ cells: [
+            { value: "Shipping", bold: true, span: 4 },
+            { value: "Estimated weight × $0.50/lb", span: 4 },
+        ]});
     }
 
     return {
