@@ -72,7 +72,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const pricingDocument = (details as any)?.pricingDocument || (data as any)?.pricingDocument;
     const mirrorMode =
         (details as any)?.mirrorMode === true || ((pricingDocument?.tables || []).length ?? 0) > 0;
-    const currency: "CAD" | "USD" = pricingDocument?.currency || "USD";
+    const currency: "CAD" | "USD" | "GBP" | "EUR" = pricingDocument?.currency || "USD";
 
     // Prompt 51: Master table index — designates which pricing table is the "Project Grand Total"
     // -1 = user explicitly chose "None (no master table)" — NEVER override this.

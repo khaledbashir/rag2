@@ -129,6 +129,7 @@ export function parseAllRows(
     const isTax = labelNorm === "tax" || labelNorm.startsWith("tax ")
       || labelNorm === "hst" || labelNorm.startsWith("hst ")
       || labelNorm === "gst" || labelNorm.startsWith("gst ")
+      || labelNorm === "vat" || labelNorm.startsWith("vat ")
       || labelNorm === "sales tax" || labelNorm.startsWith("sales tax ");
     const isBond = labelNorm === "bond" || labelNorm === "bond cost" || labelNorm === "performance bond";
     const isGrandTotal = labelNorm.includes("grand total") || labelNorm.includes("sub total (bid form)") || labelNorm === "total" || labelNorm === "project total";
@@ -194,7 +195,7 @@ export function parseNumber(value: any): number {
   if (value === null || value === undefined) return NaN;
   if (typeof value === "number") return isNaN(value) ? NaN : value;
   try {
-    const str = String(value).replace(/[$,\s]/g, "").replace(/[()]/g, "-").trim();
+    const str = String(value).replace(/[$£€C,\s]/g, "").replace(/[()]/g, "-").trim();
     if (!str || str === "-" || str.toUpperCase() === "N/A" || str.toUpperCase() === "INCLUDED") return NaN;
     const result = parseFloat(str);
     return isFinite(result) ? result : NaN;

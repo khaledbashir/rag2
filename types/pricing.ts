@@ -55,7 +55,7 @@ export interface PricingTable {
   name: string;
 
   /** Currency code detected from sheet name or content */
-  currency: "CAD" | "USD";
+  currency: "CAD" | "USD" | "GBP" | "EUR";
 
   /** All line items in this pricing table */
   items: PricingLineItem[];
@@ -93,7 +93,7 @@ export interface PricingDocument {
   sourceSheet: string;
 
   /** Currency detected from sheet name or content */
-  currency: "CAD" | "USD";
+  currency: "CAD" | "USD" | "GBP" | "EUR";
 
   /** Combined grand total across all tables */
   documentTotal: number;
@@ -178,8 +178,10 @@ export function createTableId(name: string, index: number): string {
 /**
  * Helper to detect currency from sheet name or content
  */
-export function detectCurrency(sheetName: string, content?: string): "CAD" | "USD" {
+export function detectCurrency(sheetName: string, content?: string): "CAD" | "USD" | "GBP" | "EUR" {
   const text = `${sheetName} ${content || ""}`.toUpperCase();
+  if (text.includes("GBP") || text.includes("BRITISH") || text.includes("POUND") || text.includes("£")) return "GBP";
+  if (text.includes("EUR") || text.includes("EURO") || text.includes("€")) return "EUR";
   if (text.includes("CAD") || text.includes("CANADIAN")) return "CAD";
   if (text.includes("USD") || text.includes("US DOLLAR")) return "USD";
   // Default to USD if not specified
@@ -189,8 +191,8 @@ export function detectCurrency(sheetName: string, content?: string): "CAD" | "US
 /**
  * Helper to format currency for display
  */
-export function formatPricingCurrency(amount: number, currency: "CAD" | "USD"): string {
-  const locale = currency === "CAD" ? "en-CA" : "en-US";
+export function formatPricingCurrency(amount: number, currency: "CAD" | "USD" | "GBP" | "EUR"): string {
+  const locale = currency === "CAD" ? "en-CA" : currency === "GBP" ? "en-GB" : currency === "EUR" ? "de-DE" : "en-US";
   const roundedAmount = Math.round(amount);
   const normalizedAmount = Object.is(roundedAmount, -0) ? 0 : roundedAmount;
 

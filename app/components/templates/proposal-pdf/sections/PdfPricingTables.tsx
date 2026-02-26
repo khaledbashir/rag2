@@ -7,7 +7,7 @@ import type { PdfColors, PdfTemplateSpacing } from "./shared";
 interface PdfPricingTablesProps {
     colors: PdfColors;
     spacing: PdfTemplateSpacing;
-    currency: "CAD" | "USD";
+    currency: "CAD" | "USD" | "GBP" | "EUR";
     isLandscape: boolean;
     isSharedView: boolean;
     mirrorMode: boolean;
@@ -125,7 +125,7 @@ const PdfPricingTables = ({
                             style={{ borderColor: colors.primary, color: colors.primaryDark, background: 'transparent', breakAfter: 'avoid', pageBreakAfter: 'avoid' }}
                         >
                             <div className="col-span-8">{label.toUpperCase()}</div>
-                            <div className="col-span-4 text-right">PRICING{currency === "CAD" ? " (CAD)" : ""}</div>
+                            <div className="col-span-4 text-right">PRICING{currency !== "USD" ? ` (${currency})` : ""}</div>
                         </div>
 
                         {/* Line items — pre-filtered by computeTableTotals, but render using original items for zebra striping */}
@@ -196,7 +196,7 @@ const PdfPricingTables = ({
                                 style={{ borderColor: colors.primary, color: colors.primaryDark, background: 'transparent' }}
                             >
                                 <div className="col-span-8">ALTERNATES — ADD TO COST ABOVE</div>
-                                <div className="col-span-4 text-right">PRICING{currency === "CAD" ? " (CAD)" : ""}</div>
+                                <div className="col-span-4 text-right">PRICING{currency !== "USD" ? ` (${currency})` : ""}</div>
                             </div>
                             {alternates.map((alt: any, aidx: number) => (
                             <div

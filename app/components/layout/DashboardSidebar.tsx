@@ -60,13 +60,12 @@ const mainMenuItems: NavItem[] = [
 ];
 
 const toolsMenuItems: NavItem[] = [
-    { icon: MessageSquare, label: "Chat", href: "/chat", allowedRoles: null, hidden: true },
+    { icon: MessageSquare, label: "Chat", href: "/chat", allowedRoles: null },
     {
         icon: Scan,
         label: "RFP Analyzer",
         href: "/tools/rfp-analyzer",
         allowedRoles: null,
-        hidden: true,
         children: [
             { label: "History", href: "/tools/rfp-analyzer/history", icon: History },
         ],

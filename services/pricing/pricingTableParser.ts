@@ -106,8 +106,9 @@ function parsePricingTablesInner(
   const sheet = workbook.Sheets[sheetName];
   const data: any[][] = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
-  // 3. Detect currency from sheet name
-  const currency = detectCurrency(sheetName);
+  // 3. Detect currency from sheet name + cell content (first 20 rows)
+  const cellSample = data.slice(0, 20).flat().map(c => String(c || "")).join(" ");
+  const currency = detectCurrency(sheetName, cellSample);
   console.log(`[PRICING PARSER] Detected currency: ${currency}`);
 
   // 4. Find column headers

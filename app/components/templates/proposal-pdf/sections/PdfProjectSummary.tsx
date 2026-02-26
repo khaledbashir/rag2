@@ -26,7 +26,7 @@ const SectionHeader = ({ title, subtitle, colors }: SectionHeaderProps) => (
 
 interface LOISummaryTableProps {
     colors: PdfColors;
-    currency: "CAD" | "USD";
+    currency: "CAD" | "USD" | "GBP" | "EUR";
     total: number;
 }
 
@@ -55,7 +55,7 @@ export const LOISummaryTable = ({ colors, currency, total }: LOISummaryTableProp
 
 interface MasterTableSummaryProps {
     colors: PdfColors;
-    currency: "CAD" | "USD";
+    currency: "CAD" | "USD" | "GBP" | "EUR";
     masterTable: any;
     tableHeaderOverrides: Record<string, string>;
     screenNameMap: Record<string, string>;

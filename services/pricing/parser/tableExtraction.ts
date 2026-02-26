@@ -19,7 +19,7 @@ export function extractTable(
   rows: RawRow[],
   boundary: TableBoundary,
   index: number,
-  currency: "CAD" | "USD"
+  currency: "CAD" | "USD" | "GBP" | "EUR"
 ): PricingTable {
   const items: PricingLineItem[] = [];
   let subtotal = 0;
@@ -139,7 +139,9 @@ export function extractTable(
       const row = rows[i];
       if (!row) continue;
 
-      if (row.isAlternateLine && row.label && Number.isFinite(row.sell)) {
+      // Only include alternates with actual descriptions and non-zero prices
+      // Skip blank/total rows in the alternates section (e.g., sum rows with £ - or #DIV/0!)
+      if (row.isAlternateLine && row.label && Number.isFinite(row.sell) && row.sell !== 0) {
         alternates.push({
           description: row.label,
           priceDifference: row.sell, // Already negative in Excel
@@ -189,7 +191,7 @@ export function extractTable(
 export function prependSyntheticRollupTable(
   tables: PricingTable[],
   globalTotal: number | null,
-  currency: "CAD" | "USD"
+  currency: "CAD" | "USD" | "GBP" | "EUR"
 ): PricingTable[] {
   if (!tables.length || !Number.isFinite(globalTotal)) return tables;
 
