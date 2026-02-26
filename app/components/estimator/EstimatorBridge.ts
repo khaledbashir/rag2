@@ -509,7 +509,7 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
     const financialRows: [string, string | number][] = [
         ["Margin Tier", answers.marginTier === "proposal" ? "Proposal (LED 38%, Svc 20%)" : "Budget (LED 15%, Svc 20%)"],
         ["LED Hardware Margin", `${answers.ledMargin || 15}%`],
-        ["Services Margin", `${answers.servicesMargin || 20}%`],
+        ["Installation Services Margin", `${answers.servicesMargin || 20}%`],
         ["Default Blended Margin", `${answers.defaultMargin || 30}%`],
         ["Bond Rate", `${answers.bondRate || 1.5}%`],
         ["Sales Tax Rate", `${answers.salesTaxRate || 9.5}%`],

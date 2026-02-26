@@ -468,7 +468,7 @@ function buildLocalResponse(query: string, answers: EstimatorAnswers, calcs: Scr
         if (answers.projectName) parts.push(`Project: ${answers.projectName}`);
         parts.push(`Displays: ${answers.displays.length}`);
         parts.push(`Depth: ${answers.estimateDepth}`);
-        parts.push(`Margins: LED ${answers.ledMargin}% / Services ${answers.servicesMargin}%`);
+        parts.push(`Margins: LED ${answers.ledMargin}% / Installation Services ${answers.servicesMargin}%`);
         parts.push(`Union: ${answers.isUnion ? "Yes" : "No"}`);
         parts.push(`Indoor: ${answers.isIndoor ? "Yes" : "No"}`);
         if (calcs.length > 0) {

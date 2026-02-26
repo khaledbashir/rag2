@@ -14,7 +14,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
-import { ChevronDown, ChevronUp, Plus, Check, ArrowRight, Package, Loader2, Building2, Monitor, DollarSign, Sparkles, Ruler, ArrowUpDown, Wand2, PenLine, Zap, Trophy, Music, GraduationCap, Landmark, Brain, MapPin, Eye, ChevronRight, RotateCcw } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Check, ArrowRight, Package, Loader2, Building2, Monitor, DollarSign, Sparkles, Ruler, ArrowUpDown, Wand2, PenLine, Zap, Trophy, Music, Landmark, Brain, MapPin, Eye, ChevronRight, RotateCcw, Tv, Radio, School } from "lucide-react";
 import {
     PROJECT_QUESTIONS,
     DISPLAY_QUESTIONS,
@@ -622,12 +622,27 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                 ) : (
                 /* ===== STANDARD QUESTION FLOW ===== */
                 <div className="w-full max-w-lg animate-in fade-in slide-in-from-bottom-4 duration-300" key={`${phase}-${displayIndex}-${currentStep}`}>
-                    {/* Question number */}
-                    <div className="flex items-center gap-2 mb-3">
-                        <span className="text-xs font-bold text-[#0A52EF]">
-                            {globalStep + 1}
-                        </span>
-                        <ArrowRight className="w-3 h-3 text-[#0A52EF]" />
+                    {/* Question number + inline Back */}
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-[#0A52EF]">
+                                {globalStep + 1}
+                            </span>
+                            <ArrowRight className="w-3 h-3 text-[#0A52EF]" />
+                        </div>
+                        <button
+                            onClick={() => {
+                                if (phase === "project" && currentStep === 0 && manualChosen) {
+                                    setManualChosen(false);
+                                } else {
+                                    goBack();
+                                }
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                        >
+                            <ChevronUp className="w-3.5 h-3.5" />
+                            Back
+                        </button>
                     </div>
 
                     {/* Question label */}
@@ -745,10 +760,10 @@ const QUICK_START_SCENARIOS = [
         prompt: "Concert venue needs a 30x18ft main stage backdrop display at 3.9mm and two 12x20ft side IMAG screens at 3.9mm. Indoor, new install, union labor required.",
     },
     {
-        icon: GraduationCap,
-        label: "College Gymnasium",
-        description: "Scoreboard + auxiliary boards",
-        prompt: "College gymnasium needs a 16x9ft main scoreboard at 4mm on the end wall, two 20x3ft auxiliary stat boards at 4mm on the side walls. Indoor, new install, non-union.",
+        icon: School,
+        label: "College Stadium",
+        description: "Scoreboard + end zone + ribbon",
+        prompt: "College stadium needs a 25x15ft main scoreboard at 6mm, two 30x10ft end zone video boards at 10mm, and a 400x3ft ribbon board at 10mm around the upper bowl. Outdoor, new install, non-union.",
     },
     {
         icon: Landmark,
@@ -761,6 +776,18 @@ const QUICK_START_SCENARIOS = [
         label: "MLS Stadium",
         description: "Main board + ribbon + concourse",
         prompt: "MLS soccer stadium needs a 40x20ft main scoreboard at 6mm, a 600x3ft ribbon board at 10mm around the perimeter, and four 8x5ft concourse displays at 2.5mm. Outdoor stadium, new install, non-union.",
+    },
+    {
+        icon: Tv,
+        label: "TV Package",
+        description: "Commercial TVs for suites + concourse",
+        prompt: "Sports venue needs ten 75-inch commercial TVs for luxury suites and six 86-inch TVs for concourse areas. Indoor, new install, non-union.",
+    },
+    {
+        icon: Radio,
+        label: "LiveSync CMS",
+        description: "Content management system setup",
+        prompt: "Venue needs a LiveSync CMS content management system for controlling and scheduling content across all LED displays and TVs. Includes control room setup and network integration. Indoor, new install, non-union.",
     },
 ] as const;
 
