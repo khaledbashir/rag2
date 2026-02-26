@@ -188,6 +188,11 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
                         try {
                             const chunk = JSON.parse(trimmed.slice(6));
 
+                            // Debug: log first few chunks to see AnythingLLM's format
+                            if (fullText.length < 200) {
+                                console.log("[ai-reason] chunk keys:", Object.keys(chunk), "type:", chunk.type);
+                            }
+
                             if (chunk.type === "textResponseChunk" && chunk.textResponse) {
                                 const token = chunk.textResponse;
                                 fullText += token;
@@ -218,9 +223,15 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
                                 }
 
                                 // No think block at all (model doesn't use them) →
-                                // stream everything as reasoning until JSON starts
-                                if (!thinkBlockEnded && !fullText.includes("{")) {
-                                    send({ type: "reasoning", text: token });
+                                // stream everything as reasoning until valid JSON object starts
+                                // Use a smarter check: look for a line that starts with { (JSON output)
+                                if (!thinkBlockEnded) {
+                                    // Check if this token looks like the start of JSON output
+                                    const accumulated = fullText.trimStart();
+                                    const looksLikeJson = /^\s*\{/.test(accumulated) && accumulated.includes('"clientName"');
+                                    if (!looksLikeJson) {
+                                        send({ type: "reasoning", text: token });
+                                    }
                                 }
 
                                 // After think block ended or JSON started → silent accumulation
