@@ -350,9 +350,14 @@ export default function EstimatorStudio({
                     <div className="w-px h-5 bg-border mx-0.5" />
                     <button
                         onClick={() => setToolbarOpen((v) => !v)}
-                        className="flex items-center gap-1 text-[9px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 uppercase tracking-wider whitespace-nowrap hover:bg-amber-100 transition-colors"
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors ${
+                            toolbarOpen
+                                ? "bg-amber-600 text-white"
+                                : "border border-border text-muted-foreground hover:bg-muted"
+                        }`}
                     >
-                        Phase 2 Demo
+                        <Zap className="w-3 h-3" />
+                        Tools
                         <ChevronDown className={`w-3 h-3 transition-transform ${toolbarOpen ? "rotate-180" : ""}`} />
                     </button>
                     {toolbarOpen && <>
