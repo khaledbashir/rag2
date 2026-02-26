@@ -61,7 +61,7 @@ Rules:
 - Default to budget docType and USD currency unless specified
 - Infer installComplexity from context (center-hung = complex, wall mount = simple, etc.)`;
 
-const PRIMARY_WORKSPACE = "reasoning";
+const PRIMARY_WORKSPACE = process.env.ANYTHING_LLM_REASONING_WORKSPACE || process.env.ANYTHING_LLM_WORKSPACE || "ancdashboard";
 
 export async function POST(req: NextRequest) {
     try {
@@ -138,7 +138,7 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${ALLM_KEY}`,
             },
-            body: JSON.stringify({ message: description, mode: "chat" }),
+            body: JSON.stringify({ message: `${SYSTEM_PROMPT}\n\nProject description:\n${description}`, mode: "chat" }),
         });
 
         if (!upstreamRes.ok) {
@@ -238,12 +238,15 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
                 }
 
                 // Parse the accumulated text for the JSON extraction
+                console.log(`[ai-reason] Full response length: ${fullText.length}, has think block: ${fullText.includes("<think>")}, has closing think: ${fullText.includes("</think>")}`);
                 const parsed = parseExtraction(fullText);
 
                 if (parsed) {
                     send({ type: "extraction", ...parsed });
                     send({ type: "done" });
                 } else {
+                    // Log the actual response so we can diagnose
+                    console.error("[ai-reason] Failed to parse extraction. Raw text (last 500 chars):", fullText.slice(-500));
                     send({ type: "error", message: "AI couldn't extract project data. Try being more specific." });
                 }
             } catch (err: any) {
@@ -392,7 +395,10 @@ function parseExtraction(
     raw: string
 ): { answers: Record<string, any>; displays: any[] } | null {
     try {
-        let cleaned = raw
+        // Strip <think>...</think> blocks — JSON lives AFTER reasoning
+        let cleaned = raw.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+
+        cleaned = cleaned
             .replace(/```json\s*/gi, "")
             .replace(/```\s*/g, "")
             .trim();
