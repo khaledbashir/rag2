@@ -5,6 +5,11 @@
  * Primary: AnythingLLM workspace (reasoning model that thinks natively)
  * Fallback: GLM (Z.AI) streaming if primary fails
  *
+ * AnythingLLM SSE format (the ONLY format):
+ *   { id, type: "textResponseChunk", textResponse: "...", sources: [], close: false, error: null }
+ * No reasoning_content, no thinking field. Everything is in textResponse.
+ * If the model uses <think> tags, they arrive inside textResponse.
+ *
  * Input:  { description: string }
  * Output: SSE stream with reasoning/extraction/fallback events
  */
@@ -17,8 +22,7 @@ const GLM_BASE =
 const GLM_KEY = process.env.Z_AI_API_KEY || "";
 const GLM_MODEL = process.env.Z_AI_MODEL_NAME || "glm-4.7";
 
-// Keep the prompt focused on JSON output only.
-// The reasoning model already thinks on its own — don't tell it to reason.
+// The reasoning model thinks on its own. Just ask for JSON.
 const EXTRACTION_PROMPT = `You are ANC's LED display project estimator. Analyze the project description and output a JSON object with this exact schema:
 
 {
@@ -55,6 +59,9 @@ Rules:
 - Infer installComplexity from context (center-hung = complex, wall mount = simple, etc.)`;
 
 const PRIMARY_WORKSPACE = process.env.ANYTHING_LLM_REASONING_WORKSPACE || process.env.ANYTHING_LLM_WORKSPACE || "ancdashboard";
+
+const OPEN_TAG = "<think>";
+const CLOSE_TAG = "</think>";
 
 export async function POST(req: NextRequest) {
     try {
@@ -102,7 +109,19 @@ export async function POST(req: NextRequest) {
     }
 }
 
-/** Primary: AnythingLLM — the model reasons natively, we just forward everything */
+/**
+ * Primary: AnythingLLM stream-chat
+ *
+ * Sliding window buffer approach:
+ * - All text arrives in chunk.textResponse — nothing else.
+ * - We buffer incoming text and check for <think>/<​/think> tags on the
+ *   buffer (not per-token) so partial splits like "<th" + "ink>" are handled.
+ * - State: waiting → thinking → answer
+ *   waiting: haven't seen <think> yet. Could be the start, or model might
+ *            skip thinking entirely and go straight to JSON.
+ *   thinking: inside <think> block, stream everything as reasoning.
+ *   answer: after </think>, accumulate silently for JSON parsing.
+ */
 async function tryAnythingLLM(description: string): Promise<Response | null> {
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
@@ -146,15 +165,8 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
         return null;
     }
 
-    // fullText = content text (reasoning + JSON output from model)
+    // Full accumulated text (everything the model outputs)
     let fullText = "";
-    // reasoningText = just the thinking/reasoning portion
-    let reasoningText = "";
-    // State machine: "thinking" | "content" | "json"
-    // thinking = inside <think> block or provider-separated reasoning
-    // content = model output text (may be reasoning before JSON)
-    // json = JSON output detected, stop streaming
-    let phase: "thinking" | "content" | "json" = "content";
 
     const readable = new ReadableStream({
         async start(controller) {
@@ -169,132 +181,133 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
                 return;
             }
 
-            let buffer = "";
+            let sseBuffer = ""; // SSE line buffer
             let chunkCount = 0;
 
-            // For detecting <think> / </think> across token boundaries
-            // We check fullText (accumulated) not individual tokens
-            let thinkOpenSeen = false;
-            let thinkCloseSeen = false;
+            // ── Sliding window state machine ──
+            // streamBuf: text received but not yet emitted/classified
+            // state: "waiting" | "thinking" | "answer"
+            let streamBuf = "";
+            let state: "waiting" | "thinking" | "answer" = "waiting";
+
+            const flushThinking = (text: string) => {
+                if (text) send({ type: "reasoning", text });
+            };
 
             try {
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
 
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split("\n");
-                    buffer = lines.pop() || "";
+                    sseBuffer += decoder.decode(value, { stream: true });
+                    const lines = sseBuffer.split("\n");
+                    sseBuffer = lines.pop() || "";
 
                     for (const line of lines) {
                         const trimmed = line.trim();
                         if (!trimmed || !trimmed.startsWith("data: ")) continue;
 
+                        let chunk: any;
                         try {
-                            const chunk = JSON.parse(trimmed.slice(6));
-
-                            // Log first 5 chunks to diagnose AnythingLLM's format
-                            if (chunkCount < 5) {
-                                console.log("[ai-reason] chunk:", JSON.stringify(chunk).slice(0, 300));
-                                chunkCount++;
-                            }
-
-                            // ── Handle provider-separated reasoning ──
-                            // Some providers (Groq, OpenRouter) strip <think> and put
-                            // reasoning in a separate field. AnythingLLM may forward this.
-                            const thinking = chunk.thinking || chunk.reasoning || chunk.reasoning_content || "";
-                            if (thinking) {
-                                reasoningText += thinking;
-                                send({ type: "reasoning", text: thinking });
-                                // If we get explicit reasoning fields, we know the model
-                                // separates thinking from content
-                                phase = "thinking";
-                            }
-
-                            // ── Handle normal text response ──
-                            if (chunk.type === "textResponseChunk" && chunk.textResponse) {
-                                const token = chunk.textResponse;
-                                fullText += token;
-
-                                // Check accumulated text for <think> tags (handles partial tokens)
-                                if (!thinkOpenSeen && fullText.includes("<think>")) {
-                                    thinkOpenSeen = true;
-                                    phase = "thinking";
-                                    // Extract and send any reasoning after <think> tag
-                                    const afterTag = fullText.split("<think>").pop() || "";
-                                    if (afterTag && !afterTag.includes("</think>")) {
-                                        // Only send the new part we haven't sent yet
-                                        const alreadySent = reasoningText.length;
-                                        const newPart = afterTag.slice(alreadySent);
-                                        if (newPart) {
-                                            reasoningText += newPart;
-                                            send({ type: "reasoning", text: newPart });
-                                        }
-                                    }
-                                    continue;
-                                }
-
-                                if (thinkOpenSeen && !thinkCloseSeen && fullText.includes("</think>")) {
-                                    thinkCloseSeen = true;
-                                    phase = "content";
-                                    // Send any remaining thinking text before </think>
-                                    const thinkContent = fullText.split("<think>")[1]?.split("</think>")[0] || "";
-                                    const unsent = thinkContent.slice(reasoningText.length);
-                                    if (unsent) {
-                                        reasoningText += unsent;
-                                        send({ type: "reasoning", text: unsent });
-                                    }
-                                    continue;
-                                }
-
-                                // Inside <think> block — stream as reasoning
-                                if (thinkOpenSeen && !thinkCloseSeen) {
-                                    reasoningText += token;
-                                    send({ type: "reasoning", text: token });
-                                    continue;
-                                }
-
-                                // If provider already sent reasoning separately,
-                                // content text is the JSON output — don't stream it
-                                if (phase === "thinking") {
-                                    // Provider separated reasoning; this content is JSON
-                                    continue;
-                                }
-
-                                // No <think> tags, no provider reasoning field —
-                                // the model outputs everything in content stream.
-                                // Stream as reasoning until we detect JSON starting.
-                                if (phase !== "json") {
-                                    // Check accumulated text for JSON boundary
-                                    if (
-                                        fullText.includes("```json") ||
-                                        fullText.includes('"clientName"') ||
-                                        fullText.includes('"displays"')
-                                    ) {
-                                        phase = "json";
-                                        // Don't send this token (it's JSON)
-                                    } else {
-                                        // Still reasoning — forward live
-                                        reasoningText += token;
-                                        send({ type: "reasoning", text: token });
-                                    }
-                                }
-                            }
-
-                            if (chunk.close) break;
-                            if (chunk.error) {
-                                console.error("[ai-reason] chunk error:", chunk.error);
-                                send({ type: "error", message: "AI returned an error" });
-                                break;
-                            }
+                            chunk = JSON.parse(trimmed.slice(6));
                         } catch {
-                            // Skip malformed chunks
+                            continue; // skip malformed
+                        }
+
+                        // Log first chunks for diagnostics
+                        if (chunkCount < 5) {
+                            console.log("[ai-reason] chunk:", JSON.stringify(chunk).slice(0, 300));
+                            chunkCount++;
+                        }
+
+                        // close=true: final chunk. Flush remaining buffer.
+                        if (chunk.close) {
+                            if (state === "thinking" && streamBuf) {
+                                flushThinking(streamBuf);
+                                streamBuf = "";
+                            }
+                            break;
+                        }
+                        if (chunk.error) {
+                            console.error("[ai-reason] chunk error:", chunk.error);
+                            send({ type: "error", message: "AI returned an error" });
+                            break;
+                        }
+
+                        // The ONLY field we read from AnythingLLM
+                        if (chunk.type !== "textResponseChunk" || !chunk.textResponse) continue;
+
+                        const text = chunk.textResponse as string;
+                        fullText += text;
+                        streamBuf += text;
+
+                        // ── State: WAITING ──
+                        // We don't know yet if the model will use <think> tags.
+                        // Hold text in streamBuf until we can decide.
+                        if (state === "waiting") {
+                            if (streamBuf.includes(OPEN_TAG)) {
+                                // Model is using think tags
+                                state = "thinking";
+                                const afterTag = streamBuf.split(OPEN_TAG).pop() || "";
+                                flushThinking(afterTag);
+                                streamBuf = "";
+                            } else if (OPEN_TAG.startsWith(streamBuf.trimStart())) {
+                                // Buffer could still become "<think>" — hold
+                                // e.g. streamBuf is "<" or "<th" or "<thin"
+                            } else {
+                                // Not a think tag. Model isn't using <think>.
+                                // Check if it jumped straight to JSON
+                                if (fullText.includes('"clientName"') || fullText.includes('"displays"')) {
+                                    state = "answer";
+                                    streamBuf = "";
+                                }
+                            }
+                            continue;
+                        }
+
+                        // ── State: THINKING ──
+                        // Stream reasoning live, but keep last 8 chars in buffer
+                        // as guardrail so "</think>" split across chunks doesn't
+                        // get flushed as reasoning text.
+                        if (state === "thinking") {
+                            if (streamBuf.includes(CLOSE_TAG)) {
+                                // Thinking is done
+                                state = "answer";
+                                const parts = streamBuf.split(CLOSE_TAG);
+                                flushThinking(parts[0]);
+                                streamBuf = "";
+                            } else if (streamBuf.length > CLOSE_TAG.length) {
+                                // Flush everything except the last 8 chars
+                                // (length of "</think>") to protect against splits
+                                const safe = streamBuf.slice(0, -CLOSE_TAG.length);
+                                const held = streamBuf.slice(-CLOSE_TAG.length);
+                                flushThinking(safe);
+                                streamBuf = held;
+                            }
+                            // If streamBuf.length <= 8, hold — could be partial </think>
+                            continue;
+                        }
+
+                        // ── State: ANSWER ──
+                        // After </think>. Accumulate silently for JSON parsing.
+                        if (state === "answer") {
+                            streamBuf = "";
                         }
                     }
                 }
 
-                // Parse the accumulated text for JSON extraction
-                console.log(`[ai-reason] Done. fullText length: ${fullText.length}, reasoning length: ${reasoningText.length}, phase: ${phase}, thinkOpen: ${thinkOpenSeen}, thinkClose: ${thinkCloseSeen}`);
+                // ── Handle models that don't use <think> tags ──
+                // If we're still in "waiting" state after all chunks,
+                // the model output everything as plain text (no think tags).
+                // The entire fullText is both the reasoning AND the JSON.
+                // We can't retroactively stream the reasoning, but we can
+                // still parse the JSON. This happens with non-reasoning models.
+                if (state === "waiting") {
+                    console.log("[ai-reason] Model did not use <think> tags. Treating as direct output.");
+                }
+
+                // Parse JSON from the full accumulated text
+                console.log(`[ai-reason] Done. length: ${fullText.length}, state: ${state}`);
                 const parsed = parseExtraction(fullText);
 
                 if (parsed) {
@@ -362,7 +375,6 @@ async function tryGLMFallback(description: string): Promise<Response | null> {
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
                 };
 
-                // Tell client this is fallback
                 send({ type: "fallback", message: "Primary AI unavailable — using backup reasoning model" });
 
                 const reader = upstreamRes.body?.getReader();
@@ -394,6 +406,7 @@ async function tryGLMFallback(description: string): Promise<Response | null> {
                                 const chunk = JSON.parse(payload);
                                 const delta = chunk.choices?.[0]?.delta;
                                 if (delta) {
+                                    // GLM uses OpenAI-compatible format with reasoning_content
                                     const reasoning = delta.reasoning_content || "";
                                     const content = delta.content || "";
 
