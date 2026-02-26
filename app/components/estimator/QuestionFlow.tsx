@@ -1014,19 +1014,40 @@ function QuestionInput({
 
         case "number":
             return (
-                <div className="flex items-center gap-3">
-                    <input
-                        type="number"
-                        value={value ?? question.defaultValue ?? ""}
-                        onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-                        min={question.min}
-                        max={question.max}
-                        step={question.step}
-                        autoFocus
-                        className="w-32 bg-transparent border-b-2 border-border focus:border-[#0A52EF] outline-none text-lg py-2 transition-colors text-right"
-                    />
-                    {question.unit && (
-                        <span className="text-sm text-muted-foreground font-medium">{question.unit}</span>
+                <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                        <input
+                            type="number"
+                            value={value ?? question.defaultValue ?? ""}
+                            onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+                            min={question.min}
+                            max={question.max}
+                            step={question.step}
+                            autoFocus
+                            className="w-32 bg-transparent border-b-2 border-border focus:border-[#0A52EF] outline-none text-lg py-2 transition-colors text-right"
+                        />
+                        {question.unit && (
+                            <span className="text-sm text-muted-foreground font-medium">{question.unit}</span>
+                        )}
+                    </div>
+                    {question.quickActions && question.quickActions.length > 0 && (
+                        <div className="flex items-center gap-2">
+                            {question.quickActions.map((action) => (
+                                <button
+                                    key={action.label}
+                                    type="button"
+                                    onClick={() => { onChange(action.value); setTimeout(onNext, 300); }}
+                                    className={cn(
+                                        "px-3 py-1.5 rounded-md text-xs font-medium border transition-colors",
+                                        value === action.value
+                                            ? "border-[#0A52EF] bg-[#0A52EF]/10 text-[#0A52EF]"
+                                            : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+                                    )}
+                                >
+                                    {action.label}
+                                </button>
+                            ))}
+                        </div>
                     )}
                 </div>
             );

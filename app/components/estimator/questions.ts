@@ -49,6 +49,8 @@ export interface Question {
     step?: number;
     /** Which sheet tab this answer affects (for live preview highlighting) */
     affectsSheet?: string;
+    /** Quick-action buttons shown below the input (e.g. "Not Included" sets value to 0) */
+    quickActions?: { label: string; value: any }[];
 }
 
 // ============================================================================
@@ -504,6 +506,7 @@ export const FINANCIAL_QUESTIONS: Question[] = [
         max: 10,
         step: 0.1,
         affectsSheet: "Margin Analysis",
+        quickActions: [{ label: "Not Included", value: 0 }],
     },
     {
         id: "salesTaxRate",
@@ -517,6 +520,7 @@ export const FINANCIAL_QUESTIONS: Question[] = [
         max: 15,
         step: 0.125,
         affectsSheet: "Margin Analysis",
+        quickActions: [{ label: "Not Included", value: 0 }],
     },
     {
         id: "costPerSqFtOverride",
