@@ -205,18 +205,8 @@ function addMarginFormulas(
 
     const rowNum = exRow.number;
 
-    // Margin % formula: =1-(COST/SELL) or =IF(SELL=0,0,1-(COST/SELL))
-    if (marginPctCol >= 0 && costCol >= 0 && sellCol >= 0) {
-        const sc = getCell(marginPctCol);
-        if (sc && sc.percent && typeof sc.value === "number") {
-            const costRef = `${colLetter(costCol)}${rowNum}`;
-            const sellRef = `${colLetter(sellCol)}${rowNum}`;
-            exRow.getCell(marginPctCol + 1).value = {
-                formula: `IF(${sellRef}=0,0,1-(${costRef}/${sellRef}))`,
-                result: sc.value as number,
-            };
-        }
-    }
+    // Margin % stays as a HARD VALUE — it's the user-configured input margin.
+    // Writing a formula here (=1-COST/SELL) creates a circular ref with SELL PRICE (=COST/(1-MARGIN%)).
 
     // Margin $ formula: =SELL-COST
     if (marginDollarCol >= 0 && costCol >= 0 && sellCol >= 0) {
