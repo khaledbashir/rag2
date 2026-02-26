@@ -12,7 +12,7 @@
 import React, { useState, useCallback, useMemo } from "react";
 import { useConfirm } from "@/hooks/useConfirm";
 import dynamic from "next/dynamic";
-import { FileSpreadsheet, ArrowLeft, Download, Loader2, MessageSquare, Copy, ArrowRightLeft, Package, Boxes, Search, Shield, Send, GitCompare, FileText, Box, Sparkles, Zap } from "lucide-react";
+import { FileSpreadsheet, ArrowLeft, Download, Loader2, MessageSquare, Copy, ArrowRightLeft, Package, Boxes, Search, Shield, Send, GitCompare, FileText, Box, Zap, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import QuestionFlow from "./QuestionFlow";
@@ -67,6 +67,7 @@ export default function EstimatorStudio({
     const [cutSheetOpen, setCutSheetOpen] = useState(false);
     const [autoRfpOpen, setAutoRfpOpen] = useState(false);
     const [venueOpen, setVenueOpen] = useState(false);
+    const [toolbarOpen, setToolbarOpen] = useState(false);
     // Cell overrides: key = "sheetIdx-rowIdx-colIdx", value = edited value
     const [cellOverrides, setCellOverrides] = useState<Record<string, string | number>>(initialCellOverrides || {});
     // User-added custom sheets
@@ -283,10 +284,6 @@ export default function EstimatorStudio({
                     <span className="text-sm font-semibold">
                         {answers.projectName || "New Estimate"}
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
-                        <Sparkles className="h-3 w-3" />
-                        DEMO FOR PHASE 3
-                    </span>
                     {answers.clientName && (
                         <span className="text-xs text-muted-foreground">
                             — {answers.clientName}
@@ -351,7 +348,14 @@ export default function EstimatorStudio({
                     )}
                     {/* Auto-RFP and 3D Arena hidden — reserved for Phase 2 */}
                     <div className="w-px h-5 bg-border mx-0.5" />
-                    <span className="text-[9px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 uppercase tracking-wider whitespace-nowrap">Phase 2 Demo</span>
+                    <button
+                        onClick={() => setToolbarOpen((v) => !v)}
+                        className="flex items-center gap-1 text-[9px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 uppercase tracking-wider whitespace-nowrap hover:bg-amber-100 transition-colors"
+                    >
+                        Phase 2 Demo
+                        <ChevronDown className={`w-3 h-3 transition-transform ${toolbarOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {toolbarOpen && <>
                     <ToolDescription
                         label="Smart Assembly Bundle"
                         description="Auto-suggests hidden line items you might forget: video processors, receiving cards, spare modules, mounting brackets, cable kits, and more."
@@ -496,6 +500,7 @@ export default function EstimatorStudio({
                             Lux
                         </button>
                     </ToolDescription>
+                    </>}
                 </div>
             </header>
 
