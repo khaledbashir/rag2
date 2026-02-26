@@ -2,7 +2,7 @@
  * POST /api/estimator/ai-reason
  *
  * AI Reasoning Estimate
- * Primary: AnythingLLM "reasoning" workspace (self-hosted, always available)
+ * Primary: AnythingLLM workspace (reasoning model that thinks natively)
  * Fallback: GLM (Z.AI) streaming if primary fails
  *
  * Input:  { description: string }
@@ -17,29 +17,10 @@ const GLM_BASE =
 const GLM_KEY = process.env.Z_AI_API_KEY || "";
 const GLM_MODEL = process.env.Z_AI_MODEL_NAME || "glm-4.7";
 
-const SYSTEM_PROMPT = `You are ANC's LED display project estimator. You analyze project descriptions and extract structured data for cost estimation.
+// Keep the prompt focused on JSON output only.
+// The reasoning model already thinks on its own — don't tell it to reason.
+const EXTRACTION_PROMPT = `You are ANC's LED display project estimator. Analyze the project description and output a JSON object with this exact schema:
 
-You MUST respond in two parts, in this exact order:
-
-## PART 1: REASONING (plain text, streamed to the user live)
-Write your full analysis as plain text. Be thorough and specific. Cover:
-
-1. **Project identification** — Who is the client? What venue? Where?
-2. **Display breakdown** — For EACH display mentioned:
-   - What type of display is it? (scoreboard, ribbon, fascia, end-zone, etc.)
-   - Exact dimensions: width × height in feet, and the square footage calculation
-   - Pixel pitch and what that means for resolution
-   - Where it's being mounted (wall, fascia, freestanding, etc.)
-   - Installation complexity and why (center-hung = complex rigging, wall = simpler, ribbon = long runs)
-3. **Environment & labor** — Indoor vs outdoor, new install vs replacement, union vs non-union
-4. **Key observations** — Anything notable (large ribbon run, tight pixel pitch for outdoor, etc.)
-
-This reasoning MUST be real analysis. Show the actual math. Explain WHY you chose each classification.
-
-## PART 2: JSON (structured extraction)
-After your reasoning, output a JSON code block with this exact schema:
-
-\`\`\`json
 {
   "clientName": "string",
   "projectName": "string",
@@ -63,7 +44,6 @@ After your reasoning, output a JSON code block with this exact schema:
     }
   ]
 }
-\`\`\`
 
 Rules:
 - displayType must be one of: main-scoreboard, center-hung, ribbon-board, fascia-board, concourse-display, end-zone, marquee, auxiliary, custom
@@ -72,9 +52,7 @@ Rules:
 - pixelPitch should be a string number like "4" or "6" or "10"
 - If multiple identical displays, create one entry per display (e.g., "two ribbon boards" = 2 separate entries)
 - Default to budget docType and USD currency unless specified
-- Infer installComplexity from context (center-hung = complex, wall mount = simple, etc.)
-
-CRITICAL: You MUST write the full reasoning analysis FIRST as plain text, THEN the JSON block. Never skip the reasoning.`;
+- Infer installComplexity from context (center-hung = complex, wall mount = simple, etc.)`;
 
 const PRIMARY_WORKSPACE = process.env.ANYTHING_LLM_REASONING_WORKSPACE || process.env.ANYTHING_LLM_WORKSPACE || "ancdashboard";
 
@@ -95,7 +73,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Try primary: AnythingLLM "reasoning" workspace
+        // Try primary: AnythingLLM workspace (reasoning model)
         const primaryResult = await tryAnythingLLM(description.trim());
 
         if (primaryResult) {
@@ -124,14 +102,13 @@ export async function POST(req: NextRequest) {
     }
 }
 
-/** Primary: AnythingLLM reasoning workspace — streams REAL model reasoning live */
+/** Primary: AnythingLLM — the model reasons natively, we just forward everything */
 async function tryAnythingLLM(description: string): Promise<Response | null> {
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
     console.log(`[ai-reason] Primary: AnythingLLM '${PRIMARY_WORKSPACE}', desc length: ${description.length}`);
 
-    // Hit AnythingLLM's streaming endpoint directly
     const rawUrl = (process.env.ANYTHING_LLM_URL || process.env.ANYTHING_LLM_BASE_URL || "").trim();
     const ALLM_KEY = process.env.ANYTHING_LLM_KEY || "";
     const normalizedBase = !rawUrl ? "" : rawUrl.endsWith("/api/v1")
@@ -153,7 +130,10 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${ALLM_KEY}`,
             },
-            body: JSON.stringify({ message: `${SYSTEM_PROMPT}\n\nProject description:\n${description}`, mode: "chat" }),
+            body: JSON.stringify({
+                message: `${EXTRACTION_PROMPT}\n\nProject description:\n${description}`,
+                mode: "chat",
+            }),
         });
 
         if (!upstreamRes.ok) {
@@ -166,11 +146,10 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
         return null;
     }
 
-    // Accumulate the full response to parse JSON at the end
+    // fullText = everything the model outputs (thinking + JSON)
     let fullText = "";
-    // State: are we inside a <think> block? Have we seen one at all?
-    let inThinkBlock = false;
-    let thinkBlockEnded = false;
+    // jsonStarted = we've detected the JSON output beginning, stop streaming reasoning
+    let jsonStarted = false;
 
     const readable = new ReadableStream({
         async start(controller) {
@@ -186,6 +165,7 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
             }
 
             let buffer = "";
+            let chunkCount = 0;
 
             try {
                 while (true) {
@@ -203,54 +183,46 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
                         try {
                             const chunk = JSON.parse(trimmed.slice(6));
 
-                            // Debug: log first few chunks to see AnythingLLM's format
-                            if (fullText.length < 200) {
-                                console.log("[ai-reason] chunk keys:", Object.keys(chunk), "type:", chunk.type);
+                            // Log first chunks so we can debug the format
+                            if (chunkCount < 3) {
+                                console.log("[ai-reason] chunk:", JSON.stringify(chunk).slice(0, 200));
+                                chunkCount++;
                             }
 
+                            // AnythingLLM streams text as textResponseChunk
                             if (chunk.type === "textResponseChunk" && chunk.textResponse) {
                                 const token = chunk.textResponse;
                                 fullText += token;
 
-                                // Detect <think> open — everything inside is reasoning
-                                if (token.includes("<think>")) {
-                                    inThinkBlock = true;
-                                    // Send any text after the tag in this token
-                                    const after = token.split("<think>").pop() || "";
-                                    if (after) send({ type: "reasoning", text: after });
-                                    continue;
-                                }
-
-                                // Detect </think> close — reasoning is done, JSON follows
-                                if (token.includes("</think>")) {
-                                    inThinkBlock = false;
-                                    thinkBlockEnded = true;
-                                    // Send any text before the closing tag
-                                    const before = token.split("</think>")[0] || "";
-                                    if (before) send({ type: "reasoning", text: before });
-                                    continue;
-                                }
-
-                                // Inside think block → stream raw, unfiltered
-                                if (inThinkBlock) {
-                                    send({ type: "reasoning", text: token });
-                                    continue;
-                                }
-
-                                // No think block — stream as reasoning until JSON code block starts
-                                // The model outputs plain text reasoning, then ```json { ... } ```
-                                if (!thinkBlockEnded) {
-                                    // Once we see ```json in the accumulated text, stop streaming reasoning
-                                    if (!fullText.includes("```json") && !fullText.includes('"clientName"')) {
+                                if (!jsonStarted) {
+                                    // Check if we've hit the JSON output boundary
+                                    // The model's reasoning comes first, then JSON
+                                    // Detect: <think> close, ```json, or a bare { followed by "clientName"
+                                    if (token.includes("</think>")) {
+                                        jsonStarted = true;
+                                        // Send any text before the tag as final reasoning
+                                        const before = token.split("</think>")[0];
+                                        if (before) send({ type: "reasoning", text: before });
+                                    } else if (token.includes("<think>")) {
+                                        // Strip the tag, send the rest
+                                        const after = token.replace("<think>", "");
+                                        if (after) send({ type: "reasoning", text: after });
+                                    } else if (fullText.includes("```json")) {
+                                        jsonStarted = true;
+                                    } else if (fullText.includes('"clientName"') || fullText.includes('"displays"')) {
+                                        // Model jumped straight to JSON without thinking
+                                        jsonStarted = true;
+                                    } else {
+                                        // This is reasoning text — forward it live
                                         send({ type: "reasoning", text: token });
                                     }
                                 }
-
-                                // After think block ended or JSON started → silent accumulation
+                                // After jsonStarted, tokens accumulate silently for parsing
                             }
 
                             if (chunk.close) break;
                             if (chunk.error) {
+                                console.error("[ai-reason] AnythingLLM chunk error:", chunk.error);
                                 send({ type: "error", message: "AI returned an error" });
                                 break;
                             }
@@ -260,20 +232,19 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
                     }
                 }
 
-                // Parse the accumulated text for the JSON extraction
-                console.log(`[ai-reason] Full response length: ${fullText.length}, has think block: ${fullText.includes("<think>")}, has closing think: ${fullText.includes("</think>")}`);
+                // Parse the accumulated text for JSON extraction
+                console.log(`[ai-reason] Done. Length: ${fullText.length}, jsonStarted: ${jsonStarted}, has <think>: ${fullText.includes("<think>")}`);
                 const parsed = parseExtraction(fullText);
 
                 if (parsed) {
                     send({ type: "extraction", ...parsed });
                     send({ type: "done" });
                 } else {
-                    // Log the actual response so we can diagnose
-                    console.error("[ai-reason] Failed to parse extraction. Raw text (last 500 chars):", fullText.slice(-500));
+                    console.error("[ai-reason] Parse failed. Last 500 chars:", fullText.slice(-500));
                     send({ type: "error", message: "AI couldn't extract project data. Try being more specific." });
                 }
             } catch (err: any) {
-                console.error("[ai-reason] AnythingLLM stream error:", err.message);
+                console.error("[ai-reason] Stream error:", err.message);
                 send({ type: "error", message: "AI stream error: " + (err.message || "unknown") });
             } finally {
                 reader.releaseLock();
@@ -305,7 +276,7 @@ async function tryGLMFallback(description: string): Promise<Response | null> {
             body: JSON.stringify({
                 model: GLM_MODEL,
                 messages: [
-                    { role: "system", content: SYSTEM_PROMPT },
+                    { role: "system", content: EXTRACTION_PROMPT },
                     { role: "user", content: description },
                 ],
                 stream: true,
@@ -407,10 +378,6 @@ async function tryGLMFallback(description: string): Promise<Response | null> {
         console.error("[ai-reason] GLM fallback exception:", err.message);
         return null;
     }
-}
-
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** Parse the model's content output into structured answers + displays */
