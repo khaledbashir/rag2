@@ -140,7 +140,7 @@ function UploadStep({
     <div className="p-5 space-y-4">
       <p className="text-xs text-muted-foreground">
         Upload the original and revised cost analysis Excel files. The system will diff their
-        Margin Analysis sheets section-by-section.
+        Budget Summary sheets section-by-section.
       </p>
 
       {/* Original file */}

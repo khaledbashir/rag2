@@ -441,12 +441,11 @@ export function buildPreviewSheets(answers: EstimatorAnswers, rates?: RateCard):
         buildBudgetSummary(answers, calcs),
         buildDisplayDetails(answers, calcs),
         buildLaborWorksheet(answers, calcs),
-        buildMarginAnalysis(answers, calcs),
     ];
 
     // Add Cost Category Breakdown (3A-3G) in Detailed mode
     if (answers.estimateDepth === "detailed" && calcs.length > 0) {
-        // Insert after Labor Worksheet (index 3), before Margin Analysis
+        // Insert after Labor Worksheet (index 3)
         sheets.splice(4, 0, buildCostCategoryBreakdown(answers, calcs, rates));
     }
 
@@ -665,6 +664,39 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
                 { value: grandTotal, currency: true, align: "right", bold: true, highlight: true }, { value: "" }, { value: "" }],
             isTotal: true,
         });
+
+        // Profit Shield analysis (folded from Margin Analysis)
+        if (calcs[0]?.profitShieldMargin != null) {
+            rows.push({ cells: [{ value: "" }], isSeparator: true });
+            rows.push({
+                cells: [{ value: "PROFIT SHIELD ANALYSIS", bold: true, header: true, span: 8 }],
+                isHeader: true,
+            });
+            rows.push({
+                cells: [
+                    { value: "Target Price", bold: true },
+                    { value: "" },
+                    { value: "" },
+                    { value: "" },
+                    { value: "" },
+                    { value: answers.targetPrice, currency: true, align: "right", highlight: true },
+                    { value: "" },
+                    { value: "" },
+                ],
+            });
+            rows.push({
+                cells: [
+                    { value: "Required Blended Margin", bold: true },
+                    { value: "" },
+                    { value: "" },
+                    { value: "" },
+                    { value: `${calcs[0].profitShieldMargin.toFixed(1)}%` },
+                    { value: "" },
+                    { value: calcs[0].profitShieldMargin >= 10 ? "VIABLE" : "WARNING: LOW MARGIN", bold: true, highlight: calcs[0].profitShieldMargin < 10 },
+                    { value: "" },
+                ],
+            });
+        }
     }
 
     return {
@@ -680,7 +712,7 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
     const rows: SheetRow[] = [];
 
     rows.push({
-        cells: [{ value: "LED DISPLAY TECHNICAL SPECIFICATIONS", bold: true, header: true, span: 8, align: "center" }],
+        cells: [{ value: "LED DISPLAY TECHNICAL SPECIFICATIONS & COSTS", bold: true, header: true, span: 10, align: "center" }],
         isHeader: true,
     });
     rows.push({ cells: [{ value: "" }], isSeparator: true });
@@ -694,16 +726,19 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
             { value: "PITCH", bold: true, header: true, align: "center" },
             { value: "PIXELS", bold: true, header: true, align: "right" },
             { value: "$/SQFT", bold: true, header: true, align: "right" },
+            { value: "LED COST", bold: true, header: true, align: "right" },
+            { value: "SELL PRICE", bold: true, header: true, align: "right" },
         ],
         isHeader: true,
     });
 
     if (calcs.length === 0) {
-        rows.push({ cells: [{ value: "No displays configured yet", span: 8, align: "center" }] });
+        rows.push({ cells: [{ value: "No displays configured yet", span: 10, align: "center" }] });
     } else {
         for (let i = 0; i < calcs.length; i++) {
             const c = calcs[i];
             const d = answers.displays[i];
+            const hwSell = c.hardwareCost / (1 - c.marginPct);
             rows.push({
                 cells: [
                     { value: c.name },
@@ -713,16 +748,31 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                     { value: Math.round(c.areaSqFt * 100) / 100, align: "center" },
                     { value: `${c.pixelPitch}mm`, align: "center" },
                     { value: c.totalPixels.toLocaleString(), align: "right" },
-                    { value: c.costPerSqFt, currency: true, align: "right", highlight: true },
+                    { value: c.costPerSqFt, currency: true, align: "right" },
+                    { value: c.hardwareCost, currency: true, align: "right" },
+                    { value: hwSell, currency: true, align: "right", highlight: true },
                 ],
             });
         }
+
+        // Total row
+        const totalHwCost = calcs.reduce((s, c) => s + c.hardwareCost, 0);
+        const totalHwSell = calcs.reduce((s, c) => s + c.hardwareCost / (1 - c.marginPct), 0);
+        rows.push({ cells: [{ value: "" }], isSeparator: true });
+        rows.push({
+            cells: [
+                { value: "TOTAL", bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" },
+                { value: totalHwCost, currency: true, align: "right", bold: true },
+                { value: totalHwSell, currency: true, align: "right", bold: true, highlight: true },
+            ],
+            isTotal: true,
+        });
     }
 
     return {
         name: "Display Details",
         color: "#FFC107",
-        columns: ["DISPLAY", "TYPE", "W (ft)", "H (ft)", "SQ FT", "PITCH", "PIXELS", "$/SQFT"],
+        columns: ["DISPLAY", "TYPE", "W (ft)", "H (ft)", "SQ FT", "PITCH", "PIXELS", "$/SQFT", "LED COST", "SELL PRICE"],
         rows,
     };
 }
@@ -1472,100 +1522,4 @@ function buildCostCategoryBreakdown(answers: EstimatorAnswers, calcs: ScreenCalc
     };
 }
 
-// --- Margin Analysis ---
-function buildMarginAnalysis(answers: EstimatorAnswers, calcs: ScreenCalc[]): SheetTab {
-    const rows: SheetRow[] = [];
 
-    rows.push({
-        cells: [{ value: "MARGIN ANALYSIS (MASTER TRUTH)", bold: true, header: true, span: 7, align: "center" }],
-        isHeader: true,
-    });
-    rows.push({ cells: [{ value: "" }], isSeparator: true });
-    rows.push({
-        cells: [
-            { value: "DISPLAY", bold: true, header: true },
-            { value: "TOTAL COST", bold: true, header: true, align: "right" },
-            { value: "MARGIN %", bold: true, header: true, align: "center" },
-            { value: "MARGIN $", bold: true, header: true, align: "right" },
-            { value: "SELL PRICE", bold: true, header: true, align: "right" },
-            { value: "BOND", bold: true, header: true, align: "right" },
-            { value: "FINAL TOTAL", bold: true, header: true, align: "right" },
-        ],
-        isHeader: true,
-    });
-
-    if (calcs.length === 0) {
-        rows.push({ cells: [{ value: "No displays configured yet", span: 7, align: "center" }] });
-    } else {
-        for (const c of calcs) {
-            rows.push({
-                cells: [
-                    { value: c.name },
-                    { value: c.totalCost, currency: true, align: "right" },
-                    { value: c.marginPct, percent: true, align: "center", highlight: true },
-                    { value: c.sellPrice - c.totalCost, currency: true, align: "right" },
-                    { value: c.sellPrice, currency: true, align: "right" },
-                    { value: c.bondCost, currency: true, align: "right" },
-                    { value: c.finalTotal, currency: true, align: "right", bold: true },
-                ],
-            });
-        }
-
-        const totalCost = calcs.reduce((s, c) => s + c.totalCost, 0);
-        const totalSell = calcs.reduce((s, c) => s + c.sellPrice, 0);
-        const totalBond = calcs.reduce((s, c) => s + c.bondCost, 0);
-        const grandTotal = calcs.reduce((s, c) => s + c.finalTotal, 0);
-
-        rows.push({ cells: [{ value: "" }], isSeparator: true });
-        rows.push({
-            cells: [
-                { value: "PROJECT TOTAL", bold: true },
-                { value: totalCost, currency: true, align: "right", bold: true },
-                { value: calcs[0]?.marginPct || 0.30, percent: true, align: "center" },
-                { value: totalSell - totalCost, currency: true, align: "right", bold: true },
-                { value: totalSell, currency: true, align: "right", bold: true },
-                { value: totalBond, currency: true, align: "right", bold: true },
-                { value: grandTotal, currency: true, align: "right", bold: true, highlight: true },
-            ],
-            isTotal: true,
-        });
-
-        // Profit Shield analysis
-        if (calcs[0]?.profitShieldMargin != null) {
-            rows.push({ cells: [{ value: "" }], isSeparator: true });
-            rows.push({
-                cells: [{ value: "PROFIT SHIELD ANALYSIS", bold: true, header: true, span: 7 }],
-                isHeader: true,
-            });
-            rows.push({
-                cells: [
-                    { value: "Target Price", bold: true },
-                    { value: "" },
-                    { value: "" },
-                    { value: "" },
-                    { value: "" },
-                    { value: "" },
-                    { value: answers.targetPrice, currency: true, align: "right", highlight: true },
-                ],
-            });
-            rows.push({
-                cells: [
-                    { value: "Required Blended Margin", bold: true },
-                    { value: "" },
-                    { value: `${calcs[0].profitShieldMargin.toFixed(1)}%` },
-                    { value: "" },
-                    { value: "" },
-                    { value: "" },
-                    { value: calcs[0].profitShieldMargin >= 10 ? "VIABLE" : "WARNING: LOW MARGIN", bold: true, highlight: calcs[0].profitShieldMargin < 10 },
-                ],
-            });
-        }
-    }
-
-    return {
-        name: "Margin Analysis",
-        color: "#0A52EF",
-        columns: ["DISPLAY", "TOTAL COST", "MARGIN %", "MARGIN $", "SELL PRICE", "BOND", "FINAL TOTAL"],
-        rows,
-    };
-}

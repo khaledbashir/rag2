@@ -453,7 +453,7 @@ export const FINANCIAL_QUESTIONS: Question[] = [
         ],
         defaultValue: "budget",
         required: true,
-        affectsSheet: "Margin Analysis",
+        affectsSheet: "Budget Summary",
     },
     {
         id: "ledMargin",
@@ -466,7 +466,7 @@ export const FINANCIAL_QUESTIONS: Question[] = [
         min: 5,
         max: 60,
         step: 1,
-        affectsSheet: "Margin Analysis",
+        affectsSheet: "Budget Summary",
     },
     {
         id: "servicesMargin",
@@ -479,7 +479,7 @@ export const FINANCIAL_QUESTIONS: Question[] = [
         min: 5,
         max: 60,
         step: 1,
-        affectsSheet: "Margin Analysis",
+        affectsSheet: "Budget Summary",
     },
     {
         id: "defaultMargin",
@@ -492,7 +492,7 @@ export const FINANCIAL_QUESTIONS: Question[] = [
         min: 5,
         max: 60,
         step: 1,
-        affectsSheet: "Margin Analysis",
+        affectsSheet: "Budget Summary",
     },
     {
         id: "bondRate",
@@ -505,7 +505,7 @@ export const FINANCIAL_QUESTIONS: Question[] = [
         min: 0,
         max: 10,
         step: 0.1,
-        affectsSheet: "Margin Analysis",
+        affectsSheet: "Budget Summary",
         quickActions: [{ label: "Not Included", value: 0 }],
     },
     {
@@ -519,7 +519,7 @@ export const FINANCIAL_QUESTIONS: Question[] = [
         min: 0,
         max: 15,
         step: 0.125,
-        affectsSheet: "Margin Analysis",
+        affectsSheet: "Budget Summary",
         quickActions: [{ label: "Not Included", value: 0 }],
     },
     {
@@ -561,7 +561,7 @@ export const FINANCIAL_QUESTIONS: Question[] = [
         min: 0,
         max: 50000000,
         step: 1000,
-        affectsSheet: "Margin Analysis",
+        affectsSheet: "Budget Summary",
     },
 ];
 
