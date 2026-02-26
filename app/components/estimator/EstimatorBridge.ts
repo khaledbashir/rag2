@@ -551,7 +551,8 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
 
         rows.push({ cells: [{ value: "Total Cost", bold: true }, { value: totalCost, currency: true }] });
         rows.push({ cells: [{ value: "Total Sell Price", bold: true }, { value: totalSell, currency: true }] });
-        rows.push({ cells: [{ value: "Blended Margin", bold: true }, { value: `${blended}% (${fmt(totalSell - totalCost)})` }] });
+        rows.push({ cells: [{ value: "Blended Margin %", bold: true }, { value: `${blended}%` }] });
+        rows.push({ cells: [{ value: "Blended Margin $", bold: true }, { value: totalSell - totalCost, currency: true }] });
         rows.push({
             cells: [{ value: "Grand Total", bold: true }, { value: grandTotal, currency: true, bold: true, highlight: true }],
             isTotal: true,

@@ -232,6 +232,22 @@ const RULES: BundleRule[] = [
         trigger: "outdoor",
     },
 
+    // ── TV Wall Mounts ────────────────────────────────────────────────
+    {
+        id: "tv_mount_fixed",
+        name: "Chief RMF3 — Fixed Wall Mount (49\"-65\")",
+        category: "structural",
+        unitCost: 80,
+        quantity: (d) => {
+            const name = (d.displayName || d.displayType || "").toLowerCase();
+            const isTV = name.includes("tv") || name.includes("commercial") || name.includes("concourse-display")
+                || name.includes("uh5j") || name.includes("sm5j") || name.includes("um5k") || name.includes("lg ");
+            return isTV ? 1 : 0;
+        },
+        reason: "Chief RMF3 medium-fit fixed wall mount for commercial TVs 49\"–65\"",
+        trigger: "TV / commercial display",
+    },
+
     // ── Accessories ────────────────────────────────────────────────────
     {
         id: "spare_receiving_cards",
