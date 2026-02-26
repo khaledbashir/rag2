@@ -708,51 +708,170 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
 }
 
 // --- Display Details ---
+/** Compute diagonal screen size in inches from width/height in feet */
+function diagonalInches(wFt: number, hFt: number): number {
+    return Math.round(Math.sqrt((wFt * 12) ** 2 + (hFt * 12) ** 2));
+}
+
+/** Check if a display is a TV/commercial display (not LED) */
+function isTvDisplay(d: DisplayAnswers): boolean {
+    const name = (d.productName || d.displayName || "").toLowerCase();
+    const type = (d.displayType || "").toLowerCase();
+    return type.includes("tv") || type.includes("commercial") || type.includes("concourse-display") ||
+        name.includes("uh5j") || name.includes("sm5j") || name.includes("um5k") ||
+        name.includes(" tv") || name.includes("lg ") || /\b\d{2,3}["″]/.test(name);
+}
+
+/** Build a display description: use product name + size for TVs, original name for LED */
+function displayDescription(d: DisplayAnswers, c: ScreenCalc): string {
+    if (isTvDisplay(d)) {
+        const model = d.productName || d.displayName || c.name;
+        const inches = diagonalInches(c.widthFt, c.heightFt);
+        // If model already has the size, don't duplicate
+        if (model.includes(`${inches}`) || model.includes(`${inches}"`)) return model;
+        return `${model} (${inches}")`;
+    }
+    return c.name;
+}
+
 function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): SheetTab {
     const rows: SheetRow[] = [];
 
     rows.push({
-        cells: [{ value: "LED DISPLAY TECHNICAL SPECIFICATIONS & COSTS", bold: true, header: true, span: 10, align: "center" }],
+        cells: [{ value: "DISPLAY SPECIFICATIONS & COSTS", bold: true, header: true, span: 10, align: "center" }],
         isHeader: true,
     });
     rows.push({ cells: [{ value: "" }], isSeparator: true });
-    rows.push({
-        cells: [
-            { value: "DISPLAY", bold: true, header: true },
-            { value: "TYPE", bold: true, header: true },
-            { value: "W (ft)", bold: true, header: true, align: "center" },
-            { value: "H (ft)", bold: true, header: true, align: "center" },
-            { value: "SQ FT", bold: true, header: true, align: "center" },
-            { value: "PITCH", bold: true, header: true, align: "center" },
-            { value: "PIXELS", bold: true, header: true, align: "right" },
-            { value: "$/SQFT", bold: true, header: true, align: "right" },
-            { value: "LED COST", bold: true, header: true, align: "right" },
-            { value: "SELL PRICE", bold: true, header: true, align: "right" },
-        ],
-        isHeader: true,
-    });
 
     if (calcs.length === 0) {
+        rows.push({
+            cells: [
+                { value: "DISPLAY", bold: true, header: true },
+                { value: "TYPE", bold: true, header: true },
+                { value: "QTY", bold: true, header: true, align: "center" },
+                { value: "SIZE", bold: true, header: true, align: "center" },
+                { value: "SQ FT", bold: true, header: true, align: "center" },
+                { value: "PITCH", bold: true, header: true, align: "center" },
+                { value: "PIXELS", bold: true, header: true, align: "right" },
+                { value: "UNIT COST", bold: true, header: true, align: "right" },
+                { value: "TOTAL COST", bold: true, header: true, align: "right" },
+                { value: "SELL PRICE", bold: true, header: true, align: "right" },
+            ],
+            isHeader: true,
+        });
         rows.push({ cells: [{ value: "No displays configured yet", span: 10, align: "center" }] });
     } else {
+        // Separate TVs from LED displays
+        const tvDisplays: { d: DisplayAnswers; c: ScreenCalc }[] = [];
+        const ledDisplays: { d: DisplayAnswers; c: ScreenCalc; idx: number }[] = [];
+
         for (let i = 0; i < calcs.length; i++) {
-            const c = calcs[i];
             const d = answers.displays[i];
-            const hwSell = c.hardwareCost / (1 - c.marginPct);
+            const c = calcs[i];
+            if (isTvDisplay(d)) {
+                tvDisplays.push({ d, c });
+            } else {
+                ledDisplays.push({ d, c, idx: i });
+            }
+        }
+
+        // ── LED Displays (individual rows) ──
+        if (ledDisplays.length > 0) {
             rows.push({
                 cells: [
-                    { value: c.name },
-                    { value: (d?.displayType || "custom").replace(/_/g, " ") },
-                    { value: c.widthFt, align: "center" },
-                    { value: c.heightFt, align: "center" },
-                    { value: Math.round(c.areaSqFt * 100) / 100, align: "center" },
-                    { value: `${c.pixelPitch}mm`, align: "center" },
-                    { value: c.totalPixels.toLocaleString(), align: "right" },
-                    { value: c.costPerSqFt, currency: true, align: "right" },
-                    { value: c.hardwareCost, currency: true, align: "right" },
-                    { value: hwSell, currency: true, align: "right", highlight: true },
+                    { value: "DISPLAY", bold: true, header: true },
+                    { value: "TYPE", bold: true, header: true },
+                    { value: "W (ft)", bold: true, header: true, align: "center" },
+                    { value: "H (ft)", bold: true, header: true, align: "center" },
+                    { value: "SQ FT", bold: true, header: true, align: "center" },
+                    { value: "PITCH", bold: true, header: true, align: "center" },
+                    { value: "PIXELS", bold: true, header: true, align: "right" },
+                    { value: "$/SQFT", bold: true, header: true, align: "right" },
+                    { value: "LED COST", bold: true, header: true, align: "right" },
+                    { value: "SELL PRICE", bold: true, header: true, align: "right" },
                 ],
+                isHeader: true,
             });
+
+            for (const { d, c } of ledDisplays) {
+                const hwSell = c.hardwareCost / (1 - c.marginPct);
+                rows.push({
+                    cells: [
+                        { value: displayDescription(d, c) },
+                        { value: (d?.displayType || "custom").replace(/_/g, " ") },
+                        { value: c.widthFt, align: "center" },
+                        { value: c.heightFt, align: "center" },
+                        { value: Math.round(c.areaSqFt * 100) / 100, align: "center" },
+                        { value: `${c.pixelPitch}mm`, align: "center" },
+                        { value: c.totalPixels.toLocaleString(), align: "right" },
+                        { value: c.costPerSqFt, currency: true, align: "right" },
+                        { value: c.hardwareCost, currency: true, align: "right" },
+                        { value: hwSell, currency: true, align: "right", highlight: true },
+                    ],
+                });
+            }
+        }
+
+        // ── TV / Commercial Displays (grouped by model + size) ──
+        if (tvDisplays.length > 0) {
+            if (ledDisplays.length > 0) {
+                rows.push({ cells: [{ value: "" }], isSeparator: true });
+            }
+            rows.push({
+                cells: [{ value: "COMMERCIAL DISPLAYS / TVs", bold: true, header: true, span: 10 }],
+                isHeader: true,
+            });
+            rows.push({
+                cells: [
+                    { value: "MODEL", bold: true, header: true },
+                    { value: "LOCATION", bold: true, header: true },
+                    { value: "QTY", bold: true, header: true, align: "center" },
+                    { value: "SIZE", bold: true, header: true, align: "center" },
+                    { value: "", bold: true, header: true },
+                    { value: "", bold: true, header: true },
+                    { value: "", bold: true, header: true },
+                    { value: "UNIT COST", bold: true, header: true, align: "right" },
+                    { value: "TOTAL COST", bold: true, header: true, align: "right" },
+                    { value: "SELL PRICE", bold: true, header: true, align: "right" },
+                ],
+                isHeader: true,
+            });
+
+            // Group TVs by product model + size
+            const tvGroups = new Map<string, { model: string; location: string; inches: number; qty: number; unitCost: number; totalCost: number; totalSell: number }>();
+            for (const { d, c } of tvDisplays) {
+                const model = d.productName || d.displayName || c.name;
+                const inches = diagonalInches(c.widthFt, c.heightFt);
+                const key = `${model}__${inches}`;
+                const hwSell = c.hardwareCost / (1 - c.marginPct);
+                const existing = tvGroups.get(key);
+                if (existing) {
+                    existing.qty += 1;
+                    existing.totalCost += c.hardwareCost;
+                    existing.totalSell += hwSell;
+                } else {
+                    // Derive location from display name (e.g., "Suite TV 1" → "Suite")
+                    const loc = (d.displayName || c.name).replace(/\s*(tv|display|monitor)\s*\d*/gi, "").replace(/\d+$/, "").trim() || d.locationType || "";
+                    tvGroups.set(key, { model, location: loc, inches, qty: 1, unitCost: c.hardwareCost, totalCost: c.hardwareCost, totalSell: hwSell });
+                }
+            }
+
+            for (const g of tvGroups.values()) {
+                rows.push({
+                    cells: [
+                        { value: g.model },
+                        { value: g.location },
+                        { value: g.qty, align: "center" },
+                        { value: `${g.inches}"`, align: "center" },
+                        { value: "" },
+                        { value: "" },
+                        { value: "" },
+                        { value: g.unitCost, currency: true, align: "right" },
+                        { value: g.totalCost, currency: true, align: "right" },
+                        { value: g.totalSell, currency: true, align: "right", highlight: true },
+                    ],
+                });
+            }
         }
 
         // Total row
@@ -772,7 +891,7 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
     return {
         name: "Display Details",
         color: "#FFC107",
-        columns: ["DISPLAY", "TYPE", "W (ft)", "H (ft)", "SQ FT", "PITCH", "PIXELS", "$/SQFT", "LED COST", "SELL PRICE"],
+        columns: ["", "", "", "", "", "", "", "", "", ""],
         rows,
     };
 }
