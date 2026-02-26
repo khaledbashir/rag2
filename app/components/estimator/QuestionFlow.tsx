@@ -659,6 +659,7 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                         value={getValue()}
                         onChange={setValue}
                         onNext={goNext}
+                        onSkipToEnd={() => { setPhase("complete"); onComplete?.(); }}
                         setDisplayFields={setDisplayFields}
                         answers={answers}
                         displayIndex={displayIndex}
@@ -983,6 +984,7 @@ function QuestionInput({
     value,
     onChange,
     onNext,
+    onSkipToEnd,
     setDisplayFields,
     answers,
     displayIndex,
@@ -993,6 +995,7 @@ function QuestionInput({
     value: any;
     onChange: (val: any) => void;
     onNext: () => void;
+    onSkipToEnd?: () => void;
     setDisplayFields?: (fields: Partial<DisplayAnswers>) => void;
     answers?: EstimatorAnswers;
     displayIndex?: number;
@@ -1036,7 +1039,14 @@ function QuestionInput({
                                 <button
                                     key={action.label}
                                     type="button"
-                                    onClick={() => { onChange(action.value); setTimeout(onNext, 300); }}
+                                    onClick={() => {
+                                        onChange(action.value);
+                                        if (action.skipToEnd && onSkipToEnd) {
+                                            setTimeout(onSkipToEnd, 300);
+                                        } else {
+                                            setTimeout(onNext, 300);
+                                        }
+                                    }}
                                     className={cn(
                                         "px-3 py-1.5 rounded-md text-xs font-medium border transition-colors",
                                         value === action.value

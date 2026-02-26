@@ -323,11 +323,20 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
     const shippingCost = estimatedWeightLbs * 0.5; // ~$0.50/lb shipping estimate
     const demolitionCost = d.isReplacement ? 5000 : 0;
 
+    // Supply Only mode: servicesMargin === 0 means hardware only, no install services
+    const supplyOnly = answers.servicesMargin === 0;
+
     // Union labor multiplier (15% uplift on labor-related costs)
     const unionMult = answers.isUnion ? 1.15 : 1.0;
-    const adjInstallCost = installCost * unionMult;
-    const adjStructureCost = structureCost * unionMult;
-    const adjElectricalCost = electricalCost * unionMult;
+    const adjInstallCost = supplyOnly ? 0 : installCost * unionMult;
+    const adjStructureCost = supplyOnly ? 0 : structureCost * unionMult;
+    const adjElectricalCost = supplyOnly ? 0 : electricalCost * unionMult;
+    const adjEquipmentCost = supplyOnly ? 0 : equipmentCost;
+    const adjDataCablingCost = supplyOnly ? 0 : dataCablingCost;
+    const adjPmCost = supplyOnly ? 0 : pmCost;
+    const adjEngineeringCost = supplyOnly ? 0 : engineeringCost;
+    const adjShippingCost = supplyOnly ? 0 : shippingCost;
+    const adjDemolitionCost = supplyOnly ? 0 : demolitionCost;
 
     // Smart Assembly Bundle — auto-suggested accessories
     const bundleInput = {
@@ -348,22 +357,24 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         excludedIds: d.excludedBundleItems || [],
     };
     const bundle = calculateBundle(bundleInput);
+    const adjBundleCost = supplyOnly ? 0 : bundle.totalCost;
 
     const totalCost = hardware + adjStructureCost + adjInstallCost + adjElectricalCost
-        + equipmentCost + dataCablingCost + pmCost + engineeringCost + shippingCost + demolitionCost
-        + bundle.totalCost;
+        + adjEquipmentCost + adjDataCablingCost + adjPmCost + adjEngineeringCost + adjShippingCost + adjDemolitionCost
+        + adjBundleCost;
 
     // Tiered margins: separate LED hardware vs services margins
     // Small project tier: <100sqft gets higher services margin per rate card
     const ledMarginPct = (answers.ledMargin || answers.defaultMargin || 30) / 100;
     const smallProjectThreshold = 100; // sqft
     const smallSvcMargin = rc(rates, "margin.services_small", 0.30);
-    const baseSvcMarginPct = (answers.servicesMargin || answers.defaultMargin || 30) / 100;
+    const baseSvcMarginPct = (answers.servicesMargin !== undefined && answers.servicesMargin !== null
+        ? answers.servicesMargin : (answers.defaultMargin || 30)) / 100;
     const svcMarginPct = (area < smallProjectThreshold && baseSvcMarginPct < smallSvcMargin)
         ? smallSvcMargin : baseSvcMarginPct;
     const serviceCost = adjStructureCost + adjInstallCost + adjElectricalCost
-        + equipmentCost + dataCablingCost + pmCost + engineeringCost + shippingCost + demolitionCost
-        + bundle.totalCost;
+        + adjEquipmentCost + adjDataCablingCost + adjPmCost + adjEngineeringCost + adjShippingCost + adjDemolitionCost
+        + adjBundleCost;
     const hardwareSell = hardware / (1 - ledMarginPct);
     const servicesSell = serviceCost / (1 - svcMarginPct);
     const sellPrice = hardwareSell + servicesSell;
@@ -401,13 +412,13 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         structureCost: adjStructureCost,
         installCost: adjInstallCost,
         electricalCost: adjElectricalCost,
-        equipmentCost,
-        dataCablingCost,
-        pmCost,
-        engineeringCost,
-        shippingCost,
-        demolitionCost,
-        bundleCost: bundle.totalCost,
+        equipmentCost: adjEquipmentCost,
+        dataCablingCost: adjDataCablingCost,
+        pmCost: adjPmCost,
+        engineeringCost: adjEngineeringCost,
+        shippingCost: adjShippingCost,
+        demolitionCost: adjDemolitionCost,
+        bundleCost: adjBundleCost,
         bundleItems: bundle.items,
         totalCost,
         marginPct,
@@ -508,7 +519,7 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
     const financialRows: [string, string | number][] = [
         ["Margin Tier", answers.marginTier === "proposal" ? "Proposal (LED 38%, Svc 20%)" : "Budget (LED 15%, Svc 20%)"],
         ["LED Hardware Margin", `${answers.ledMargin || 15}%`],
-        ["Installation Services Margin", `${answers.servicesMargin || 20}%`],
+        ["Installation Services Margin", answers.servicesMargin === 0 ? "Supply Only" : `${answers.servicesMargin || 20}%`],
         ["Default Blended Margin", `${answers.defaultMargin || 30}%`],
         ["Bond Rate", `${answers.bondRate || 1.5}%`],
         ["Sales Tax Rate", `${answers.salesTaxRate || 9.5}%`],
@@ -592,13 +603,19 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
         rows.push({
             cells: [{ value: "1.0 LED HARDWARE", bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }],
         });
-        for (const c of calcs) {
+        for (let i = 0; i < calcs.length; i++) {
+            const c = calcs[i];
+            const d = answers.displays[i];
             const hwSell = c.hardwareCost / (1 - c.marginPct);
             const hwMarginDollar = hwSell - c.hardwareCost;
+            // TVs: show model name (no pitch), LEDs: show name with pitch
+            const desc = isTvDisplay(d)
+                ? displayDescription(d, c)
+                : `${c.name} — ${c.pixelPitch}mm`;
             rows.push({
                 cells: [
                     { value: "" },
-                    { value: `${c.name} — ${c.pixelPitch}mm` },
+                    { value: desc },
                     { value: 1, align: "center" },
                     { value: "EA", align: "center" },
                     { value: c.hardwareCost, currency: true, align: "right" },
@@ -609,26 +626,90 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
             });
         }
 
-        // Services
+        // Services — broken out by line item
+        const svcMarginPctBudget = (answers.servicesMargin !== undefined && answers.servicesMargin !== null
+            ? answers.servicesMargin : (answers.defaultMargin || 30)) / 100;
         rows.push({
-            cells: [{ value: "2.0 SERVICES", bold: true }, { value: "Labor, PM & Eng" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }],
+            cells: [{ value: "2.0 INSTALLATION SERVICES", bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }],
         });
+
+        // Aggregate labor line items across all displays
+        let totStruct = 0, totInstall = 0, totElec = 0, totEquip = 0, totPm = 0, totEng = 0, totShip = 0, totDemo = 0;
         for (const c of calcs) {
-            const svcCost = c.installCost + c.structureCost + c.electricalCost + c.equipmentCost + c.dataCablingCost + c.pmCost + c.engineeringCost + c.shippingCost + c.demolitionCost + c.bundleCost;
-            const svcSell = svcCost / (1 - c.marginPct);
-            const svcMarginDollar = svcSell - svcCost;
+            totStruct += c.structureCost;
+            totInstall += c.installCost;
+            totElec += c.electricalCost;
+            totEquip += c.equipmentCost + c.dataCablingCost;
+            totPm += c.pmCost;
+            totEng += c.engineeringCost;
+            totShip += c.shippingCost;
+            totDemo += c.demolitionCost;
+        }
+
+        const laborLines: [string, number][] = [
+            ["Structural / Steel Fabrication", totStruct],
+            ["LED Installation Labor", totInstall],
+            ["Electrical & Power", totElec],
+            ["Equipment Rental & Data Cabling", totEquip],
+            ["Project Management", totPm],
+            ["Engineering", totEng],
+            ["Shipping & Logistics", totShip],
+        ];
+        if (totDemo > 0) laborLines.push(["Demolition / Removal", totDemo]);
+
+        for (const [label, cost] of laborLines) {
+            if (cost === 0) continue;
+            const sell = svcMarginPctBudget < 1 ? cost / (1 - svcMarginPctBudget) : cost;
+            const marginDollar = sell - cost;
             rows.push({
                 cells: [
                     { value: "" },
-                    { value: `${c.name} — Install & Services` },
+                    { value: label },
                     { value: 1, align: "center" },
                     { value: "LS", align: "center" },
-                    { value: svcCost, currency: true, align: "right" },
-                    { value: svcSell, currency: true, align: "right" },
-                    { value: c.marginPct, percent: true, align: "center" },
-                    { value: svcMarginDollar, currency: true, align: "right" },
+                    { value: cost, currency: true, align: "right" },
+                    { value: sell, currency: true, align: "right" },
+                    { value: svcMarginPctBudget, percent: true, align: "center" },
+                    { value: marginDollar, currency: true, align: "right" },
                 ],
             });
+        }
+
+        // Accessories / Bundle Items
+        const allBundleItems: { name: string; cost: number }[] = [];
+        for (const c of calcs) {
+            if (c.bundleItems) {
+                for (const item of c.bundleItems) {
+                    const existing = allBundleItems.find((b) => b.name === item.name);
+                    if (existing) {
+                        existing.cost += item.totalCost;
+                    } else {
+                        allBundleItems.push({ name: item.name, cost: item.totalCost });
+                    }
+                }
+            }
+        }
+
+        if (allBundleItems.length > 0) {
+            rows.push({
+                cells: [{ value: "3.0 ACCESSORIES", bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }],
+            });
+            for (const item of allBundleItems) {
+                const sell = svcMarginPctBudget < 1 ? item.cost / (1 - svcMarginPctBudget) : item.cost;
+                const marginDollar = sell - item.cost;
+                rows.push({
+                    cells: [
+                        { value: "" },
+                        { value: item.name },
+                        { value: 1, align: "center" },
+                        { value: "EA", align: "center" },
+                        { value: item.cost, currency: true, align: "right" },
+                        { value: sell, currency: true, align: "right" },
+                        { value: svcMarginPctBudget, percent: true, align: "center" },
+                        { value: marginDollar, currency: true, align: "right" },
+                    ],
+                });
+            }
         }
 
         // Totals
@@ -736,9 +817,10 @@ function displayDescription(d: DisplayAnswers, c: ScreenCalc): string {
 
 function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): SheetTab {
     const rows: SheetRow[] = [];
+    const COLS = 12; // Total columns
 
     rows.push({
-        cells: [{ value: "DISPLAY SPECIFICATIONS & COSTS", bold: true, header: true, span: 10, align: "center" }],
+        cells: [{ value: "DISPLAY SPECIFICATIONS & COSTS", bold: true, header: true, span: COLS, align: "center" }],
         isHeader: true,
     });
     rows.push({ cells: [{ value: "" }], isSeparator: true });
@@ -748,18 +830,20 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
             cells: [
                 { value: "DISPLAY", bold: true, header: true },
                 { value: "TYPE", bold: true, header: true },
-                { value: "QTY", bold: true, header: true, align: "center" },
-                { value: "SIZE", bold: true, header: true, align: "center" },
+                { value: "W (ft)", bold: true, header: true, align: "center" },
+                { value: "H (ft)", bold: true, header: true, align: "center" },
                 { value: "SQ FT", bold: true, header: true, align: "center" },
                 { value: "PITCH", bold: true, header: true, align: "center" },
                 { value: "PIXELS", bold: true, header: true, align: "right" },
-                { value: "UNIT COST", bold: true, header: true, align: "right" },
-                { value: "TOTAL COST", bold: true, header: true, align: "right" },
+                { value: "$/SQFT", bold: true, header: true, align: "right" },
+                { value: "LED COST", bold: true, header: true, align: "right" },
                 { value: "SELL PRICE", bold: true, header: true, align: "right" },
+                { value: "MARGIN %", bold: true, header: true, align: "center" },
+                { value: "MARGIN $", bold: true, header: true, align: "right" },
             ],
             isHeader: true,
         });
-        rows.push({ cells: [{ value: "No displays configured yet", span: 10, align: "center" }] });
+        rows.push({ cells: [{ value: "No displays configured yet", span: COLS, align: "center" }] });
     } else {
         // Separate TVs from LED displays
         const tvDisplays: { d: DisplayAnswers; c: ScreenCalc }[] = [];
@@ -789,12 +873,15 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                     { value: "$/SQFT", bold: true, header: true, align: "right" },
                     { value: "LED COST", bold: true, header: true, align: "right" },
                     { value: "SELL PRICE", bold: true, header: true, align: "right" },
+                    { value: "MARGIN %", bold: true, header: true, align: "center" },
+                    { value: "MARGIN $", bold: true, header: true, align: "right" },
                 ],
                 isHeader: true,
             });
 
             for (const { d, c } of ledDisplays) {
                 const hwSell = c.hardwareCost / (1 - c.marginPct);
+                const marginDollar = hwSell - c.hardwareCost;
                 rows.push({
                     cells: [
                         { value: displayDescription(d, c) },
@@ -806,7 +893,9 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                         { value: c.totalPixels.toLocaleString(), align: "right" },
                         { value: c.costPerSqFt, currency: true, align: "right" },
                         { value: c.hardwareCost, currency: true, align: "right" },
-                        { value: hwSell, currency: true, align: "right", highlight: true },
+                        { value: hwSell, currency: true, align: "right" },
+                        { value: c.marginPct, percent: true, align: "center" },
+                        { value: marginDollar, currency: true, align: "right" },
                     ],
                 });
             }
@@ -818,7 +907,7 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                 rows.push({ cells: [{ value: "" }], isSeparator: true });
             }
             rows.push({
-                cells: [{ value: "COMMERCIAL DISPLAYS / TVs", bold: true, header: true, span: 10 }],
+                cells: [{ value: "COMMERCIAL DISPLAYS / TVs", bold: true, header: true, span: COLS }],
                 isHeader: true,
             });
             rows.push({
@@ -833,12 +922,14 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                     { value: "UNIT COST", bold: true, header: true, align: "right" },
                     { value: "TOTAL COST", bold: true, header: true, align: "right" },
                     { value: "SELL PRICE", bold: true, header: true, align: "right" },
+                    { value: "MARGIN %", bold: true, header: true, align: "center" },
+                    { value: "MARGIN $", bold: true, header: true, align: "right" },
                 ],
                 isHeader: true,
             });
 
             // Group TVs by product model + size
-            const tvGroups = new Map<string, { model: string; location: string; inches: number; qty: number; unitCost: number; totalCost: number; totalSell: number }>();
+            const tvGroups = new Map<string, { model: string; location: string; inches: number; qty: number; unitCost: number; totalCost: number; totalSell: number; marginPct: number }>();
             for (const { d, c } of tvDisplays) {
                 const model = d.productName || d.displayName || c.name;
                 const inches = diagonalInches(c.widthFt, c.heightFt);
@@ -852,11 +943,12 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                 } else {
                     // Derive location from display name (e.g., "Suite TV 1" → "Suite")
                     const loc = (d.displayName || c.name).replace(/\s*(tv|display|monitor)\s*\d*/gi, "").replace(/\d+$/, "").trim() || d.locationType || "";
-                    tvGroups.set(key, { model, location: loc, inches, qty: 1, unitCost: c.hardwareCost, totalCost: c.hardwareCost, totalSell: hwSell });
+                    tvGroups.set(key, { model, location: loc, inches, qty: 1, unitCost: c.hardwareCost, totalCost: c.hardwareCost, totalSell: hwSell, marginPct: c.marginPct });
                 }
             }
 
             for (const g of tvGroups.values()) {
+                const marginDollar = g.totalSell - g.totalCost;
                 rows.push({
                     cells: [
                         { value: g.model },
@@ -868,7 +960,9 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                         { value: "" },
                         { value: g.unitCost, currency: true, align: "right" },
                         { value: g.totalCost, currency: true, align: "right" },
-                        { value: g.totalSell, currency: true, align: "right", highlight: true },
+                        { value: g.totalSell, currency: true, align: "right" },
+                        { value: g.marginPct, percent: true, align: "center" },
+                        { value: marginDollar, currency: true, align: "right" },
                     ],
                 });
             }
@@ -877,12 +971,16 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
         // Total row
         const totalHwCost = calcs.reduce((s, c) => s + c.hardwareCost, 0);
         const totalHwSell = calcs.reduce((s, c) => s + c.hardwareCost / (1 - c.marginPct), 0);
+        const totalMarginDollar = totalHwSell - totalHwCost;
+        const totalMarginPct = totalHwCost > 0 ? 1 - (totalHwCost / totalHwSell) : 0;
         rows.push({ cells: [{ value: "" }], isSeparator: true });
         rows.push({
             cells: [
                 { value: "TOTAL", bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" },
                 { value: totalHwCost, currency: true, align: "right", bold: true },
-                { value: totalHwSell, currency: true, align: "right", bold: true, highlight: true },
+                { value: totalHwSell, currency: true, align: "right", bold: true },
+                { value: totalMarginPct, percent: true, align: "center", bold: true },
+                { value: totalMarginDollar, currency: true, align: "right", bold: true },
             ],
             isTotal: true,
         });
@@ -891,7 +989,7 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
     return {
         name: "Display Details",
         color: "#FFC107",
-        columns: ["", "", "", "", "", "", "", "", "", ""],
+        columns: ["", "", "", "", "", "", "", "", "", "", "", ""],
         rows,
     };
 }
@@ -899,9 +997,13 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
 // --- Labor Worksheet ---
 function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): SheetTab {
     const rows: SheetRow[] = [];
+    const COLS = 11;
+
+    const svcMarginPct = (answers.servicesMargin !== undefined && answers.servicesMargin !== null
+        ? answers.servicesMargin : (answers.defaultMargin || 30)) / 100;
 
     rows.push({
-        cells: [{ value: "INSTALLATION & LABOR COSTS", bold: true, header: true, span: 7, align: "center" }],
+        cells: [{ value: "INSTALLATION & LABOR COSTS", bold: true, header: true, span: COLS, align: "center" }],
         isHeader: true,
     });
     rows.push({ cells: [{ value: "" }], isSeparator: true });
@@ -914,13 +1016,16 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
             { value: "EQUIP/DATA", bold: true, header: true, align: "right" },
             { value: "PM / ENG", bold: true, header: true, align: "right" },
             { value: "SHIPPING", bold: true, header: true, align: "right" },
-            { value: "TOTAL", bold: true, header: true, align: "right" },
+            { value: "TOTAL COST", bold: true, header: true, align: "right" },
+            { value: "SALE PRICE", bold: true, header: true, align: "right" },
+            { value: "MARGIN %", bold: true, header: true, align: "center" },
+            { value: "MARGIN $", bold: true, header: true, align: "right" },
         ],
         isHeader: true,
     });
 
     if (calcs.length === 0) {
-        rows.push({ cells: [{ value: "No displays configured yet", span: 8, align: "center" }] });
+        rows.push({ cells: [{ value: "No displays configured yet", span: COLS, align: "center" }] });
     } else {
         let totalStruct = 0, totalInstall = 0, totalElec = 0, totalEquip = 0, totalPm = 0, totalShip = 0, totalAll = 0;
 
@@ -935,6 +1040,9 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
             totalShip += c.shippingCost;
             totalAll += lineTotal;
 
+            const lineSell = svcMarginPct < 1 ? lineTotal / (1 - svcMarginPct) : lineTotal;
+            const lineMargin = lineSell - lineTotal;
+
             rows.push({
                 cells: [
                     { value: c.name },
@@ -945,14 +1053,20 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                     { value: c.pmCost + c.engineeringCost, currency: true, align: "right" },
                     { value: c.shippingCost, currency: true, align: "right" },
                     { value: lineTotal, currency: true, align: "right", bold: true },
+                    { value: lineSell, currency: true, align: "right" },
+                    { value: svcMarginPct, percent: true, align: "center" },
+                    { value: lineMargin, currency: true, align: "right" },
                 ],
             });
         }
 
+        const totalSellPrice = svcMarginPct < 1 ? totalAll / (1 - svcMarginPct) : totalAll;
+        const totalMarginDollars = totalSellPrice - totalAll;
+
         rows.push({ cells: [{ value: "" }], isSeparator: true });
         rows.push({
             cells: [
-                { value: "TOTAL COST", bold: true },
+                { value: "TOTAL", bold: true },
                 { value: totalStruct, currency: true, align: "right", bold: true },
                 { value: totalInstall, currency: true, align: "right", bold: true },
                 { value: totalElec, currency: true, align: "right", bold: true },
@@ -960,37 +1074,9 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                 { value: totalPm, currency: true, align: "right", bold: true },
                 { value: totalShip, currency: true, align: "right", bold: true },
                 { value: totalAll, currency: true, align: "right", bold: true },
-            ],
-            isTotal: true,
-        });
-
-        // ── Cost vs Sale Price Summary ──
-        const svcMarginPct = (answers.servicesMargin || answers.defaultMargin || 30) / 100;
-        const totalSellPrice = totalAll / (1 - svcMarginPct);
-        const marginDollars = totalSellPrice - totalAll;
-
-        rows.push({ cells: [{ value: "" }], isSeparator: true });
-        rows.push({
-            cells: [{ value: "FINANCIAL SUMMARY", bold: true, header: true, span: 8, align: "center" }],
-            isHeader: true,
-        });
-        rows.push({ cells: [{ value: "" }], isSeparator: true });
-        rows.push({
-            cells: [
-                { value: "Total Installation Cost", bold: true, span: 7 },
-                { value: totalAll, currency: true, align: "right", bold: true },
-            ],
-        });
-        rows.push({
-            cells: [
-                { value: `Installation Services Margin (${(svcMarginPct * 100).toFixed(0)}%)`, span: 7 },
-                { value: marginDollars, currency: true, align: "right" },
-            ],
-        });
-        rows.push({
-            cells: [
-                { value: "Total Sale Price", bold: true, span: 7 },
                 { value: totalSellPrice, currency: true, align: "right", bold: true },
+                { value: svcMarginPct, percent: true, align: "center", bold: true },
+                { value: totalMarginDollars, currency: true, align: "right", bold: true },
             ],
             isTotal: true,
         });
@@ -999,36 +1085,36 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
         const unionLabel = answers.isUnion ? " (union +15%)" : "";
         rows.push({ cells: [{ value: "" }], isSeparator: true });
         rows.push({
-            cells: [{ value: "RATE BASIS", bold: true, header: true, span: 8, align: "center" }],
+            cells: [{ value: "RATE BASIS", bold: true, header: true, span: COLS, align: "center" }],
             isHeader: true,
         });
         rows.push({ cells: [{ value: "" }], isSeparator: true });
         rows.push({ cells: [
-            { value: "Structural", bold: true, span: 4 },
-            { value: `% of hardware cost${unionLabel}`, span: 4 },
+            { value: "Structural", bold: true, span: 5 },
+            { value: `% of hardware cost${unionLabel}`, span: 6 },
         ]});
         rows.push({ cells: [
-            { value: "LED Install", bold: true, span: 4 },
-            { value: `Steel fab rate + panel install rate per sqft${unionLabel}`, span: 4 },
+            { value: "LED Install", bold: true, span: 5 },
+            { value: `Steel fab rate + panel install rate per sqft${unionLabel}`, span: 6 },
         ]});
         rows.push({ cells: [
-            { value: "Electrical", bold: true, span: 4 },
-            { value: `Materials per sqft × power distance multiplier${unionLabel}`, span: 4 },
+            { value: "Electrical", bold: true, span: 5 },
+            { value: `Materials per sqft × power distance multiplier${unionLabel}`, span: 6 },
         ]});
         rows.push({ cells: [
-            { value: "PM / Engineering", bold: true, span: 4 },
-            { value: `Base fee × complexity multiplier (${answers.pmComplexity || "standard"})`, span: 4 },
+            { value: "PM / Engineering", bold: true, span: 5 },
+            { value: `Base fee × complexity multiplier (${answers.pmComplexity || "standard"})`, span: 6 },
         ]});
         rows.push({ cells: [
-            { value: "Shipping", bold: true, span: 4 },
-            { value: "Estimated weight × $0.50/lb", span: 4 },
+            { value: "Shipping", bold: true, span: 5 },
+            { value: "Estimated weight × $0.50/lb", span: 6 },
         ]});
     }
 
     return {
         name: "Labor Worksheet",
         color: "#28A745",
-        columns: ["DISPLAY", "STRUCTURAL", "INSTALL", "ELECTRICAL", "EQUIP/DATA", "PM / ENG", "SHIPPING", "TOTAL"],
+        columns: ["DISPLAY", "STRUCTURAL", "INSTALL", "ELECTRICAL", "EQUIP/DATA", "PM / ENG", "SHIPPING", "TOTAL COST", "SALE PRICE", "MARGIN %", "MARGIN $"],
         rows,
     };
 }

@@ -50,7 +50,7 @@ export interface Question {
     /** Which sheet tab this answer affects (for live preview highlighting) */
     affectsSheet?: string;
     /** Quick-action buttons shown below the input (e.g. "Not Included" sets value to 0) */
-    quickActions?: { label: string; value: any }[];
+    quickActions?: { label: string; value: any; skipToEnd?: boolean }[];
 }
 
 // ============================================================================
@@ -476,10 +476,11 @@ export const FINANCIAL_QUESTIONS: Question[] = [
         subtitle: "Margin on labor, install, PM, engineering. Standard: 20%.",
         defaultValue: 20,
         unit: "%",
-        min: 5,
+        min: 0,
         max: 60,
         step: 1,
         affectsSheet: "Budget Summary",
+        quickActions: [{ label: "Supply Only", value: 0, skipToEnd: true }],
     },
     {
         id: "defaultMargin",
