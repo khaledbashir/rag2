@@ -464,8 +464,7 @@ export default function ProjectsPage() {
 
                 <DashboardBriefMe projectId={briefProjectId} isOpen={isBriefOpen} onClose={() => setIsBriefOpen(false)} />
 
-                {/* AI Operations Prompt Library — slide-out panel */}
-                <PromptLibraryPanel pipelineContext={copilotContext} onSendToCopilot={handleCopilotMessage} />
+                {/* AI Operations Prompt Library — hidden for now */}
 
 
                 <div className="fixed bottom-6 right-6 z-50">
