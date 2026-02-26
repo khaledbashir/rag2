@@ -19,15 +19,27 @@ const GLM_MODEL = process.env.Z_AI_MODEL_NAME || "glm-4.7";
 
 const SYSTEM_PROMPT = `You are ANC's LED display project estimator. You analyze project descriptions and extract structured data for cost estimation.
 
-IMPORTANT: Think step by step. In your reasoning, analyze:
-1. Identify the client/organization name
-2. Determine the venue/project name
-3. Extract location (city, state)
-4. For each display mentioned, extract: name, type, dimensions (width x height in feet), pixel pitch (mm), installation type
-5. Determine environment (indoor/outdoor), installation type (new/replacement), labor type (union/non-union)
+You MUST respond in two parts, in this exact order:
 
-After reasoning, output ONLY a JSON object (no markdown, no explanation) with this exact schema:
+## PART 1: REASONING (plain text, streamed to the user live)
+Write your full analysis as plain text. Be thorough and specific. Cover:
 
+1. **Project identification** — Who is the client? What venue? Where?
+2. **Display breakdown** — For EACH display mentioned:
+   - What type of display is it? (scoreboard, ribbon, fascia, end-zone, etc.)
+   - Exact dimensions: width × height in feet, and the square footage calculation
+   - Pixel pitch and what that means for resolution
+   - Where it's being mounted (wall, fascia, freestanding, etc.)
+   - Installation complexity and why (center-hung = complex rigging, wall = simpler, ribbon = long runs)
+3. **Environment & labor** — Indoor vs outdoor, new install vs replacement, union vs non-union
+4. **Key observations** — Anything notable (large ribbon run, tight pixel pitch for outdoor, etc.)
+
+This reasoning MUST be real analysis. Show the actual math. Explain WHY you chose each classification.
+
+## PART 2: JSON (structured extraction)
+After your reasoning, output a JSON code block with this exact schema:
+
+\`\`\`json
 {
   "clientName": "string",
   "projectName": "string",
@@ -51,6 +63,7 @@ After reasoning, output ONLY a JSON object (no markdown, no explanation) with th
     }
   ]
 }
+\`\`\`
 
 Rules:
 - displayType must be one of: main-scoreboard, center-hung, ribbon-board, fascia-board, concourse-display, end-zone, marquee, auxiliary, custom
@@ -59,7 +72,9 @@ Rules:
 - pixelPitch should be a string number like "4" or "6" or "10"
 - If multiple identical displays, create one entry per display (e.g., "two ribbon boards" = 2 separate entries)
 - Default to budget docType and USD currency unless specified
-- Infer installComplexity from context (center-hung = complex, wall mount = simple, etc.)`;
+- Infer installComplexity from context (center-hung = complex, wall mount = simple, etc.)
+
+CRITICAL: You MUST write the full reasoning analysis FIRST as plain text, THEN the JSON block. Never skip the reasoning.`;
 
 const PRIMARY_WORKSPACE = process.env.ANYTHING_LLM_REASONING_WORKSPACE || process.env.ANYTHING_LLM_WORKSPACE || "ancdashboard";
 
@@ -222,14 +237,11 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
                                     continue;
                                 }
 
-                                // No think block at all (model doesn't use them) →
-                                // stream everything as reasoning until valid JSON object starts
-                                // Use a smarter check: look for a line that starts with { (JSON output)
+                                // No think block — stream as reasoning until JSON code block starts
+                                // The model outputs plain text reasoning, then ```json { ... } ```
                                 if (!thinkBlockEnded) {
-                                    // Check if this token looks like the start of JSON output
-                                    const accumulated = fullText.trimStart();
-                                    const looksLikeJson = /^\s*\{/.test(accumulated) && accumulated.includes('"clientName"');
-                                    if (!looksLikeJson) {
+                                    // Once we see ```json in the accumulated text, stop streaming reasoning
+                                    if (!fullText.includes("```json") && !fullText.includes('"clientName"')) {
                                         send({ type: "reasoning", text: token });
                                     }
                                 }
