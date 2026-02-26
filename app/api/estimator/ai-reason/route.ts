@@ -146,10 +146,15 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
         return null;
     }
 
-    // fullText = everything the model outputs (thinking + JSON)
+    // fullText = content text (reasoning + JSON output from model)
     let fullText = "";
-    // jsonStarted = we've detected the JSON output beginning, stop streaming reasoning
-    let jsonStarted = false;
+    // reasoningText = just the thinking/reasoning portion
+    let reasoningText = "";
+    // State machine: "thinking" | "content" | "json"
+    // thinking = inside <think> block or provider-separated reasoning
+    // content = model output text (may be reasoning before JSON)
+    // json = JSON output detected, stop streaming
+    let phase: "thinking" | "content" | "json" = "content";
 
     const readable = new ReadableStream({
         async start(controller) {
@@ -167,6 +172,11 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
             let buffer = "";
             let chunkCount = 0;
 
+            // For detecting <think> / </think> across token boundaries
+            // We check fullText (accumulated) not individual tokens
+            let thinkOpenSeen = false;
+            let thinkCloseSeen = false;
+
             try {
                 while (true) {
                     const { done, value } = await reader.read();
@@ -183,46 +193,97 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
                         try {
                             const chunk = JSON.parse(trimmed.slice(6));
 
-                            // Log first chunks so we can debug the format
-                            if (chunkCount < 3) {
-                                console.log("[ai-reason] chunk:", JSON.stringify(chunk).slice(0, 200));
+                            // Log first 5 chunks to diagnose AnythingLLM's format
+                            if (chunkCount < 5) {
+                                console.log("[ai-reason] chunk:", JSON.stringify(chunk).slice(0, 300));
                                 chunkCount++;
                             }
 
-                            // AnythingLLM streams text as textResponseChunk
+                            // ── Handle provider-separated reasoning ──
+                            // Some providers (Groq, OpenRouter) strip <think> and put
+                            // reasoning in a separate field. AnythingLLM may forward this.
+                            const thinking = chunk.thinking || chunk.reasoning || chunk.reasoning_content || "";
+                            if (thinking) {
+                                reasoningText += thinking;
+                                send({ type: "reasoning", text: thinking });
+                                // If we get explicit reasoning fields, we know the model
+                                // separates thinking from content
+                                phase = "thinking";
+                            }
+
+                            // ── Handle normal text response ──
                             if (chunk.type === "textResponseChunk" && chunk.textResponse) {
                                 const token = chunk.textResponse;
                                 fullText += token;
 
-                                if (!jsonStarted) {
-                                    // Check if we've hit the JSON output boundary
-                                    // The model's reasoning comes first, then JSON
-                                    // Detect: <think> close, ```json, or a bare { followed by "clientName"
-                                    if (token.includes("</think>")) {
-                                        jsonStarted = true;
-                                        // Send any text before the tag as final reasoning
-                                        const before = token.split("</think>")[0];
-                                        if (before) send({ type: "reasoning", text: before });
-                                    } else if (token.includes("<think>")) {
-                                        // Strip the tag, send the rest
-                                        const after = token.replace("<think>", "");
-                                        if (after) send({ type: "reasoning", text: after });
-                                    } else if (fullText.includes("```json")) {
-                                        jsonStarted = true;
-                                    } else if (fullText.includes('"clientName"') || fullText.includes('"displays"')) {
-                                        // Model jumped straight to JSON without thinking
-                                        jsonStarted = true;
+                                // Check accumulated text for <think> tags (handles partial tokens)
+                                if (!thinkOpenSeen && fullText.includes("<think>")) {
+                                    thinkOpenSeen = true;
+                                    phase = "thinking";
+                                    // Extract and send any reasoning after <think> tag
+                                    const afterTag = fullText.split("<think>").pop() || "";
+                                    if (afterTag && !afterTag.includes("</think>")) {
+                                        // Only send the new part we haven't sent yet
+                                        const alreadySent = reasoningText.length;
+                                        const newPart = afterTag.slice(alreadySent);
+                                        if (newPart) {
+                                            reasoningText += newPart;
+                                            send({ type: "reasoning", text: newPart });
+                                        }
+                                    }
+                                    continue;
+                                }
+
+                                if (thinkOpenSeen && !thinkCloseSeen && fullText.includes("</think>")) {
+                                    thinkCloseSeen = true;
+                                    phase = "content";
+                                    // Send any remaining thinking text before </think>
+                                    const thinkContent = fullText.split("<think>")[1]?.split("</think>")[0] || "";
+                                    const unsent = thinkContent.slice(reasoningText.length);
+                                    if (unsent) {
+                                        reasoningText += unsent;
+                                        send({ type: "reasoning", text: unsent });
+                                    }
+                                    continue;
+                                }
+
+                                // Inside <think> block — stream as reasoning
+                                if (thinkOpenSeen && !thinkCloseSeen) {
+                                    reasoningText += token;
+                                    send({ type: "reasoning", text: token });
+                                    continue;
+                                }
+
+                                // If provider already sent reasoning separately,
+                                // content text is the JSON output — don't stream it
+                                if (phase === "thinking") {
+                                    // Provider separated reasoning; this content is JSON
+                                    continue;
+                                }
+
+                                // No <think> tags, no provider reasoning field —
+                                // the model outputs everything in content stream.
+                                // Stream as reasoning until we detect JSON starting.
+                                if (phase !== "json") {
+                                    // Check accumulated text for JSON boundary
+                                    if (
+                                        fullText.includes("```json") ||
+                                        fullText.includes('"clientName"') ||
+                                        fullText.includes('"displays"')
+                                    ) {
+                                        phase = "json";
+                                        // Don't send this token (it's JSON)
                                     } else {
-                                        // This is reasoning text — forward it live
+                                        // Still reasoning — forward live
+                                        reasoningText += token;
                                         send({ type: "reasoning", text: token });
                                     }
                                 }
-                                // After jsonStarted, tokens accumulate silently for parsing
                             }
 
                             if (chunk.close) break;
                             if (chunk.error) {
-                                console.error("[ai-reason] AnythingLLM chunk error:", chunk.error);
+                                console.error("[ai-reason] chunk error:", chunk.error);
                                 send({ type: "error", message: "AI returned an error" });
                                 break;
                             }
@@ -233,7 +294,7 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
                 }
 
                 // Parse the accumulated text for JSON extraction
-                console.log(`[ai-reason] Done. Length: ${fullText.length}, jsonStarted: ${jsonStarted}, has <think>: ${fullText.includes("<think>")}`);
+                console.log(`[ai-reason] Done. fullText length: ${fullText.length}, reasoning length: ${reasoningText.length}, phase: ${phase}, thinkOpen: ${thinkOpenSeen}, thinkClose: ${thinkCloseSeen}`);
                 const parsed = parseExtraction(fullText);
 
                 if (parsed) {
