@@ -526,6 +526,9 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
         ["Cost/sqft Override", answers.costPerSqFtOverride > 0 ? `$${answers.costPerSqFtOverride}` : "None (catalog pricing)"],
         ["PM Complexity", (answers.pmComplexity || "standard").charAt(0).toUpperCase() + (answers.pmComplexity || "standard").slice(1)],
         ["Target Price (Profit Shield)", answers.targetPrice > 0 ? fmt(answers.targetPrice) : "Not set"],
+        ["CMS (Content Management)", answers.includeCms ? `Yes — ${fmt(answers.cmsAllocation)}` : "Not included"],
+        ["Scoring System", answers.includeScoring ? `Yes — ${fmt(answers.scoringAllocation)}` : "Not included"],
+        ["Warranty", answers.includeWarranty === "included" ? "Included (No Charge)" : answers.includeWarranty === "priced" ? `${answers.warrantyYears || 1} Year${(parseInt(answers.warrantyYears) || 1) > 1 ? "s" : ""} — ${answers.warrantyAllocation > 0 ? fmt(answers.warrantyAllocation) : "Auto-calc"}` : "Not included"],
     ];
 
     for (const [label, value] of financialRows) {
@@ -544,9 +547,19 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
             isHeader: true,
         });
 
-        const totalCost = calcs.reduce((s, c) => s + c.totalCost, 0);
-        const totalSell = calcs.reduce((s, c) => s + c.sellPrice, 0);
-        const grandTotal = calcs.reduce((s, c) => s + c.finalTotal, 0);
+        // Include CMS, Scoring, Warranty add-on costs
+        const svcMPct = (answers.servicesMargin !== undefined && answers.servicesMargin !== null
+            ? answers.servicesMargin : (answers.defaultMargin || 30)) / 100;
+        const addOnCost = (answers.includeCms ? answers.cmsAllocation : 0)
+            + (answers.includeScoring ? answers.scoringAllocation : 0)
+            + (answers.includeWarranty === "priced" ? (answers.warrantyAllocation > 0 ? answers.warrantyAllocation : calcs.reduce((s, c) => s + c.hardwareCost, 0) * 0.03 * (parseInt(answers.warrantyYears) || 1)) : 0);
+        const addOnSellPI = svcMPct < 1 ? addOnCost / (1 - svcMPct) : addOnCost;
+
+        const totalCost = calcs.reduce((s, c) => s + c.totalCost, 0) + addOnCost;
+        const totalSell = calcs.reduce((s, c) => s + c.sellPrice, 0) + addOnSellPI;
+        const bRate = (answers.bondRate || 1.5) / 100;
+        const tRate = (answers.salesTaxRate || 9.5) / 100;
+        const grandTotal = totalSell + (totalSell * bRate) + ((totalSell + totalSell * bRate) * tRate);
         const blended = totalCost > 0 ? ((1 - totalCost / totalSell) * 100).toFixed(1) : "0";
 
         rows.push({ cells: [{ value: "Total Cost", bold: true }, { value: totalCost, currency: true }] });
@@ -713,13 +726,106 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
             }
         }
 
+        // CMS Section
+        let cmsCost = 0;
+        let cmsSell = 0;
+        if (answers.includeCms && answers.cmsAllocation > 0) {
+            cmsCost = answers.cmsAllocation;
+            cmsSell = svcMarginPctBudget < 1 ? cmsCost / (1 - svcMarginPctBudget) : cmsCost;
+            const cmsMarginDollar = cmsSell - cmsCost;
+            let sectionNum = allBundleItems.length > 0 ? 4 : 3;
+            // Adjust numbering: 3.0 is accessories (if present), so CMS starts at next
+            const cmsLabel = `${sectionNum}.0 CMS (CONTENT MANAGEMENT)`;
+            rows.push({
+                cells: [{ value: cmsLabel, bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }],
+            });
+            rows.push({
+                cells: [
+                    { value: "" },
+                    { value: "Content Management System" },
+                    { value: 1, align: "center" },
+                    { value: "LS", align: "center" },
+                    { value: cmsCost, currency: true, align: "right" },
+                    { value: cmsSell, currency: true, align: "right" },
+                    { value: svcMarginPctBudget, percent: true, align: "center" },
+                    { value: cmsMarginDollar, currency: true, align: "right" },
+                ],
+            });
+        }
+
+        // Scoring Section
+        let scoringCost = 0;
+        let scoringSell = 0;
+        if (answers.includeScoring && answers.scoringAllocation > 0) {
+            scoringCost = answers.scoringAllocation;
+            scoringSell = svcMarginPctBudget < 1 ? scoringCost / (1 - svcMarginPctBudget) : scoringCost;
+            const scoringMarginDollar = scoringSell - scoringCost;
+            let sectionNum = (allBundleItems.length > 0 ? 3 : 2) + (answers.includeCms && answers.cmsAllocation > 0 ? 1 : 0) + 1;
+            const scoringLabel = `${sectionNum}.0 SCORING SYSTEM`;
+            rows.push({
+                cells: [{ value: scoringLabel, bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }],
+            });
+            rows.push({
+                cells: [
+                    { value: "" },
+                    { value: "Scoring & Timing System" },
+                    { value: 1, align: "center" },
+                    { value: "LS", align: "center" },
+                    { value: scoringCost, currency: true, align: "right" },
+                    { value: scoringSell, currency: true, align: "right" },
+                    { value: svcMarginPctBudget, percent: true, align: "center" },
+                    { value: scoringMarginDollar, currency: true, align: "right" },
+                ],
+            });
+        }
+
+        // Warranty Section
+        let warrantyCost = 0;
+        let warrantySell = 0;
+        if (answers.includeWarranty === "included" || answers.includeWarranty === "priced") {
+            const years = parseInt(answers.warrantyYears || "1") || 1;
+            if (answers.includeWarranty === "priced") {
+                // Use manual allocation, or auto-calc: 3% of total hardware cost per year
+                const totalHw = calcs.reduce((s, c) => s + c.hardwareCost, 0);
+                warrantyCost = answers.warrantyAllocation > 0 ? answers.warrantyAllocation : totalHw * 0.03 * years;
+                warrantySell = svcMarginPctBudget < 1 ? warrantyCost / (1 - svcMarginPctBudget) : warrantyCost;
+            }
+            // For "included", warrantyCost and warrantySell stay 0
+            const warrantyMarginDollar = warrantySell - warrantyCost;
+            let sectionNum = (allBundleItems.length > 0 ? 3 : 2)
+                + (answers.includeCms && answers.cmsAllocation > 0 ? 1 : 0)
+                + (answers.includeScoring && answers.scoringAllocation > 0 ? 1 : 0) + 1;
+            const warrantyLabel = `${sectionNum}.0 WARRANTY`;
+            rows.push({
+                cells: [{ value: warrantyLabel, bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }],
+            });
+            const isIncluded = answers.includeWarranty === "included";
+            rows.push({
+                cells: [
+                    { value: "" },
+                    { value: `Extended Warranty — ${years} Year${years > 1 ? "s" : ""}${isIncluded ? " (Included)" : ""}` },
+                    { value: 1, align: "center" },
+                    { value: "LS", align: "center" },
+                    { value: isIncluded ? 0 : warrantyCost, currency: true, align: "right" },
+                    { value: isIncluded ? 0 : warrantySell, currency: true, align: "right" },
+                    { value: isIncluded ? 0 : svcMarginPctBudget, percent: true, align: "center" },
+                    { value: isIncluded ? 0 : warrantyMarginDollar, currency: true, align: "right" },
+                ],
+            });
+        }
+
         // Totals
         rows.push({ cells: [{ value: "" }], isSeparator: true });
-        const totalCost = calcs.reduce((s, c) => s + c.totalCost, 0);
-        const totalSell = calcs.reduce((s, c) => s + c.sellPrice, 0);
-        const totalBond = calcs.reduce((s, c) => s + c.bondCost, 0);
-        const totalTax = calcs.reduce((s, c) => s + c.salesTaxCost, 0);
-        const grandTotal = calcs.reduce((s, c) => s + c.finalTotal, 0);
+        const totalCost = calcs.reduce((s, c) => s + c.totalCost, 0) + cmsCost + scoringCost + warrantyCost;
+        const totalSell = calcs.reduce((s, c) => s + c.sellPrice, 0) + cmsSell + scoringSell + warrantySell;
+        const addOnSell = cmsSell + scoringSell + warrantySell;
+        const bondRate = (answers.bondRate || 1.5) / 100;
+        const taxRate = (answers.salesTaxRate || 9.5) / 100;
+        const baseBond = calcs.reduce((s, c) => s + c.bondCost, 0);
+        const totalBond = baseBond + (addOnSell * bondRate);
+        const baseTax = calcs.reduce((s, c) => s + c.salesTaxCost, 0);
+        const totalTax = baseTax + ((addOnSell + addOnSell * bondRate) * taxRate);
+        const grandTotal = totalSell + totalBond + totalTax;
 
         const totalMarginPct = totalCost > 0 ? 1 - (totalCost / totalSell) : 0;
         const totalMarginDollar = totalSell - totalCost;

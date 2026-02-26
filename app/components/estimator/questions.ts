@@ -564,6 +564,99 @@ export const FINANCIAL_QUESTIONS: Question[] = [
         step: 1000,
         affectsSheet: "Budget Summary",
     },
+    // ── CMS (Content Management System) ──────────────────────────────
+    {
+        id: "includeCms",
+        phase: "financial",
+        type: "yes-no",
+        label: "Include CMS (Content Management)?",
+        subtitle: "Content management system for scheduling and controlling display content",
+        defaultValue: false,
+        affectsSheet: "Budget Summary",
+    },
+    {
+        id: "cmsAllocation",
+        phase: "financial",
+        type: "number",
+        label: "CMS cost allocation?",
+        subtitle: "Enter the total CMS cost. This will appear as a separate section on the Budget Summary.",
+        defaultValue: 0,
+        unit: "$",
+        min: 0,
+        max: 5000000,
+        step: 500,
+        showIf: (answers) => answers.includeCms === true,
+        affectsSheet: "Budget Summary",
+    },
+    // ── Scoring System ───────────────────────────────────────────────
+    {
+        id: "includeScoring",
+        phase: "financial",
+        type: "yes-no",
+        label: "Include Scoring System?",
+        subtitle: "Scoreboard control, timing, and scoring software/hardware",
+        defaultValue: false,
+        affectsSheet: "Budget Summary",
+    },
+    {
+        id: "scoringAllocation",
+        phase: "financial",
+        type: "number",
+        label: "Scoring system cost allocation?",
+        subtitle: "Enter the total scoring system cost. This will appear as a separate section on the Budget Summary.",
+        defaultValue: 0,
+        unit: "$",
+        min: 0,
+        max: 5000000,
+        step: 500,
+        showIf: (answers) => answers.includeScoring === true,
+        affectsSheet: "Budget Summary",
+    },
+    // ── Warranty ─────────────────────────────────────────────────────
+    {
+        id: "includeWarranty",
+        phase: "financial",
+        type: "select",
+        label: "Warranty?",
+        subtitle: "Extended warranty for LED hardware and installation",
+        options: [
+            { value: "none", label: "Not Included", description: "No warranty line item" },
+            { value: "included", label: "Included (No Charge)", description: "Listed on proposal but at $0" },
+            { value: "priced", label: "Priced Warranty", description: "Enter years and cost" },
+        ],
+        defaultValue: "none",
+        affectsSheet: "Budget Summary",
+    },
+    {
+        id: "warrantyYears",
+        phase: "financial",
+        type: "select",
+        label: "Warranty term?",
+        subtitle: "Number of years of extended warranty coverage",
+        options: [
+            { value: "1", label: "1 Year", description: "Standard warranty" },
+            { value: "2", label: "2 Years", description: "" },
+            { value: "3", label: "3 Years", description: "Most common" },
+            { value: "5", label: "5 Years", description: "Premium coverage" },
+        ],
+        defaultValue: "1",
+        showIf: (answers) => answers.includeWarranty === "priced" || answers.includeWarranty === "included",
+        affectsSheet: "Budget Summary",
+    },
+    {
+        id: "warrantyAllocation",
+        phase: "financial",
+        type: "number",
+        label: "Warranty cost allocation?",
+        subtitle: "Enter the total warranty cost. Leave at 0 to auto-calculate based on hardware value.",
+        defaultValue: 0,
+        unit: "$",
+        min: 0,
+        max: 5000000,
+        step: 500,
+        showIf: (answers) => answers.includeWarranty === "priced",
+        affectsSheet: "Budget Summary",
+    },
 ];
 
 // ============================================================================
@@ -593,6 +686,16 @@ export interface EstimatorAnswers {
     costPerSqFtOverride: number;
     pmComplexity: string;    // "standard" | "complex" | "major"
     targetPrice: number;     // Profit Shield — 0 = not set, >0 = reverse-calc margin
+    // CMS
+    includeCms: boolean;
+    cmsAllocation: number;
+    // Scoring
+    includeScoring: boolean;
+    scoringAllocation: number;
+    // Warranty
+    includeWarranty: "none" | "included" | "priced";
+    warrantyYears: string;
+    warrantyAllocation: number;
 }
 
 export interface DisplayAnswers {
@@ -639,6 +742,13 @@ export function getDefaultAnswers(): EstimatorAnswers {
         costPerSqFtOverride: 0,
         pmComplexity: "standard",
         targetPrice: 0,
+        includeCms: false,
+        cmsAllocation: 0,
+        includeScoring: false,
+        scoringAllocation: 0,
+        includeWarranty: "none",
+        warrantyYears: "1",
+        warrantyAllocation: 0,
     };
 }
 
