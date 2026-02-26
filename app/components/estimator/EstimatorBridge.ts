@@ -990,7 +990,7 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
     return {
         name: "Display Details",
         color: "#FFC107",
-        columns: ["", "", "", "", "", "", "", "", "", "", "", ""],
+        columns: ["DISPLAY", "TYPE", "W (ft)", "H (ft)", "SQ FT", "PITCH", "PIXELS", "$/SQFT", "LED COST", "SELL PRICE", "MARGIN %", "MARGIN $"],
         rows,
     };
 }

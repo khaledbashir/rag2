@@ -63,22 +63,16 @@ export async function exportEstimatorExcel(data: ExcelPreviewData): Promise<Blob
             const row = sheet.rows[ri];
 
             if (row.isSeparator) {
-                if (inDataSection && sectionStart > 0) {
-                    dataRanges.push({ start: sectionStart, end: ws.rowCount });
-                    inDataSection = false;
-                }
+                // Don't reset section tracking — separators are visual, not data boundaries
                 const exRow = ws.addRow(Array(sheet.columns.length).fill(""));
                 exRow.height = 8;
                 continue;
             }
 
-            // Handle spanned rows
+            // Handle spanned rows (section headers like "1.0 LED HARDWARE")
             const firstCell = row.cells[0];
             if (firstCell?.span && firstCell.span > 1) {
-                if (inDataSection && sectionStart > 0) {
-                    dataRanges.push({ start: sectionStart, end: ws.rowCount });
-                    inDataSection = false;
-                }
+                // Don't reset section tracking — spanned rows are category labels, not data boundaries
                 const exRow = ws.addRow([firstCell.value]);
                 ws.mergeCells(exRow.number, 1, exRow.number, sheet.columns.length);
                 const cell = exRow.getCell(1);
