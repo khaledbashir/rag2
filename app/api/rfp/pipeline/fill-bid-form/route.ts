@@ -7,6 +7,7 @@
  *   - analysisId: string (RFP analysis ID to pull specs from)
  *   - bidForm: File (the blank bid form .xlsx)
  *   - specs?: JSON string of ExtractedLEDSpec[] (optional override — user-edited specs)
+ *   - pricing?: JSON string of PricingData[] (optional — fills cost/price cells)
  *
  * Returns: Filled Excel file download + match metadata in headers
  */
@@ -14,6 +15,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { fillBidForm } from "@/services/rfp/pipeline/bidFormFiller";
+import type { PricingData } from "@/services/rfp/pipeline/bidFormFiller";
 import type { ExtractedLEDSpec } from "@/services/rfp/unified/types";
 
 export async function POST(request: NextRequest) {
@@ -22,6 +24,7 @@ export async function POST(request: NextRequest) {
     const analysisId = formData.get("analysisId") as string;
     const bidFormFile = formData.get("bidForm") as File | null;
     const specsOverride = formData.get("specs") as string | null;
+    const pricingOverride = formData.get("pricing") as string | null;
 
     if (!analysisId) {
       return NextResponse.json(
@@ -79,8 +82,14 @@ export async function POST(request: NextRequest) {
     const bidFormArrayBuffer = await bidFormFile.arrayBuffer();
     const bidFormBuffer = Buffer.from(bidFormArrayBuffer);
 
+    // Parse optional pricing data
+    let pricing: PricingData[] | undefined;
+    if (pricingOverride) {
+      pricing = JSON.parse(pricingOverride) as PricingData[];
+    }
+
     // Fill the bid form
-    const result = await fillBidForm(bidFormBuffer, screens);
+    const result = await fillBidForm(bidFormBuffer, screens, pricing);
 
     console.log(
       `[fill-bid-form] Matched ${result.matches.length}/${result.totalBlocks} blocks, ` +

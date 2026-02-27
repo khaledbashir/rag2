@@ -152,6 +152,13 @@ export default function RfpAnalyzerClient() {
   // Auto-save for spec edits
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Bid form fill results (for workbook preview + results display)
+  const bidFormInputRef = useRef<HTMLInputElement>(null);
+  const [bidFormResult, setBidFormResult] = useState<{
+    matches: Array<{ sheetName: string; displayName: string; matchedScreen: string; confidence: number; fieldsFilled: string[] }>;
+    unmatchedBlocks: string[];
+    unmatchedScreens: string[];
+  } | null>(null);
 
   // Debounced auto-save: patches screens to DB 2s after last edit
   const autoSaveSpecs = useCallback((specs: ExtractedLEDSpec[], analysisId: string | null) => {
@@ -188,12 +195,13 @@ export default function RfpAnalyzerClient() {
       triage: result.triage || [],
       pricingDisplays: pricingPreview?.displays || [],
       pricingSummary: pricingPreview?.summary || null,
+      bidFormResult: bidFormResult || null,
       onSourcePageClick: (pg) => {
         setPdfViewerPage(pg);
         setShowPdfPanel(true);
       },
     });
-  }, [result, pricingPreview, requirements]);
+  }, [result, pricingPreview, requirements, bidFormResult]);
 
   // ========================================================================
   // Auto-run pricing when extraction completes (no manual step needed)
@@ -228,8 +236,14 @@ export default function RfpAnalyzerClient() {
   // Upload → auto-pipeline (one SSE stream, fully automatic)
   // ========================================================================
 
-  const handleUpload = useCallback(async (files: File[]) => {
+  // Bid form state for dual upload
+  const [bidFormFile, setBidFormFile] = useState<File | null>(null);
+
+  const handleUpload = useCallback(async (files: File[], attachedBidForm?: File) => {
     if (!files.length) return;
+
+    // Store bid form for auto-fill after pricing
+    if (attachedBidForm) setBidFormFile(attachedBidForm);
 
     setPhase("processing");
     setError(null);
@@ -642,16 +656,9 @@ export default function RfpAnalyzerClient() {
   // Fill Bid Form — auto-populate vendor column in client-provided bid form
   // ========================================================================
 
-  const bidFormInputRef = useRef<HTMLInputElement>(null);
-  const [bidFormResult, setBidFormResult] = useState<{
-    matches: Array<{ sheetName: string; displayName: string; matchedScreen: string; confidence: number; fieldsFilled: string[] }>;
-    unmatchedBlocks: string[];
-    unmatchedScreens: string[];
-  } | null>(null);
-
-  const handleFillBidForm = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !result?.id) return;
+  /** Core bid form fill logic — used by both manual button and auto-fill */
+  const executeBidFormFill = async (file: File, autoDownload: boolean = true) => {
+    if (!result?.id) return;
     setDownloading("bidform");
     setBidFormResult(null);
     try {
@@ -661,6 +668,17 @@ export default function RfpAnalyzerClient() {
       // Send user-edited specs if available
       if (editableSpecs.length > 0) {
         formData.append("specs", JSON.stringify(editableSpecs));
+      }
+      // Send pricing data if available
+      if (pricingPreview?.displays) {
+        const pricingData = pricingPreview.displays.map((d) => ({
+          name: d.name,
+          hardwareCost: d.hardwareCost,
+          installCost: d.installCost,
+          totalCost: d.totalCost,
+          totalSellingPrice: d.totalSellingPrice,
+        }));
+        formData.append("pricing", JSON.stringify(pricingData));
       }
       const res = await fetch("/api/rfp/pipeline/fill-bid-form", {
         method: "POST",
@@ -685,20 +703,38 @@ export default function RfpAnalyzerClient() {
       }
 
       // Download the filled file
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = res.headers.get("Content-Disposition")?.split("filename=")[1]?.replace(/"/g, "") || "BidForm_Filled.xlsx";
-      a.click();
-      URL.revokeObjectURL(url);
+      if (autoDownload) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = res.headers.get("Content-Disposition")?.split("filename=")[1]?.replace(/"/g, "") || "BidForm_Filled.xlsx";
+        a.click();
+        URL.revokeObjectURL(url);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
       setDownloading(null);
-      e.target.value = "";
     }
   };
+
+  const handleFillBidForm = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await executeBidFormFill(file);
+    e.target.value = "";
+  };
+
+  // Auto-fill bid form when pricing becomes available and a bid form was attached at upload
+  const bidFormAutoFilled = useRef(false);
+  useEffect(() => {
+    if (bidFormFile && pricingPreview && result?.id && !bidFormAutoFilled.current) {
+      bidFormAutoFilled.current = true;
+      executeBidFormFill(bidFormFile, true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pricingPreview, bidFormFile, result?.id]);
 
   // ========================================================================
   // Reset
@@ -718,6 +754,8 @@ export default function RfpAnalyzerClient() {
     setQuotePreviewOpen(false);
     setEditableSpecs([]);
     setBidFormResult(null);
+    setBidFormFile(null);
+    bidFormAutoFilled.current = false;
   };
 
   // ========================================================================

@@ -14,6 +14,8 @@ import {
   Monitor,
   Database,
   Filter,
+  FileSpreadsheet,
+  X,
 } from "lucide-react";
 
 export interface PipelineEvent {
@@ -34,7 +36,7 @@ export interface PipelineEvent {
 }
 
 interface UploadZoneProps {
-  onUpload: (files: File[]) => void;
+  onUpload: (files: File[], bidFormFile?: File) => void;
   isLoading: boolean;
   events: PipelineEvent[];
 }
@@ -54,6 +56,8 @@ export default function UploadZone({ onUpload, isLoading, events }: UploadZonePr
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [fileName, setFileName] = useState<string | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [bidFormFile, setBidFormFile] = useState<File | null>(null);
+  const bidFormInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isLoading) {
@@ -72,11 +76,22 @@ export default function UploadZone({ onUpload, isLoading, events }: UploadZonePr
 
   const validateAndUpload = (files: File[]) => {
     setError(null);
-    const validFiles = files.filter((f) => f.type === "application/pdf");
-    if (validFiles.length === 0) { setError("Only PDF files are supported."); return; }
-    if (validFiles.some((f) => f.size > 2000 * 1024 * 1024)) { setError("Files must be under 2GB."); return; }
-    setFileName(validFiles.length === 1 ? validFiles[0].name : `${validFiles.length} files`);
-    onUpload(validFiles);
+    // Separate PDFs from Excel bid forms
+    const pdfFiles = files.filter((f) => f.type === "application/pdf" || f.name.endsWith(".pdf"));
+    const excelFiles = files.filter((f) => f.name.endsWith(".xlsx") || f.name.endsWith(".xls"));
+
+    // If only Excel dropped, store as bid form
+    if (pdfFiles.length === 0 && excelFiles.length > 0) {
+      setBidFormFile(excelFiles[0]);
+      return;
+    }
+
+    if (pdfFiles.length === 0) { setError("Drop a PDF file (RFP) to get started."); return; }
+    if (pdfFiles.some((f) => f.size > 2000 * 1024 * 1024)) { setError("Files must be under 2GB."); return; }
+    setFileName(pdfFiles.length === 1 ? pdfFiles[0].name : `${pdfFiles.length} files`);
+    // Pass bid form if one was attached (from drop or prior selection)
+    const attachedBidForm = excelFiles[0] || bidFormFile || undefined;
+    onUpload(pdfFiles, attachedBidForm);
   };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -197,6 +212,43 @@ export default function UploadZone({ onUpload, isLoading, events }: UploadZonePr
           )}
         </div>
       </div>
+
+      {/* Optional bid form attachment */}
+      {!isLoading && (
+        <div className="flex items-center justify-center gap-3">
+          {bidFormFile ? (
+            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+              <FileSpreadsheet className="w-4 h-4 text-amber-600" />
+              <span className="text-sm text-amber-800 dark:text-amber-300">{bidFormFile.name}</span>
+              <button
+                onClick={() => setBidFormFile(null)}
+                className="ml-1 p-0.5 hover:bg-amber-200/50 rounded"
+              >
+                <X className="w-3 h-3 text-amber-600" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => bidFormInputRef.current?.click()}
+              className="flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-dashed border-border rounded-lg transition-colors"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              Have a bid form? Attach it here
+            </button>
+          )}
+          <input
+            ref={bidFormInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) setBidFormFile(f);
+              e.target.value = "";
+            }}
+            className="hidden"
+          />
+        </div>
+      )}
 
       {/* What happens after upload — pipeline preview */}
       {!isLoading && (

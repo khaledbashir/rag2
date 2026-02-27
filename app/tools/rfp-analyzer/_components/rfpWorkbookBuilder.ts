@@ -40,6 +40,12 @@ export interface PricingSummary {
   rateCardCount: number;
 }
 
+export interface BidFormMatchResult {
+  matches: Array<{ sheetName: string; displayName: string; matchedScreen: string; confidence: number; fieldsFilled: string[] }>;
+  unmatchedBlocks: string[];
+  unmatchedScreens: string[];
+}
+
 export interface RfpWorkbookInput {
   project: {
     clientName: string | null;
@@ -56,6 +62,7 @@ export interface RfpWorkbookInput {
   triage: Array<{ pageNumber: number; category: string; relevance: number; isDrawing: boolean }>;
   pricingDisplays: PricingDisplay[];
   pricingSummary: PricingSummary | null;
+  bidFormResult?: BidFormMatchResult | null;
   /** Callback for source page jumps (passed as onClick on cells) */
   onSourcePageClick?: (page: number) => void;
 }
@@ -430,15 +437,83 @@ function buildPageTriage(input: RfpWorkbookInput): SheetTab {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Sheet 7: Bid Form (shows match results when a bid form was auto-filled)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function buildBidFormSheet(input: RfpWorkbookInput): SheetTab | null {
+  if (!input.bidFormResult) return null;
+
+  const cols = ["Bid Form Display", "Matched Screen", "Confidence", "Fields Filled", "Status"];
+
+  const headerRow: SheetRow = {
+    cells: cols.map((h) => c(h, { bold: true, header: true })),
+    isHeader: true,
+  };
+
+  const matchRows: SheetRow[] = input.bidFormResult.matches.map((m) => ({
+    cells: [
+      c(m.displayName, { bold: true }),
+      c(m.matchedScreen),
+      pct(m.confidence, {
+        className: m.confidence >= 0.8 ? "text-emerald-600" : m.confidence >= 0.5 ? "text-amber-600" : "text-red-600",
+      }),
+      c(`${m.fieldsFilled.length} fields`),
+      c("Filled", { bold: true, className: "text-emerald-600" }),
+    ],
+  }));
+
+  const unmatchedBlockRows: SheetRow[] = input.bidFormResult.unmatchedBlocks.map((b) => ({
+    cells: [
+      c(b, { bold: true }),
+      c("—"),
+      c("—"),
+      c("0 fields"),
+      c("Unmatched", { bold: true, className: "text-amber-600" }),
+    ],
+  }));
+
+  const unmatchedScreenRows: SheetRow[] = input.bidFormResult.unmatchedScreens.map((s) => ({
+    cells: [
+      c("—"),
+      c(s, { bold: true }),
+      c("—"),
+      c("—"),
+      c("No bid form block", { className: "text-muted-foreground" }),
+    ],
+  }));
+
+  const summaryRow: SheetRow = {
+    cells: [
+      c(`${input.bidFormResult.matches.length} matched`, { bold: true }),
+      c(`${input.bidFormResult.unmatchedBlocks.length} unmatched blocks`),
+      c(""),
+      c(""),
+      c("Filled bid form downloaded", { bold: true }),
+    ],
+    isTotal: true,
+  };
+
+  return {
+    name: "Bid Form",
+    color: "#D97706",
+    columns: cols,
+    rows: [headerRow, ...matchRows, ...unmatchedBlockRows, ...unmatchedScreenRows, { cells: [], isSeparator: true }, summaryRow],
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Main builder
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function buildRfpWorkbook(input: RfpWorkbookInput): WorkbookData {
   const projectLabel = input.project.projectName || input.project.venue || "RFP Analysis";
 
+  const bidFormSheet = buildBidFormSheet(input);
+
   const sheets: SheetTab[] = [
     buildLedCostSheet(input),
     buildMarginAnalysis(input),
+    ...(bidFormSheet ? [bidFormSheet] : []),
     buildProjectInfo(input),
     buildRequirements(input),
     buildProcessorCount(input),
