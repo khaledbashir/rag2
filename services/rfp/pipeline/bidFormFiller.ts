@@ -37,9 +37,17 @@ interface SpecBlock {
     processingController: number | null;
     shippingHandling: number | null;
     totalSystemPrice: number | null;
-    installationLabor: number | null;
-    installationStructural: number | null;
-    installationElectrical: number | null;
+    // Installation fields (AJP format: "INSTALLATION SUB-TOTAL: LED", individual line items)
+    installationSubtotal: number | null;
+    structuralSteel: number | null;
+    heavyEquipment: number | null;
+    componentInstallation: number | null;
+    removalDisposal: number | null;
+    hoistInstallation: number | null;
+    claddingTrim: number | null;
+    electricalData: number | null;
+    chainMotors: number | null;
+    secondarySteel: number | null;
   };
   /** Column B pitch value (for single-sheet matching) */
   colBPitch: number | null;
@@ -71,6 +79,8 @@ export interface BidFormFillResult {
 export interface PricingData {
   name: string;
   hardwareCost: number;
+  processingCost?: number;
+  shippingCost?: number;
   installCost?: number;
   totalCost: number;
   totalSellingPrice: number;
@@ -173,9 +183,16 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
           processingController: null as number | null,
           shippingHandling: null as number | null,
           totalSystemPrice: null as number | null,
-          installationLabor: null as number | null,
-          installationStructural: null as number | null,
-          installationElectrical: null as number | null,
+          installationSubtotal: null as number | null,
+          structuralSteel: null as number | null,
+          heavyEquipment: null as number | null,
+          componentInstallation: null as number | null,
+          removalDisposal: null as number | null,
+          hoistInstallation: null as number | null,
+          claddingTrim: null as number | null,
+          electricalData: null as number | null,
+          chainMotors: null as number | null,
+          secondarySteel: null as number | null,
         };
 
         // Read Column B pitch value for matching
@@ -183,9 +200,9 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
         const pitchMatch = colBPitchRaw.match(/([\d.]+)\s*(?:mm)?/);
         const colBPitch = pitchMatch ? parseFloat(pitchMatch[1]) : null;
 
-        // Search within a 30-row window for each field
+        // Search within a 50-row window for each field (expanded for installation rows)
         // Stop early if we hit the next PIXEL PITCH anchor (next block boundary)
-        for (let r = rowNumber + 1; r <= rowNumber + 30; r++) {
+        for (let r = rowNumber + 1; r <= rowNumber + 50; r++) {
           const rowObj = sheet.getRow(r);
           if (!rowObj) break;
           const label = getCellText(rowObj.getCell(1));
@@ -221,12 +238,26 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
             cells.shippingHandling = r;
           } else if (/total\s*system\s*price/i.test(label)) {
             cells.totalSystemPrice = r;
-          } else if (/installation.*labor/i.test(label) || /labor.*install/i.test(label)) {
-            cells.installationLabor = r;
-          } else if (/installation.*structural/i.test(label) || /structural.*install/i.test(label)) {
-            cells.installationStructural = r;
-          } else if (/installation.*electrical/i.test(label) || /electrical.*install/i.test(label)) {
-            cells.installationElectrical = r;
+          } else if (/installation\s*sub-?total/i.test(label)) {
+            cells.installationSubtotal = r;
+          } else if (/primary.*secondary.*steel|structural\s*steel/i.test(label)) {
+            cells.structuralSteel = r;
+          } else if (/heavy\s*equipment/i.test(label)) {
+            cells.heavyEquipment = r;
+          } else if (/component\s*installation/i.test(label) || /led\s*install/i.test(label)) {
+            cells.componentInstallation = r;
+          } else if (/removal.*disposal/i.test(label)) {
+            cells.removalDisposal = r;
+          } else if (/hoist.*install/i.test(label) || /install.*hoist/i.test(label)) {
+            cells.hoistInstallation = r;
+          } else if (/cladding|trim.*flash/i.test(label)) {
+            cells.claddingTrim = r;
+          } else if (/electrical.*data/i.test(label) || /data.*electrical/i.test(label)) {
+            cells.electricalData = r;
+          } else if (/chain\s*motor/i.test(label)) {
+            cells.chainMotors = r;
+          } else if (/secondary\s*steel/i.test(label) && !/primary/i.test(label)) {
+            cells.secondarySteel = r;
           }
         }
 
@@ -587,11 +618,17 @@ function fillBlockCells(
     if (block.cells.totalDisplayPrice) {
       setCell(block.cells.totalDisplayPrice, C, pricing.hardwareCost, "Total Display Price");
     }
-    if (block.cells.totalSystemPrice) {
-      setCell(block.cells.totalSystemPrice, C, pricing.totalCost, "Total System Price");
+    if (block.cells.processingController && pricing.processingCost) {
+      setCell(block.cells.processingController, C, pricing.processingCost, "Processing/Controller");
     }
-    if (block.cells.installationLabor && pricing.installCost) {
-      setCell(block.cells.installationLabor, C, pricing.installCost, "Installation Labor");
+    if (block.cells.shippingHandling && pricing.shippingCost) {
+      setCell(block.cells.shippingHandling, C, pricing.shippingCost, "Shipping & Handling");
+    }
+    if (block.cells.totalSystemPrice) {
+      setCell(block.cells.totalSystemPrice, C, pricing.totalSellingPrice, "Total System Price");
+    }
+    if (block.cells.installationSubtotal && pricing.installCost) {
+      setCell(block.cells.installationSubtotal, C, pricing.installCost, "Installation Sub-Total");
     }
   }
 
