@@ -12,7 +12,7 @@
 import React, { useState, useCallback, useMemo } from "react";
 import { useConfirm } from "@/hooks/useConfirm";
 import dynamic from "next/dynamic";
-import { FileSpreadsheet, ArrowLeft, Download, Loader2, MessageSquare, Copy, ArrowRightLeft, Package, Boxes, Search, Shield, Send, GitCompare, FileText, Box, Zap, ChevronDown } from "lucide-react";
+import { FileSpreadsheet, ArrowLeft, Download, Loader2, MessageSquare, Copy, ArrowRightLeft, Package, Boxes, Search, Shield, Send, GitCompare, FileText, Box, Zap, ChevronDown, PenLine } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import QuestionFlow from "./QuestionFlow";
@@ -55,6 +55,7 @@ export default function EstimatorStudio({
     const router = useRouter();
     const [answers, setAnswers] = useState<EstimatorAnswers>(initialAnswers || getDefaultAnswers());
     const [exporting, setExporting] = useState(false);
+    const [questionsComplete, setQuestionsComplete] = useState(false);
     const [copilotOpen, setCopilotOpen] = useState(false);
     const [converting, setConverting] = useState(false);
     const [duplicating, setDuplicating] = useState(false);
@@ -174,7 +175,7 @@ export default function EstimatorStudio({
     }, [previewData]);
 
     const handleComplete = useCallback(() => {
-        // Questions finished — nothing extra to do, user sees the complete state
+        setQuestionsComplete(true);
     }, []);
 
     // Active display index for vendor panel (use first display or 0)
@@ -314,6 +315,15 @@ export default function EstimatorStudio({
                             <span className="text-[10px] text-muted-foreground">
                                 {answers.displays.length} display{answers.displays.length !== 1 ? "s" : ""}
                             </span>
+                            {questionsComplete && (
+                                <button
+                                    onClick={() => setQuestionsComplete(false)}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 border border-border rounded text-xs text-muted-foreground hover:bg-muted transition-colors"
+                                >
+                                    <PenLine className="w-3 h-3" />
+                                    Edit Answers
+                                </button>
+                            )}
                             <button
                                 onClick={handleExport}
                                 disabled={exporting}
@@ -510,13 +520,15 @@ export default function EstimatorStudio({
             </header>
 
             {/* Split screen — responsive grid: Questions | Excel | Copilot */}
-            <main className={`flex-1 min-h-0 overflow-hidden grid ${
+            <main className={`flex-1 min-h-0 overflow-hidden grid transition-all duration-500 ease-in-out ${
                 copilotOpen
                     ? 'grid-cols-[minmax(0,1fr)_minmax(320px,380px)]'
-                    : 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)]'
+                    : questionsComplete
+                        ? 'grid-cols-[1fr]'
+                        : 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)]'
             }`}>
-                {/* Left: Questions (hidden when Lux is open) OR Excel Preview */}
-                {!copilotOpen ? (
+                {/* Left: Questions (hidden when Lux is open or questions complete) */}
+                {!copilotOpen && !questionsComplete ? (
                     <section className="relative min-w-0 min-h-0 flex flex-col overflow-hidden bg-background border-r border-border">
                         <QuestionFlow
                             answers={answers}

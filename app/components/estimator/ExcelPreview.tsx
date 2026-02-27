@@ -44,16 +44,7 @@ export default function ExcelPreview({ data, onExport, exporting, editable = fal
                     <FileSpreadsheet className="w-3.5 h-3.5" />
                     <span className="font-medium truncate max-w-[300px]">{data.fileName}</span>
                 </div>
-                {onExport && (
-                    <button
-                        onClick={onExport}
-                        disabled={exporting}
-                        className="flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition-colors disabled:opacity-50"
-                    >
-                        <Download className="w-3 h-3" />
-                        {exporting ? "Exporting..." : "Export .xlsx"}
-                    </button>
-                )}
+{/* Export button lives in the header bar — no duplicate here */}
             </div>
 
             {/* Toolbar removed - fake buttons served no purpose */}
