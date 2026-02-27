@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/auth";
 
 export async function POST(req: NextRequest) {
     try {
@@ -24,6 +25,12 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Project not found" }, { status: 404 });
         }
 
+        // Resolve current user for Created By tracking
+        const session = await auth();
+        const userId = session?.user?.email
+            ? (await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } }))?.id
+            : null;
+
         // Clone estimator answers with "(Copy)" suffix on project name
         const answers = (source.estimatorAnswers as any) || {};
         const clonedAnswers = {
@@ -37,6 +44,7 @@ export async function POST(req: NextRequest) {
                 calculationMode: "ESTIMATE",
                 status: "DRAFT",
                 workspaceId: source.workspaceId,
+                ...(userId ? { createdByUserId: userId } : {}),
                 estimatorAnswers: clonedAnswers,
                 estimatorDisplays: source.estimatorDisplays ?? undefined,
                 estimatorDepth: source.estimatorDepth,

@@ -123,6 +123,7 @@ export async function POST(request: NextRequest) {
         clientName,
         status: "DRAFT",
         calculationMode: "INTELLIGENCE",
+        createdByUserId: agentUser.id,
         documentMode,
         additionalNotes: notes,
         // Store line items as the pricingDocument for the PDF renderer

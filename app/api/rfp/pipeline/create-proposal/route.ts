@@ -89,8 +89,12 @@ export async function POST(request: NextRequest) {
     const venue = project.venue || analysis.venue || null;
     const location = project.location || analysis.location || null;
 
-    // 5. Find client logo
+    // 5. Find client logo + resolve user for Created By
     const clientLogo = await findClientLogo(clientName);
+    const creatorUser = await prisma.user.findUnique({
+      where: { email: body.userEmail },
+      select: { id: true },
+    });
 
     // 6. Create workspace
     console.log("[create-proposal] Creating workspace...");
@@ -118,6 +122,7 @@ export async function POST(request: NextRequest) {
         clientAddress: location,
         status: "DRAFT",
         calculationMode: "INTELLIGENCE",
+        ...(creatorUser ? { createdByUserId: creatorUser.id } : {}),
         source: "rfp_analysis",
         embeddingStatus: "complete",
         aiWorkspaceSlug: analysis.aiWorkspaceSlug,

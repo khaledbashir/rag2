@@ -73,6 +73,12 @@ export async function POST(request: NextRequest) {
       hasClientSummary: !!body.excelData?.clientSummary,
       hasMarginAnalysis: !!body.excelData?.marginAnalysis,
     });
+    // Resolve user ID for Created By tracking
+    const creatorUser = await prisma.user.findUnique({
+      where: { email: body.userEmail },
+      select: { id: true },
+    });
+
     if (body.createInitialProposal) {
       proposal = await prisma.proposal.create({
         data: {
@@ -80,6 +86,7 @@ export async function POST(request: NextRequest) {
           clientName: clientNameForLogo,
           clientLogo, // Store found logo here too
           status: "DRAFT",
+          ...(creatorUser ? { createdByUserId: creatorUser.id } : {}),
           calculationMode: body.calculationMode === "MIRROR" ? "MIRROR" : body.calculationMode === "ESTIMATE" ? "ESTIMATE" : "INTELLIGENCE",
           internalAudit: body.excelData?.internalAudit ? JSON.stringify(body.excelData.internalAudit) : undefined,
           clientSummary: body.excelData?.clientSummary ? JSON.stringify(body.excelData.clientSummary) : undefined,

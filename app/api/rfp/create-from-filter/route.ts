@@ -91,6 +91,12 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Resolve user ID for Created By tracking
+    const creatorUser = await prisma.user.findUnique({
+      where: { email: userEmail },
+      select: { id: true },
+    });
+
     const proposal = await prisma.proposal.create({
       data: {
         workspaceId: workspace.id,
@@ -102,6 +108,7 @@ export async function POST(req: NextRequest) {
         mirrorMode: false,
         source: "rfp_filter",
         embeddingStatus: "pending",
+        ...(creatorUser ? { createdByUserId: creatorUser.id } : {}),
       },
     });
 

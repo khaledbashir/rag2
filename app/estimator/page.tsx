@@ -25,12 +25,19 @@ export default async function EstimatorPage() {
         },
     });
 
+    // Resolve user ID for Created By tracking
+    const user = await prisma.user.findUnique({
+        where: { email: session.user.email || "noreply@anc.com" },
+        select: { id: true },
+    });
+
     const project = await prisma.proposal.create({
         data: {
             workspaceId: workspace.id,
             clientName: "New Estimate",
             calculationMode: "ESTIMATE",
             status: "DRAFT",
+            ...(user ? { createdByUserId: user.id } : {}),
         },
     });
 

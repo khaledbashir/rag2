@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/auth";
 import { calculateProposalAudit, ScreenInput } from "@/lib/estimator";
 import { logActivity } from "@/services/proposal/server/activityLogService";
 import { provisionProjectWorkspace } from "@/lib/anything-llm";
@@ -46,6 +47,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Resolve current user for Created By tracking
+    const session = await auth();
+    const userId = session?.user?.email
+      ? (await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } }))?.id
+      : null;
+
     // Convert incoming screens to the estimator's ScreenInput shape
     const screenInputs: ScreenInput[] = body.screens.map((s) => ({
       name: s.name,
@@ -70,6 +77,7 @@ export async function POST(request: NextRequest) {
         workspaceId: body.workspaceId,
         clientName: body.clientName,
         status: "DRAFT",
+        ...(userId ? { createdByUserId: userId } : {}),
         internalAudit: JSON.stringify(audit.internalAudit),
         clientSummary: JSON.stringify(audit.clientSummary),
         screens: {

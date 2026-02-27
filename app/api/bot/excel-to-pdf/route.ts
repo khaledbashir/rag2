@@ -138,6 +138,7 @@ export async function POST(req: NextRequest) {
                 clientName,
                 status: "DRAFT",
                 calculationMode: "MIRROR",
+                createdByUserId: agentUser.id,
                 documentMode,
                 pricingMode: "MIRROR",
                 mirrorMode: true,
