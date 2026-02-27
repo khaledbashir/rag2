@@ -30,6 +30,8 @@ const DIMENSION_PATTERNS = [
   /(\d+(?:\.\d+)?)\s*(?:ft|feet)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(?:ft|feet)/i,
   /(\d+)["″]\s*[xX×]\s*(\d+)["″]/,
   /(?:dimensions?|size|active\s*area)\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*(?:ft|feet)\s*(?:w|wide)?\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(?:ft|feet)\s*(?:h|high)?/i,
+  // AJP-style: "32' tall x 106' wide" or "3' tall x 252' wide"
+  /(\d+(?:\.\d+)?)['′]\s*(?:tall|high|h)\s*[xX×]\s*(\d+(?:\.\d+)?)['′]\s*(?:wide|long|w)/i,
 ];
 
 const PITCH_PATTERNS = [
@@ -37,11 +39,15 @@ const PITCH_PATTERNS = [
   /pitch[:\s]+(\d+(?:\.\d+)?)\s*mm/i,
   /\bP(\d+(?:\.\d+)?)\b/i,
   /(\d+(?:\.\d+)?)\s*mm\s*PP/i,
+  // AJP-style: "10 (mm)" or "8 (mm)"
+  /(\d+(?:\.\d+)?)\s*\(\s*mm\s*\)/i,
 ];
 
 const QUANTITY_PATTERNS = [
   /(?:qty|quantity)[:\s]*(\d+)/i,
   /(?:number\s*of\s*displays?)[:\s]*(\d+)/i,
+  // AJP-style: "One (1)", "Two (2)" — extract the digit in parens
+  /(?:one|two|three|four|five|six|eight|ten)\s*\((\d+)\)/i,
   /\((\d+)\)/,
 ];
 
@@ -72,6 +78,13 @@ function parseDimensions(text: string): { widthFt: number | null; heightFt: numb
     const match = text.match(pattern);
     if (!match) continue;
 
+    // AJP-style: "32' tall x 106' wide" — match[1] = height, match[2] = width
+    if (pattern.source.includes("tall|high")) {
+      const height = parseNumber(match[1]);
+      const width = parseNumber(match[2]);
+      if (width && height) return { widthFt: width, heightFt: height };
+    }
+
     if (pattern.source.includes("ft|feet") || pattern.source.includes("active\\s*area")) {
       const width = parseNumber(match[1]);
       const height = parseNumber(match[2]);
@@ -100,11 +113,19 @@ function parseResolution(text: string): { widthPx: number | null; heightPx: numb
   const patterns = [
     /(?:resolution|pixels?)\s*[:\-]?\s*(\d{3,6})\s*[xX×]\s*(\d{3,6})/i,
     /(\d{3,6})\s*(?:px|pixels?)\s*[xX×]\s*(\d{3,6})\s*(?:px|pixels?)?/i,
+    // AJP-style: "976 vertical pixels by 3232 horizontal pixels"
+    /(\d{2,6})\s*vertical\s*pixels?\s*(?:by|[xX×])\s*(\d{2,6})\s*horizontal\s*pixels?/i,
   ];
 
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (!match) continue;
+    // AJP-style: "vertical pixels by horizontal pixels" — match[1]=height, match[2]=width
+    if (pattern.source.includes("vertical")) {
+      const height = parseNumber(match[1]);
+      const width = parseNumber(match[2]);
+      if (width && height) return { widthPx: width, heightPx: height };
+    }
     const width = parseNumber(match[1]);
     const height = parseNumber(match[2]);
     if (width && height) return { widthPx: width, heightPx: height };

@@ -43,6 +43,8 @@ const DIMENSION_PATTERNS = [
     /(\d+(?:\.\d+)?)\s*(?:ft|feet)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(?:ft|feet)/i,
     // "120" x 72"" (inches)
     /(\d+)[""]\s*[xX×]\s*(\d+)[""]/,
+    // AJP-style: "32' tall x 106' wide"
+    /(\d+(?:\.\d+)?)['']\s*(?:tall|high|h)\s*[xX×]\s*(\d+(?:\.\d+)?)['']\s*(?:wide|long|w)/i,
 ];
 
 const PITCH_PATTERNS = [
@@ -50,10 +52,14 @@ const PITCH_PATTERNS = [
     /pitch[:\s]+(\d+(?:\.\d+)?)\s*mm/i,
     /P(\d+(?:\.\d+)?)\s/,
     /(\d+(?:\.\d+)?)\s*mm\s*PP/i,
+    // AJP-style: "10 (mm)" or "8 (mm)"
+    /(\d+(?:\.\d+)?)\s*\(\s*mm\s*\)/i,
 ];
 
 const QUANTITY_PATTERNS = [
     /(?:qty|quantity)[:\s]*(\d+)/i,
+    // AJP-style: "One (1)", "Two (2)" — extract the digit in parens
+    /(?:one|two|three|four|five|six|eight|ten)\s*\((\d+)\)/i,
     /\((\d+)\)/,
 ];
 
@@ -87,7 +93,11 @@ export function extractDisplaySchedule(sectionText: string): DisplayScheduleResu
         for (const pattern of DIMENSION_PATTERNS) {
             const match = line.match(pattern) || context.match(pattern);
             if (match) {
-                if (pattern.source.includes("ft|feet")) {
+                if (pattern.source.includes("tall|high")) {
+                    // AJP-style: match[1]=height (tall), match[2]=width (wide)
+                    heightFt = parseFloat(match[1]);
+                    widthFt = parseFloat(match[2]);
+                } else if (pattern.source.includes("ft|feet")) {
                     widthFt = parseFloat(match[1]);
                     heightFt = parseFloat(match[2]);
                 } else if (pattern.source.includes('["""]')) {
