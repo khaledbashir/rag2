@@ -91,36 +91,66 @@ export async function POST(request: NextRequest) {
 
 /**
  * Merge PDF-extracted specs with bid form specs.
- * Bid form specs fill in gaps — if a display exists in the bid form
- * but not in PDF extraction, add it. If it exists in both, prefer
- * the PDF version (usually higher quality) but supplement missing fields.
+ *
+ * KEY RULE: The bid form is a structured, reliable source. When the bid form
+ * has MORE specs than PDF extraction found, the bid form is the authority —
+ * use bid form as the base and only enrich from PDF (not the other way around).
+ * This prevents bad PDF extraction data (wrong dimensions, phantom displays)
+ * from contaminating the output.
  */
 function mergeSpecs(
   pdfSpecs: ExtractedLEDSpec[],
   bidFormSpecs: ExtractedLEDSpec[]
 ): ExtractedLEDSpec[] {
+  // If bid form has more or equal specs, it's the authority — use it as base
+  if (bidFormSpecs.length >= pdfSpecs.length) {
+    const merged = bidFormSpecs.map((s) => ({ ...s }));
+
+    // For each bid form spec, see if PDF has extra info to enrich
+    const usedPdfIndices = new Set<number>();
+    for (const bfSpec of merged) {
+      let bestMatch = -1;
+      let bestScore = 0;
+      for (let i = 0; i < pdfSpecs.length; i++) {
+        if (usedPdfIndices.has(i)) continue;
+        const score = specMatchScore(bfSpec, pdfSpecs[i]);
+        if (score > bestScore) { bestScore = score; bestMatch = i; }
+      }
+      if (bestMatch >= 0 && bestScore > 0.5) {
+        usedPdfIndices.add(bestMatch);
+        const pdfSpec = pdfSpecs[bestMatch];
+        // Only enrich fields the bid form doesn't have
+        if (!bfSpec.location && pdfSpec.location) bfSpec.location = pdfSpec.location;
+        if (!bfSpec.serviceType && pdfSpec.serviceType) bfSpec.serviceType = pdfSpec.serviceType;
+        if (!bfSpec.mountingType && pdfSpec.mountingType) bfSpec.mountingType = pdfSpec.mountingType;
+        if (bfSpec.specialRequirements.length === 0 && pdfSpec.specialRequirements.length > 0) {
+          bfSpec.specialRequirements = pdfSpec.specialRequirements;
+        }
+        if (bfSpec.sourcePages.length === 0 && pdfSpec.sourcePages.length > 0) {
+          bfSpec.sourcePages = pdfSpec.sourcePages;
+        }
+      }
+    }
+
+    return merged;
+  }
+
+  // PDF has more specs than bid form — PDF is authority (rare, but handle it)
   const merged = [...pdfSpecs];
   const usedPdfIndices = new Set<number>();
 
   for (const bfSpec of bidFormSpecs) {
-    // Try to find a matching PDF spec
     let bestMatch = -1;
     let bestScore = 0;
-
     for (let i = 0; i < pdfSpecs.length; i++) {
       if (usedPdfIndices.has(i)) continue;
       const score = specMatchScore(bfSpec, pdfSpecs[i]);
-      if (score > bestScore) {
-        bestScore = score;
-        bestMatch = i;
-      }
+      if (score > bestScore) { bestScore = score; bestMatch = i; }
     }
-
     if (bestMatch >= 0 && bestScore > 0.4) {
-      // Found a match — supplement missing fields in PDF spec
       usedPdfIndices.add(bestMatch);
+      // Supplement PDF spec with bid form data
       const existing = merged[bestMatch];
-
       if (existing.widthFt == null && bfSpec.widthFt != null) existing.widthFt = bfSpec.widthFt;
       if (existing.heightFt == null && bfSpec.heightFt != null) existing.heightFt = bfSpec.heightFt;
       if (existing.widthPx == null && bfSpec.widthPx != null) existing.widthPx = bfSpec.widthPx;
@@ -129,7 +159,6 @@ function mergeSpecs(
       if (existing.brightnessNits == null && bfSpec.brightnessNits != null) existing.brightnessNits = bfSpec.brightnessNits;
       if (existing.quantity === 1 && bfSpec.quantity > 1) existing.quantity = bfSpec.quantity;
     } else {
-      // No match — this is a new display from the bid form
       merged.push(bfSpec);
     }
   }
