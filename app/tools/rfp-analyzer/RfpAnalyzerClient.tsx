@@ -726,8 +726,43 @@ export default function RfpAnalyzerClient() {
     e.target.value = "";
   };
 
-  // Auto-fill bid form when pricing becomes available and a bid form was attached at upload
+  // Auto-extract specs from bid form when PDF extraction comes up short,
+  // then auto-fill the bid form when pricing is ready
   const bidFormAutoFilled = useRef(false);
+  const bidFormSpecsExtracted = useRef(false);
+
+  // Step 1: When bid form is attached and extraction completes, supplement specs from bid form
+  useEffect(() => {
+    if (!bidFormFile || !result?.id || bidFormSpecsExtracted.current) return;
+    bidFormSpecsExtracted.current = true;
+
+    (async () => {
+      try {
+        const formData = new FormData();
+        formData.append("bidForm", bidFormFile);
+        formData.append("analysisId", result.id!);
+        const res = await fetch("/api/rfp/pipeline/extract-bid-form-specs", {
+          method: "POST",
+          body: formData,
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.merged && data.specs?.length > (result.screens?.length || 0)) {
+          // Update screens with merged data — more displays found from bid form
+          setResult((prev) => prev ? { ...prev, screens: data.specs } : prev);
+          setEditableSpecs(data.specs);
+          console.log(`[bid-form-supplement] ${result.screens.length} → ${data.specs.length} specs after bid form merge`);
+          // Re-run pricing with the full spec set
+          setPricingPreview(null);
+        }
+      } catch (err) {
+        console.error("[bid-form-supplement] Error:", err);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bidFormFile, result?.id]);
+
+  // Step 2: Auto-fill bid form when pricing becomes available
   useEffect(() => {
     if (bidFormFile && pricingPreview && result?.id && !bidFormAutoFilled.current) {
       bidFormAutoFilled.current = true;
@@ -756,6 +791,7 @@ export default function RfpAnalyzerClient() {
     setBidFormResult(null);
     setBidFormFile(null);
     bidFormAutoFilled.current = false;
+    bidFormSpecsExtracted.current = false;
   };
 
   // ========================================================================

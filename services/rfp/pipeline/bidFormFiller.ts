@@ -248,6 +248,85 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
 }
 
 // ============================================================================
+// BID FORM → EXTRACTED SPECS (use bid form as spec source)
+// ============================================================================
+
+/**
+ * Extract LED specs directly from the bid form's Column B values.
+ * When the RFP technical spec document isn't uploaded, the bid form
+ * itself contains all display specs (pixel pitch, dimensions, qty, etc.)
+ * in Column B. This converts those into ExtractedLEDSpec[] that can
+ * supplement or replace PDF-extracted specs.
+ */
+export async function extractSpecsFromBidForm(
+  bidFormBuffer: Buffer
+): Promise<{ specs: ExtractedLEDSpec[]; blockCount: number }> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(bidFormBuffer);
+
+  const blocks = detectSpecBlocks(workbook);
+  const specs: ExtractedLEDSpec[] = [];
+
+  for (const block of blocks) {
+    const sheet = workbook.getWorksheet(block.sheetName);
+    if (!sheet) continue;
+
+    // Read all Column B values for this block
+    const readColB = (rowNum: number | null): number | null => {
+      if (!rowNum) return null;
+      const raw = getCellText(sheet.getRow(rowNum).getCell(2));
+      const m = raw.match(/([\d,.]+)/);
+      return m ? parseFloat(m[1].replace(/,/g, "")) : null;
+    };
+
+    const pitch = block.colBPitch;
+    const qty = readColB(block.cells.quantity) ?? 1;
+    const pixelH = readColB(block.cells.pixelHeight);
+    const pixelL = readColB(block.cells.pixelLength);
+    const sysH = readColB(block.cells.systemHeight);
+    const sysL = readColB(block.cells.systemLength);
+    const nits = readColB(block.cells.brightness);
+
+    // Determine environment from name hints
+    const nameLower = block.displayName.toLowerCase();
+    const isOutdoor =
+      /outdoor|exterior|stadium|field|ribbon|monster|tunnel|zone/i.test(nameLower);
+
+    // Detect alternates
+    const isAlternate = /alternate|alt\s*\d/i.test(block.displayName);
+    const altMatch = block.displayName.match(/alternate\s*(\d+\w?)|alt\s*(\d+\w?)/i);
+    const alternateId = altMatch ? (altMatch[1] || altMatch[2]) : null;
+
+    specs.push({
+      name: block.displayName,
+      location: block.sheetName !== "BID FORM" ? block.sheetName : "",
+      widthFt: sysL,
+      heightFt: sysH,
+      widthPx: pixelL ? Math.round(pixelL) : null,
+      heightPx: pixelH ? Math.round(pixelH) : null,
+      pixelPitchMm: pitch,
+      brightnessNits: nits,
+      environment: isOutdoor ? "outdoor" : "indoor",
+      quantity: qty,
+      serviceType: null,
+      mountingType: null,
+      maxPowerW: readColB(block.cells.powerDraw),
+      weightLbs: null,
+      specialRequirements: [],
+      confidence: 0.9, // bid form data is high confidence
+      sourcePages: [],
+      sourceType: "table",
+      citation: `Bid form: ${block.sheetName}, row ${block.headerRow}`,
+      notes: "Extracted from bid form Column B (RFP spec values)",
+      isAlternate,
+      alternateId,
+    });
+  }
+
+  return { specs, blockCount: blocks.length };
+}
+
+// ============================================================================
 // MATCHING — Map bid form blocks to extracted RFP screens
 // ============================================================================
 
