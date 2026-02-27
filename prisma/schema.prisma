@@ -80,6 +80,7 @@ model User {
   passwordHash  String? // For Credentials provider (bcrypt)
   role          UserRole   @default(VIEWER) // App/workspace role
   authRole      String     @default("user") // RBAC: "user" | "admin" (NextAuth/simple)
+  lastLoginAt   DateTime?  // Updated on every sign-in
   anythingLlmUserId Int?   // Synced AnythingLLM user ID (auto-provisioned on first login)
   workspaceId   String?
   workspace     Workspace? @relation(fields: [workspaceId], references: [id])

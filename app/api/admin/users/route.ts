@@ -30,15 +30,7 @@ export async function GET() {
         role: true,
         authRole: true,
         emailVerified: true,
-        sessions: {
-          select: {
-            expires: true,
-          },
-          orderBy: {
-            expires: "desc",
-          },
-          take: 1,
-        },
+        lastLoginAt: true,
       },
       orderBy: { email: "asc" },
     });
@@ -51,8 +43,8 @@ export async function GET() {
       role: user.role,
       authRole: user.authRole,
       emailVerified: user.emailVerified,
-      lastLogin: user.sessions[0]?.expires
-        ? new Date(user.sessions[0].expires).toISOString()
+      lastLogin: user.lastLoginAt
+        ? new Date(user.lastLoginAt).toISOString()
         : null,
     }));
 
