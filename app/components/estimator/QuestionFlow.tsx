@@ -14,7 +14,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
-import { ChevronDown, ChevronUp, Plus, Check, ArrowRight, Package, Loader2, Building2, Monitor, DollarSign, Sparkles, Ruler, ArrowUpDown, Wand2, PenLine, Zap, Trophy, Music, Landmark, Brain, MapPin, Eye, ChevronRight, RotateCcw, Tv, Radio, School } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Check, ArrowRight, Package, Loader2, Building2, Monitor, DollarSign, Sparkles, Ruler, ArrowUpDown, Wand2, PenLine, Zap, Trophy, Music, Landmark, Brain, MapPin, Eye, ChevronRight, RotateCcw, Tv, Radio, School, Send, MessageSquare, RefreshCw } from "lucide-react";
 import {
     PROJECT_QUESTIONS,
     DISPLAY_QUESTIONS,
@@ -51,8 +51,16 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
     const [reasoningText, setReasoningText] = useState("");
     const [extractedData, setExtractedData] = useState<{ answers: Record<string, any>; displays: any[] } | null>(null);
     const [isFallback, setIsFallback] = useState(false);
+    // Thread tracking
+    const [threadSlug, setThreadSlug] = useState<string | null>(null);
+    // Chat state for follow-up refinement
+    const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; text: string }>>([]);
+    const [chatInput, setChatInput] = useState("");
+    const [chatLoading, setChatLoading] = useState(false);
+    const [chatOpen, setChatOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const reasoningEndRef = useRef<HTMLDivElement>(null);
+    const chatEndRef = useRef<HTMLDivElement>(null);
 
     // Auto-scroll reasoning panel as text streams in
     useEffect(() => {
@@ -72,13 +80,22 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
         setReasoningText("");
         setExtractedData(null);
         setIsFallback(false);
+        setChatMessages([]);
+        setChatOpen(false);
         setAiPhase("reasoning");
+
+        // Build a session name from the first ~60 chars of description
+        const sessionName = `Estimator: ${aiDescription.trim().slice(0, 60)}${aiDescription.trim().length > 60 ? "..." : ""}`;
 
         try {
             const res = await fetch("/api/estimator/ai-reason", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ description: aiDescription.trim() }),
+                body: JSON.stringify({
+                    description: aiDescription.trim(),
+                    threadSlug: threadSlug || undefined,
+                    sessionName,
+                }),
             });
 
             if (!res.ok) {
@@ -107,7 +124,9 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                     try {
                         const chunk = JSON.parse(trimmed.slice(6));
 
-                        if (chunk.type === "fallback") {
+                        if (chunk.type === "thread") {
+                            setThreadSlug(chunk.threadSlug);
+                        } else if (chunk.type === "fallback") {
                             setIsFallback(true);
                         } else if (chunk.type === "reasoning") {
                             setReasoningText((prev) => prev + chunk.text);
@@ -133,7 +152,7 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
         } finally {
             setAiLoading(false);
         }
-    }, [aiDescription]);
+    }, [aiDescription, threadSlug]);
 
     // Apply extracted data to form
     const applyExtraction = useCallback(() => {
@@ -168,6 +187,89 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
         setPhase("financial");
         setCurrentStep(0);
     }, [extractedData, answers, onChange]);
+
+    // Auto-scroll chat as messages stream in
+    useEffect(() => {
+        if (chatOpen && chatEndRef.current) {
+            chatEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+        }
+    }, [chatMessages, chatOpen]);
+
+    // Follow-up chat within the thread
+    const handleChatSend = useCallback(async () => {
+        if (!chatInput.trim() || !threadSlug || chatLoading) return;
+
+        const userMsg = chatInput.trim();
+        setChatInput("");
+        setChatMessages((prev) => [...prev, { role: "user", text: userMsg }]);
+        setChatLoading(true);
+
+        try {
+            const res = await fetch("/api/estimator/ai-chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: userMsg, threadSlug }),
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || "Chat failed");
+            }
+
+            const reader = res.body?.getReader();
+            if (!reader) throw new Error("No stream body");
+
+            const decoder = new TextDecoder();
+            let buffer = "";
+            let assistantText = "";
+
+            // Add empty assistant message that we'll stream into
+            setChatMessages((prev) => [...prev, { role: "assistant", text: "" }]);
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (!trimmed || !trimmed.startsWith("data: ")) continue;
+
+                    try {
+                        const chunk = JSON.parse(trimmed.slice(6));
+
+                        if (chunk.type === "text") {
+                            assistantText += chunk.text;
+                            setChatMessages((prev) => {
+                                const updated = [...prev];
+                                updated[updated.length - 1] = { role: "assistant", text: assistantText };
+                                return updated;
+                            });
+                        } else if (chunk.type === "extraction") {
+                            // AI sent an updated spec — update extractedData
+                            setExtractedData({ answers: chunk.answers, displays: chunk.displays });
+                        } else if (chunk.type === "error") {
+                            throw new Error(chunk.message);
+                        }
+                    } catch (parseErr) {
+                        if (parseErr instanceof Error && parseErr.message !== "done") {
+                            throw parseErr;
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            setChatMessages((prev) => [
+                ...prev.filter((m) => m.text !== ""),
+                { role: "assistant", text: `Error: ${err instanceof Error ? err.message : "Chat failed"}` },
+            ]);
+        } finally {
+            setChatLoading(false);
+        }
+    }, [chatInput, threadSlug, chatLoading]);
 
     // Build the flat question list for current state
     const questions = getQuestionList(phase, displayIndex);
@@ -609,13 +711,115 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                                         Apply to Estimate
                                     </button>
                                     <button
-                                        onClick={() => { setAiPhase("input"); setReasoningText(""); setExtractedData(null); setIsFallback(false); }}
+                                        onClick={() => setChatOpen((o) => !o)}
+                                        className={cn(
+                                            "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors border",
+                                            chatOpen
+                                                ? "border-[#0A52EF] bg-[#0A52EF]/5 text-[#0A52EF]"
+                                                : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+                                        )}
+                                    >
+                                        <MessageSquare className="w-3.5 h-3.5" />
+                                        Refine
+                                    </button>
+                                    <button
+                                        onClick={() => { setAiPhase("input"); setReasoningText(""); setExtractedData(null); setIsFallback(false); setThreadSlug(null); setChatMessages([]); setChatOpen(false); }}
                                         className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
                                     >
                                         <RotateCcw className="w-3.5 h-3.5" />
-                                        Try again
+                                        Start over
                                     </button>
                                 </div>
+
+                                {/* Thread badge */}
+                                {threadSlug && (
+                                    <div className="mt-3 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                        Thread: {threadSlug.slice(0, 20)}{threadSlug.length > 20 ? "..." : ""}
+                                    </div>
+                                )}
+
+                                {/* Follow-up chat panel */}
+                                {chatOpen && threadSlug && (
+                                    <div className="mt-4 rounded-lg border border-border bg-white overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200">
+                                        <div className="px-3 py-2 border-b border-border bg-accent/30 flex items-center gap-2">
+                                            <MessageSquare className="w-3.5 h-3.5 text-[#0A52EF]" />
+                                            <span className="text-[11px] font-semibold text-foreground">Refine your estimate</span>
+                                            <span className="text-[10px] text-muted-foreground ml-auto">Ask to add, remove, or change displays</span>
+                                        </div>
+
+                                        {/* Messages */}
+                                        <div className="max-h-[35vh] overflow-y-auto p-3 space-y-2.5">
+                                            {chatMessages.length === 0 && (
+                                                <div className="text-xs text-muted-foreground text-center py-4">
+                                                    Ask follow-up questions or request changes.
+                                                    <br />
+                                                    <span className="text-[10px]">e.g., &ldquo;Add a 40x4ft fascia board at 4mm&rdquo; or &ldquo;Change the scoreboard to 6mm pitch&rdquo;</span>
+                                                </div>
+                                            )}
+                                            {chatMessages.map((msg, i) => (
+                                                <div
+                                                    key={i}
+                                                    className={cn(
+                                                        "flex",
+                                                        msg.role === "user" ? "justify-end" : "justify-start"
+                                                    )}
+                                                >
+                                                    <div
+                                                        className={cn(
+                                                            "max-w-[85%] rounded-lg px-3 py-2 text-xs",
+                                                            msg.role === "user"
+                                                                ? "bg-[#0A52EF] text-white"
+                                                                : "bg-accent text-foreground"
+                                                        )}
+                                                    >
+                                                        {msg.role === "assistant" ? (
+                                                            <div className="prose prose-sm max-w-none [&_p]:my-0.5 [&_p]:text-xs [&_li]:text-xs [&_code]:text-[10px] [&_code]:bg-background/50 [&_code]:px-1 [&_code]:rounded">
+                                                                <ReactMarkdown>{msg.text || "..."}</ReactMarkdown>
+                                                            </div>
+                                                        ) : (
+                                                            msg.text
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {chatLoading && chatMessages[chatMessages.length - 1]?.role !== "assistant" && (
+                                                <div className="flex justify-start">
+                                                    <div className="bg-accent rounded-lg px-3 py-2">
+                                                        <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div ref={chatEndRef} />
+                                        </div>
+
+                                        {/* Input */}
+                                        <div className="border-t border-border p-2 flex items-center gap-2">
+                                            <input
+                                                type="text"
+                                                value={chatInput}
+                                                onChange={(e) => setChatInput(e.target.value)}
+                                                placeholder="Ask a follow-up or request changes..."
+                                                disabled={chatLoading}
+                                                className="flex-1 text-xs bg-transparent outline-none placeholder:text-muted-foreground/50 disabled:opacity-50 px-2 py-1.5"
+                                                onKeyDown={(e) => {
+                                                    if (e.key === "Enter" && !e.shiftKey) {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        handleChatSend();
+                                                    }
+                                                }}
+                                            />
+                                            <button
+                                                onClick={handleChatSend}
+                                                disabled={chatLoading || !chatInput.trim()}
+                                                className="p-1.5 rounded-md bg-[#0A52EF] text-white hover:bg-[#0A52EF]/90 disabled:opacity-30 transition-colors"
+                                            >
+                                                <Send className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </>
                         )}
                     </div>

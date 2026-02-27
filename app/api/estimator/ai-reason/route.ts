@@ -1,7 +1,7 @@
 /**
  * POST /api/estimator/ai-reason
  *
- * AI Reasoning Estimate
+ * AI Reasoning Estimate with AnythingLLM Thread Tracking
  * Primary: AnythingLLM workspace (reasoning model that thinks natively)
  * Fallback: GLM (Z.AI) streaming if primary fails
  *
@@ -10,8 +10,13 @@
  * No reasoning_content, no thinking field. Everything is in textResponse.
  * If the model uses <think> tags, they arrive inside textResponse.
  *
- * Input:  { description: string }
- * Output: SSE stream with reasoning/extraction/fallback events
+ * Threading:
+ *   - Each "Describe your project" session creates a new AnythingLLM thread
+ *   - Thread slug returned in the SSE stream so client can use it for follow-up chat
+ *   - If threadSlug is provided, reuses existing thread
+ *
+ * Input:  { description: string, threadSlug?: string, sessionName?: string }
+ * Output: SSE stream with reasoning/extraction/fallback/thread events
  */
 
 import { NextRequest } from "next/server";
@@ -63,9 +68,45 @@ const PRIMARY_WORKSPACE = process.env.ANYTHING_LLM_REASONING_WORKSPACE || proces
 const OPEN_TAG = "<think>";
 const CLOSE_TAG = "</think>";
 
+/**
+ * Create a new thread in AnythingLLM workspace.
+ * Returns the thread slug or null if creation fails.
+ */
+async function createAnythingLLMThread(
+    normalizedBase: string,
+    apiKey: string,
+    sessionName?: string
+): Promise<{ slug: string; name: string } | null> {
+    try {
+        const threadName = sessionName || `Estimator - ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}`;
+        const res = await fetch(`${normalizedBase}/workspace/${PRIMARY_WORKSPACE}/thread/new`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({ name: threadName }),
+        });
+
+        if (!res.ok) {
+            const errText = await res.text();
+            console.error(`[ai-reason] Thread creation failed (${res.status}):`, errText);
+            return null;
+        }
+
+        const data = await res.json();
+        const thread = data.thread || data;
+        console.log(`[ai-reason] Created thread: ${thread.slug} (${threadName})`);
+        return { slug: thread.slug, name: threadName };
+    } catch (err: any) {
+        console.error("[ai-reason] Thread creation error:", err.message);
+        return null;
+    }
+}
+
 export async function POST(req: NextRequest) {
     try {
-        const { description } = await req.json();
+        const { description, threadSlug, sessionName } = await req.json();
 
         if (
             !description ||
@@ -81,7 +122,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Try primary: AnythingLLM workspace (reasoning model)
-        const primaryResult = await tryAnythingLLM(description.trim());
+        const primaryResult = await tryAnythingLLM(description.trim(), threadSlug, sessionName);
 
         if (primaryResult) {
             return primaryResult;
@@ -122,7 +163,11 @@ export async function POST(req: NextRequest) {
  *   thinking: inside <think> block, stream everything as reasoning.
  *   answer: after </think>, accumulate silently for JSON parsing.
  */
-async function tryAnythingLLM(description: string): Promise<Response | null> {
+async function tryAnythingLLM(
+    description: string,
+    existingThreadSlug?: string,
+    sessionName?: string
+): Promise<Response | null> {
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
@@ -139,7 +184,24 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
         return null;
     }
 
-    const streamUrl = `${normalizedBase}/workspace/${PRIMARY_WORKSPACE}/stream-chat`;
+    // Create or reuse thread
+    let threadSlug = existingThreadSlug;
+    let threadName = "";
+    if (!threadSlug) {
+        const thread = await createAnythingLLMThread(normalizedBase, ALLM_KEY, sessionName);
+        if (thread) {
+            threadSlug = thread.slug;
+            threadName = thread.name;
+        }
+        // If thread creation fails, fall through to workspace-level chat (no thread)
+    }
+
+    // Use thread-specific endpoint if we have a thread, otherwise workspace-level
+    const streamUrl = threadSlug
+        ? `${normalizedBase}/workspace/${PRIMARY_WORKSPACE}/thread/${threadSlug}/stream-chat`
+        : `${normalizedBase}/workspace/${PRIMARY_WORKSPACE}/stream-chat`;
+
+    console.log(`[ai-reason] Stream URL: ${streamUrl}`);
 
     let upstreamRes: Response;
     try {
@@ -173,6 +235,11 @@ async function tryAnythingLLM(description: string): Promise<Response | null> {
             const send = (data: any) => {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
             };
+
+            // Send thread info to client as first event
+            if (threadSlug) {
+                send({ type: "thread", threadSlug, threadName });
+            }
 
             const reader = upstreamRes.body?.getReader();
             if (!reader) {
