@@ -437,16 +437,25 @@ function buildMarginAnalysis(
   ws.getRow(row).height = 28;
   row++;
 
+  // Track zone summary row numbers for SUM formulas
+  const zoneSummaryRows: number[] = [];
+
   // Per-zone summary
   displays.forEach((d, idx) => {
+    zoneSummaryRows.push(row);
     const r = ws.getRow(row);
     r.getCell(1).value = "";
     r.getCell(2).value = d.spec.name + (d.spec.location ? ` — ${d.spec.location}` : "");
     r.getCell(2).font = { bold: true, name: "Calibri" };
     r.getCell(3).value = d.totalCost; r.getCell(3).numFmt = FMT_USD;
-    r.getCell(4).value = d.sellingPrice; r.getCell(4).numFmt = FMT_USD;
-    r.getCell(5).value = d.marginDollars; r.getCell(5).numFmt = FMT_USD;
+    // Margin % is the input driver — keep as hard value
     r.getCell(6).value = d.marginPct; r.getCell(6).numFmt = FMT_PCT;
+    // Selling Price formula: =C{row}/(1-F{row})
+    r.getCell(4).value = { formula: `IF(F${row}>=1,C${row},C${row}/(1-F${row}))`, result: d.sellingPrice };
+    r.getCell(4).numFmt = FMT_USD;
+    // Margin $ formula: =D{row}-C{row}
+    r.getCell(5).value = { formula: `D${row}-C${row}`, result: d.marginDollars };
+    r.getCell(5).numFmt = FMT_USD;
     stripe(r, 6, idx % 2 === 0);
     row++;
 
@@ -468,6 +477,8 @@ function buildMarginAnalysis(
     if (d.backupProcessorCost > 0) subLines.push(["Backup Video Processor", d.backupProcessorCost]);
     if (d.weatherproofCost > 0) subLines.push(["Weatherproof Enclosure Surcharge", d.weatherproofCost]);
 
+    // Track sub-line rows for zone cost SUM
+    const subStartRow = row;
     subLines.forEach(([label, cost]) => {
       const sr = ws.getRow(row);
       sr.getCell(2).value = `    ${label}`;
@@ -477,17 +488,32 @@ function buildMarginAnalysis(
       row++;
     });
 
+    // Zone cost cell = SUM of sub-lines (live formula)
+    const zoneRow = zoneSummaryRows[zoneSummaryRows.length - 1];
+    ws.getCell(zoneRow, 3).value = { formula: `SUM(C${subStartRow}:C${row - 1})`, result: d.totalCost };
+    ws.getCell(zoneRow, 3).numFmt = FMT_USD;
+
     row++; // separator
   });
 
-  // Subtotal
+  // Subtotal — SUM formulas referencing zone summary rows
+  const costRefs = zoneSummaryRows.map((r) => `C${r}`).join(",");
+  const sellRefs = zoneSummaryRows.map((r) => `D${r}`).join(",");
+  const marginDollarRefs = zoneSummaryRows.map((r) => `E${r}`).join(",");
+
   const subR = ws.getRow(row);
   subR.getCell(2).value = "SUBTOTAL";
-  subR.getCell(3).value = grandCost; subR.getCell(3).numFmt = FMT_USD;
-  subR.getCell(4).value = grandSelling; subR.getCell(4).numFmt = FMT_USD;
-  subR.getCell(5).value = grandMargin; subR.getCell(5).numFmt = FMT_USD;
-  subR.getCell(6).value = grandMarginPct; subR.getCell(6).numFmt = FMT_PCT;
+  subR.getCell(3).value = { formula: `SUM(${costRefs})`, result: grandCost };
+  subR.getCell(3).numFmt = FMT_USD;
+  subR.getCell(4).value = { formula: `SUM(${sellRefs})`, result: grandSelling };
+  subR.getCell(4).numFmt = FMT_USD;
+  subR.getCell(5).value = { formula: `SUM(${marginDollarRefs})`, result: grandMargin };
+  subR.getCell(5).numFmt = FMT_USD;
+  // Blended margin % = 1 - (Cost / Selling)
+  subR.getCell(6).value = { formula: `IF(D${row}=0,0,1-C${row}/D${row})`, result: grandMarginPct };
+  subR.getCell(6).numFmt = FMT_PCT;
   totalStyle(subR, 6, C.MEDIUM_GRAY);
+  const subtotalRow = row;
   row++;
 
   // Tax row
@@ -496,26 +522,35 @@ function buildMarginAnalysis(
   taxR.getCell(3).value = 0; taxR.getCell(3).numFmt = FMT_USD;
   taxR.getCell(4).value = 0; taxR.getCell(4).numFmt = FMT_USD;
   inputCell(taxR.getCell(3)); inputCell(taxR.getCell(4));
+  const taxRow = row;
   row++;
 
   // Bond row
+  let bondRow = 0;
   if (includeBond) {
     const bondR = ws.getRow(row);
     bondR.getCell(2).value = "BOND";
     const bondAmt = round2(grandSelling * BOND_RATE);
     bondR.getCell(3).value = bondAmt; bondR.getCell(3).numFmt = FMT_USD;
     bondR.getCell(4).value = bondAmt; bondR.getCell(4).numFmt = FMT_USD;
+    bondRow = row;
     row++;
   }
 
-  // Grand total
+  // Grand total — formulas summing subtotal + tax + bond
   row++;
   const gtR = ws.getRow(row);
   gtR.getCell(2).value = "GRAND TOTAL";
-  gtR.getCell(3).value = grandCost; gtR.getCell(3).numFmt = FMT_USD;
-  gtR.getCell(4).value = grandSelling; gtR.getCell(4).numFmt = FMT_USD;
-  gtR.getCell(5).value = grandMargin; gtR.getCell(5).numFmt = FMT_USD;
-  gtR.getCell(6).value = grandMarginPct; gtR.getCell(6).numFmt = FMT_PCT;
+  const costSumParts = bondRow > 0 ? `C${subtotalRow}+C${taxRow}+C${bondRow}` : `C${subtotalRow}+C${taxRow}`;
+  const sellSumParts = bondRow > 0 ? `D${subtotalRow}+D${taxRow}+D${bondRow}` : `D${subtotalRow}+D${taxRow}`;
+  gtR.getCell(3).value = { formula: costSumParts, result: grandCost };
+  gtR.getCell(3).numFmt = FMT_USD;
+  gtR.getCell(4).value = { formula: sellSumParts, result: grandSelling };
+  gtR.getCell(4).numFmt = FMT_USD;
+  gtR.getCell(5).value = { formula: `D${row}-C${row}`, result: grandMargin };
+  gtR.getCell(5).numFmt = FMT_USD;
+  gtR.getCell(6).value = { formula: `IF(D${row}=0,0,1-C${row}/D${row})`, result: grandMarginPct };
+  gtR.getCell(6).numFmt = FMT_PCT;
   totalStyle(gtR, 6, C.ANC_BLUE);
   gtR.getCell(2).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
   gtR.getCell(3).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
@@ -535,72 +570,74 @@ function buildLedCostSheet(
     properties: { tabColor: { argb: C.GREEN_TAB } },
   });
 
-  const colWidths = [4, 36, 8, 16, 14, 10, 10, 10, 4, 10, 16, 14, 10, 14];
+  // Flat table layout matching the UI: Display | Vendor | Pitch | W(ft) | H(ft) | W(px) | H(px) | Qty | Total SqFt | $/sqft | Total Cost
+  const COLS = 11;
+  const colWidths = [36, 24, 10, 10, 10, 10, 10, 8, 12, 14, 16];
   colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
-  setTitle(ws, "N", `${projectName} — LED Cost Sheet`);
+  setTitle(ws, "K", `${projectName} — LED Cost Sheet`);
 
   let row = 3;
 
-  // Group by location/zone
+  // Header row
+  const hdrLabels = ["Display", "Vendor", "Pitch", "W (ft)", "H (ft)", "W (px)", "H (px)", "Qty", "Total SqFt", "$/sqft", "Total Cost"];
+  hdrLabels.forEach((h, i) => {
+    const cell = ws.getCell(row, i + 1);
+    cell.value = h;
+    hdr(cell, C.DARK_HEADER);
+  });
+  ws.getRow(row).height = 28;
+  row++;
+
+  const dataStartRow = row;
+
+  // Data rows — one per display, flat table
   displays.forEach((d, idx) => {
-    row++;
-    // Zone header
-    ws.mergeCells(row, 1, row, 14);
-    const zhCell = ws.getCell(row, 1);
-    zhCell.value = d.spec.name + (d.spec.location ? ` — ${d.spec.location}` : "");
-    sectionHdr(zhCell, C.ANC_BLUE);
-    ws.getRow(row).height = 24;
-    row++;
-
-    // Column headers
-    const hdrs = ["", "OPTION", "Issue", "VENDOR", "PRODUCT", "PITCH", "H", "W", "", "H", "W", "Qty", "Cost/sqft", "Total Cost"];
-    // Actually use: BID SPEC | Active Display Size (Feet) | Pixel Count
-    const hdrLabels = ["", "OPTION", "Issue", "VENDOR", "PRODUCT", "PITCH", "H (ft)", "W (ft)", "×", "H (px)", "W (px)", "QTY", "$/sqft", "Total LED Cost"];
-    hdrLabels.forEach((h, i) => {
-      const cell = ws.getCell(row, i + 1);
-      cell.value = h;
-      hdr(cell, C.DARK_HEADER);
-    });
-    ws.getRow(row).height = 24;
-    row++;
-
-    // Data row
     const dr = ws.getRow(row);
-    dr.getCell(2).value = d.spec.name;
-    dr.getCell(3).value = "";
-    dr.getCell(4).value = d.match?.module?.manufacturer || (d.spec.environment === "outdoor" ? "Yaham" : "LG/Yaham");
-    dr.getCell(5).value = d.match?.module?.model || `${d.spec.pixelPitchMm || "?"}mm LED`;
-    dr.getCell(6).value = d.spec.pixelPitchMm ? `${d.spec.pixelPitchMm}mm` : "—";
-    dr.getCell(7).value = d.heightFt || 0; dr.getCell(7).numFmt = "0.00";
-    dr.getCell(8).value = d.widthFt || 0; dr.getCell(8).numFmt = "0.00";
-    dr.getCell(9).value = "×";
-    dr.getCell(9).alignment = { horizontal: "center" };
+    dr.getCell(1).value = d.spec.name + (d.spec.location ? ` — ${d.spec.location}` : "");
+    dr.getCell(1).font = { bold: true, name: "Calibri" };
+    dr.getCell(2).value = d.match?.module?.manufacturer
+      ? `${d.match.module.manufacturer} ${d.match.module.model || ""}`.trim()
+      : (d.spec.environment === "outdoor" ? "Yaham" : "LG/Yaham");
+    dr.getCell(3).value = d.spec.pixelPitchMm ? `${d.spec.pixelPitchMm}mm` : "—";
+    dr.getCell(3).alignment = { horizontal: "center" };
+    dr.getCell(4).value = d.widthFt || 0; dr.getCell(4).numFmt = "0.00";
+    dr.getCell(5).value = d.heightFt || 0; dr.getCell(5).numFmt = "0.00";
+
     const wPx = d.spec.widthPx || (d.spec.pixelPitchMm && d.widthFt ? Math.round(d.widthFt * 304.8 / d.spec.pixelPitchMm) : 0);
     const hPx = d.spec.heightPx || (d.spec.pixelPitchMm && d.heightFt ? Math.round(d.heightFt * 304.8 / d.spec.pixelPitchMm) : 0);
-    dr.getCell(10).value = hPx; dr.getCell(10).numFmt = FMT_INT;
-    dr.getCell(11).value = wPx; dr.getCell(11).numFmt = FMT_INT;
-    dr.getCell(12).value = d.spec.quantity || 1;
-    const costPerSqFt = d.areaSqFt > 0 ? round2(d.ledHardwareCost / d.areaSqFt) : 0;
-    dr.getCell(13).value = costPerSqFt; dr.getCell(13).numFmt = FMT_USD2;
-    dr.getCell(14).value = d.ledHardwareCost; dr.getCell(14).numFmt = FMT_USD;
-    stripe(dr, 14, idx % 2 === 0);
-    row++;
+    dr.getCell(6).value = wPx; dr.getCell(6).numFmt = FMT_INT;
+    dr.getCell(7).value = hPx; dr.getCell(7).numFmt = FMT_INT;
+    dr.getCell(8).value = d.spec.quantity || 1; dr.getCell(8).alignment = { horizontal: "center" };
 
-    // Extra info row
-    const ir = ws.getRow(row);
-    ir.getCell(2).value = `${d.areaSqFt.toLocaleString()} sq ft | ${d.spec.environment} | ${d.spec.brightnessNits ? d.spec.brightnessNits + " nits" : ""}`;
-    ir.getCell(2).font = { name: "Calibri", size: 9, italic: true, color: { argb: "FF888888" } };
+    // Total SqFt formula: =D{row}*E{row}*H{row}
+    dr.getCell(9).value = { formula: `D${row}*E${row}*H${row}`, result: d.areaSqFt };
+    dr.getCell(9).numFmt = "#,##0";
+
+    // $/sqft formula: =IF(I{row}=0,0,K{row}/I{row})
+    const costPerSqFt = d.areaSqFt > 0 ? round2(d.ledHardwareCost / d.areaSqFt) : 0;
+    dr.getCell(10).value = { formula: `IF(I${row}=0,0,K${row}/I${row})`, result: costPerSqFt };
+    dr.getCell(10).numFmt = FMT_USD2;
+
+    dr.getCell(11).value = d.ledHardwareCost; dr.getCell(11).numFmt = FMT_USD;
+    dr.getCell(11).font = { bold: true, name: "Calibri" };
+
+    stripe(dr, COLS, idx % 2 === 0);
     row++;
   });
 
-  // Grand total
+  // Total row with SUM formulas
   row++;
   const gtR = ws.getRow(row);
-  gtR.getCell(2).value = "LED TOTAL";
-  gtR.getCell(14).value = displays.reduce((s, d) => s + d.ledHardwareCost, 0);
-  gtR.getCell(14).numFmt = FMT_USD;
-  totalStyle(gtR, 14, C.GREEN_BG);
+  gtR.getCell(1).value = `TOTAL (${displays.length} displays)`;
+  gtR.getCell(1).font = { bold: true, name: "Calibri" };
+  // Total SqFt SUM
+  gtR.getCell(9).value = { formula: `SUM(I${dataStartRow}:I${row - 2})`, result: displays.reduce((s, d) => s + d.areaSqFt, 0) };
+  gtR.getCell(9).numFmt = "#,##0";
+  // Total Cost SUM
+  gtR.getCell(11).value = { formula: `SUM(K${dataStartRow}:K${row - 2})`, result: displays.reduce((s, d) => s + d.ledHardwareCost, 0) };
+  gtR.getCell(11).numFmt = FMT_USD;
+  totalStyle(gtR, COLS, C.GREEN_BG);
 }
 
 // ─── 3. PER-ZONE INSTALL SHEET ─────────────────────────────────────────────
@@ -701,16 +738,20 @@ function buildInstallSheet(
     r.getCell(7).value = 0; r.getCell(7).numFmt = FMT_USD; inputCell(r.getCell(7));
     r.getCell(9).value = cost; r.getCell(9).numFmt = FMT_USD;
     r.getCell(10).value = svcMargin; r.getCell(10).numFmt = FMT_PCT;
-    r.getCell(11).value = cost > 0 ? round2(cost / (1 - svcMargin)) : 0; r.getCell(11).numFmt = FMT_USD;
+    // Selling Price formula: =IF(J{row}>=1,I{row},I{row}/(1-J{row}))
+    r.getCell(11).value = { formula: `IF(J${row}>=1,I${row},I${row}/(1-J${row}))`, result: cost > 0 ? round2(cost / (1 - svcMargin)) : 0 };
+    r.getCell(11).numFmt = FMT_USD;
     stripe(r, 11, i % 2 === 0);
     row++;
   });
 
-  // Subtotal
+  // Subtotal with SUM formulas
   const stSubR = ws.getRow(row);
   stSubR.getCell(2).value = "SUBTOTAL";
-  stSubR.getCell(9).value = d.structuralMaterialsCost; stSubR.getCell(9).numFmt = FMT_USD;
-  stSubR.getCell(11).value = round2(d.structuralMaterialsCost / (1 - svcMargin)); stSubR.getCell(11).numFmt = FMT_USD;
+  stSubR.getCell(9).value = { formula: `SUM(I${row - structItems.length}:I${row - 1})`, result: d.structuralMaterialsCost };
+  stSubR.getCell(9).numFmt = FMT_USD;
+  stSubR.getCell(11).value = { formula: `SUM(K${row - structItems.length}:K${row - 1})`, result: round2(d.structuralMaterialsCost / (1 - svcMargin)) };
+  stSubR.getCell(11).numFmt = FMT_USD;
   subtotalBorder(stSubR, 11);
   row += 2;
 
@@ -734,6 +775,7 @@ function buildInstallSheet(
     "PM/GENERAL CONDITIONS/TRAVEL",
   ];
 
+  const laborStartRow = row;
   laborItems.forEach((item, i) => {
     const r = ws.getRow(row);
     r.getCell(2).value = item;
@@ -747,16 +789,18 @@ function buildInstallSheet(
     r.getCell(7).value = 0; r.getCell(7).numFmt = FMT_USD; inputCell(r.getCell(7));
     r.getCell(9).value = cost; r.getCell(9).numFmt = FMT_USD;
     r.getCell(10).value = svcMargin; r.getCell(10).numFmt = FMT_PCT;
-    r.getCell(11).value = cost > 0 ? round2(cost / (1 - svcMargin)) : 0; r.getCell(11).numFmt = FMT_USD;
+    r.getCell(11).value = { formula: `IF(J${row}>=1,I${row},I${row}/(1-J${row}))`, result: cost > 0 ? round2(cost / (1 - svcMargin)) : 0 };
+    r.getCell(11).numFmt = FMT_USD;
     stripe(r, 11, i % 2 === 0);
     row++;
   });
 
   const lSubR = ws.getRow(row);
   lSubR.getCell(2).value = "SUBTOTAL";
-  const laborTotal = d.structuralLaborCost + d.pmCost;
-  lSubR.getCell(9).value = laborTotal; lSubR.getCell(9).numFmt = FMT_USD;
-  lSubR.getCell(11).value = round2(laborTotal / (1 - svcMargin)); lSubR.getCell(11).numFmt = FMT_USD;
+  lSubR.getCell(9).value = { formula: `SUM(I${laborStartRow}:I${row - 1})`, result: d.structuralLaborCost + d.pmCost };
+  lSubR.getCell(9).numFmt = FMT_USD;
+  lSubR.getCell(11).value = { formula: `SUM(K${laborStartRow}:K${row - 1})`, result: round2((d.structuralLaborCost + d.pmCost) / (1 - svcMargin)) };
+  lSubR.getCell(11).numFmt = FMT_USD;
   subtotalBorder(lSubR, 11);
   row += 2;
 
@@ -791,15 +835,19 @@ function buildInstallSheet(
     r.getCell(7).value = 0; r.getCell(7).numFmt = FMT_USD; inputCell(r.getCell(7));
     r.getCell(9).value = cost; r.getCell(9).numFmt = FMT_USD;
     r.getCell(10).value = svcMargin; r.getCell(10).numFmt = FMT_PCT;
-    r.getCell(11).value = cost > 0 ? round2(cost / (1 - svcMargin)) : 0; r.getCell(11).numFmt = FMT_USD;
+    r.getCell(11).value = { formula: `IF(J${row}>=1,I${row},I${row}/(1-J${row}))`, result: cost > 0 ? round2(cost / (1 - svcMargin)) : 0 };
+    r.getCell(11).numFmt = FMT_USD;
     stripe(r, 11, i % 2 === 0);
     row++;
   });
 
+  const elecStartRow = row - elecItems.length;
   const eSubR = ws.getRow(row);
   eSubR.getCell(2).value = "SUBTOTAL";
-  eSubR.getCell(9).value = d.electricalCost; eSubR.getCell(9).numFmt = FMT_USD;
-  eSubR.getCell(11).value = round2(d.electricalCost / (1 - svcMargin)); eSubR.getCell(11).numFmt = FMT_USD;
+  eSubR.getCell(9).value = { formula: `SUM(I${elecStartRow}:I${row - 1})`, result: d.electricalCost };
+  eSubR.getCell(9).numFmt = FMT_USD;
+  eSubR.getCell(11).value = { formula: `SUM(K${elecStartRow}:K${row - 1})`, result: round2(d.electricalCost / (1 - svcMargin)) };
+  eSubR.getCell(11).numFmt = FMT_USD;
   subtotalBorder(eSubR, 11);
   row += 2;
 
@@ -822,6 +870,7 @@ function buildInstallSheet(
     "PERMITS",
   ];
 
+  const engStartRow = row;
   engItems.forEach((item, i) => {
     const r = ws.getRow(row);
     r.getCell(2).value = item;
@@ -833,15 +882,18 @@ function buildInstallSheet(
     r.getCell(7).value = 0; r.getCell(7).numFmt = FMT_USD; inputCell(r.getCell(7));
     r.getCell(9).value = cost; r.getCell(9).numFmt = FMT_USD;
     r.getCell(10).value = svcMargin; r.getCell(10).numFmt = FMT_PCT;
-    r.getCell(11).value = cost > 0 ? round2(cost / (1 - svcMargin)) : 0; r.getCell(11).numFmt = FMT_USD;
+    r.getCell(11).value = { formula: `IF(J${row}>=1,I${row},I${row}/(1-J${row}))`, result: cost > 0 ? round2(cost / (1 - svcMargin)) : 0 };
+    r.getCell(11).numFmt = FMT_USD;
     stripe(r, 11, i % 2 === 0);
     row++;
   });
 
   const engSubR = ws.getRow(row);
   engSubR.getCell(2).value = "SUBTOTAL";
-  engSubR.getCell(9).value = d.engCost; engSubR.getCell(9).numFmt = FMT_USD;
-  engSubR.getCell(11).value = round2(d.engCost / (1 - svcMargin)); engSubR.getCell(11).numFmt = FMT_USD;
+  engSubR.getCell(9).value = { formula: `SUM(I${engStartRow}:I${row - 1})`, result: d.engCost };
+  engSubR.getCell(9).numFmt = FMT_USD;
+  engSubR.getCell(11).value = { formula: `SUM(K${engStartRow}:K${row - 1})`, result: round2(d.engCost / (1 - svcMargin)) };
+  engSubR.getCell(11).numFmt = FMT_USD;
   subtotalBorder(engSubR, 11);
   row += 2;
 

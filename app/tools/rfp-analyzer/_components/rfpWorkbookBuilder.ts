@@ -87,7 +87,7 @@ function num(value: number | null | undefined, opts?: Partial<SheetCell>): Sheet
 // ═══════════════════════════════════════════════════════════════════════════
 
 function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
-  const cols = ["Display", "Vendor", "Pitch", "W (ft)", "H (ft)", "W (px)", "H (px)", "Qty", "$/sqft", "Total Cost"];
+  const cols = ["Display", "Vendor", "Pitch", "W (ft)", "H (ft)", "W (px)", "H (px)", "Qty", "Total SqFt", "$/sqft", "Total Cost"];
 
   // Header row
   const headerRow: SheetRow = {
@@ -104,6 +104,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const hPx = spec.heightPx ?? (pitch > 0 ? Math.round(hFt * 304.8 / pitch) : 0);
     const areaSqFt = wFt * hFt;
     const qty = spec.quantity || 1;
+    const totalSqFt = Math.round(areaSqFt * qty * 100) / 100;
 
     // Try to find matching pricing display
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
@@ -132,6 +133,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
         num(wPx > 0 ? wPx : null),
         num(hPx > 0 ? hPx : null),
         num(qty, { align: "center" }),
+        num(totalSqFt > 0 ? totalSqFt : null),
         curr(costPerSqFt > 0 ? costPerSqFt : 0),
         curr(hwCost, { bold: true }),
       ],
@@ -140,10 +142,17 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
 
   // Total row
   const totalHwCost = input.pricingDisplays.reduce((s, d) => s + d.hardwareCost, 0);
+  const totalSqFtAll = input.screens.reduce((s, spec) => {
+    const w = spec.widthFt ?? 0;
+    const h = spec.heightFt ?? 0;
+    return s + (w * h * (spec.quantity || 1));
+  }, 0);
   const totalRow: SheetRow = {
     cells: [
       c(`TOTAL (${input.screens.length} displays)`, { bold: true }),
-      c(""), c(""), c(""), c(""), c(""), c(""), c(""), c(""),
+      c(""), c(""), c(""), c(""), c(""), c(""), c(""),
+      num(Math.round(totalSqFtAll * 100) / 100, { bold: true }),
+      c(""),
       curr(totalHwCost, { bold: true, highlight: true }),
     ],
     isTotal: true,
@@ -154,7 +163,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     color: "#0A52EF",
     columns: cols,
     rows: [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow],
-    editableColumns: [0, 3, 4, 7], // Display name, W, H, Qty
+    editableColumns: [0, 3, 4, 7], // Display name, W(ft), H(ft), Qty
   };
 }
 
