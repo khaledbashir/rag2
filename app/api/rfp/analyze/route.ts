@@ -602,6 +602,7 @@ export async function POST(request: NextRequest) {
               triage: JSON.parse(JSON.stringify(triageData)),
               pages: [], // Don't store full page markdown (too big)
               status: "complete",
+              createdBy: session?.user?.email || null,
             },
           });
           analysisId = saved.id;

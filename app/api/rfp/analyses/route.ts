@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
         specsFound: true,
         processingTimeMs: true,
         status: true,
+        createdBy: true,
         createdAt: true,
       },
       orderBy: { createdAt: "desc" },

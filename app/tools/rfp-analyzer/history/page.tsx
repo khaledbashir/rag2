@@ -37,6 +37,7 @@ interface AnalysisSummary {
   specsFound: number;
   processingTimeMs: number;
   status: string;
+  createdBy: string | null;
   createdAt: string;
 }
 
@@ -207,6 +208,7 @@ export default function RfpHistoryPage() {
                     <th className="py-2.5 px-4 font-medium text-center">Pages</th>
                     <th className="py-2.5 px-4 font-medium text-center">Relevant</th>
                     <th className="py-2.5 px-4 font-medium">File</th>
+                    <th className="py-2.5 px-4 font-medium">Created By</th>
                     <th className="py-2.5 px-4 font-medium text-right">When</th>
                     <th className="py-2.5 px-4 font-medium w-20"></th>
                   </tr>
@@ -225,7 +227,7 @@ export default function RfpHistoryPage() {
                   {emptyAnalyses.length > 0 && (
                     <>
                       <tr>
-                        <td colSpan={9} className="py-2 px-4 bg-muted/30">
+                        <td colSpan={10} className="py-2 px-4 bg-muted/30">
                           <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
                             No results ({emptyAnalyses.length}) — non-RFP or failed extractions
                           </span>
@@ -385,6 +387,9 @@ function TableRow({
       <td className="py-2.5 px-4 text-xs text-muted-foreground truncate max-w-[140px]" title={a.filename}>
         {a.filename}
       </td>
+      <td className="py-2.5 px-4 text-xs text-muted-foreground truncate max-w-[120px]" title={a.createdBy || ""}>
+        {a.createdBy ? a.createdBy.split("@")[0] : <span className="text-muted-foreground/40">—</span>}
+      </td>
       <td className="py-2.5 px-4 text-right">
         <div className="text-xs text-muted-foreground">{timeAgo}</div>
         <div className="text-[10px] text-muted-foreground/60">{formatDate(date)}</div>
@@ -489,11 +494,14 @@ function AnalysisCard({
 
         {/* Footer */}
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <div className="flex items-center gap-1 truncate max-w-[60%]">
+          <div className="flex items-center gap-1 truncate max-w-[50%]">
             <FileText className="w-3 h-3 shrink-0" />
             <span className="truncate">{a.filename}</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {a.createdBy && (
+              <span className="text-muted-foreground/70">{a.createdBy.split("@")[0]}</span>
+            )}
             <span className="flex items-center gap-1">
               <Clock className="w-3 h-3" />{timeAgo}
             </span>
