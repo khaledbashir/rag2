@@ -27,7 +27,11 @@ export interface PricingDisplay {
   blendedMarginPct: number;
   costSource: string;
   rateCardEstimate: number | null;
-  matchedProduct: { manufacturer: string; model: string; fitScore: number } | null;
+  matchedProduct: {
+    manufacturer: string; model: string; pitch: number; fitScore: number;
+    activeWidthFt?: number; activeHeightFt?: number;
+    resolutionX?: number; resolutionY?: number;
+  } | null;
 }
 
 export interface PricingSummary {
@@ -94,7 +98,12 @@ function num(value: number | null | undefined, opts?: Partial<SheetCell>): Sheet
 // ═══════════════════════════════════════════════════════════════════════════
 
 function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
-  const cols = ["Display", "Vendor", "Pitch", "W (ft)", "H (ft)", "W (px)", "H (px)", "Qty", "Total SqFt", "$/sqft", "Total Cost"];
+  // Jeremy's format: Display | Product | Bid Pitch | Active H | Active W | Px H | Px W | Qty | SqFt/Screen | $/sqft | Total Cost
+  const cols = [
+    "Display", "Product", "Bid Pitch",
+    "H (ft)", "W (ft)", "H (px)", "W (px)",
+    "Qty", "Total SqFt", "$/sqft", "Total Cost",
+  ];
 
   // Header row
   const headerRow: SheetRow = {
@@ -103,24 +112,37 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   };
 
   // Data rows
-  const dataRows: SheetRow[] = input.screens.map((spec, i) => {
-    const pitch = spec.pixelPitchMm ?? 0;
-    const wFt = spec.widthFt ?? 0;
-    const hFt = spec.heightFt ?? 0;
-    const wPx = spec.widthPx ?? (pitch > 0 ? Math.round(wFt * 304.8 / pitch) : 0);
-    const hPx = spec.heightPx ?? (pitch > 0 ? Math.round(hFt * 304.8 / pitch) : 0);
-    const areaSqFt = wFt * hFt;
+  const dataRows: SheetRow[] = input.screens.map((spec) => {
+    const bidPitch = spec.pixelPitchMm ?? 0;
+    const bidW = spec.widthFt ?? 0;
+    const bidH = spec.heightFt ?? 0;
+    const bidWPx = spec.widthPx ?? (bidPitch > 0 ? Math.round(bidW * 304.8 / bidPitch) : 0);
+    const bidHPx = spec.heightPx ?? (bidPitch > 0 ? Math.round(bidH * 304.8 / bidPitch) : 0);
     const qty = spec.quantity || 1;
-    const totalSqFt = Math.round(areaSqFt * qty * 100) / 100;
 
     // Try to find matching pricing display
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
+    const mp = pd?.matchedProduct;
     const hwCost = pd?.hardwareCost ?? 0;
-    const costPerSqFt = areaSqFt > 0 ? hwCost / (areaSqFt * qty) : 0;
 
-    // Vendor match
-    const vendor = pd?.matchedProduct
-      ? `${pd.matchedProduct.manufacturer} ${pd.matchedProduct.model}`
+    // Use actual product dimensions if available, otherwise bid spec
+    const activeH = mp?.activeHeightFt ?? bidH;
+    const activeW = mp?.activeWidthFt ?? bidW;
+    const activePxH = mp?.resolutionY ?? bidHPx;
+    const activePxW = mp?.resolutionX ?? bidWPx;
+    const activeSqFt = activeH * activeW * qty;
+
+    const costPerSqFt = activeSqFt > 0 ? hwCost / activeSqFt : 0;
+
+    // Build display name: "Name — Qty (Q) H' x W' — Pitch"
+    const dimLabel = `${Math.round(bidH)}' H x ${Math.round(bidW)}' W`;
+    const qtyLabel = qty > 1 ? `Two (${qty})` : `One (1)`;
+    const pitchLabel = bidPitch > 0 ? `${bidPitch}mm` : "";
+    const displayDesc = `${spec.name} — ${qtyLabel} ${dimLabel}${pitchLabel ? ` — ${pitchLabel}` : ""}`;
+
+    // Product label
+    const productLabel = mp
+      ? `${mp.model}`
       : "";
 
     // Source page click
@@ -129,18 +151,18 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
 
     return {
       cells: [
-        c(spec.name, {
+        c(displayDesc, {
           bold: true,
           onClick: firstPage && input.onSourcePageClick ? () => input.onSourcePageClick!(firstPage) : undefined,
         }),
-        c(vendor),
-        c(pitch > 0 ? `${pitch}mm` : "", { align: "center" }),
-        num(wFt > 0 ? wFt : null),
-        num(hFt > 0 ? hFt : null),
-        num(wPx > 0 ? wPx : null),
-        num(hPx > 0 ? hPx : null),
+        c(productLabel),
+        c(bidPitch > 0 ? `${bidPitch}mm` : "", { align: "center" }),
+        num(activeH > 0 ? Math.round(activeH * 100) / 100 : null),
+        num(activeW > 0 ? Math.round(activeW * 100) / 100 : null),
+        num(activePxH > 0 ? activePxH : null),
+        num(activePxW > 0 ? activePxW : null),
         num(qty, { align: "center" }),
-        num(totalSqFt > 0 ? totalSqFt : null),
+        num(Math.round(activeSqFt * 100) / 100 || null),
         curr(costPerSqFt > 0 ? costPerSqFt : 0),
         curr(hwCost, { bold: true }),
       ],
@@ -150,14 +172,17 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   // Total row
   const totalHwCost = input.pricingDisplays.reduce((s, d) => s + d.hardwareCost, 0);
   const totalSqFtAll = input.screens.reduce((s, spec) => {
-    const w = spec.widthFt ?? 0;
-    const h = spec.heightFt ?? 0;
-    return s + (w * h * (spec.quantity || 1));
+    const pd = input.pricingDisplays.find((d) => d.name === spec.name);
+    const mp = pd?.matchedProduct;
+    const h = mp?.activeHeightFt ?? (spec.heightFt ?? 0);
+    const w = mp?.activeWidthFt ?? (spec.widthFt ?? 0);
+    return s + (h * w * (spec.quantity || 1));
   }, 0);
   const totalRow: SheetRow = {
     cells: [
       c(`TOTAL (${input.screens.length} displays)`, { bold: true }),
-      c(""), c(""), c(""), c(""), c(""), c(""), c(""),
+      c(""), c(""), c(""), c(""), c(""), c(""),
+      c(""),
       num(Math.round(totalSqFtAll * 100) / 100, { bold: true }),
       c(""),
       curr(totalHwCost, { bold: true, highlight: true }),
@@ -170,7 +195,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     color: "#0A52EF",
     columns: cols,
     rows: [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow],
-    editableColumns: [0, 3, 4, 7], // Display name, W(ft), H(ft), Qty
+    editableColumns: [0, 3, 4, 7], // Display name, H(ft), W(ft), Qty
   };
 }
 

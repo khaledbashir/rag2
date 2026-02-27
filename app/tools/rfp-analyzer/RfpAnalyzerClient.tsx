@@ -103,7 +103,11 @@ interface PricingPreview {
     blendedMarginPct: number;
     costSource: string;
     rateCardEstimate: number | null;
-    matchedProduct: { manufacturer: string; model: string; fitScore: number } | null;
+    matchedProduct: {
+      manufacturer: string; model: string; pitch: number; fitScore: number;
+      activeWidthFt?: number; activeHeightFt?: number;
+      resolutionX?: number; resolutionY?: number;
+    } | null;
   }>;
   summary: {
     totalCost: number;

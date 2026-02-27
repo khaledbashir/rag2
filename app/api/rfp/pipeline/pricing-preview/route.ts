@@ -91,6 +91,10 @@ export async function POST(request: NextRequest) {
           pitch: pd.match.module.pitch,
           totalModules: pd.match.totalModules,
           fitScore: pd.match.fitScore,
+          activeWidthFt: pd.match.activeWidthFt,
+          activeHeightFt: pd.match.activeHeightFt,
+          resolutionX: pd.match.resolutionX,
+          resolutionY: pd.match.resolutionY,
         } : null,
       })),
       summary: {
