@@ -156,7 +156,7 @@ const PRODUCT_SEED = [
     },
     {
         manufacturer: "Yaham", productFamily: "Radiance", modelNumber: "R8",
-        displayName: "Yaham Radiance R8 Outdoor", pixelPitch: 8.33,
+        displayName: "Yaham Radiance R8 Outdoor", pixelPitch: 8.333,
         cabinetWidthMm: 1000, cabinetHeightMm: 1000, cabinetDepthMm: 120,
         weightKgPerCabinet: 29.5, maxNits: 10000, maxPowerWattsPerCab: 650,
         environment: "outdoor", ipRating: "IP66", costPerSqFt: 194.07,
@@ -164,7 +164,7 @@ const PRODUCT_SEED = [
     },
     {
         manufacturer: "Yaham", productFamily: "Radiance", modelNumber: "R10",
-        displayName: "Yaham Radiance R10 Outdoor", pixelPitch: 10,
+        displayName: "Yaham Radiance R10 Outdoor", pixelPitch: 10.417,
         cabinetWidthMm: 1000, cabinetHeightMm: 1000, cabinetDepthMm: 120,
         weightKgPerCabinet: 29.5, maxNits: 10000, maxPowerWattsPerCab: 650,
         environment: "outdoor", ipRating: "IP66", costPerSqFt: 154.79,
@@ -172,7 +172,7 @@ const PRODUCT_SEED = [
     },
     {
         manufacturer: "Yaham", productFamily: "Aura", modelNumber: "A10",
-        displayName: "Yaham Aura A10 Perimeter", pixelPitch: 10,
+        displayName: "Yaham Aura A10 Perimeter", pixelPitch: 10.417,
         cabinetWidthMm: 1600, cabinetHeightMm: 900, cabinetDepthMm: 114,
         weightKgPerCabinet: 55, maxNits: 7500, maxPowerWattsPerCab: 680,
         environment: "outdoor", ipRating: "IP66", costPerSqFt: 206.59,
@@ -180,7 +180,7 @@ const PRODUCT_SEED = [
     },
     {
         manufacturer: "Yaham", productFamily: "Halo Outdoor", modelNumber: "HO10T",
-        displayName: "Yaham Halo HO10T Fascia Outdoor", pixelPitch: 10,
+        displayName: "Yaham Halo HO10T Fascia Outdoor", pixelPitch: 10.417,
         cabinetWidthMm: 800, cabinetHeightMm: 900, cabinetDepthMm: 130,
         weightKgPerCabinet: 33, maxNits: 10000, maxPowerWattsPerCab: 460,
         environment: "outdoor", ipRating: "IP66", costPerSqFt: 176.45,

@@ -751,12 +751,13 @@ export default function RfpAnalyzerClient() {
         });
         if (!res.ok) return;
         const data = await res.json();
-        if (data.merged && data.specs?.length > (result.screens?.length || 0)) {
-          // Update screens with merged data — more displays found from bid form
-          setResult((prev) => prev ? { ...prev, screens: data.specs } : prev);
-          setEditableSpecs(data.specs);
-          console.log(`[bid-form-supplement] ${result.screens.length} → ${data.specs.length} specs after bid form merge`);
-          // Re-run pricing with the full spec set
+        const newSpecs = data.specs;
+        if (newSpecs?.length > 0) {
+          // Bid form is always the authority — replace screens entirely
+          setResult((prev) => prev ? { ...prev, screens: newSpecs } : prev);
+          setEditableSpecs(newSpecs);
+          console.log(`[bid-form-supplement] ${result.screens.length} → ${newSpecs.length} specs from bid form (merged=${data.merged})`);
+          // Re-run pricing with the bid form spec set
           setPricingPreview(null);
         }
       } catch (err) {
