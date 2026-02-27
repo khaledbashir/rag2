@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/auth";
 import { provisionProjectWorkspace } from "@/lib/anything-llm";
 import { findClientLogo } from "@/lib/brand-discovery";
 import { ensureAnythingLlmUser, assignWorkspaceToUser } from "@/services/anythingllm/userProvisioner";
@@ -73,11 +74,11 @@ export async function POST(request: NextRequest) {
       hasClientSummary: !!body.excelData?.clientSummary,
       hasMarginAnalysis: !!body.excelData?.marginAnalysis,
     });
-    // Resolve user ID for Created By tracking
-    const creatorUser = await prisma.user.findUnique({
-      where: { email: body.userEmail },
-      select: { id: true },
-    });
+    // Resolve LOGGED-IN user for Created By (not body.userEmail which is the client contact)
+    const session = await auth();
+    const creatorUser = session?.user?.email
+      ? await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } })
+      : null;
 
     if (body.createInitialProposal) {
       proposal = await prisma.proposal.create({
