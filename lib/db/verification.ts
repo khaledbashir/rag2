@@ -3,7 +3,7 @@
  * Handles saving/loading verification data to/from PostgreSQL
  */
 
-import { VerificationManifest, ReconciliationReport, Exception, VerificationStatus, AutoFixSummary } from '@/types/verification';
+import { VerificationManifest, ReconciliationReport, Exception, VerificationStatus } from '@/types/verification';
 import { prisma } from '@/lib/prisma';
 
 // ============================================================================
@@ -19,7 +19,6 @@ export async function saveVerification(
         manifest: VerificationManifest;
         report: ReconciliationReport;
         exceptions: Exception[];
-        autoFixResults?: AutoFixSummary;
     }
 ): Promise<void> {
     await prisma.proposal.update({
@@ -31,13 +30,8 @@ export async function saveVerification(
         },
     });
     
-    // Exceptions and auto-fix results are not persisted — no DB models yet.
-    // Only manifest + status are saved above.
     if (data.exceptions?.length) {
         console.info(`[Verification] ${data.exceptions.length} exceptions detected but not persisted (no Exception model yet)`);
-    }
-    if (data.autoFixResults) {
-        console.info(`[Verification] Auto-fix summary not persisted (no DB model yet)`);
     }
 }
 

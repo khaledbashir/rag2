@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useSession } from "next-auth/react";
 import { useProposalContext } from "@/contexts/ProposalContext";
 import { useFormContext } from "react-hook-form";
 import { generateGapFillQuestions, formatGapFillQuestion, type GapFillQuestion } from "@/lib/gap-fill-questions";
@@ -19,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
  * React lifecycle lag when toggling between Drafting Table and Chat.
  */
 export function GapFillSidebar() {
+    const { data: session } = useSession();
     const { watch, setValue } = useFormContext();
     const {
         aiFields,
@@ -87,7 +89,7 @@ export function GapFillSidebar() {
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                             fieldPath,
-                            verifiedBy: "user", // TODO: Get from auth context
+                            verifiedBy: session?.user?.email || "user",
                         }),
                     });
                 } catch (error) {

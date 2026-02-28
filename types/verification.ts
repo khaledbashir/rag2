@@ -339,7 +339,6 @@ export interface Exception {
     
     // Auto-fix
     autoFixable: boolean;
-    autoFixAction?: AutoFixAction;
     
     // Resolution
     resolved: boolean;
@@ -347,70 +346,6 @@ export interface Exception {
     resolvedBy?: 'system' | 'user';
 }
 
-// ============================================================================
-// AUTO-FIX
-// ============================================================================
-
-export enum AutoFixType {
-    SET_DEFAULT = 'SET_DEFAULT',
-    RECALCULATE = 'RECALCULATE',
-    SKIP_ROW = 'SKIP_ROW',
-    PARSE_CURRENCY = 'PARSE_CURRENCY',
-    NORMALIZE_NUMBER = 'NORMALIZE_NUMBER',
-    TRIM_WHITESPACE = 'TRIM_WHITESPACE',
-    DETECT_HEADER = 'DETECT_HEADER',
-    APPLY_THRESHOLD = 'APPLY_THRESHOLD',
-}
-
-export interface AutoFixAction {
-    id: string;
-    type: AutoFixType;
-    exceptionId: string;
-    
-    // What to fix
-    target: {
-        screenName?: string;
-        fieldName?: string;
-        rowIndex?: number;
-    };
-    
-    // How to fix it
-    fix: {
-        operation: string;
-        value?: any;
-        reason: string;
-    };
-    
-    // Safety
-    safe: boolean;
-    reversible: boolean;
-    
-    // Execution
-    executed: boolean;
-    executedAt?: string;
-    result?: AutoFixResult;
-}
-
-export interface AutoFixResult {
-    success: boolean;
-    changes: Array<{
-        field: string;
-        oldValue: any;
-        newValue: any;
-    }>;
-    remainingIssues: string[];
-    requiresHumanReview: boolean;
-}
-
-export interface AutoFixSummary {
-    totalExceptions: number;
-    autoFixed: number;
-    requiresHumanReview: number;
-    blocked: number;
-    
-    actions: AutoFixAction[];
-    estimatedTimeToFix: number; // seconds
-}
 
 // ============================================================================
 // ACTION RECOMMENDATIONS
@@ -449,9 +384,6 @@ export interface VerificationConfig {
     blockOnError: boolean;              // Default: true
     blockOnWarning: boolean;            // Default: false
     
-    // Auto-fix behavior
-    enableAutoFix: boolean;             // Default: true
-    autoFixSafeOnly: boolean;           // Default: true
     
     // Reporting
     logExceptions: boolean;             // Default: true
@@ -467,8 +399,6 @@ export const DEFAULT_VERIFICATION_CONFIG: VerificationConfig = {
     variancePercentThreshold: 0.001,
     blockOnError: true,
     blockOnWarning: false,
-    enableAutoFix: true,
-    autoFixSafeOnly: true,
     logExceptions: true,
     generateReport: true,
     enableAIVerification: true,

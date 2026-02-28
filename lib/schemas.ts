@@ -3,7 +3,6 @@ import { z } from "zod";
 // Variables
 import { DATE_OPTIONS } from "@/lib/variables";
 
-// TODO: Refactor some of the validators. Ex: name and zipCode or address and country have same rules
 // Field Validators
 const fieldValidators = {
     name: z

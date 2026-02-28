@@ -32,20 +32,12 @@ const SavedProposalsList = ({ setModalState }: SavedProposalsListProps) => {
 
     const { reset } = useFormContext<ProposalType>();
 
-    // TODO: Remove "any" from the function below
-    // Update fields when selected proposal is changed.
-    // ? Reason: The fields don't go through validation when proposal loads
-    const updateFields = (selected: any) => {
-        // Next 2 lines are so that when proposal loads,
-        // the dates won't be in the wrong format
-        // ? Selected cannot be of type ProposalType because of these 2 variables
-        selected.details.dueDate = new Date(selected.details.dueDate);
-        selected.details.proposalDate = new Date(selected.details.proposalDate);
-
+    // Prepare proposal for loading: convert date strings to Date objects and clear transient fields
+    const updateFields = (selected: ProposalType) => {
+        (selected.details as Record<string, unknown>).dueDate = new Date(selected.details.dueDate);
+        (selected.details as Record<string, unknown>).proposalDate = new Date(selected.details.proposalDate);
         selected.details.proposalLogo = "";
-        selected.details.signature = {
-            data: "",
-        };
+        selected.details.signature = { data: "" };
     };
 
     /**

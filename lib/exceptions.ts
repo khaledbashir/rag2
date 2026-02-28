@@ -76,70 +76,19 @@ function detectLayer1Exceptions(manifest: VerificationManifest): Exception[] {
     return exceptions;
 }
 
-function detectLayer2Exceptions(manifest: VerificationManifest): Exception[] {
-    const exceptions: Exception[] = [];
-    
-    // Layer 2 exceptions will be detected when PDF and Ugly Sheet are generated
-    // For now, we'll add placeholder checks
-    
-    // Check if snapshots match (will be implemented in Phase 2)
-    if (!manifest.layers.layer2 || manifest.layers.layer2.status === 'PENDING') {
-        exceptions.push({
-            id: generateId('exc'),
-            type: ExceptionType.CALC_MISMATCH,
-            severity: ExceptionSeverity.INFO,
-            category: ExceptionCategory.CALC_MISMATCH,
-            autoFixable: false,
-            resolved: false,
-            message: 'PDF and Ugly Sheet snapshots have not been compared yet',
-            description: 'Layer 2 verification will run when PDF and Ugly Sheet are generated',
-        });
-    }
-    
-    return exceptions;
+function detectLayer2Exceptions(_manifest: VerificationManifest): Exception[] {
+    // Layer 2 (PDF vs Ugly Sheet) — not yet implemented
+    return [];
 }
 
-function detectLayer3Exceptions(manifest: VerificationManifest): Exception[] {
-    const exceptions: Exception[] = [];
-    
-    // Check for rounding inconsistencies
-    // This will be implemented with roundingAudit.ts in Phase 1
-    
-    // Rounding audit not yet implemented — always returns INFO
-    exceptions.push({
-        id: generateId('exc'),
-        type: ExceptionType.ROUNDING_DRIFT,
-        severity: ExceptionSeverity.INFO,
-        category: ExceptionCategory.CALC_MISMATCH,
-        autoFixable: false,
-        resolved: false,
-        message: 'Rounding audit not yet implemented',
-        description: 'Will be added when roundingAudit.ts detection is built',
-    });
-    
-    return exceptions;
+function detectLayer3Exceptions(_manifest: VerificationManifest): Exception[] {
+    // Layer 3 (Rounding audit) — not yet implemented
+    return [];
 }
 
-function detectLayer4Exceptions(manifest: VerificationManifest): Exception[] {
-    const exceptions: Exception[] = [];
-    
-    // Layer 4 exceptions will be detected when AI verification runs
-    // For now, we'll add placeholder checks
-    
-    if (!manifest.layers.layer4 || manifest.layers.layer4.status === 'PENDING') {
-        exceptions.push({
-            id: generateId('exc'),
-            type: ExceptionType.CALC_MISMATCH,
-            severity: ExceptionSeverity.INFO,
-            category: ExceptionCategory.CALC_MISMATCH,
-            autoFixable: false,
-            resolved: false,
-            message: 'AI visual verification has not been run yet',
-            description: 'Layer 4 verification will run when AI verification is triggered',
-        });
-    }
-    
-    return exceptions;
+function detectLayer4Exceptions(_manifest: VerificationManifest): Exception[] {
+    // Layer 4 (AI Visual Verification) — not yet implemented
+    return [];
 }
 
 // ============================================================================

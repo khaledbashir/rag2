@@ -6,7 +6,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { computeManifest, generateReconciliationReport } from '@/lib/verification';
 import { detectExceptions } from '@/lib/exceptions';
-// import { executeAutoFixBatch } from '@/lib/autoFix'; // Disabled — auto-fix stubs not implemented
 import { getRoundingAuditSummary } from '@/lib/roundingAudit';
 
 export async function POST(req: NextRequest) {
@@ -27,18 +26,14 @@ export async function POST(req: NextRequest) {
         // Step 2: Detect exceptions
         let exceptions = detectExceptions(manifest);
         
-        // Step 3: Auto-fix is disabled — all fix rules are stubs (no real field updates)
-        // TODO: Re-enable when updateProposalField() and related stubs are implemented
-        const autoFixResults = null;
-        
-        // Step 4: Generate reconciliation report
+        // Step 3: Generate reconciliation report
         const report = generateReconciliationReport(manifest, exceptions, options);
         
-        // Step 5: Verify rounding contract
+        // Step 4: Verify rounding contract
         const roundingCompliance = getRoundingAuditSummary();
         
-        // Step 6: Save to database (TODO: Implement in Phase 2)
-        // await saveVerification(proposalId, { manifest, report, exceptions, autoFixResults });
+        // Step 5: Save to database (not yet wired)
+        // await saveVerification(proposalId, { manifest, report, exceptions });
         
         return NextResponse.json({
             success: true,
@@ -48,7 +43,6 @@ export async function POST(req: NextRequest) {
                 manifest,
                 report,
                 exceptions,
-                autoFixResults,
                 roundingCompliance,
             },
         });
