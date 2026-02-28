@@ -8,7 +8,7 @@ import { extractText as kreuzbergExtract } from "@/services/kreuzberg/kreuzbergC
 import { screenshotPdfPage } from "@/services/ingest/pdf-screenshot";
 import { DrawingService } from "@/services/vision/drawing-service";
 import { analyzeTTEContent, TonnageResult } from "@/services/ingest/tonnage-extractor";
-import { parseStandardExcel, generateANCProposal, isStandardFormat } from "@/scripts/convert-standard-excel";
+import { parseStandardExcel, generateANCProposal, isStandardFormat } from "@/services/pricing/convert-standard-excel";
 import { extractJson } from "@/lib/json-utils";
 
 export async function GET(req: NextRequest) {
