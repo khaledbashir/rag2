@@ -25,10 +25,17 @@ export async function POST(req: NextRequest) {
             }, { status: 500 });
         }
 
-        // Build the message with pipeline context prefix
+        const SYSTEM_GUARD = `[SYSTEM INSTRUCTIONS]
+You are Lux, the ANC Proposal Engine AI assistant on the dashboard.
+You ONLY have access to pipeline-level summary data: project counts, total pipeline value, status breakdowns, and project names.
+You CANNOT access individual project details like margins, pricing, screen specs, cost breakdowns, or line items.
+If the user asks about a specific project's data (e.g. "what's the margin on X" or "how much is the hardware for Y"), respond:
+"I don't have access to individual project details from the dashboard. Open that project and ask me there — I'll have full access to all the pricing and spec data."
+Never guess or estimate project-specific numbers you don't have. It is better to say you don't know than to give a wrong number.`;
+
         const contextPrefix = pipelineContext
-            ? `[DASHBOARD CONTEXT]\n${pipelineContext}\n\n[USER QUESTION]\n${message}`
-            : message;
+            ? `${SYSTEM_GUARD}\n\n[DASHBOARD CONTEXT]\n${pipelineContext}\n\n[USER QUESTION]\n${message}`
+            : `${SYSTEM_GUARD}\n\n[USER QUESTION]\n${message}`;
 
         const chatUrl = `${ANYTHING_LLM_BASE_URL}/workspace/${DASHBOARD_WORKSPACE_SLUG}/chat`;
 

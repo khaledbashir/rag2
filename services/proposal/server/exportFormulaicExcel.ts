@@ -18,6 +18,7 @@
 
 import ExcelJS from 'exceljs';
 import { ScreenInput, ScreenAudit } from '@/lib/estimator';
+import { excelCurrencyFmt } from '@/services/pricing/currencyService';
 
 export interface AuditExcelOptions {
     proposalName?: string;
@@ -25,15 +26,12 @@ export interface AuditExcelOptions {
     proposalDate?: string;
     status?: 'DRAFT' | 'FINAL';
     boTaxApplies?: boolean;
-    // REQ-86: Structural Steel Inputs
     structuralTonnage?: number;
     reinforcingTonnage?: number;
-    // For PDF/Excel total matching verification
     pdfTotal?: number;
-    // REQ-126: Financial rate overrides (Master Truth compliance)
-    bondRateOverride?: number;  // Default 0.015 (1.5%)
-    taxRateOverride?: number;   // Default 0.095 (9.5%)
-    // AI-Generated SOW content
+    bondRateOverride?: number;
+    taxRateOverride?: number;
+    currency?: string;
     aiGeneratedSOW?: {
         designServices?: string;
         constructionLogistics?: string;
@@ -41,7 +39,6 @@ export interface AuditExcelOptions {
         generatedAt?: string;
         editedByUser?: boolean;
     };
-    // Detected risks for audit trail
     detectedRisks?: string[];
 }
 
@@ -52,6 +49,8 @@ export interface AuditExcelOptions {
  * Applies yellow background formatting to a cell (user-input indicator)
  * Usage for all input cells: Margin %, Bond Rate, Tax Rate, Cost Basis, etc.
  */
+let CFMT = '"$"#,##0';
+
 function formatAsInputCell(cell: ExcelJS.Cell): void {
     cell.fill = {
         type: 'pattern',
@@ -67,6 +66,8 @@ export async function generateAuditExcel(
     screens: any[],
     options?: AuditExcelOptions
 ): Promise<ExcelJS.Workbook> {
+    CFMT = excelCurrencyFmt(options?.currency);
+
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'ANC Natalia Intelligence Core';
     workbook.created = new Date();
@@ -219,7 +220,7 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
         costCell.value = {
             formula: `C${hwRow}*C${hwRow + 1}*(IF(C${hwRow + 2}="YES", 1.05, 1))`
         };
-        costCell.numFmt = '"$"#,##0.00';
+        costCell.numFmt = CFMT;
         costCell.font = { bold: true };
 
         currentRow += 3;
@@ -235,7 +236,7 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
             sheet.getCell(`C${svcRow}`).value = svcCostTotal;
             formatAsInputCell(sheet.getCell(`C${svcRow}`));
             sheet.getCell(`E${svcRow}`).value = { formula: `C${svcRow}` };
-            sheet.getCell(`E${svcRow}`).numFmt = '"$"#,##0.00';
+            sheet.getCell(`E${svcRow}`).numFmt = CFMT;
             currentRow++;
 
             // 2b. CMS bucket
@@ -246,7 +247,7 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
             sheet.getCell(`C${cmsRow}`).value = cmsCostTotal;
             formatAsInputCell(sheet.getCell(`C${cmsRow}`));
             sheet.getCell(`E${cmsRow}`).value = { formula: `C${cmsRow}` };
-            sheet.getCell(`E${cmsRow}`).numFmt = '"$"#,##0.00';
+            sheet.getCell(`E${cmsRow}`).numFmt = CFMT;
             currentRow++;
 
             // 2c. Shipping (LED bucket with hardware)
@@ -256,7 +257,7 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
             sheet.getCell(`C${shippingRow}`).value = b.shipping || 0;
             formatAsInputCell(sheet.getCell(`C${shippingRow}`));
             sheet.getCell(`E${shippingRow}`).value = { formula: `C${shippingRow}` };
-            sheet.getCell(`E${shippingRow}`).numFmt = '"$"#,##0.00';
+            sheet.getCell(`E${shippingRow}`).numFmt = CFMT;
             currentRow++;
 
             // 3. Per-category margin & sell
@@ -272,7 +273,7 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
             sheet.getCell(`F${currentRow}`).numFmt = '0.0%';
             formatAsInputCell(sheet.getCell(`F${currentRow}`));
             sheet.getCell(`G${currentRow}`).value = { formula: `IF(F${currentRow}>=1,E${hwRow}+E${shippingRow},(E${hwRow}+E${shippingRow})/(1-F${currentRow}))` };
-            sheet.getCell(`G${currentRow}`).numFmt = '"$"#,##0.00';
+            sheet.getCell(`G${currentRow}`).numFmt = CFMT;
             currentRow++;
 
             // Services sell
@@ -283,7 +284,7 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
             sheet.getCell(`F${currentRow}`).numFmt = '0.0%';
             formatAsInputCell(sheet.getCell(`F${currentRow}`));
             sheet.getCell(`G${currentRow}`).value = { formula: `IF(F${currentRow}>=1,E${svcRow},E${svcRow}/(1-F${currentRow}))` };
-            sheet.getCell(`G${currentRow}`).numFmt = '"$"#,##0.00';
+            sheet.getCell(`G${currentRow}`).numFmt = CFMT;
             currentRow++;
 
             // CMS sell
@@ -294,7 +295,7 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
             sheet.getCell(`F${currentRow}`).numFmt = '0.0%';
             formatAsInputCell(sheet.getCell(`F${currentRow}`));
             sheet.getCell(`G${currentRow}`).value = { formula: `IF(F${currentRow}>=1,E${cmsRow},E${cmsRow}/(1-F${currentRow}))` };
-            sheet.getCell(`G${currentRow}`).numFmt = '"$"#,##0.00';
+            sheet.getCell(`G${currentRow}`).numFmt = CFMT;
             currentRow++;
 
             // Total sell = LED + Services + CMS
@@ -303,7 +304,7 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
             sheet.getCell(`A${currentRow}`).font = { bold: true };
             sheet.getCell(`D${currentRow}`).value = 'Per-category: LED + Services + CMS';
             sheet.getCell(`G${currentRow}`).value = { formula: `G${ledSellRow}+G${svcSellRow}+G${cmsSellRow}` };
-            sheet.getCell(`G${currentRow}`).numFmt = '"$"#,##0.00';
+            sheet.getCell(`G${currentRow}`).numFmt = CFMT;
             sheet.getCell(`G${currentRow}`).font = { bold: true };
             sellPriceRows.push(sellRow);
 
@@ -316,7 +317,7 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
             sheet.getCell(`C${currentRow}`).value = softCostTotal;
             formatAsInputCell(sheet.getCell(`C${currentRow}`));
             sheet.getCell(`E${currentRow}`).value = { formula: `C${currentRow}` };
-            sheet.getCell(`E${currentRow}`).numFmt = '"$"#,##0.00';
+            sheet.getCell(`E${currentRow}`).numFmt = CFMT;
             const softRow = currentRow;
             currentRow++;
 
@@ -331,7 +332,7 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
             formatAsInputCell(sheet.getCell(`F${currentRow}`));
 
             sheet.getCell(`G${currentRow}`).value = { formula: `IF(F${currentRow}>=1,${totalCostRef},${totalCostRef}/(1-F${currentRow}))` };
-            sheet.getCell(`G${currentRow}`).numFmt = '"$"#,##0.00';
+            sheet.getCell(`G${currentRow}`).numFmt = CFMT;
             sheet.getCell(`G${currentRow}`).font = { bold: true };
             sellPriceRows.push(sellRow);
 
@@ -352,7 +353,7 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
     sheet.getCell(`A${currentRow}`).value = 'TOTAL SELL PRICE';
     const sellSumFormula = sellPriceRows.length > 0 ? sellPriceRows.map(r => `G${r}`).join('+') : '0';
     sheet.getCell(`G${currentRow}`).value = { formula: sellSumFormula };
-    sheet.getCell(`G${currentRow}`).numFmt = '"$"#,##0.00';
+    sheet.getCell(`G${currentRow}`).numFmt = CFMT;
     sheet.getCell(`G${currentRow}`).font = { bold: true };
     currentRow++;
 
@@ -363,7 +364,7 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
     sheet.getCell(`H${currentRow}`).numFmt = '0.0%';
     formatAsInputCell(sheet.getCell(`H${currentRow}`));
     sheet.getCell(`I${currentRow}`).value = { formula: `G${sellPriceRow}*H${currentRow}` };
-    sheet.getCell(`I${currentRow}`).numFmt = '"$"#,##0.00';
+    sheet.getCell(`I${currentRow}`).numFmt = CFMT;
     currentRow++;
 
     // B&O TAX (Morgantown/WVU only) - conditional row creation
@@ -375,7 +376,7 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
         sheet.getCell(`H${currentRow}`).numFmt = '0.0%';
         formatAsInputCell(sheet.getCell(`H${currentRow}`));
         sheet.getCell(`I${currentRow}`).value = { formula: `(G${sellPriceRow}+I${bondRow})*H${boTaxRow}` };
-        sheet.getCell(`I${currentRow}`).numFmt = '"$"#,##0.00';
+        sheet.getCell(`I${currentRow}`).numFmt = CFMT;
         currentRow++;
     }
 
@@ -393,7 +394,7 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
     } else {
         sheet.getCell(`I${currentRow}`).value = { formula: `(G${sellPriceRow}+I${bondRow})*H${taxRow}` };
     }
-    sheet.getCell(`I${currentRow}`).numFmt = '"$"#,##0.00';
+    sheet.getCell(`I${currentRow}`).numFmt = CFMT;
     currentRow++;
 
     // GRAND TOTAL
@@ -406,7 +407,7 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
     }
     sheet.getCell(`I${currentRow}`).font = { bold: true, size: 14 };
     sheet.getCell(`I${currentRow}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD4EDDA' } };
-    sheet.getCell(`I${currentRow}`).numFmt = '"$"#,##0.00';
+    sheet.getCell(`I${currentRow}`).numFmt = CFMT;
 }
 
 function buildLEDCostSheet(sheet: ExcelJS.Worksheet, screens: any[]) {
@@ -427,7 +428,7 @@ function buildLEDCostSheet(sheet: ExcelJS.Worksheet, screens: any[]) {
         sheet.getCell(`F${currentRow}`).value = 0; // Need calculation if missing
         sheet.getCell(`G${currentRow}`).value = s.brightness || 0;
         sheet.getCell(`H${currentRow}`).value = b.hardware || 0;
-        sheet.getCell(`H${currentRow}`).numFmt = '"$"#,##0.00';
+        sheet.getCell(`H${currentRow}`).numFmt = CFMT;
         currentRow++;
     });
     
@@ -455,7 +456,7 @@ function buildInstallSheet(sheet: ExcelJS.Worksheet, screens: any[]) {
         sheet.getCell(`F${currentRow}`).value = total;
         
         ['B','C','D','E','F'].forEach(c => {
-            sheet.getCell(`${c}${currentRow}`).numFmt = '"$"#,##0.00';
+            sheet.getCell(`${c}${currentRow}`).numFmt = CFMT;
         });
         currentRow++;
     });
@@ -478,7 +479,7 @@ function buildPMSheet(sheet: ExcelJS.Worksheet, screens: any[]) {
         sheet.getCell(`D${currentRow}`).value = b.travel || 0;
         
         ['B','C','D'].forEach(c => {
-            sheet.getCell(`${c}${currentRow}`).numFmt = '"$"#,##0.00';
+            sheet.getCell(`${c}${currentRow}`).numFmt = CFMT;
         });
         currentRow++;
     });
@@ -501,7 +502,7 @@ function buildElectricalSheet(sheet: ExcelJS.Worksheet, screens: any[]) {
         sheet.getCell(`D${currentRow}`).value = b.power || 0;
         
         ['B','C','D'].forEach(c => {
-            sheet.getCell(`${c}${currentRow}`).numFmt = '"$"#,##0.00';
+            sheet.getCell(`${c}${currentRow}`).numFmt = CFMT;
         });
         currentRow++;
     });
@@ -526,7 +527,7 @@ function buildProfessionalServicesSheet(sheet: ExcelJS.Worksheet, screens: any[]
         sheet.getCell(`E${currentRow}`).value = total;
         
         ['B','C','D','E'].forEach(c => {
-            sheet.getCell(`${c}${currentRow}`).numFmt = '"$"#,##0.00';
+            sheet.getCell(`${c}${currentRow}`).numFmt = CFMT;
         });
         currentRow++;
     });
@@ -545,7 +546,7 @@ function buildShippingSheet(sheet: ExcelJS.Worksheet, screens: any[]) {
         
         sheet.getCell(`A${currentRow}`).value = s.name;
         sheet.getCell(`B${currentRow}`).value = b.shipping || 0;
-        sheet.getCell(`B${currentRow}`).numFmt = '"$"#,##0.00';
+        sheet.getCell(`B${currentRow}`).numFmt = CFMT;
         currentRow++;
     });
     sheet.getColumn(1).width = 30;
@@ -563,7 +564,7 @@ function buildControlSystemSheet(sheet: ExcelJS.Worksheet, screens: any[]) {
         
         sheet.getCell(`A${currentRow}`).value = s.name;
         sheet.getCell(`B${currentRow}`).value = b.cms || 0;
-        sheet.getCell(`B${currentRow}`).numFmt = '"$"#,##0.00';
+        sheet.getCell(`B${currentRow}`).numFmt = CFMT;
         currentRow++;
     });
     sheet.getColumn(1).width = 30;

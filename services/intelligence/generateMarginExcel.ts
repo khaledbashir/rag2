@@ -9,6 +9,7 @@
  */
 
 import ExcelJS from "exceljs";
+import { excelCurrencyFmt, excelCurrencyText } from "@/services/pricing/currencyService";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -72,10 +73,7 @@ const COLORS = {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function currencyFormat(currency: string): string {
-  if (currency === "CAD") return '"CAD $"#,##0';
-  if (currency === "EUR") return '"€"#,##0';
-  if (currency === "GBP") return '"£"#,##0';
-  return '"$"#,##0';
+  return excelCurrencyFmt(currency);
 }
 
 function styleHeaderCell(cell: ExcelJS.Cell, bgColor: string = COLORS.DARK_HEADER): void {
@@ -409,6 +407,5 @@ export async function generateMarginAnalysisExcel(data: ProjectData): Promise<Bu
 }
 
 function formatCurrency(value: number, currency: string): string {
-  const prefix = currency === "CAD" ? "CAD " : currency === "EUR" ? "€" : currency === "GBP" ? "£" : "";
-  return `${prefix}$${value.toLocaleString("en-US")}`;
+  return excelCurrencyText(value, currency);
 }

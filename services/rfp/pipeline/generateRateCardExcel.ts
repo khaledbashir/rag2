@@ -134,7 +134,9 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-const FMT = '"$"#,##0';
+import { excelCurrencyFmt } from "@/services/pricing/currencyService";
+
+let FMT = '"$"#,##0';
 const PCT = "0.0%";
 
 // ─── Core: Price Each Display ───────────────────────────────────────────────
@@ -288,6 +290,8 @@ export async function generateRateCardExcel(
     includeBond = false,
     currency = "USD",
   } = options;
+
+  FMT = excelCurrencyFmt(currency);
 
   // Preload rate card cache
   await preloadRateCard();

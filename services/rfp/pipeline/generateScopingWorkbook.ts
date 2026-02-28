@@ -54,8 +54,9 @@ const C = {
   AMBER_BG: "FFFFF8E1",
 };
 
-const FMT_USD = '"$"#,##0';
-const FMT_USD2 = '"$"#,##0.00';
+import { excelCurrencyFmt } from "@/services/pricing/currencyService";
+
+let FMT_USD = '"$"#,##0';
 const FMT_PCT = "0.0%";
 const FMT_INT = "#,##0";
 
@@ -320,6 +321,8 @@ export async function generateScopingWorkbook(
     contractDate,
     completionDate,
   } = options;
+
+  FMT_USD = excelCurrencyFmt(currency);
 
   await preloadRateCard();
 
@@ -617,7 +620,7 @@ function buildLedCostSheet(
     // $/sqft formula: =IF(I{row}=0,0,K{row}/I{row})
     const costPerSqFt = d.areaSqFt > 0 ? round2(d.ledHardwareCost / d.areaSqFt) : 0;
     dr.getCell(10).value = { formula: `IF(I${row}=0,0,K${row}/I${row})`, result: costPerSqFt };
-    dr.getCell(10).numFmt = FMT_USD2;
+    dr.getCell(10).numFmt = FMT_USD;
 
     dr.getCell(11).value = d.ledHardwareCost; dr.getCell(11).numFmt = FMT_USD;
     dr.getCell(11).font = { bold: true, name: "Calibri" };

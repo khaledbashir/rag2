@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { excelCurrencyFmt } from "@/services/pricing/currencyService";
 
 type InternalAuditLike = {
   perScreen?: any[];
@@ -33,6 +34,7 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
   projectName?: string | null;
   screens: Array<{ name: string; pixelPitch: number; width: number; height: number }>;
   internalAudit: InternalAuditLike | null;
+  currency?: string;
 }): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ANC Studio";
@@ -102,7 +104,7 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
   marginSheet.getColumn(4).width = 16;
   marginSheet.getColumn(5).width = 12;
 
-  const moneyFmt = "$#,##0.00";
+  const moneyFmt = excelCurrencyFmt(args.currency);
   const percentFmt = "0.00%";
 
   const totals = args.internalAudit?.totals || {};

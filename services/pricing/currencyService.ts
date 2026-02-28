@@ -90,3 +90,36 @@ export function getCurrencyOptions(): Array<{ value: CurrencyCode; label: string
         label: `${c.symbol} ${c.code} — ${c.name}`,
     }));
 }
+
+// ============================================================================
+// EXCEL numFmt — single source of truth for Excel cell formatting
+// ============================================================================
+
+const EXCEL_NUM_FMT: Record<CurrencyCode, string> = {
+    USD: '"$"#,##0',
+    CAD: '"C$"#,##0',
+    EUR: '"€"#,##0',
+    GBP: '"£"#,##0',
+};
+
+/**
+ * Excel numFmt string for currency cells. No decimals — these are estimates, not invoices.
+ */
+export function excelCurrencyFmt(currency?: string): string {
+    if (currency && currency in EXCEL_NUM_FMT) return EXCEL_NUM_FMT[currency as CurrencyCode];
+    return EXCEL_NUM_FMT.USD;
+}
+
+/**
+ * Format a number as currency text (for Excel text cells, headers, etc.).
+ */
+export function excelCurrencyText(value: number, currency?: string): string {
+    const code = (currency && currency in CURRENCIES ? currency : "USD") as CurrencyCode;
+    const c = CURRENCIES[code];
+    return new Intl.NumberFormat(c.locale, {
+        style: "currency",
+        currency: c.code,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+    }).format(value);
+}
