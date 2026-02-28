@@ -29,7 +29,7 @@ import path from "path";
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
-const UPLOAD_DIR = "/tmp/rfp-uploads";
+const UPLOAD_DIR = process.env.RFP_UPLOAD_DIR || "/data/rfp-uploads";
 
 export async function POST(request: NextRequest) {
   try {

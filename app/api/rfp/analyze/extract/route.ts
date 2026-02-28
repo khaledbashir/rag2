@@ -18,7 +18,7 @@ import type { AnalyzedPage, ExtractedLEDSpec } from "@/services/rfp/unified/type
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
-const UPLOAD_DIR = "/tmp/rfp-uploads";
+const UPLOAD_DIR = process.env.RFP_UPLOAD_DIR || "/data/rfp-uploads";
 
 export async function POST(request: NextRequest) {
   let body: { sessionId: string; selectedPages: number[] };

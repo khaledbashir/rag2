@@ -26,7 +26,7 @@ const execFileAsync = promisify(execFile);
 export const maxDuration = 120;
 export const dynamic = "force-dynamic";
 
-const UPLOAD_DIR = "/tmp/rfp-uploads";
+const UPLOAD_DIR = process.env.RFP_UPLOAD_DIR || "/data/rfp-uploads";
 
 export async function POST(request: NextRequest) {
   let tempDir: string | null = null;

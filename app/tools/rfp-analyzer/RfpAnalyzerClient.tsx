@@ -303,20 +303,43 @@ export default function RfpAnalyzerClient() {
             message: `${fileLabel}Uploading ${file.name} (${sizeMbStr}MB) — ${pct}%`,
           }]);
 
-          const res = await fetch("/api/rfp/analyze/upload", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/octet-stream",
-              "X-Filename": file.name,
-              "X-Session-Id": sessionId || "",
-              "X-Chunk-Index": String(i),
-              "X-Total-Chunks": String(totalChunks),
-            },
-            body: chunk,
-            credentials: "omit",
-            signal: abortRef.current.signal,
-          });
+          const MAX_CHUNK_RETRIES = 2;
+          let chunkRes: Response | null = null;
+          for (let attempt = 0; attempt <= MAX_CHUNK_RETRIES; attempt++) {
+            try {
+              chunkRes = await fetch("/api/rfp/analyze/upload", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/octet-stream",
+                  "X-Filename": file.name,
+                  "X-Session-Id": sessionId || "",
+                  "X-Chunk-Index": String(i),
+                  "X-Total-Chunks": String(totalChunks),
+                },
+                body: chunk,
+                credentials: "omit",
+                signal: abortRef.current.signal,
+              });
+              if (chunkRes.ok) break;
+              if (attempt < MAX_CHUNK_RETRIES && (chunkRes.status === 502 || chunkRes.status === 503 || chunkRes.status === 504)) {
+                setEvents([{ type: "stage", stage: "uploading", message: `${fileLabel}Chunk ${i + 1}/${totalChunks} failed (${chunkRes.status}), retrying...` }]);
+                await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+                chunkRes = null;
+                continue;
+              }
+            } catch (fetchErr: any) {
+              if (fetchErr.name === "AbortError") throw fetchErr;
+              if (attempt < MAX_CHUNK_RETRIES) {
+                setEvents([{ type: "stage", stage: "uploading", message: `${fileLabel}Chunk ${i + 1}/${totalChunks} network error, retrying...` }]);
+                await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+                chunkRes = null;
+                continue;
+              }
+              throw fetchErr;
+            }
+          }
 
+          const res = chunkRes!;
           if (!res.ok) {
             const errText = await res.text();
             let msg = `Upload failed: ${file.name} chunk ${i + 1}/${totalChunks} (${res.status})`;

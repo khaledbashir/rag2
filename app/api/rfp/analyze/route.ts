@@ -12,14 +12,14 @@
  */
 
 import { NextRequest } from "next/server";
-import { stat, copyFile, mkdir } from "fs/promises";
+import { stat } from "fs/promises";
 import { existsSync } from "fs";
 import { randomUUID } from "crypto";
 import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 
-const PERSISTENT_DIR = "/data/rfp-uploads";
+
 import { extractSinglePage } from "@/services/rfp/unified/mistralOcrClient";
 import { extractLEDSpecsBatched } from "@/services/rfp/unified/specExtractor";
 import { convertPageToImage } from "@/services/rfp/unified/pdfToImages";
@@ -38,7 +38,7 @@ import type {
 export const maxDuration = 600;
 export const dynamic = "force-dynamic";
 
-const UPLOAD_DIR = "/tmp/rfp-uploads";
+const UPLOAD_DIR = process.env.RFP_UPLOAD_DIR || "/data/rfp-uploads";
 
 // ---------------------------------------------------------------------------
 // Keyword banks
@@ -594,19 +594,9 @@ export async function POST(request: NextRequest) {
         try {
           const fileStat = await stat(filePath);
 
-          // Copy PDF to persistent storage so it survives container restarts
-          try {
-            if (!existsSync(PERSISTENT_DIR)) {
-              await mkdir(PERSISTENT_DIR, { recursive: true });
-            }
-            const pdfFilename = `${randomUUID()}.pdf`;
-            persistentPdfPath = path.join(PERSISTENT_DIR, pdfFilename);
-            await copyFile(filePath, persistentPdfPath);
-            console.log(`[Pipeline] PDF persisted to ${persistentPdfPath}`);
-          } catch (copyErr: any) {
-            console.warn(`[Pipeline] PDF persistence failed (non-fatal): ${copyErr.message}`);
-            persistentPdfPath = null;
-          }
+          // PDF is already in persistent storage (UPLOAD_DIR = /data/rfp-uploads)
+          persistentPdfPath = filePath;
+          console.log(`[Pipeline] PDF persisted at ${persistentPdfPath}`);
 
           const saved = await prisma.rfpAnalysis.create({
             data: {
