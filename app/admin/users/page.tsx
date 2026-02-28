@@ -16,22 +16,14 @@ export default async function AdminUsersPage() {
     return <Unauthorized allowedRoles={allowedRoles} featureName="User Management" />;
   }
 
-  // Fetch all users with their roles and sessions
+  // Fetch all users with their roles and last login
   const users = await prisma.user.findMany({
     select: {
       id: true,
       email: true,
       name: true,
       role: true,
-      sessions: {
-        select: {
-          expires: true,
-        },
-        orderBy: {
-          expires: "desc",
-        },
-        take: 1,
-      },
+      lastLoginAt: true,
     },
     orderBy: { email: "asc" },
   });
@@ -42,8 +34,8 @@ export default async function AdminUsersPage() {
     email: user.email,
     name: user.name,
     role: user.role as UserRole,
-    lastLogin: user.sessions[0]?.expires
-      ? user.sessions[0].expires.toISOString()
+    lastLogin: user.lastLoginAt
+      ? user.lastLoginAt.toISOString()
       : null,
   }));
 

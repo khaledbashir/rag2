@@ -31,7 +31,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!ok) return null;
 
         // Track last login + auto-provision AnythingLLM (non-blocking)
-        prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } }).catch(() => {});
+        prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } }).catch((e) => console.error("[Auth] lastLoginAt update failed:", e));
         ensureAnythingLlmUser(user.id, user.email).catch((e) =>
           console.error("[Auth] ALM user provision failed:", e),
         );
