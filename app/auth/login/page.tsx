@@ -34,8 +34,13 @@ export default function LoginPage() {
         redirect: false,
         callbackUrl,
       });
+      console.log("[Login] signIn result:", JSON.stringify(result));
       if (result?.error) {
-        setMessage("Invalid email or password.");
+        if (result.error === "CredentialsSignin") {
+          setMessage("Invalid email or password. Make sure you're using your full email address (e.g. name@company.com).");
+        } else {
+          setMessage(`Login error: ${result.error}`);
+        }
         setLoading(false);
         return;
       }
@@ -43,8 +48,10 @@ export default function LoginPage() {
         window.location.href = result.url;
         return;
       }
-    } catch {
-      setMessage("Something went wrong. Please try again.");
+      setMessage("Login returned no URL — check browser console for details.");
+    } catch (err: any) {
+      console.error("[Login] Exception:", err);
+      setMessage(`Connection error: ${err.message || "Unknown error"}. Check your network.`);
     }
     setLoading(false);
   }
