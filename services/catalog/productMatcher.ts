@@ -26,6 +26,8 @@ export interface MatchedProduct {
     environment: string;
 }
 
+export type MatchConfidence = "high" | "low" | "none";
+
 export interface MatchedSolution {
     module: MatchedProduct;
     cols: number;
@@ -38,6 +40,8 @@ export interface MatchedSolution {
     resolutionY: number;
     totalModules: number;
     fitScore: number; // 0-100 (100 = perfect match)
+    pitchDelta: number; // absolute mm difference between requested and matched pitch
+    confidence: MatchConfidence;
 }
 
 /**
@@ -113,10 +117,19 @@ export class ProductMatcher {
         const activeWidthMm = cols * module.widthMm;
         const activeHeightMm = rows * module.heightMm;
 
-        // Fit score: how close the active area is to the target
         const widthRatio = Math.min(activeWidthMm, targetWidthMm) / Math.max(activeWidthMm, targetWidthMm);
         const heightRatio = Math.min(activeHeightMm, targetHeightMm) / Math.max(activeHeightMm, targetHeightMm);
         const fitScore = Math.round((widthRatio * heightRatio) * 100);
+
+        const targetPitch = spec.pixelPitch || (spec.isOutdoor ? 10 : 3.9);
+        const pitchDelta = Math.abs(module.pitch - targetPitch);
+
+        // Confidence: high if pitch within 1mm, low if within 3mm, none beyond that
+        const PITCH_HIGH_TOLERANCE = 1.0;
+        const PITCH_LOW_TOLERANCE = 3.0;
+        let confidence: MatchConfidence = "none";
+        if (pitchDelta <= PITCH_HIGH_TOLERANCE) confidence = "high";
+        else if (pitchDelta <= PITCH_LOW_TOLERANCE) confidence = "low";
 
         return {
             module,
@@ -130,6 +143,8 @@ export class ProductMatcher {
             resolutionY: Math.round(activeHeightMm / module.pitch),
             totalModules: cols * rows,
             fitScore,
+            pitchDelta,
+            confidence,
         };
     }
 

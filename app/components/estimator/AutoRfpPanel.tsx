@@ -40,6 +40,8 @@ interface MatchReportEntry {
     matchedProductId: string;
     matchedProductName: string;
     fitScore: number;
+    matchConfidence: "high" | "low" | "none";
+    pitchDelta: number;
 }
 
 interface ExtractedProject {
@@ -690,12 +692,24 @@ export default function AutoRfpPanel({ open, onClose, projectId, onApply }: Auto
                                                     {screen?.pixelPitchMm && (
                                                         <span>{screen.pixelPitchMm}mm</span>
                                                     )}
-                                                    <span className="flex items-center gap-0.5">
-                                                        <Cpu className="w-2.5 h-2.5" />
-                                                        {match.matchedProductName}
-                                                    </span>
-                                                    {match.fitScore < 80 && (
-                                                        <span className="text-amber-600">fit: {match.fitScore}%</span>
+                                                    {match.matchConfidence === "none" ? (
+                                                        <span className="flex items-center gap-0.5 text-destructive font-medium">
+                                                            <Cpu className="w-2.5 h-2.5" />
+                                                            No confident match — manual selection required
+                                                        </span>
+                                                    ) : (
+                                                        <>
+                                                            <span className="flex items-center gap-0.5">
+                                                                <Cpu className="w-2.5 h-2.5" />
+                                                                {match.matchedProductName}
+                                                            </span>
+                                                            {match.matchConfidence === "low" && (
+                                                                <span className="text-amber-600">±{match.pitchDelta.toFixed(1)}mm</span>
+                                                            )}
+                                                            {match.fitScore < 80 && (
+                                                                <span className="text-amber-600">fit: {match.fitScore}%</span>
+                                                            )}
+                                                        </>
                                                     )}
                                                 </div>
                                             </div>
@@ -731,7 +745,11 @@ export default function AutoRfpPanel({ open, onClose, projectId, onApply }: Auto
                                                     </div>
                                                     <div>
                                                         <span className="text-muted-foreground">Matched Product: </span>
-                                                        <span className="text-foreground font-mono">{match.matchedProductId}</span>
+                                                        {match.matchConfidence === "none" ? (
+                                                            <span className="text-destructive font-medium">No confident match</span>
+                                                        ) : (
+                                                            <span className="text-foreground font-mono">{match.matchedProductId}</span>
+                                                        )}
                                                     </div>
                                                     <div>
                                                         <span className="text-muted-foreground">Fit Score: </span>

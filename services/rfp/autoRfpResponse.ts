@@ -58,6 +58,8 @@ export interface MatchReportEntry {
     matchedProductId: string;
     matchedProductName: string;
     fitScore: number;
+    matchConfidence: "high" | "low" | "none";
+    pitchDelta: number;
 }
 
 // ============================================================================
@@ -201,6 +203,8 @@ function parseAndBuild(rawResponse: string, method: "ai-workspace" | "ai-direct"
                 matchedProductId: match.product.id,
                 matchedProductName: match.product.name,
                 fitScore: match.fitScore,
+                matchConfidence: match.matchConfidence,
+                pitchDelta: match.pitchDelta,
             });
 
             const d: DisplayAnswers = {
@@ -268,6 +272,8 @@ function parseAndBuild(rawResponse: string, method: "ai-workspace" | "ai-direct"
 interface ProductMatch {
     product: ProductType;
     fitScore: number;
+    matchConfidence: "high" | "low" | "none";
+    pitchDelta: number;
 }
 
 function matchScreenToProduct(screen: ExtractedScreen, catalog: ProductType[]): ProductMatch {
@@ -282,12 +288,13 @@ function matchScreenToProduct(screen: ExtractedScreen, catalog: ProductType[]): 
     if (candidates.length === 0) candidates = catalog;
 
     if (targetPitch && targetPitch > 0) {
-        // Sort by closest pitch match
         candidates.sort((a, b) => Math.abs(a.pitchMm - targetPitch) - Math.abs(b.pitchMm - targetPitch));
         const best = candidates[0];
         const pitchDiff = Math.abs(best.pitchMm - targetPitch);
         const fitScore = Math.max(0, Math.round(100 - (pitchDiff / targetPitch) * 100));
-        return { product: best, fitScore };
+        const matchConfidence: "high" | "low" | "none" =
+            pitchDiff <= 1.0 ? "high" : pitchDiff <= 3.0 ? "low" : "none";
+        return { product: best, fitScore, matchConfidence, pitchDelta: pitchDiff };
     }
 
     // No pitch specified — pick reasonable default by area
@@ -300,7 +307,9 @@ function matchScreenToProduct(screen: ExtractedScreen, catalog: ProductType[]): 
     }
 
     candidates.sort((a, b) => Math.abs(a.pitchMm - defaultPitch) - Math.abs(b.pitchMm - defaultPitch));
-    return { product: candidates[0], fitScore: 50 }; // 50 = "guessed" fit
+    const best = candidates[0];
+    const pitchDiff = Math.abs(best.pitchMm - defaultPitch);
+    return { product: best, fitScore: 50, matchConfidence: "low", pitchDelta: pitchDiff };
 }
 
 // ============================================================================

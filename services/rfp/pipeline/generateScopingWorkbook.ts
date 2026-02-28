@@ -1484,6 +1484,9 @@ function buildCMS(
   ws.getCell(row, 2).value = "Base Ross CMS";
   ws.getCell(row, 2).font = { bold: true, size: 12, name: "Calibri" };
   row++;
+  ws.getCell(row, 2).value = "TBD — All costs require project-specific pricing";
+  ws.getCell(row, 2).font = { italic: true, color: { argb: "FFCC0000" }, name: "Calibri", size: 10 };
+  row++;
 
   const cmsHeaders = ["", "Category", "Item", "Cost", "Quantity", "Total Cost", "Margin"];
   cmsHeaders.forEach((h, i) => {
@@ -1494,7 +1497,7 @@ function buildCMS(
   row++;
 
   const cmsItems = [
-    ["PRIMARY", "TESSERA DESIGN & CONTROL", 18776],
+    ["PRIMARY", "TESSERA DESIGN & CONTROL", 0],
     ["PRIMARY", "GRAPHICS PLAYBACK", 0],
     ["PRIMARY", "IMAGE PROCESSING", 0],
     ["PRIMARY", "DEDICATED LED ROUTER", 0],
