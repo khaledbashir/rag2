@@ -1,9 +1,0 @@
----
-description: Never merge rag and phase2/product-database
-alwaysApply: true
----
-
-# Branches: never merge
-
-- **rag** and **phase2/product-database** are separate on purpose. Do not merge one into the other. Ever.
-- Before pushing: run `git branch` and push only to the current branch (e.g. `git push origin phase2/product-database` or `git push origin rag`). Do not merge.
