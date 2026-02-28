@@ -131,6 +131,10 @@ async function processBatch(
     text: `Analyze these ${pagesWithImages.length} drawing(s). Return a JSON array with one object per image.`,
   });
 
+  const GEMINI_TIMEOUT_MS = 120_000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+
   try {
     const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
       method: "POST",
@@ -144,12 +148,13 @@ async function processBatch(
           responseMimeType: "text/plain",
         },
       }),
+      signal: controller.signal,
     });
 
     if (!response.ok) {
       const err = await response.text();
       console.error(`[GeminiVision] API error ${response.status}: ${err.slice(0, 200)}`);
-      return pages; // Return unmodified on error
+      return pages;
     }
 
     const json = await response.json();
@@ -211,9 +216,12 @@ async function processBatch(
     }
 
     return updatedPages;
-  } catch (err) {
-    console.error("[GeminiVision] Error:", err);
-    return pages; // Return unmodified on error
+  } catch (err: any) {
+    const isTimeout = err.name === "AbortError";
+    console.error(`[GeminiVision] ${isTimeout ? "TIMEOUT" : "Error"}:`, err);
+    return pages;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -317,6 +325,10 @@ export async function extractSpecsFromText(
       ? combinedText.slice(0, maxChars) + "\n\n[TRUNCATED — document too large]"
       : combinedText;
 
+  const GEMINI_TIMEOUT_MS = 120_000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+
   try {
     const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
       method: "POST",
@@ -330,6 +342,7 @@ export async function extractSpecsFromText(
           responseMimeType: "text/plain",
         },
       }),
+      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -381,8 +394,14 @@ export async function extractSpecsFromText(
     );
 
     return { screens, project: parsed.project || null };
-  } catch (err) {
-    console.error("[GeminiExtract] Error:", err);
-    return { screens: [], project: null };
+  } catch (err: any) {
+    const isTimeout = err.name === "AbortError";
+    console.error(`[GeminiExtract] ${isTimeout ? "TIMEOUT" : "Error"}:`, err);
+    const error = new Error(isTimeout ? `Gemini timed out after ${GEMINI_TIMEOUT_MS / 1000}s` : err.message);
+    (error as any).statusCode = err.statusCode || (isTimeout ? 408 : undefined);
+    (error as any).isRateLimit = err.isRateLimit || false;
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
 }

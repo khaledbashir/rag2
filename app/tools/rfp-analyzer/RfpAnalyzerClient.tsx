@@ -167,10 +167,12 @@ export default function RfpAnalyzerClient() {
   // Auto-save for spec edits
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Retain uploaded files for retry-after-failure
+  const lastUploadedFiles = useRef<File[]>([]);
   // Bid form fill results (for workbook preview + results display)
   const bidFormInputRef = useRef<HTMLInputElement>(null);
   const [bidFormResult, setBidFormResult] = useState<{
-    matches: Array<{ sheetName: string; displayName: string; matchedScreen: string; confidence: number; fieldsFilled: string[] }>;
+    matches: Array<{ sheetName: string; displayName: string; matchedScreen: string; confidence: number; fieldsFilled: string[]; fieldsSkipped?: string[] }>;
     unmatchedBlocks: string[];
     unmatchedScreens: string[];
   } | null>(null);
@@ -256,6 +258,8 @@ export default function RfpAnalyzerClient() {
 
   const handleUpload = useCallback(async (files: File[], attachedBidForm?: File) => {
     if (!files.length) return;
+
+    lastUploadedFiles.current = files;
 
     // Store bid form for auto-fill after pricing
     if (attachedBidForm) setBidFormFile(attachedBidForm);
@@ -810,6 +814,14 @@ export default function RfpAnalyzerClient() {
     bidFormSpecsExtracted.current = false;
   };
 
+  const handleRetry = () => {
+    if (lastUploadedFiles.current.length > 0) {
+      handleUpload(lastUploadedFiles.current);
+    } else {
+      handleReset();
+    }
+  };
+
   // ========================================================================
   // Upload supplementary drawings
   // ========================================================================
@@ -983,12 +995,20 @@ export default function RfpAnalyzerClient() {
                   <p className="text-sm text-destructive/80 mt-1">
                     AI providers returned no data. This does not mean the RFP has no displays — the extraction service encountered errors.
                   </p>
-                  <button
-                    onClick={handleReset}
-                    className="mt-3 px-4 py-2 bg-destructive text-destructive-foreground rounded-lg text-sm font-medium hover:bg-destructive/90 inline-flex items-center gap-2"
-                  >
-                    <RefreshCcw className="w-4 h-4" /> Try Again
-                  </button>
+                  <div className="flex items-center gap-2 mt-3">
+                    <button
+                      onClick={handleRetry}
+                      className="px-4 py-2 bg-destructive text-destructive-foreground rounded-lg text-sm font-medium hover:bg-destructive/90 inline-flex items-center gap-2"
+                    >
+                      <RefreshCcw className="w-4 h-4" /> Retry Extraction
+                    </button>
+                    <button
+                      onClick={handleReset}
+                      className="px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-muted"
+                    >
+                      Upload Different File
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1045,12 +1065,23 @@ export default function RfpAnalyzerClient() {
                 </div>
                 <div className="space-y-1 text-xs">
                   {bidFormResult.matches.map((m, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
-                      <span className="text-foreground/80">
-                        <strong>{m.sheetName}</strong>: {m.displayName} → {m.matchedScreen}
-                        <span className="text-muted-foreground ml-1">({m.fieldsFilled.length} fields, {Math.round(m.confidence * 100)}% match)</span>
-                      </span>
+                    <div key={i} className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                        <span className="text-foreground/80">
+                          <strong>{m.sheetName}</strong>: {m.displayName} → {m.matchedScreen}
+                          <span className="text-muted-foreground ml-1">({m.fieldsFilled.length} fields, {Math.round(m.confidence * 100)}% match)</span>
+                        </span>
+                      </div>
+                      {m.fieldsSkipped && m.fieldsSkipped.length > 0 && (
+                        <div className="flex items-start gap-2 ml-5">
+                          <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0 mt-0.5" />
+                          <span className="text-amber-600 dark:text-amber-400">
+                            {m.fieldsSkipped.length} cell{m.fieldsSkipped.length !== 1 ? "s" : ""} skipped — existing data preserved
+                            <span className="text-muted-foreground ml-1">({m.fieldsSkipped.join(", ")})</span>
+                          </span>
+                        </div>
+                      )}
                     </div>
                   ))}
                   {bidFormResult.unmatchedBlocks.length > 0 && (
@@ -1214,7 +1245,18 @@ export default function RfpAnalyzerClient() {
                           {spec.location && <span className="text-xs text-muted-foreground ml-2">({spec.location})</span>}
                           {spec.notes && <p className="text-xs text-muted-foreground mt-0.5">{spec.notes}</p>}
                           {spec.sourcePages.length > 0 && (
-                            <span className="text-[10px] text-muted-foreground">Pages: {spec.sourcePages.join(", ")}</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              Pages:{" "}
+                              {spec.sourcePages.map((pg, pi) => (
+                                <button
+                                  key={pi}
+                                  onClick={() => { setPdfViewerPage(pg); setShowPdfPanel(true); }}
+                                  className="hover:text-amber-600 underline decoration-dotted mx-0.5"
+                                >
+                                  {pg}
+                                </button>
+                              ))}
+                            </span>
                           )}
                         </div>
                       </div>
