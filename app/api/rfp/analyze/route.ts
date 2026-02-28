@@ -38,7 +38,7 @@ import type {
 export const maxDuration = 600;
 export const dynamic = "force-dynamic";
 
-const UPLOAD_DIR = process.env.RFP_UPLOAD_DIR || "/data/rfp-uploads";
+const UPLOAD_DIR = process.env.RFP_UPLOAD_DIR || "/rfp-data/rfp-uploads";
 
 // ---------------------------------------------------------------------------
 // Keyword banks
@@ -594,7 +594,7 @@ export async function POST(request: NextRequest) {
         try {
           const fileStat = await stat(filePath);
 
-          // PDF is already in persistent storage (UPLOAD_DIR = /data/rfp-uploads)
+          // PDF is already in persistent storage (UPLOAD_DIR = /rfp-data/rfp-uploads)
           persistentPdfPath = filePath;
           console.log(`[Pipeline] PDF persisted at ${persistentPdfPath}`);
 
