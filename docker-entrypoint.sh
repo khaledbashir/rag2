@@ -32,6 +32,10 @@ npx tsx prisma/seed-products.ts 2>/dev/null || echo "LED seed skipped"
 npx tsx prisma/seed-tv-products.ts 2>/dev/null || echo "TV seed skipped"
 npx tsx prisma/seed-oes-products.ts 2>/dev/null || echo "OES seed skipped"
 
+# Create persistent upload directory for RFP PDFs
+mkdir -p /data/rfp-uploads
+chown nextjs:nodejs /data/rfp-uploads 2>/dev/null || true
+
 # Start the PDF triage Python service in the background on port 8000
 echo "Starting PDF triage service..."
 python3 -m uvicorn --app-dir pdf-triage-service main:app --host 0.0.0.0 --port 8000 &

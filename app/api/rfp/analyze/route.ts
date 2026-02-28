@@ -12,12 +12,14 @@
  */
 
 import { NextRequest } from "next/server";
-import { stat } from "fs/promises";
+import { stat, copyFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import { randomUUID } from "crypto";
 import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
+
+const PERSISTENT_DIR = "/data/rfp-uploads";
 import { extractSinglePage } from "@/services/rfp/unified/mistralOcrClient";
 import { extractLEDSpecsBatched } from "@/services/rfp/unified/specExtractor";
 import { convertPageToImage } from "@/services/rfp/unified/pdfToImages";
@@ -48,7 +50,7 @@ const LED_STRONG = [
   "scoreboard", "pixel pitch", "nits", "brightness",
   "dvled", "direct view", "viewing distance", "led panel", "led screen",
   "video wall", "media mesh", "transparent led", "led display",
-  "11 06 60", "11 63 10", "display schedule",
+  "11 06 60", "11 63 10", "11 63 11", "display schedule",
   "pixel", "candela", "led module", "led cabinet",
 ];
 
@@ -577,10 +579,26 @@ export async function POST(request: NextRequest) {
           isDrawing: p.isDrawing,
         }));
 
-        // Save to database (fire and forget — don't block the response)
+        // Save to database and persist the PDF file
         let analysisId: string | null = null;
+        let persistentPdfPath: string | null = null;
         try {
           const fileStat = await stat(filePath);
+
+          // Copy PDF to persistent storage so it survives container restarts
+          try {
+            if (!existsSync(PERSISTENT_DIR)) {
+              await mkdir(PERSISTENT_DIR, { recursive: true });
+            }
+            const pdfFilename = `${randomUUID()}.pdf`;
+            persistentPdfPath = path.join(PERSISTENT_DIR, pdfFilename);
+            await copyFile(filePath, persistentPdfPath);
+            console.log(`[Pipeline] PDF persisted to ${persistentPdfPath}`);
+          } catch (copyErr: any) {
+            console.warn(`[Pipeline] PDF persistence failed (non-fatal): ${copyErr.message}`);
+            persistentPdfPath = null;
+          }
+
           const saved = await prisma.rfpAnalysis.create({
             data: {
               projectName: finalProject.projectName,
@@ -590,6 +608,7 @@ export async function POST(request: NextRequest) {
               filename: body.filename || "document.pdf",
               fileSize: fileStat.size,
               pageCount: ocrResult.totalPages,
+              pdfFilePath: persistentPdfPath,
               relevantPages: relevantPages.length,
               noisePages: noisePages.length,
               drawingPages: classifiedPages.filter((p) => p.isDrawing).length,

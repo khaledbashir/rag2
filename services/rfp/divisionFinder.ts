@@ -34,6 +34,7 @@ export interface DivisionSearchResult {
 const DIVISION_PATTERNS = [
     { pattern: /SECTION\s+11\s*0?6\s*60/i, id: "11 06 60", title: "Display Schedule", priority: 1 },
     { pattern: /SECTION\s+11\s*63\s*10/i, id: "11 63 10", title: "LED Display Systems", priority: 2 },
+    { pattern: /SECTION\s+11\s*63\s*11/i, id: "11 63 11", title: "LED Display Systems (WJHW)", priority: 2 },
     { pattern: /DIVISION\s+11.*(?:LED|Display|Video)/i, id: "div-11", title: "Division 11 — LED/Display", priority: 3 },
     { pattern: /LED\s+Display\s+(?:Systems?|Schedule)/i, id: "led-display", title: "LED Display Systems", priority: 4 },
     { pattern: /(?:Video|Digital)\s+(?:Display|Scoreboard|Board)\s+(?:Systems?|Schedule)/i, id: "video-display", title: "Video Display Systems", priority: 5 },

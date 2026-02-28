@@ -9,7 +9,14 @@
 import Decimal from "@/lib/decimal";
 import { roundToCents, roundCategoryTotal } from "@/lib/decimal";
 import { Venue } from "@/types";
-import { INSTALL_COST_PER_LB, PM_BASE_FEE } from "@/services/rfp/productCatalog";
+import {
+  INSTALL_COST_PER_LB, PM_BASE_FEE, ENG_BASE_FEE,
+  STEEL_FABRICATION_PER_LB, LED_INSTALL_PER_SQFT,
+  HEAVY_EQUIPMENT_PER_LB, PM_GC_TRAVEL_PER_LB,
+  ELECTRICAL_MATERIALS_PER_SQFT,
+  LED_COST_PER_SQFT_BY_PITCH,
+  getAllProducts,
+} from "@/services/rfp/productCatalog";
 
 export interface ScreenPriceBreakdown {
   led: number;
@@ -279,12 +286,7 @@ export function calculatePerScreenAudit(
   const salesTaxVal = options?.taxRate ?? DEFAULT_SALES_TAX;
   const serviceTypeVal = DEFAULT_SERVICE_TYPE;
 
-  const installFlatVal = options?.installFlatFee ?? 0; // DEPRECATED: Use weight-based INSTALL_COST_PER_LB from productCatalog.ts
-  const laborPctVal = options?.laborPct ?? 0; // DEPRECATED: Use weight-based INSTALL_COST_PER_LB from productCatalog.ts
   const regionalLaborMultiplier = options?.regionalLaborMultiplier ?? DEFAULT_REGIONAL_LABOR_MULTIPLIER;
-  const powerPctVal = options?.powerPct ?? 0; // DEPRECATED: Use density-based power calculation from productCatalog.ts
-  const shippingVal = options?.shippingPerSqFt ?? 0; // DEPRECATED: Use density-based weight calculation from productCatalog.ts
-  const pmVal = options?.pmPerSqFt ?? 0; // DEPRECATED: Use PM_BASE_FEE from productCatalog.ts
   const gcPctVal = options?.generalConditionsPct ?? GENERAL_CONDITIONS_PCT;
   const travelPctVal = options?.travelPct ?? TRAVEL_PCT;
   const submittalsPctVal = options?.submittalsPct ?? SUBMITTALS_PCT;
@@ -363,12 +365,37 @@ export function calculatePerScreenAudit(
 
   const baseStructure = hardware.times(STRUCTURE_PCT);
   const structure = roundToCents(baseStructure.times(structureMultiplier));
-  // DEPRECATED: Old flat-rate install. Use weight-based INSTALL_COST_PER_LB from productCatalog.ts
-  const install = roundToCents(new Decimal(0).times(totalLaborMultiplier));
-  const labor = roundToCents(hardware.times(0).times(totalLaborMultiplier)); // DEPRECATED
-  const power = roundToCents(hardware.times(0)); // DEPRECATED: Use density-based power calculation
-  const shipping = roundToCents(totalArea.times(0)); // DEPRECATED: Use density-based weight calculation
-  const pm = roundToCents(totalArea.times(0)); // DEPRECATED: Use PM_BASE_FEE from productCatalog.ts
+
+  // --- Weight-based cost calculations using product catalog density constants ---
+  // Find matching product by pitch to get weight/power density
+  const allProducts = getAllProducts();
+  const matchedProduct = allProducts.find(p => Math.abs(p.pitchMm - pitch) < 0.5);
+
+  // Weight estimate: area (m²) × weightDensityLbm2 (lbs/m²)
+  const areaM2 = totalArea.toNumber() * 0.0929; // sqft → m²
+  const estimatedWeightLbs = matchedProduct
+    ? areaM2 * matchedProduct.weightDensityLbm2
+    : totalArea.toNumber() * 5; // fallback: ~5 lbs/sqft for unknown products
+
+  // Install: Steel fabrication cost based on estimated weight
+  const steelRate = options?.installFlatFee ?? STEEL_FABRICATION_PER_LB.standard; // $35/lb default
+  const install = roundToCents(new Decimal(estimatedWeightLbs * steelRate).times(totalLaborMultiplier));
+
+  // Labor: LED panel install labor per sqft
+  const ledInstallRate = options?.laborPct ?? LED_INSTALL_PER_SQFT.standard; // $105/sqft default
+  const labor = roundToCents(totalArea.times(ledInstallRate).times(totalLaborMultiplier));
+
+  // Power/Electrical: Materials cost per sqft
+  const electricalRate = options?.powerPct ?? ELECTRICAL_MATERIALS_PER_SQFT; // $125/sqft default
+  const power = roundToCents(totalArea.times(electricalRate));
+
+  // Shipping: Weight-based — ~$0.50/lb for ocean + ground freight
+  const shippingRate = options?.shippingPerSqFt ?? 0.50; // $/lb
+  const shipping = roundToCents(new Decimal(estimatedWeightLbs * shippingRate));
+
+  // PM: Base fee per screen (zone-multiplied in scoping workbook, flat per screen here)
+  const pmRate = options?.pmPerSqFt ?? PM_BASE_FEE; // $5,882.35 per screen
+  const pm = roundToCents(new Decimal(pmRate).times(qty));
   const generalConditions = roundToCents(hardware.times(GENERAL_CONDITIONS_PCT));
   const travel = roundToCents(hardware.times(TRAVEL_PCT));
   const submittals = roundToCents(hardware.times(SUBMITTALS_PCT));

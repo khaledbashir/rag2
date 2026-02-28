@@ -2,6 +2,7 @@
 const MUST_KEEP_PHRASES = [
   "11 06 60", "11.06.60", "110660",           // Display Schedule
   "11 63 10", "11.63.10", "116310",           // LED Display Systems
+  "11 63 11", "11.63.11", "116311",           // LED Display Systems (WJHW format)
   "section 11", "division 11",
   "led display schedule", "display schedule",
   "schedule of displays", "av schedule",

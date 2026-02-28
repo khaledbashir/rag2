@@ -906,6 +906,7 @@ model RfpAnalysis {
   filename    String   // Original uploaded filename
   fileSize    Int      // Bytes
   pageCount   Int      // Total pages in PDF
+  pdfFilePath String?  // Persistent path to uploaded PDF for split-panel view
 
   // Pipeline stats
   relevantPages    Int      @default(0)

@@ -39,6 +39,9 @@ RUN pip3 install --no-cache-dir -r pdf-triage-service/requirements.txt
 
 RUN chmod +x docker-entrypoint.sh
 
+# Create persistent data directory for RFP PDFs (mount as Docker volume in EasyPanel)
+RUN mkdir -p /data/rfp-uploads && chown nextjs:nodejs /data/rfp-uploads
+
 USER nextjs
 
 EXPOSE 3000

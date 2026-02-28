@@ -62,6 +62,7 @@ function scorePage(
   const mustKeepPhrases = [
     "11 06 60", "11.06.60", "110660",
     "11 63 10", "11.63.10", "116310",
+    "11 63 11", "11.63.11", "116311",
     "section 11", "division 11",
     "led display schedule", "display schedule",
     "schedule of displays", "av schedule",
