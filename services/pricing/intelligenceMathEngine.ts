@@ -34,9 +34,16 @@ export interface PricingPreset {
     description: string;
 }
 
+export interface CategoryMargins {
+    led?: number;       // Hardware margin (default 0.30)
+    services?: number;  // Services margin (default 0.20)
+    cms?: number;       // CMS/Software margin (default 0.35)
+}
+
 export interface IntelligencePricingInput {
     screens: ScreenInput[];
-    globalMargin?: number;       // Override per-screen margins (0.0-0.99)
+    globalMargin?: number;       // Override per-screen margins (0.0-0.99) — legacy single-margin mode
+    categoryMargins?: CategoryMargins; // Per-category margins (overrides globalMargin when set)
     bondRate?: number;           // Override default 1.5%
     taxRate?: number;            // Override default 9.5%
     projectAddress?: string;     // For B&O tax detection
@@ -80,6 +87,7 @@ export function calculateIntelligencePricing(input: IntelligencePricingInput): I
     const {
         screens,
         globalMargin,
+        categoryMargins,
         bondRate = BOND_PCT,
         taxRate = DEFAULT_SALES_TAX,
         projectAddress,
@@ -88,10 +96,12 @@ export function calculateIntelligencePricing(input: IntelligencePricingInput): I
         reinforcingTonnage,
     } = input;
 
-    // Apply global margin override if provided
-    const effectiveScreens: ScreenInput[] = globalMargin !== undefined
-        ? screens.map((s) => ({ ...s, desiredMargin: globalMargin }))
-        : screens;
+    // Apply margin overrides: category margins take priority over global margin
+    const effectiveScreens: ScreenInput[] = categoryMargins
+        ? screens.map((s) => ({ ...s, categoryMargins }))
+        : globalMargin !== undefined
+            ? screens.map((s) => ({ ...s, desiredMargin: globalMargin }))
+            : screens;
 
     const { clientSummary, internalAudit } = calculateProposalAudit(effectiveScreens, {
         bondPct: bondRate,

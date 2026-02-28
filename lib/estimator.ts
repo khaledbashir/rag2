@@ -117,6 +117,12 @@ export interface ScreenInput {
   pitchMm?: number;
   costPerSqFt?: number;
   desiredMargin?: number;
+  /** Per-category margins (override desiredMargin for each cost bucket) */
+  categoryMargins?: {
+    led?: number;       // Hardware margin (default 0.30)
+    services?: number;  // Services margin (default 0.20)
+    cms?: number;       // CMS/Software margin (default 0.35)
+  };
   serviceType?: string;
   formFactor?: string; // "Straight" or "Curved"
   outletDistance?: number;
@@ -423,7 +429,41 @@ export function calculatePerScreenAudit(
   }
 
   // Natalia Math Divisor Model: P = C / (1 - M)
-  const sellPrice = roundToCents(totalCost.div(new Decimal(1).minus(desiredMargin)));
+  // Per-category margins: LED hardware gets ledMargin, services get servicesMargin, CMS gets cmsMargin
+  const catMargins = s.categoryMargins;
+  let sellPrice: Decimal;
+
+  if (catMargins && (catMargins.led !== undefined || catMargins.services !== undefined || catMargins.cms !== undefined)) {
+    // Per-category margin mode — bucket costs by category and apply different margins
+    const ledMargin = new Decimal(catMargins.led ?? 0.30);
+    const servicesMargin = new Decimal(catMargins.services ?? 0.20);
+    const cmsMargin = new Decimal(catMargins.cms ?? 0.35);
+
+    // LED bucket: hardware + shipping (product-related)
+    const ledCost = hardware.plus(shipping);
+    // Services bucket: structure, install, labor, power, PM, GC, travel, submittals, engineering, permits, demolition
+    const servicesCost = structure.plus(install).plus(labor).plus(adjustedPower)
+      .plus(pm).plus(generalConditions).plus(travel)
+      .plus(submittals).plus(engineering).plus(permits).plus(demolition);
+    // CMS bucket: CMS/software
+    const cmsCost = cms;
+
+    // Validate all category margins
+    for (const [name, m] of [["LED", ledMargin], ["Services", servicesMargin], ["CMS", cmsMargin]] as const) {
+      if ((m as Decimal).gte(1.0)) {
+        throw new Error(`Invalid ${name} margin: ${(m as Decimal).times(100)}%. Must be less than 100%.`);
+      }
+    }
+
+    const ledSell = ledCost.gt(0) ? roundToCents(ledCost.div(new Decimal(1).minus(ledMargin))) : new Decimal(0);
+    const servicesSell = servicesCost.gt(0) ? roundToCents(servicesCost.div(new Decimal(1).minus(servicesMargin))) : new Decimal(0);
+    const cmsSell = cmsCost.gt(0) ? roundToCents(cmsCost.div(new Decimal(1).minus(cmsMargin))) : new Decimal(0);
+
+    sellPrice = roundToCents(ledSell.plus(servicesSell).plus(cmsSell));
+  } else {
+    // Legacy single-margin mode
+    sellPrice = roundToCents(totalCost.div(new Decimal(1).minus(desiredMargin)));
+  }
 
   // Bond Fee: 1.5% applied ON TOP of the Sell Price (calculated against Sell Price)
   const bondCost = roundToCents(sellPrice.times(BOND_PCT));

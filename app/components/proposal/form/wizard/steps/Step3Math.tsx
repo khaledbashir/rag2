@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import {
     Calculator,
@@ -168,6 +169,14 @@ const Step3Math = () => {
     const globalMargin = useWatch({ name: "details.globalMargin", control });
     const globalBondRate = useWatch({ name: "details.globalBondRate", control }) || 1.5;
 
+    // Per-category margins (ANC standard: LED 30%, Services 20%, CMS 35%)
+    const categoryMargins = useWatch({ name: "details.categoryMargins", control }) || {
+        led: 0.30, services: 0.20, cms: 0.35,
+    };
+    const [useCategoryMargins, setUseCategoryMargins] = React.useState(
+        () => !!(getValues("details.categoryMargins")),
+    );
+
     const totals = internalAudit?.totals;
     const sellPricePerSqFt = totals?.sellingPricePerSqFt || 0;
     const totalProjectValue = totals?.finalClientTotal || 0;
@@ -282,6 +291,56 @@ const Step3Math = () => {
             };
         });
         setQuoteItems(items);
+    };
+
+    // Apply per-category margins to all screens
+    const applyCategoryMargins = (margins: { led?: number; services?: number; cms?: number }) => {
+        const currentScreens = getValues("details.screens") || [];
+        const merged = { ...categoryMargins, ...margins };
+        setValue("details.categoryMargins", merged, { shouldDirty: true });
+
+        // Update all screens with category margins
+        const updatedScreens = currentScreens.map((s: any) => ({
+            ...s,
+            categoryMargins: merged,
+        }));
+        setValue("details.screens", updatedScreens, { shouldValidate: true, shouldDirty: true });
+
+        // Recalculate audit
+        try {
+            const audit = calculateProposalAudit(updatedScreens, {
+                taxRate: getValues("details.taxRateOverride"),
+                bondPct: getValues("details.bondRateOverride"),
+                structuralTonnage: getValues("details.metadata.structuralTonnage"),
+                reinforcingTonnage: getValues("details.metadata.reinforcingTonnage"),
+                projectAddress: `${getValues("receiver.address") ?? ""} ${getValues("receiver.city") ?? ""} ${getValues("receiver.zipCode") ?? ""} ${getValues("details.location") ?? ""}`.trim(),
+                venue: getValues("details.venue"),
+            });
+            setValue("details.internalAudit", audit.internalAudit);
+            setValue("details.clientSummary", audit.clientSummary);
+        } catch (e) {
+            console.error("Category margin recalc failed", e);
+        }
+    };
+
+    // Switch between category and global margin modes
+    const toggleCategoryMode = (enabled: boolean) => {
+        setUseCategoryMargins(enabled);
+        if (enabled) {
+            // Switch to category mode with ANC defaults
+            const defaults = { led: 0.30, services: 0.20, cms: 0.35 };
+            applyCategoryMargins(defaults);
+        } else {
+            // Switch back to global mode — clear categoryMargins from screens
+            setValue("details.categoryMargins", undefined, { shouldDirty: true });
+            const currentScreens = getValues("details.screens") || [];
+            const updatedScreens = currentScreens.map((s: any) => {
+                const { categoryMargins: _, ...rest } = s;
+                return rest;
+            });
+            setValue("details.screens", updatedScreens, { shouldValidate: true, shouldDirty: true });
+            applyGlobalMargin(globalMargin || 0.25);
+        }
     };
 
     // Apply global margin to all screens
@@ -676,34 +735,97 @@ const Step3Math = () => {
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-6 pt-6">
-                            {/* Global Margin Slider */}
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <Label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                                        <Percent className="w-4 h-4 text-brand-blue" />
-                                        Global Margin Target
-                                    </Label>
-                                    <span className="text-lg font-bold text-brand-blue tabular-nums">
-                                        {((globalMargin || 0.25) * 100).toFixed(2)}%
-                                    </span>
-                                </div>
-
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="0.8"
-                                    step="0.01"
-                                    value={globalMargin || 0.25}
-                                    onChange={(e) => applyGlobalMargin(parseFloat(e.target.value))}
-                                    className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-brand-blue"
-                                />
-
-                                <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-zinc-600">
-                                    <span>0% Base</span>
-                                    <span className="text-amber-500/70">⚠️ Competitiveness Alert</span>
-                                    <span>80% Max</span>
+                            {/* Margin Mode Toggle */}
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                                    <Percent className="w-4 h-4 text-brand-blue" />
+                                    Margin Strategy
+                                </Label>
+                                <div className="flex items-center gap-2">
+                                    <span className={cn("text-[10px] font-bold uppercase", !useCategoryMargins ? "text-brand-blue" : "text-muted-foreground")}>Global</span>
+                                    <Switch
+                                        checked={useCategoryMargins}
+                                        onCheckedChange={toggleCategoryMode}
+                                    />
+                                    <span className={cn("text-[10px] font-bold uppercase", useCategoryMargins ? "text-emerald-500" : "text-muted-foreground")}>Per-Category</span>
                                 </div>
                             </div>
+
+                            {useCategoryMargins ? (
+                                /* Per-Category Margin Controls */
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-3 gap-3">
+                                        {([
+                                            { key: "led" as const, label: "LED Hardware", default: 0.30, color: "text-blue-400", icon: Package },
+                                            { key: "services" as const, label: "Services", default: 0.20, color: "text-amber-400", icon: Hammer },
+                                            { key: "cms" as const, label: "CMS/Software", default: 0.35, color: "text-emerald-400", icon: Settings2 },
+                                        ]).map((cat) => {
+                                            const value = categoryMargins?.[cat.key] ?? cat.default;
+                                            return (
+                                                <div key={cat.key} className="p-3 bg-card rounded-xl border border-border space-y-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                                                            <cat.icon className={cn("w-3 h-3", cat.color)} />
+                                                            {cat.label}
+                                                        </Label>
+                                                        <span className={cn("text-sm font-bold tabular-nums", cat.color)}>
+                                                            {(value * 100).toFixed(0)}%
+                                                        </span>
+                                                    </div>
+                                                    <input
+                                                        type="range"
+                                                        min="0"
+                                                        max="0.8"
+                                                        step="0.01"
+                                                        value={value}
+                                                        onChange={(e) => applyCategoryMargins({ [cat.key]: parseFloat(e.target.value) })}
+                                                        className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-brand-blue"
+                                                    />
+                                                    <div className="flex justify-between text-[9px] text-zinc-600">
+                                                        <span>0%</span>
+                                                        <span>80%</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => applyCategoryMargins({ led: 0.30, services: 0.20, cms: 0.35 })}
+                                        className="text-[10px] font-bold uppercase text-muted-foreground hover:text-brand-blue transition-colors"
+                                    >
+                                        Reset to ANC Defaults (30 / 20 / 35)
+                                    </button>
+                                </div>
+                            ) : (
+                                /* Legacy Global Margin Slider */
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                                            Global Margin Target
+                                        </Label>
+                                        <span className="text-lg font-bold text-brand-blue tabular-nums">
+                                            {((globalMargin || 0.25) * 100).toFixed(2)}%
+                                        </span>
+                                    </div>
+
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="0.8"
+                                        step="0.01"
+                                        value={globalMargin || 0.25}
+                                        onChange={(e) => applyGlobalMargin(parseFloat(e.target.value))}
+                                        className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-brand-blue"
+                                    />
+
+                                    <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                                        <span>0% Base</span>
+                                        <span className="text-amber-500/70">Competitiveness Alert</span>
+                                        <span>80% Max</span>
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {/* Global Bond Rate */}
@@ -765,7 +887,8 @@ const Step3Math = () => {
                                     />
                                 </div>
 
-                                {/* Quick Presets */}
+                                {/* Quick Presets — only show in global mode */}
+                                {!useCategoryMargins && (
                                 <div className="flex flex-col gap-3 p-4 bg-muted/50 rounded-xl border border-border">
                                     <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Strategic Presets</Label>
                                     <div className="flex flex-wrap gap-2">
@@ -795,6 +918,7 @@ const Step3Math = () => {
                                         ))}
                                     </div>
                                 </div>
+                                )}
 
                                 {/* B&O Tax Override */}
                                 <div className="flex flex-col gap-3 p-4 bg-card rounded-xl border border-border shadow-sm">
