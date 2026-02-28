@@ -500,6 +500,9 @@ export async function POST(request: NextRequest) {
         let screens: ExtractedLEDSpec[] = [];
         let projectInfo: any = null;
         let requirements: any[] = [];
+        let extractionWarnings: string[] = [];
+        let extractionFailed = false;
+        let incompleteSpecs: any[] = [];
 
         if (analyzedPages.length > 0) {
           send("stage", {
@@ -540,15 +543,21 @@ export async function POST(request: NextRequest) {
             screens = result.screens;
             projectInfo = result.project;
             requirements = result.requirements;
+            extractionWarnings = result.warnings;
+            extractionFailed = result.extractionFailed;
+            incompleteSpecs = result.incompleteSpecs;
           } finally {
             clearInterval(heartbeat);
           }
 
           send("stage", {
             stage: "extracted",
-            message: `Found ${screens.length} LED display(s), ${requirements.length} requirement(s)`,
+            message: extractionFailed
+              ? "Extraction failed — AI providers returned no data. Try again or contact support."
+              : `Found ${screens.length} LED display(s), ${requirements.length} requirement(s)`,
             specsFound: screens.length,
             requirementsFound: requirements.length,
+            extractionFailed,
           });
         }
 
@@ -668,11 +677,14 @@ export async function POST(request: NextRequest) {
             id: analysisId,
             screens,
             requirements,
+            incompleteSpecs: incompleteSpecs.length > 0 ? incompleteSpecs : undefined,
             project: finalProject,
             pages: analyzedPages,
             stats: finalStats,
             triage: triageData,
             aiWorkspaceSlug,
+            warnings: extractionWarnings.length > 0 ? extractionWarnings : undefined,
+            extractionFailed,
           },
         });
 

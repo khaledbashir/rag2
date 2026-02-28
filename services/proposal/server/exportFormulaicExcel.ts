@@ -191,7 +191,9 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
     screens.forEach(screen => {
         const audit = screen.internalAudit || screen._internalAudit || screen.audit;
         const b = audit?.breakdown || {};
-        const margin = screen.desiredMargin || 0.25;
+        const globalMargin = screen.desiredMargin || 0.25;
+        const catMargins = screen.categoryMargins as { led?: number; services?: number; cms?: number } | undefined;
+        const usePerCategory = catMargins && (catMargins.led != null || catMargins.services != null || catMargins.cms != null);
 
         // Screen Header
         sheet.getCell(`A${currentRow}`).value = screen.name || "Unnamed Screen";
@@ -199,7 +201,7 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
         sheet.getCell(`A${currentRow}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDEE2E6' } };
         currentRow++;
 
-        // 1. HARDWARE
+        // 1. HARDWARE (LED bucket)
         const hwRow = currentRow;
         sheet.getCell(`A${currentRow}`).value = 'Display Hardware';
         sheet.getCell(`B${currentRow}`).value = 'Area (SqFt)';
@@ -222,36 +224,119 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
 
         currentRow += 3;
 
-        // 2. SOFT COSTS (Aggregated)
-        const softCostTotal = (b.install || 0) + (b.labor || 0) + (b.structure || 0) + (b.power || 0) + (b.shipping || 0) + (b.pm || 0) + (b.engineering || 0);
-        sheet.getCell(`A${currentRow+2}`).value = 'Services & Install';
-        sheet.getCell(`B${currentRow}`).value = 'Combined Estimate';
-        sheet.getCell(`C${currentRow}`).value = softCostTotal;
-        formatAsInputCell(sheet.getCell(`C${currentRow}`));
-        sheet.getCell(`E${currentRow}`).value = { formula: `C${currentRow}` };
-        sheet.getCell(`E${currentRow}`).numFmt = '"$"#,##0.00';
-        const softRow = currentRow;
-        currentRow++;
+        if (usePerCategory) {
+            // Per-category margin mode: separate rows for LED, Services, CMS
 
-        // 3. MARGIN & SELL
-        const sellRow = currentRow;
-        sheet.getCell(`A${currentRow}`).value = 'TOTAL SELL PRICE';
-        sheet.getCell(`D${currentRow}`).value = '(Hardware + Services) / (1 - Margin)';
-        
-        // Total Cost Formula
-        const totalCostRef = `(E${hwRow}+E${softRow})`;
-        
-        sheet.getCell(`F${currentRow}`).value = margin;
-        sheet.getCell(`F${currentRow}`).numFmt = '0.0%';
-        formatAsInputCell(sheet.getCell(`F${currentRow}`));
-        
-        // Divisor Model
-        sheet.getCell(`G${currentRow}`).value = { formula: `${totalCostRef}/(1-F${currentRow})` };
-        sheet.getCell(`G${currentRow}`).numFmt = '"$"#,##0.00';
-        sheet.getCell(`G${currentRow}`).font = { bold: true };
-        sellPriceRows.push(sellRow);
+            // 2a. SERVICES bucket
+            const svcCostTotal = (b.install || 0) + (b.labor || 0) + (b.structure || 0) + (b.power || 0) + (b.pm || 0) + (b.engineering || 0);
+            const svcRow = currentRow;
+            sheet.getCell(`A${svcRow}`).value = 'Services & Install';
+            sheet.getCell(`B${svcRow}`).value = 'Combined Estimate';
+            sheet.getCell(`C${svcRow}`).value = svcCostTotal;
+            formatAsInputCell(sheet.getCell(`C${svcRow}`));
+            sheet.getCell(`E${svcRow}`).value = { formula: `C${svcRow}` };
+            sheet.getCell(`E${svcRow}`).numFmt = '"$"#,##0.00';
+            currentRow++;
 
-        currentRow += 2;
+            // 2b. CMS bucket
+            const cmsCostTotal = b.cms || 0;
+            const cmsRow = currentRow;
+            sheet.getCell(`A${cmsRow}`).value = 'CMS / Software';
+            sheet.getCell(`B${cmsRow}`).value = 'CMS Cost';
+            sheet.getCell(`C${cmsRow}`).value = cmsCostTotal;
+            formatAsInputCell(sheet.getCell(`C${cmsRow}`));
+            sheet.getCell(`E${cmsRow}`).value = { formula: `C${cmsRow}` };
+            sheet.getCell(`E${cmsRow}`).numFmt = '"$"#,##0.00';
+            currentRow++;
+
+            // 2c. Shipping (LED bucket with hardware)
+            const shippingRow = currentRow;
+            sheet.getCell(`A${shippingRow}`).value = 'Shipping';
+            sheet.getCell(`B${shippingRow}`).value = 'Shipping Cost';
+            sheet.getCell(`C${shippingRow}`).value = b.shipping || 0;
+            formatAsInputCell(sheet.getCell(`C${shippingRow}`));
+            sheet.getCell(`E${shippingRow}`).value = { formula: `C${shippingRow}` };
+            sheet.getCell(`E${shippingRow}`).numFmt = '"$"#,##0.00';
+            currentRow++;
+
+            // 3. Per-category margin & sell
+            const ledMargin = catMargins.led ?? 0.30;
+            const svcMargin = catMargins.services ?? 0.20;
+            const cmsMargin = catMargins.cms ?? 0.35;
+
+            // LED sell (hardware + shipping)
+            const ledSellRow = currentRow;
+            sheet.getCell(`A${currentRow}`).value = 'LED Hardware Sell';
+            sheet.getCell(`D${currentRow}`).value = 'LED: (HW + Shipping) / (1 - Margin)';
+            sheet.getCell(`F${currentRow}`).value = ledMargin;
+            sheet.getCell(`F${currentRow}`).numFmt = '0.0%';
+            formatAsInputCell(sheet.getCell(`F${currentRow}`));
+            sheet.getCell(`G${currentRow}`).value = { formula: `IF(F${currentRow}>=1,E${hwRow}+E${shippingRow},(E${hwRow}+E${shippingRow})/(1-F${currentRow}))` };
+            sheet.getCell(`G${currentRow}`).numFmt = '"$"#,##0.00';
+            currentRow++;
+
+            // Services sell
+            const svcSellRow = currentRow;
+            sheet.getCell(`A${currentRow}`).value = 'Services Sell';
+            sheet.getCell(`D${currentRow}`).value = 'Services / (1 - Margin)';
+            sheet.getCell(`F${currentRow}`).value = svcMargin;
+            sheet.getCell(`F${currentRow}`).numFmt = '0.0%';
+            formatAsInputCell(sheet.getCell(`F${currentRow}`));
+            sheet.getCell(`G${currentRow}`).value = { formula: `IF(F${currentRow}>=1,E${svcRow},E${svcRow}/(1-F${currentRow}))` };
+            sheet.getCell(`G${currentRow}`).numFmt = '"$"#,##0.00';
+            currentRow++;
+
+            // CMS sell
+            const cmsSellRow = currentRow;
+            sheet.getCell(`A${currentRow}`).value = 'CMS Sell';
+            sheet.getCell(`D${currentRow}`).value = 'CMS / (1 - Margin)';
+            sheet.getCell(`F${currentRow}`).value = cmsMargin;
+            sheet.getCell(`F${currentRow}`).numFmt = '0.0%';
+            formatAsInputCell(sheet.getCell(`F${currentRow}`));
+            sheet.getCell(`G${currentRow}`).value = { formula: `IF(F${currentRow}>=1,E${cmsRow},E${cmsRow}/(1-F${currentRow}))` };
+            sheet.getCell(`G${currentRow}`).numFmt = '"$"#,##0.00';
+            currentRow++;
+
+            // Total sell = LED + Services + CMS
+            const sellRow = currentRow;
+            sheet.getCell(`A${currentRow}`).value = 'TOTAL SELL PRICE';
+            sheet.getCell(`A${currentRow}`).font = { bold: true };
+            sheet.getCell(`D${currentRow}`).value = 'Per-category: LED + Services + CMS';
+            sheet.getCell(`G${currentRow}`).value = { formula: `G${ledSellRow}+G${svcSellRow}+G${cmsSellRow}` };
+            sheet.getCell(`G${currentRow}`).numFmt = '"$"#,##0.00';
+            sheet.getCell(`G${currentRow}`).font = { bold: true };
+            sellPriceRows.push(sellRow);
+
+            currentRow += 2;
+        } else {
+            // Global (single) margin mode — original behavior
+            const softCostTotal = (b.install || 0) + (b.labor || 0) + (b.structure || 0) + (b.power || 0) + (b.shipping || 0) + (b.pm || 0) + (b.engineering || 0);
+            sheet.getCell(`A${currentRow+2}`).value = 'Services & Install';
+            sheet.getCell(`B${currentRow}`).value = 'Combined Estimate';
+            sheet.getCell(`C${currentRow}`).value = softCostTotal;
+            formatAsInputCell(sheet.getCell(`C${currentRow}`));
+            sheet.getCell(`E${currentRow}`).value = { formula: `C${currentRow}` };
+            sheet.getCell(`E${currentRow}`).numFmt = '"$"#,##0.00';
+            const softRow = currentRow;
+            currentRow++;
+
+            const sellRow = currentRow;
+            sheet.getCell(`A${currentRow}`).value = 'TOTAL SELL PRICE';
+            sheet.getCell(`D${currentRow}`).value = '(Hardware + Services) / (1 - Margin)';
+
+            const totalCostRef = `(E${hwRow}+E${softRow})`;
+
+            sheet.getCell(`F${currentRow}`).value = globalMargin;
+            sheet.getCell(`F${currentRow}`).numFmt = '0.0%';
+            formatAsInputCell(sheet.getCell(`F${currentRow}`));
+
+            sheet.getCell(`G${currentRow}`).value = { formula: `IF(F${currentRow}>=1,${totalCostRef},${totalCostRef}/(1-F${currentRow}))` };
+            sheet.getCell(`G${currentRow}`).numFmt = '"$"#,##0.00';
+            sheet.getCell(`G${currentRow}`).font = { bold: true };
+            sellPriceRows.push(sellRow);
+
+            currentRow += 2;
+        }
     });
 
     // TOTALS SECTION

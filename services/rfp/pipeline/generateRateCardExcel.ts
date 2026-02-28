@@ -82,7 +82,7 @@ export interface PricedDisplay {
   /** Subcontractor lead time */
   leadTimeWeeks: number | null;
   /** Cost source */
-  costSource: "subcontractor_quote" | "rate_card" | "product_match";
+  costSource: "subcontractor_quote" | "rate_card" | "product_match" | "no_match";
   /** Rate card estimate (always computed, even when quote is used — for delta comparison) */
   rateCardEstimate: number | null;
 }
@@ -182,7 +182,6 @@ async function priceDisplay(
           pixelPitch: spec.pixelPitchMm ?? undefined,
           isOutdoor: spec.environment === "outdoor",
         });
-        // Use matched product's cost if available
         const product = getProductByPitch(
           match.module.pitch,
           spec.environment === "outdoor" ? "Outdoor" : "Indoor",
@@ -190,10 +189,12 @@ async function priceDisplay(
         if (product) {
           const hwCost = calculateHardwareCost(areaSqM, product.id);
           hardwareCost = hwCost ? round2(hwCost * spec.quantity) : 0;
-          costSource = "product_match";
+          costSource = hwCost ? "product_match" : "no_match";
+        } else {
+          costSource = "no_match";
         }
       } catch {
-        // No match found — zero cost, will show as "TBD"
+        costSource = "no_match";
       }
     }
   }
@@ -400,12 +401,20 @@ export async function generateRateCardExcel(
 
     const sourceLabel = pd.costSource === "subcontractor_quote" ? "Quote"
       : pd.costSource === "rate_card" ? "Rate Card"
+      : pd.costSource === "no_match" ? "NO MATCH"
       : "Product Match";
     r.getCell(12).value = sourceLabel;
     r.getCell(12).alignment = { horizontal: "center" };
 
     if (pd.costSource === "subcontractor_quote") {
       r.getCell(12).font = { color: { argb: COLORS.GREEN }, bold: true, name: "Calibri" };
+    } else if (pd.costSource === "no_match") {
+      r.getCell(12).font = { color: { argb: "FFCC0000" }, bold: true, name: "Calibri" };
+      r.getCell(12).fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.RED_BG } };
+      // Mark hardware cost cell as TBD instead of $0
+      r.getCell(5).value = "TBD";
+      r.getCell(5).font = { color: { argb: "FFCC0000" }, bold: true, italic: true, name: "Calibri" };
+      r.getCell(5).numFmt = "@"; // Text format
     }
 
     if (isAlt) {

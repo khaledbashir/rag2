@@ -21,6 +21,7 @@ import type {
   ExtractedLEDSpec,
   ExtractedProjectInfo,
   AnalysisPipelineOptions,
+  IncompleteSpec,
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -162,6 +163,9 @@ export async function analyzeRfp(
 
   let textSpecs: ExtractedLEDSpec[] = [];
   let projectInfo: any = null;
+  const warnings: string[] = [];
+  let geminiError = false;
+  let llamaError = false;
 
   if (relevantTextPages.length > 0) {
     // Primary: Gemini spec extraction
@@ -169,8 +173,15 @@ export async function analyzeRfp(
       const textResult = await extractSpecsFromText(relevantTextPages);
       textSpecs = textResult.screens;
       projectInfo = textResult.project;
-    } catch (geminiErr) {
+    } catch (geminiErr: any) {
+      geminiError = true;
+      const isRateLimit = geminiErr?.isRateLimit || geminiErr?.statusCode === 429;
       console.error("[AnalyzeRFP] Gemini spec extraction failed:", geminiErr);
+      if (isRateLimit) {
+        warnings.push("Gemini API rate limit reached — results may be incomplete. Wait a moment and retry.");
+      } else {
+        warnings.push(`Gemini extraction failed (${geminiErr?.statusCode || "network error"}) — attempting fallback.`);
+      }
     }
 
     // Fallback: If Gemini returned nothing and Llama Vision is available, try Llama
@@ -189,10 +200,14 @@ export async function analyzeRfp(
           console.log(`[AnalyzeRFP] Llama Vision fallback found ${textSpecs.length} specs`);
         }
       } catch (llamaErr) {
+        llamaError = true;
         console.error("[AnalyzeRFP] Llama Vision fallback also failed:", llamaErr);
+        warnings.push("Llama Vision fallback also failed — no AI extraction succeeded.");
       }
     }
   }
+
+  const extractionFailed = relevantTextPages.length > 0 && textSpecs.length === 0 && (geminiError || llamaError);
 
   // =========================================================================
   // STEP 5: Merge specs from drawings + text, deduplicate
@@ -209,12 +224,22 @@ export async function analyzeRfp(
     .filter((p) => p.extractedSpecs && p.extractedSpecs.length > 0)
     .flatMap((p) => p.extractedSpecs!);
 
-  // Filter ghost entries (section headers with no specs), then deduplicate
+  // Separate incomplete specs (name/location but no physical data) for quarantine
+  const incompleteSpecs: IncompleteSpec[] = [];
   const filteredSpecs = [...textSpecs, ...drawingSpecs].filter((s) => {
     const hasSpec = s.widthFt != null || s.heightFt != null ||
       s.pixelPitchMm != null || s.brightnessNits != null ||
       s.widthPx != null || s.heightPx != null;
-    if (!hasSpec) console.log(`[analyzeRfp] Dropping "${s.name}" — no physical specs`);
+    if (!hasSpec) {
+      console.log(`[analyzeRfp] Quarantining "${s.name}" — no physical specs (manual entry required)`);
+      incompleteSpecs.push({
+        name: s.name,
+        location: s.location || "",
+        notes: s.notes,
+        sourcePages: s.sourcePages,
+        reason: "Referenced in RFP but no physical specs provided — manual entry required",
+      });
+    }
     return hasSpec;
   });
   const allSpecs = deduplicateSpecs(filteredSpecs);
@@ -242,7 +267,9 @@ export async function analyzeRfp(
   onProgress?.({
     stage: "complete",
     percent: 100,
-    message: `Found ${allSpecs.length} LED displays across ${allPages.length} pages`,
+    message: extractionFailed
+      ? `Extraction failed — AI providers returned no data. ${allPages.length} pages processed.`
+      : `Found ${allSpecs.length} LED displays across ${allPages.length} pages`,
     totalPages: allPages.length,
   });
 
@@ -251,6 +278,7 @@ export async function analyzeRfp(
       ? allPages.filter((p) => p.relevance >= relevanceThreshold)
       : allPages,
     screens: allSpecs,
+    incompleteSpecs: incompleteSpecs.length > 0 ? incompleteSpecs : undefined,
     project,
     stats: {
       totalPages: allPages.length,
@@ -263,6 +291,8 @@ export async function analyzeRfp(
       geminiPagesProcessed: totalGeminiPages,
     },
     files: fileStats,
+    warnings: warnings.length > 0 ? warnings : undefined,
+    extractionFailed,
   };
 }
 

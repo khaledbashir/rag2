@@ -167,6 +167,8 @@ export interface RFPAnalysisResult {
   pages: AnalyzedPage[];
   /** All LED displays found across all pages */
   screens: ExtractedLEDSpec[];
+  /** Incomplete specs quarantined for manual entry (name/location but no physical specs) */
+  incompleteSpecs?: IncompleteSpec[];
   /** Project-level metadata */
   project: ExtractedProjectInfo;
   /** Summary statistics */
@@ -186,6 +188,22 @@ export interface RFPAnalysisResult {
     pageCount: number;
     sizeBytes: number;
   }>;
+  /** Warnings surfaced to the user (non-fatal issues during extraction) */
+  warnings?: string[];
+  /** True if all AI extraction providers failed — results may be empty due to errors, not absence of data */
+  extractionFailed?: boolean;
+}
+
+/**
+ * A display referenced in the RFP with name/location but no measurable physical specs.
+ * Surfaced to the user as "incomplete — manual entry required" instead of silently dropped.
+ */
+export interface IncompleteSpec {
+  name: string;
+  location: string;
+  notes: string | null;
+  sourcePages: number[];
+  reason: string;
 }
 
 // ============================================================================

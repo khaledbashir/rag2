@@ -55,12 +55,23 @@ interface PageData {
   visionAnalyzed?: boolean;
 }
 
+interface IncompleteSpecUI {
+  name: string;
+  location: string;
+  notes: string | null;
+  sourcePages: number[];
+  reason: string;
+}
+
 interface AnalysisResult {
   id: string | null;
   screens: ExtractedLEDSpec[];
+  incompleteSpecs?: IncompleteSpecUI[];
   requirements?: ExtractedRequirement[];
   aiWorkspaceSlug?: string | null;
   pages?: PageData[];
+  warnings?: string[];
+  extractionFailed?: boolean;
   project: {
     clientName: string | null;
     projectName: string | null;
@@ -963,6 +974,38 @@ export default function RfpAnalyzerClient() {
               </div>
             )}
 
+            {/* Extraction failure banner — AI providers failed */}
+            {result.extractionFailed && (
+              <div className="p-4 border border-destructive/30 bg-destructive/10 rounded-xl flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-destructive">Extraction Failed</p>
+                  <p className="text-sm text-destructive/80 mt-1">
+                    AI providers returned no data. This does not mean the RFP has no displays — the extraction service encountered errors.
+                  </p>
+                  <button
+                    onClick={handleReset}
+                    className="mt-3 px-4 py-2 bg-destructive text-destructive-foreground rounded-lg text-sm font-medium hover:bg-destructive/90 inline-flex items-center gap-2"
+                  >
+                    <RefreshCcw className="w-4 h-4" /> Try Again
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Warnings banner — partial failures or degraded results */}
+            {!result.extractionFailed && result.warnings && result.warnings.length > 0 && (
+              <div className="p-4 border border-amber-500/30 bg-amber-500/10 rounded-xl flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Results May Be Incomplete</p>
+                  {result.warnings.map((w, i) => (
+                    <p key={i} className="text-sm text-amber-600/80 dark:text-amber-400/80 mt-1">{w}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Stats row */}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
               <StatCard icon={FileText} label="Total Pages" value={result.stats.totalPages.toLocaleString()} />
@@ -1148,6 +1191,37 @@ export default function RfpAnalyzerClient() {
               />
 
               {/* OLD TAB CONTENT REMOVED — now rendered by WorkbookShell */}
+
+              {/* Incomplete specs quarantine — displays referenced but missing physical specs */}
+              {result.incompleteSpecs && result.incompleteSpecs.length > 0 && (
+                <div className="mt-4 border border-amber-500/30 bg-amber-500/5 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    <h3 className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                      Incomplete Specs — Manual Entry Required ({result.incompleteSpecs.length})
+                    </h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    These displays are referenced in the RFP by name or location but have no measurable specs (dimensions, pixel pitch, or brightness).
+                    They may reference existing installations or require spec lookup.
+                  </p>
+                  <div className="space-y-2">
+                    {result.incompleteSpecs.map((spec, i) => (
+                      <div key={i} className="flex items-start gap-3 p-2 bg-background/50 rounded border border-border/50">
+                        <Monitor className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium">{spec.name}</span>
+                          {spec.location && <span className="text-xs text-muted-foreground ml-2">({spec.location})</span>}
+                          {spec.notes && <p className="text-xs text-muted-foreground mt-0.5">{spec.notes}</p>}
+                          {spec.sourcePages.length > 0 && (
+                            <span className="text-[10px] text-muted-foreground">Pages: {spec.sourcePages.join(", ")}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Right: PDF split panel */}

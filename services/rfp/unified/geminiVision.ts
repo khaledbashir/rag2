@@ -334,8 +334,12 @@ export async function extractSpecsFromText(
 
     if (!response.ok) {
       const err = await response.text();
-      console.error(`[GeminiExtract] API error ${response.status}: ${err.slice(0, 200)}`);
-      return { screens: [], project: null };
+      const isRateLimit = response.status === 429;
+      console.error(`[GeminiExtract] API error ${response.status}${isRateLimit ? " (RATE LIMITED)" : ""}: ${err.slice(0, 200)}`);
+      const error = new Error(`Gemini API ${response.status}${isRateLimit ? " rate limit" : ""}: ${err.slice(0, 100)}`);
+      (error as any).statusCode = response.status;
+      (error as any).isRateLimit = isRateLimit;
+      throw error;
     }
 
     const json = await response.json();

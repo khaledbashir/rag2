@@ -60,6 +60,7 @@ export interface BidFormMatch {
   matchedScreen: string; // Name of the matched ExtractedLEDSpec
   confidence: number; // 0-1
   fieldsFilled: string[];
+  fieldsSkipped: string[];
 }
 
 export interface BidFormFillResult {
@@ -114,13 +115,14 @@ export async function fillBidForm(
       const pricingForScreen = pricing?.find(
         (p) => p.name.toLowerCase() === match.screen.name.toLowerCase()
       );
-      const fieldsFilled = fillBlockCells(workbook, block, match.screen, pricingForScreen);
+      const { filled, skipped } = fillBlockCells(workbook, block, match.screen, pricingForScreen);
       matches.push({
         sheetName: block.sheetName,
         displayName: block.displayName,
         matchedScreen: match.screen.name,
         confidence: match.confidence,
-        fieldsFilled,
+        fieldsFilled: filled,
+        fieldsSkipped: skipped,
       });
     } else {
       unmatchedBlocks.push(`${block.sheetName}: ${block.displayName}`);
@@ -383,7 +385,7 @@ function findBestMatch(
       ? computeSingleSheetMatchScore(block, screen)
       : computeMatchScore(block, screen);
 
-    if (score > 0.3) {
+    if (score > 0.5) {
       candidates.push({ screen, screenIndex: i, confidence: score });
     }
   }
@@ -562,18 +564,22 @@ function fillBlockCells(
   block: SpecBlock,
   screen: ExtractedLEDSpec,
   pricing?: PricingData
-): string[] {
+): { filled: string[]; skipped: string[] } {
   const sheet = workbook.getWorksheet(block.sheetName);
-  if (!sheet) return [];
+  if (!sheet) return { filled: [], skipped: [] };
 
   const filled: string[] = [];
+  const skipped: string[] = [];
 
-  // Helper: set cell value while preserving existing formatting
   const setCell = (row: number, col: number, value: number | string | null, fieldName: string) => {
     if (value == null) return;
     const cell = sheet.getRow(row).getCell(col);
-    // Don't overwrite formulas
     if (cell.type === ExcelJS.ValueType.Formula) return;
+    // Never silently overwrite non-empty cells — skip and flag as conflict
+    if (cell.value != null && cell.value !== "" && cell.value !== 0) {
+      skipped.push(fieldName);
+      return;
+    }
     cell.value = value;
     filled.push(fieldName);
   };
@@ -632,7 +638,7 @@ function fillBlockCells(
     }
   }
 
-  return filled;
+  return { filled, skipped };
 }
 
 // ============================================================================

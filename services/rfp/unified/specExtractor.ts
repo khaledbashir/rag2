@@ -9,7 +9,7 @@
  * a clean LLM call with ONLY our prompt + page text. No RAG noise.
  */
 
-import type { AnalyzedPage, ExtractedLEDSpec, ExtractedProjectInfo, ExtractedRequirement } from "./types";
+import type { AnalyzedPage, ExtractedLEDSpec, ExtractedProjectInfo, ExtractedRequirement, IncompleteSpec } from "./types";
 
 const MISTRAL_API_BASE = process.env.MISTRAL_API_BASE_URL || "https://api.mistral.ai";
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || "";
@@ -296,9 +296,12 @@ export async function extractLEDSpecsBatched(
   screens: ExtractedLEDSpec[];
   project: ExtractedProjectInfo;
   requirements: ExtractedRequirement[];
+  incompleteSpecs: IncompleteSpec[];
+  warnings: string[];
+  extractionFailed: boolean;
 }> {
   if (relevantPages.length === 0) {
-    return { screens: [], project: emptyProject(), requirements: [] };
+    return { screens: [], project: emptyProject(), requirements: [], incompleteSpecs: [], warnings: [], extractionFailed: false };
   }
 
   // Build batches — respect both page count and char limit
@@ -324,6 +327,8 @@ export async function extractLEDSpecsBatched(
   type BatchResult = { screens: ExtractedLEDSpec[]; project: ExtractedProjectInfo; requirements: ExtractedRequirement[] };
   const results: BatchResult[] = new Array(batches.length);
   let completed = 0;
+  let failedBatches = 0;
+  const warnings: string[] = [];
 
   const runBatch = async (i: number) => {
     const MAX_RETRIES = 2;
@@ -338,6 +343,7 @@ export async function extractLEDSpecsBatched(
           console.log(`[SpecExtractor] Retrying batch ${i + 1} in 3s...`);
           await new Promise((r) => setTimeout(r, 3000));
         } else {
+          failedBatches++;
           results[i] = { screens: [], project: emptyProject(), requirements: [] };
         }
       }
@@ -355,6 +361,14 @@ export async function extractLEDSpecsBatched(
     }
   });
   await Promise.all(workers);
+
+  if (failedBatches > 0) {
+    if (failedBatches === batches.length) {
+      warnings.push("All AI extraction batches failed — no specs could be extracted. Try again or contact support.");
+    } else {
+      warnings.push(`${failedBatches} of ${batches.length} extraction batches failed — results may be incomplete.`);
+    }
+  }
 
   // Merge all results
   let allScreens: ExtractedLEDSpec[] = [];
@@ -379,13 +393,21 @@ export async function extractLEDSpecsBatched(
     project.schedulePhases = [...project.schedulePhases, ...result.project.schedulePhases];
   }
 
-  // Filter out ghost entries — section headers and assemblies with zero specs
+  // Quarantine incomplete specs instead of silently dropping them
+  const incompleteSpecs: IncompleteSpec[] = [];
   allScreens = allScreens.filter((s) => {
     const hasAnySpec = s.widthFt != null || s.heightFt != null ||
       s.pixelPitchMm != null || s.brightnessNits != null ||
       s.widthPx != null || s.heightPx != null;
     if (!hasAnySpec) {
-      console.log(`[specExtractor] Dropping "${s.name}" — no physical specs (likely section header)`);
+      console.log(`[specExtractor] Quarantining "${s.name}" — no physical specs (manual entry required)`);
+      incompleteSpecs.push({
+        name: s.name,
+        location: s.location || "",
+        notes: s.notes,
+        sourcePages: s.sourcePages,
+        reason: "Referenced in RFP but no physical specs provided — manual entry required",
+      });
     }
     return hasAnySpec;
   });
@@ -402,7 +424,9 @@ export async function extractLEDSpecsBatched(
     return true;
   });
 
-  return { screens: allScreens, project, requirements: allRequirements };
+  const extractionFailed = relevantPages.length > 0 && allScreens.length === 0 && failedBatches === batches.length;
+
+  return { screens: allScreens, project, requirements: allRequirements, incompleteSpecs, warnings, extractionFailed };
 }
 
 // ---------------------------------------------------------------------------
