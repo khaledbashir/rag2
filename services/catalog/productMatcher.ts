@@ -1,7 +1,5 @@
-import { LED_MODULES, LedModule, Catalog } from "@/data/catalogs/led-products";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/prisma";
+import { getAllProducts, type ProductType } from "@/services/rfp/productCatalog";
 
 export interface ScreenSpec {
     widthFt: number;
@@ -45,63 +43,86 @@ export interface MatchedSolution {
 }
 
 /**
+ * Convert a productCatalog.ts ProductType → MatchedProduct shape.
+ */
+function catalogToMatched(p: ProductType): MatchedProduct {
+    const cab = p.defaultCabinet;
+    return {
+        id: p.id,
+        manufacturer: p.manufacturer,
+        name: p.name,
+        modelNumber: p.id,
+        widthMm: cab?.widthMm ?? 500,
+        heightMm: cab?.heightMm ?? 500,
+        pitch: p.pitchMm,
+        nits: p.brightnessNits,
+        weightKg: cab?.weightKg ?? 15,
+        maxPowerWatts: cab?.maxPowerW ?? 200,
+        supportsHalfModule: !!p.smallCabinet,
+        environment: p.environment === "Indoor" ? "indoor" : p.environment === "Outdoor" ? "outdoor" : "indoor_outdoor",
+    };
+}
+
+/**
  * Product Matcher Service
- * Queries the Prisma ManufacturerProduct table to find the best LED product
- * for a given loose specification. Falls back to hardcoded LED_MODULES if DB is empty.
+ *
+ * Priority order:
+ * 1. Prisma ManufacturerProduct table (seeded or user-added products)
+ * 2. productCatalog.ts (22 Yaham NX + Nitxeon products with validated rate card pricing)
  */
 export class ProductMatcher {
 
     /**
      * Find the best matching LED product for a given screen specification.
-     * Queries the database first; falls back to hardcoded catalog if empty.
      */
     static async matchProduct(spec: ScreenSpec): Promise<MatchedSolution> {
         const isOutdoorRequest = spec.isOutdoor === true;
         const targetPitch = spec.pixelPitch || (isOutdoorRequest ? 10 : 3.9);
         const targetEnv = isOutdoorRequest ? "outdoor" : "indoor";
 
-        // Query Prisma for active products
-        let dbProducts = await prisma.manufacturerProduct.findMany({
-            where: {
-                isActive: true,
-                ...(spec.manufacturer ? { manufacturer: { equals: spec.manufacturer, mode: "insensitive" as const } } : {}),
-            },
-            orderBy: { pixelPitch: "asc" },
-        });
-
-        // If DB has products, use them
-        if (dbProducts.length > 0) {
-            // Filter by environment
-            let suitable = dbProducts.filter((p) => {
-                if (targetEnv === "outdoor") return p.environment === "outdoor" || p.environment === "indoor_outdoor";
-                return p.environment === "indoor" || p.environment === "indoor_outdoor";
+        // Priority 1: Query Prisma for active products
+        try {
+            const dbProducts = await prisma.manufacturerProduct.findMany({
+                where: {
+                    isActive: true,
+                    ...(spec.manufacturer ? { manufacturer: { equals: spec.manufacturer, mode: "insensitive" as const } } : {}),
+                },
+                orderBy: { pixelPitch: "asc" },
             });
-            if (suitable.length === 0) suitable = dbProducts;
 
-            // Sort by closeness to target pitch
-            suitable.sort((a, b) => Math.abs(a.pixelPitch - targetPitch) - Math.abs(b.pixelPitch - targetPitch));
+            if (dbProducts.length > 0) {
+                let suitable = dbProducts.filter((p) => {
+                    if (targetEnv === "outdoor") return p.environment === "outdoor" || p.environment === "indoor_outdoor";
+                    return p.environment === "indoor" || p.environment === "indoor_outdoor";
+                });
+                if (suitable.length === 0) suitable = dbProducts;
 
-            const best = suitable[0];
-            const matched: MatchedProduct = {
-                id: best.id,
-                manufacturer: best.manufacturer,
-                name: best.displayName,
-                modelNumber: best.modelNumber,
-                widthMm: best.cabinetWidthMm,
-                heightMm: best.cabinetHeightMm,
-                pitch: best.pixelPitch,
-                nits: best.maxNits,
-                weightKg: best.weightKgPerCabinet,
-                maxPowerWatts: best.maxPowerWattsPerCab,
-                supportsHalfModule: best.supportsHalfModule,
-                environment: best.environment,
-            };
+                suitable.sort((a, b) => Math.abs(a.pixelPitch - targetPitch) - Math.abs(b.pixelPitch - targetPitch));
 
-            return ProductMatcher.calculateSolution(spec, matched);
+                const best = suitable[0];
+                const matched: MatchedProduct = {
+                    id: best.id,
+                    manufacturer: best.manufacturer,
+                    name: best.displayName,
+                    modelNumber: best.modelNumber,
+                    widthMm: best.cabinetWidthMm,
+                    heightMm: best.cabinetHeightMm,
+                    pitch: best.pixelPitch,
+                    nits: best.maxNits,
+                    weightKg: best.weightKgPerCabinet,
+                    maxPowerWatts: best.maxPowerWattsPerCab,
+                    supportsHalfModule: best.supportsHalfModule,
+                    environment: best.environment,
+                };
+
+                return ProductMatcher.calculateSolution(spec, matched);
+            }
+        } catch (err) {
+            console.error("[ProductMatcher] DB query failed, falling back to catalog:", err);
         }
 
-        // Fallback: use hardcoded LED_MODULES
-        return ProductMatcher.matchFromHardcoded(spec);
+        // Priority 2: productCatalog.ts (Yaham NX rate card products)
+        return ProductMatcher.matchFromCatalog(spec);
     }
 
     /**
@@ -124,7 +145,6 @@ export class ProductMatcher {
         const targetPitch = spec.pixelPitch || (spec.isOutdoor ? 10 : 3.9);
         const pitchDelta = Math.abs(module.pitch - targetPitch);
 
-        // Confidence: high if pitch within 1mm, low if within 3mm, none beyond that
         const PITCH_HIGH_TOLERANCE = 1.0;
         const PITCH_LOW_TOLERANCE = 3.0;
         let confidence: MatchConfidence = "none";
@@ -149,37 +169,76 @@ export class ProductMatcher {
     }
 
     /**
-     * Fallback: match from hardcoded LED_MODULES when DB is empty.
+     * List all available products for a dropdown selector.
+     * Returns DB products if available, otherwise productCatalog.ts products.
      */
-    private static matchFromHardcoded(spec: ScreenSpec): MatchedSolution {
-        const candidates = Object.values(LED_MODULES).filter(m => m.id !== "default-1");
+    static async listProducts(environment?: "indoor" | "outdoor"): Promise<MatchedProduct[]> {
+        try {
+            const dbProducts = await prisma.manufacturerProduct.findMany({
+                where: { isActive: true },
+                orderBy: { pixelPitch: "asc" },
+            });
+
+            if (dbProducts.length > 0) {
+                let suitable = dbProducts;
+                if (environment) {
+                    suitable = dbProducts.filter((p) => {
+                        if (environment === "outdoor") return p.environment === "outdoor" || p.environment === "indoor_outdoor";
+                        return p.environment === "indoor" || p.environment === "indoor_outdoor";
+                    });
+                    if (suitable.length === 0) suitable = dbProducts;
+                }
+                return suitable.map((p) => ({
+                    id: p.id,
+                    manufacturer: p.manufacturer,
+                    name: p.displayName,
+                    modelNumber: p.modelNumber,
+                    widthMm: p.cabinetWidthMm,
+                    heightMm: p.cabinetHeightMm,
+                    pitch: p.pixelPitch,
+                    nits: p.maxNits,
+                    weightKg: p.weightKgPerCabinet,
+                    maxPowerWatts: p.maxPowerWattsPerCab,
+                    supportsHalfModule: p.supportsHalfModule,
+                    environment: p.environment,
+                }));
+            }
+        } catch (err) {
+            console.error("[ProductMatcher] DB query failed, falling back to catalog:", err);
+        }
+
+        // Fallback: productCatalog.ts (22 Yaham NX products)
+        const candidates = getAllProducts();
+        let suitable = candidates;
+        if (environment) {
+            suitable = candidates.filter((p) => {
+                const env = p.environment;
+                if (environment === "outdoor") return env === "Outdoor" || env === "Both";
+                return env === "Indoor" || env === "Both";
+            });
+            if (suitable.length === 0) suitable = candidates;
+        }
+        return suitable.map(catalogToMatched);
+    }
+
+    /**
+     * Fallback: match from productCatalog.ts (Yaham NX + Nitxeon products).
+     * Has exact entries for 2.5mm, 4mm, 6mm, 10mm and all Yaham variants.
+     */
+    private static matchFromCatalog(spec: ScreenSpec): MatchedSolution {
+        const candidates = getAllProducts();
         const isOutdoorRequest = spec.isOutdoor === true;
 
-        let suitable = candidates.filter(m => {
-            const isOutdoorModule = m.name.toLowerCase().includes("outdoor") || m.nits >= 5000;
-            return isOutdoorRequest ? isOutdoorModule : !isOutdoorModule;
+        let suitable = candidates.filter((p) => {
+            if (isOutdoorRequest) return p.environment === "Outdoor" || p.environment === "Both";
+            return p.environment === "Indoor" || p.environment === "Both";
         });
         if (suitable.length === 0) suitable = candidates;
 
         const targetPitch = spec.pixelPitch || (isOutdoorRequest ? 10 : 3.9);
-        suitable.sort((a, b) => Math.abs(a.pitch - targetPitch) - Math.abs(b.pitch - targetPitch));
+        suitable.sort((a, b) => Math.abs(a.pitchMm - targetPitch) - Math.abs(b.pitchMm - targetPitch));
 
-        const best = suitable[0] || LED_MODULES["DEFAULT"];
-        const matched: MatchedProduct = {
-            id: best.id,
-            manufacturer: best.manufacturer,
-            name: best.name,
-            modelNumber: best.id,
-            widthMm: best.widthMm,
-            heightMm: best.heightMm,
-            pitch: best.pitch,
-            nits: best.nits,
-            weightKg: best.weightLbs * 0.4536,
-            maxPowerWatts: best.maxPowerWatts,
-            supportsHalfModule: best.supportsHalfModule,
-            environment: best.nits >= 5000 ? "outdoor" : "indoor",
-        };
-
-        return ProductMatcher.calculateSolution(spec, matched);
+        const best = suitable[0];
+        return ProductMatcher.calculateSolution(spec, catalogToMatched(best));
     }
 }
