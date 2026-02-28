@@ -167,8 +167,9 @@ export default function RfpAnalyzerClient() {
   // Auto-save for spec edits
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Retain uploaded files for retry-after-failure
+  // Retain uploaded files and session IDs for retry-after-failure
   const lastUploadedFiles = useRef<File[]>([]);
+  const lastSessionData = useRef<{ sessionId: string; filename: string; mergeSessionIds?: string[] } | null>(null);
   // Bid form fill results (for workbook preview + results display)
   const bidFormInputRef = useRef<HTMLInputElement>(null);
   const [bidFormResult, setBidFormResult] = useState<{
@@ -360,15 +361,19 @@ export default function RfpAnalyzerClient() {
       setFileInfo({ filename: displayName, pageCount: totalPages, sizeMb: totalSizeMb });
       setEvents([{ type: "stage", stage: "uploaded", message: `Uploaded: ${totalPages.toLocaleString()} pages, ${totalSizeMb}MB` }]);
 
+      // Store session info so we can retry analysis without re-uploading
+      const sessionPayload = {
+        sessionId: uploaded[0].sessionId,
+        filename: uploaded[0].filename,
+        ...(uploaded.length > 1 ? { mergeSessionIds: uploaded.map((u) => u.sessionId) } : {}),
+      };
+      lastSessionData.current = sessionPayload;
+
       // Send all session IDs to analyze — server merges if multiple
       const response = await fetch("/api/rfp/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: uploaded[0].sessionId,
-          filename: uploaded[0].filename,
-          ...(uploaded.length > 1 ? { mergeSessionIds: uploaded.map((u) => u.sessionId) } : {}),
-        }),
+        body: JSON.stringify(sessionPayload),
         credentials: "omit",
         signal: abortRef.current.signal,
       });
@@ -396,6 +401,7 @@ export default function RfpAnalyzerClient() {
           if (!line.startsWith("data: ")) continue;
           try {
             const event: PipelineEvent = JSON.parse(line.slice(6));
+            if (event.type === "heartbeat") continue;
             setEvents((prev) => [...prev, event]);
 
             if (event.type === "complete" && event.result) {
@@ -419,6 +425,70 @@ export default function RfpAnalyzerClient() {
     } catch (err: any) {
       if (err.name === "AbortError") return;
       console.error("Pipeline error:", err);
+      setError(err.message || "Unknown error");
+      setPhase("upload");
+    }
+  }, []);
+
+  const handleResumeAnalysis = useCallback(async () => {
+    if (!lastSessionData.current) return;
+    setPhase("processing");
+    setError(null);
+    setEvents([{ type: "stage", stage: "resuming", message: "Resuming analysis (file already uploaded)..." }]);
+    setResult(null);
+    abortRef.current = new AbortController();
+
+    try {
+      const response = await fetch("/api/rfp/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(lastSessionData.current),
+        credentials: "omit",
+        signal: abortRef.current.signal,
+      });
+
+      if (!response.ok) {
+        const errBody = await response.text();
+        try { throw new Error(JSON.parse(errBody)?.error || `Pipeline failed (${response.status})`); }
+        catch { throw new Error(`Pipeline failed (${response.status})`); }
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No stream");
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event: PipelineEvent = JSON.parse(line.slice(6));
+            if (event.type === "heartbeat") continue;
+            setEvents((prev) => [...prev, event]);
+
+            if (event.type === "complete" && event.result) {
+              setResult(event.result);
+              setPhase("results");
+            }
+
+            if (event.type === "error") {
+              throw new Error(event.message || "Pipeline failed");
+            }
+          } catch (e: any) {
+            if (e.message?.includes("failed") || e.message?.includes("Pipeline")) throw e;
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err.name === "AbortError") return;
+      console.error("Resume analysis error:", err);
       setError(err.message || "Unknown error");
       setPhase("upload");
     }
@@ -987,9 +1057,22 @@ export default function RfpAnalyzerClient() {
             {error && phase === "upload" && (
               <div className="mt-6 p-5 max-w-2xl mx-auto text-center border border-destructive/20 bg-destructive/10 rounded-xl">
                 <p className="text-sm text-destructive font-medium mb-3">{error}</p>
-                <button onClick={handleReset} className="px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-muted">
-                  Try Again
-                </button>
+                <div className="flex items-center justify-center gap-3">
+                  {lastSessionData.current && (
+                    <button
+                      onClick={handleResumeAnalysis}
+                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 inline-flex items-center gap-2"
+                    >
+                      <RefreshCcw className="w-4 h-4" /> Resume Analysis
+                    </button>
+                  )}
+                  <button onClick={handleRetry} className="px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-muted">
+                    {lastSessionData.current ? "Re-upload File" : "Try Again"}
+                  </button>
+                </div>
+                {lastSessionData.current && (
+                  <p className="text-xs text-muted-foreground mt-2">File already uploaded — resume skips the upload step</p>
+                )}
               </div>
             )}
           </>

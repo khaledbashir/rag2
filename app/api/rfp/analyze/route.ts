@@ -139,12 +139,24 @@ export async function POST(request: NextRequest) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type, ...data })}\n\n`));
       };
 
+      // Global heartbeat — keeps SSE alive across ALL phases.
+      // Without this, EasyPanel's Caddy proxy kills idle connections after ~120s,
+      // causing "network error" on large files where pdftotext/pdfimages can run 2+ min.
+      const HEARTBEAT_INTERVAL_MS = 20_000;
+      let lastHeartbeatStage = "initializing";
+      const globalHeartbeat = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "heartbeat", stage: lastHeartbeatStage, elapsed: Date.now() - startTime })}\n\n`));
+        } catch { /* stream already closed */ }
+      }, HEARTBEAT_INTERVAL_MS);
+
       const startTime = Date.now();
 
       try {
         // =============================================================
         // STEP 1: Get file info
         // =============================================================
+        lastHeartbeatStage = "reading";
         send("stage", { stage: "reading", message: "Loading PDF..." });
         const fileStat = await stat(filePath);
         const sizeMb = (fileStat.size / 1024 / 1024).toFixed(1);
@@ -154,6 +166,7 @@ export async function POST(request: NextRequest) {
         // Uses poppler-utils CLI, reads from disk, zero memory in Node.js.
         // No network transfer (unlike Kreuzberg which chokes on 631MB).
         // =============================================================
+        lastHeartbeatStage = "ocr";
         send("stage", {
           stage: "ocr",
           message: `Extracting text from all pages (${sizeMb}MB)...`,
@@ -246,6 +259,7 @@ export async function POST(request: NextRequest) {
         // =============================================================
         // STEP 3: Keyword triage — generous, keeps anything relevant
         // =============================================================
+        lastHeartbeatStage = "triaging";
         send("stage", {
           stage: "triaging",
           message: `Classifying ${ocrResult.totalPages.toLocaleString()} pages...`,
@@ -422,6 +436,7 @@ export async function POST(request: NextRequest) {
 
           // 4b: Drawing pages — convert to JPEG + Mistral vision OCR
           if (drawingPages.length > 0) {
+            lastHeartbeatStage = "vision";
             send("stage", {
               stage: "vision",
               message: `Vision model reading ${drawingPages.length} drawing pages...`,
@@ -505,6 +520,7 @@ export async function POST(request: NextRequest) {
         let incompleteSpecs: any[] = [];
 
         if (analyzedPages.length > 0) {
+          lastHeartbeatStage = "extracting";
           send("stage", {
             stage: "extracting",
             message: `AI extracting LED specs from ${analyzedPages.length} pages...`,
@@ -588,7 +604,7 @@ export async function POST(request: NextRequest) {
           isDrawing: p.isDrawing,
         }));
 
-        // Save to database and persist the PDF file
+        lastHeartbeatStage = "saving";
         let analysisId: string | null = null;
         let persistentPdfPath: string | null = null;
         try {
@@ -686,6 +702,7 @@ export async function POST(request: NextRequest) {
       } catch (err: any) {
         send("error", { message: err.message || "Pipeline failed" });
       } finally {
+        clearInterval(globalHeartbeat);
         controller.close();
       }
     },
