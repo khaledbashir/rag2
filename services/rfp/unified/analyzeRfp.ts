@@ -14,6 +14,7 @@
 import { extractWithMistral, type MistralOcrPage } from "./mistralOcrClient";
 import { classifyAllPages, getPagesNeedingVision } from "./pageClassifier";
 import { analyzeDrawings, extractSpecsFromText } from "./geminiVision";
+import { isLlamaVisionAvailable, extractSpecsWithLlama } from "./llamaVision";
 import type {
   RFPAnalysisResult,
   AnalyzedPage,
@@ -163,9 +164,34 @@ export async function analyzeRfp(
   let projectInfo: any = null;
 
   if (relevantTextPages.length > 0) {
-    const textResult = await extractSpecsFromText(relevantTextPages);
-    textSpecs = textResult.screens;
-    projectInfo = textResult.project;
+    // Primary: Gemini spec extraction
+    try {
+      const textResult = await extractSpecsFromText(relevantTextPages);
+      textSpecs = textResult.screens;
+      projectInfo = textResult.project;
+    } catch (geminiErr) {
+      console.error("[AnalyzeRFP] Gemini spec extraction failed:", geminiErr);
+    }
+
+    // Fallback: If Gemini returned nothing and Llama Vision is available, try Llama
+    if (textSpecs.length === 0 && isLlamaVisionAvailable()) {
+      console.log("[AnalyzeRFP] Gemini returned 0 specs — falling back to Llama Vision");
+      onProgress?.({
+        stage: "extracting",
+        percent: 75,
+        message: "Retrying extraction with Llama Vision fallback...",
+      });
+      try {
+        const llamaResult = await extractSpecsWithLlama(relevantTextPages);
+        textSpecs = llamaResult.screens;
+        if (!projectInfo) projectInfo = llamaResult.project;
+        if (textSpecs.length > 0) {
+          console.log(`[AnalyzeRFP] Llama Vision fallback found ${textSpecs.length} specs`);
+        }
+      } catch (llamaErr) {
+        console.error("[AnalyzeRFP] Llama Vision fallback also failed:", llamaErr);
+      }
+    }
   }
 
   // =========================================================================

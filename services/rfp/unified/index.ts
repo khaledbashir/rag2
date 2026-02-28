@@ -6,6 +6,7 @@ export { analyzeRfp } from "./analyzeRfp";
 export { extractWithMistral, extractSinglePage, mistralOcrHealthCheck } from "./mistralOcrClient";
 export { classifyAllPages, getPagesNeedingVision } from "./pageClassifier";
 export { extractLEDSpecs, extractLEDSpecsBatched } from "./specExtractor";
+export { isLlamaVisionAvailable, llamaVisionHealthCheck, analyzeDrawingWithLlama, extractSpecsWithLlama } from "./llamaVision";
 
 export type {
   RFPAnalysisResult,
