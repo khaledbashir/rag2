@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Check, X, Lock, Users as UsersIcon, AlertTriangle, Plus, Pencil, Trash2, Eye, EyeOff } from "lucide-react";
+import { Check, X, Lock, Users as UsersIcon, AlertTriangle, Plus, Pencil, Trash2, Eye, EyeOff, FileText, Activity, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -31,10 +31,55 @@ interface User {
   name: string | null;
   role: UserRole;
   lastLogin: string | null;
+  proposalCount: number;
+  activityCount: number;
+  lastActivity: string | null;
+  lastAction: string | null;
+}
+
+interface Totals {
+  totalUsers: number;
+  totalProposals: number;
+  activeThisWeek: number;
 }
 
 interface AdminUsersClientProps {
   initialUsers: User[];
+  totals: Totals;
+}
+
+// Action label formatting
+const ACTION_LABELS: Record<string, string> = {
+  created: "Created proposal",
+  excel_imported: "Imported Excel",
+  data_exported: "Exported data",
+  client_name_updated: "Updated client",
+  status_changed: "Changed status",
+  document_mode_changed: "Changed mode",
+  text_edited: "Edited text",
+  CLIENT_ANNOTATION_BATCH: "Client annotations",
+  CLIENT_CHANGE_REQUEST: "Change request",
+  CHANGE_REQUEST_STATUS: "Resolved request",
+};
+
+function formatAction(action: string): string {
+  return ACTION_LABELS[action] || action.replace(/_/g, " ").toLowerCase();
+}
+
+function timeAgo(dateStr: string): string {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+  return new Date(dateStr).toLocaleDateString();
 }
 
 // Permission groupings for display
@@ -44,13 +89,13 @@ const PERMISSION_GROUPS = {
   "Rate Card": ["export:pdf", "export:excel_audit", "export:share_link"] as Permission[],
   "Product Catalog": ["view:costs", "view:margins", "view:selling_price", "view:internal_audit"] as Permission[],
   "Pricing Logic": ["branding:edit"] as Permission[],
-  "Mirror Mode": [] as Permission[], // Placeholder
+  "Mirror Mode": [] as Permission[],
   "Intelligence Mode": ["ai:run_extraction", "ai:chat"] as Permission[],
   Finance: ["export:excel_audit"] as Permission[],
-  Admin: [] as Permission[], // Placeholder for admin-only features
+  Admin: [] as Permission[],
 };
 
-export default function AdminUsersClient({ initialUsers }: AdminUsersClientProps) {
+export default function AdminUsersClient({ initialUsers, totals }: AdminUsersClientProps) {
   const [users, setUsers] = useState<User[]>(initialUsers);
   const [selectedRole, setSelectedRole] = useState<{ userId: string; newRole: UserRole } | null>(null);
   const [isChanging, setIsChanging] = useState(false);
@@ -80,7 +125,7 @@ export default function AdminUsersClient({ initialUsers }: AdminUsersClientProps
         throw new Error(error.error || "Failed to create user");
       }
       const { user } = await res.json();
-      setUsers(prev => [...prev, { ...user, lastLogin: null }]);
+      setUsers(prev => [...prev, { ...user, lastLogin: null, proposalCount: 0, activityCount: 0, lastActivity: null, lastAction: null }]);
       toast({ title: "User Created", description: `${user.email} added as ${getRoleInfo(user.role).label}` });
       setShowAddUser(false);
       setNewUser({ email: "", name: "", password: "", role: "VIEWER" });
@@ -155,6 +200,7 @@ export default function AdminUsersClient({ initialUsers }: AdminUsersClientProps
   }, {} as Record<UserRole, number>);
 
   const adminCount = roleStats.ADMIN || 0;
+  const topContributor = [...users].sort((a, b) => b.proposalCount - a.proposalCount)[0];
 
   const handleRoleChange = async () => {
     if (!selectedRole) return;
@@ -203,46 +249,74 @@ export default function AdminUsersClient({ initialUsers }: AdminUsersClientProps
 
   return (
     <div className="space-y-8">
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Platform Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Users</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <UsersIcon className="w-4 h-4" />
+              Total Users
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{users.length}</div>
+            <div className="text-3xl font-bold">{totals.totalUsers}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {adminCount} admin{adminCount !== 1 ? "s" : ""} · {roleStats.ESTIMATOR || 0} estimator{(roleStats.ESTIMATOR || 0) !== 1 ? "s" : ""}
+            </p>
           </CardContent>
         </Card>
+
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Admins</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              Total Proposals
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-2">
-              <div className="text-2xl font-bold">{adminCount}</div>
-              {adminCount === 1 && (
-                <AlertTriangle className="w-4 h-4 text-amber-500" />
-              )}
-            </div>
-            {adminCount === 1 && (
-              <p className="text-xs text-amber-600 mt-1">Only 1 admin — consider adding a backup</p>
+            <div className="text-3xl font-bold">{totals.totalProposals}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Across all users
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Activity className="w-4 h-4" />
+              Active This Week
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{totals.activeThisWeek}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Logged in within 7 days
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              Top Contributor
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {topContributor && topContributor.proposalCount > 0 ? (
+              <>
+                <div className="text-lg font-bold truncate">{topContributor.name || topContributor.email.split("@")[0]}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {topContributor.proposalCount} proposal{topContributor.proposalCount !== 1 ? "s" : ""} created
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="text-lg font-bold text-muted-foreground">—</div>
+                <p className="text-xs text-muted-foreground mt-1">No proposals yet</p>
+              </>
             )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Estimators</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{roleStats.ESTIMATOR || 0}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Viewers</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{roleStats.VIEWER || 0}</div>
           </CardContent>
         </Card>
       </div>
@@ -267,10 +341,12 @@ export default function AdminUsersClient({ initialUsers }: AdminUsersClientProps
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">User</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Email</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Current Role</th>
+                  <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">Proposals</th>
+                  <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">Actions</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Last Activity</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Last Login</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Actions</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground"></th>
                 </tr>
               </thead>
               <tbody>
@@ -280,8 +356,8 @@ export default function AdminUsersClient({ initialUsers }: AdminUsersClientProps
                     <tr key={user.id} className="border-b border-border hover:bg-muted/30 transition-colors">
                       <td className="py-3 px-4">
                         <div className="font-medium text-foreground">{user.name || "—"}</div>
+                        <div className="text-xs text-muted-foreground">{user.email}</div>
                       </td>
-                      <td className="py-3 px-4 text-sm text-muted-foreground">{user.email}</td>
                       <td className="py-3 px-4">
                         <Select
                           value={user.role}
@@ -289,7 +365,7 @@ export default function AdminUsersClient({ initialUsers }: AdminUsersClientProps
                             setSelectedRole({ userId: user.id, newRole });
                           }}
                         >
-                          <SelectTrigger className="w-[200px]">
+                          <SelectTrigger className="w-[180px]">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -307,8 +383,38 @@ export default function AdminUsersClient({ initialUsers }: AdminUsersClientProps
                           </SelectContent>
                         </Select>
                       </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className={cn(
+                          "inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full text-sm font-medium",
+                          user.proposalCount > 0
+                            ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                            : "text-muted-foreground"
+                        )}>
+                          {user.proposalCount}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className={cn(
+                          "inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full text-sm font-medium",
+                          user.activityCount > 0
+                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                            : "text-muted-foreground"
+                        )}>
+                          {user.activityCount}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        {user.lastActivity ? (
+                          <div>
+                            <div className="text-sm text-foreground">{formatAction(user.lastAction || "")}</div>
+                            <div className="text-xs text-muted-foreground">{timeAgo(user.lastActivity)}</div>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        )}
+                      </td>
                       <td className="py-3 px-4 text-sm text-muted-foreground">
-                        {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : "Never"}
+                        {user.lastLogin ? timeAgo(user.lastLogin) : "Never"}
                       </td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -598,6 +704,14 @@ export default function AdminUsersClient({ initialUsers }: AdminUsersClientProps
                   <p>
                     Are you sure you want to permanently delete <span className="font-semibold">{deleteUser.name || deleteUser.email}</span>?
                   </p>
+                  {deleteUser.proposalCount > 0 && (
+                    <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-sm text-amber-900 dark:text-amber-100">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <span>This user has {deleteUser.proposalCount} proposal{deleteUser.proposalCount !== 1 ? "s" : ""}. The proposals will remain but lose their creator reference.</span>
+                      </div>
+                    </div>
+                  )}
                   <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-sm text-destructive">
                     <div className="flex items-start gap-2">
                       <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
