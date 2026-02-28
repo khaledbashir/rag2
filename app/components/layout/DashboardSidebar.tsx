@@ -29,6 +29,7 @@ import {
     FileSpreadsheet,
     PanelLeftClose,
     PanelLeftOpen,
+    Radio,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRbac } from "@/hooks/useRbac";
@@ -105,6 +106,7 @@ export default function DashboardSidebar() {
         : "Viewer";
 
     const isAdmin = mounted ? session?.user?.authRole === "admin" : false;
+    const isPlatformOwner = mounted ? (session?.user?.email?.toLowerCase() === (process.env.NEXT_PUBLIC_PLATFORM_OWNER_EMAIL || "ahmad@assisted.vip").toLowerCase()) : false;
 
     const canAccess = (allowedRoles: UserRole[] | null): boolean => {
         if (!allowedRoles) return true;
@@ -346,6 +348,30 @@ export default function DashboardSidebar() {
                                 </div>
                             )}
                         </div>
+
+                        {isPlatformOwner && (
+                            <div className="px-6 pb-4">
+                                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                                    Platform
+                                    <span className="text-xs bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded">Vendor</span>
+                                </h3>
+                                <div className="space-y-1">
+                                    <Link
+                                        href="/admin/ops"
+                                        onClick={() => setIsSettingsOpen(false)}
+                                        className={cn(
+                                            "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
+                                            isActive("/admin/ops")
+                                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                                : "text-foreground hover:bg-accent",
+                                        )}
+                                    >
+                                        <Radio className="w-5 h-5" />
+                                        <span className="text-sm font-medium">Operations</span>
+                                    </Link>
+                                </div>
+                            </div>
+                        )}
 
                         <div className="px-6 py-4 border-t border-border bg-muted/30">
                             <p className="text-xs text-muted-foreground">ANC Proposal Engine</p>
