@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
@@ -24,9 +24,12 @@ import {
   Plus,
   ExternalLink,
   ChevronDown,
+  RefreshCcw,
 } from "lucide-react";
 import SpecsTable from "../../_components/SpecsTable";
 import RequirementsTable from "../../_components/RequirementsTable";
+import { buildRfpWorkbook } from "../../_components/rfpWorkbookBuilder";
+import WorkbookShell from "@/app/components/reusables/WorkbookShell";
 import type { ExtractedLEDSpec, ExtractedRequirement } from "@/services/rfp/unified/types";
 
 // ============================================================================
@@ -90,6 +93,9 @@ export default function AnalysisDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"specs" | "requirements" | "triage">("specs");
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [pricingPreview, setPricingPreview] = useState<any>(null);
+  const [loadingPricing, setLoadingPricing] = useState(false);
+  const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string }>>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -113,6 +119,79 @@ export default function AnalysisDetailPage() {
       }
     })();
   }, [id]);
+
+  // Auto-load pricing when analysis loads
+  const autoPreviewPricing = useCallback(async (analysisData: FullAnalysis) => {
+    if (!analysisData.screens?.length) return;
+    setLoadingPricing(true);
+    try {
+      const res = await fetch("/api/rfp/pipeline/pricing-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          analysisId: analysisData.id,
+          specs: analysisData.screens,
+          project: analysisData.project,
+          quotes: [],
+          includeBond: analysisData.project?.bondRequired || false,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPricingPreview(data);
+      }
+    } catch (err) {
+      console.error("[history] Pricing preview failed:", err);
+    } finally {
+      setLoadingPricing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (analysis && analysis.screens?.length > 0 && !pricingPreview && !loadingPricing) {
+      autoPreviewPricing(analysis);
+    }
+  }, [analysis, pricingPreview, loadingPricing, autoPreviewPricing]);
+
+  // Load products for dropdown
+  useEffect(() => {
+    if (!analysis || availableProducts.length > 0) return;
+    fetch("/api/rfp/pipeline/products")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.products) setAvailableProducts(data.products); })
+      .catch(() => {});
+  }, [analysis, availableProducts.length]);
+
+  const handleProductSelect = useCallback((displayName: string, productId: string) => {
+    const product = availableProducts.find((p) => p.id === productId);
+    if (!product || !pricingPreview) return;
+    setPricingPreview((prev: any) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        displays: prev.displays.map((d: any) =>
+          d.name === displayName
+            ? { ...d, matchedProduct: { manufacturer: product.name.split(" ")[0], model: product.name, pitch: product.pitch, fitScore: 100 } }
+            : d
+        ),
+      };
+    });
+  }, [availableProducts, pricingPreview]);
+
+  const workbookData = useMemo(() => {
+    if (!analysis) return { fileName: "RFP Analysis", sheets: [] };
+    return buildRfpWorkbook({
+      project: analysis.project,
+      screens: analysis.screens || [],
+      requirements: analysis.requirements || [],
+      triage: analysis.triage || [],
+      pricingDisplays: pricingPreview?.displays || [],
+      pricingSummary: pricingPreview?.summary || null,
+      bidFormResult: null,
+      availableProducts,
+      onProductSelect: handleProductSelect,
+    });
+  }, [analysis, pricingPreview, availableProducts, handleProductSelect]);
 
   // Download helper
   const downloadBlob = async (url: string, body: object, fallbackName: string) => {
@@ -309,7 +388,7 @@ export default function AnalysisDetailPage() {
             sub={`${Math.round((a.relevantPages / a.pageCount) * 100)}% kept`}
             accent="text-emerald-500"
           />
-          <StatCard icon={Monitor} label="LED Displays" value={a.specsFound.toString()} accent="text-primary" />
+          <StatCard icon={Monitor} label="LED Displays" value={(screens.length || a.specsFound).toString()} accent="text-primary" />
           <StatCard
             icon={AlertTriangle}
             label="Requirements"
@@ -367,6 +446,30 @@ export default function AnalysisDetailPage() {
             <TriageMinimap triage={triage} />
           </div>
         )}
+
+        {/* Workbook with pricing */}
+        {loadingPricing && (
+          <div className="p-3 border border-blue-500/30 bg-blue-500/10 rounded-lg flex items-center gap-3">
+            <Loader2 className="w-4 h-4 text-blue-600 animate-spin shrink-0" />
+            <p className="text-sm text-blue-700 dark:text-blue-300">Matching products and calculating pricing...</p>
+          </div>
+        )}
+        {!loadingPricing && !pricingPreview && screens.length > 0 && (
+          <div className="p-3 border border-amber-500/30 bg-amber-500/10 rounded-lg flex items-center gap-3">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <p className="text-sm text-amber-700 dark:text-amber-300 flex-1">
+              Product matching hasn&apos;t loaded yet.
+            </p>
+            <button
+              onClick={() => analysis && autoPreviewPricing(analysis)}
+              className="px-3 py-1.5 bg-amber-600 text-white rounded-md text-xs font-medium hover:bg-amber-700 inline-flex items-center gap-1.5"
+            >
+              <RefreshCcw className="w-3 h-3" />
+              Match Products
+            </button>
+          </div>
+        )}
+        <WorkbookShell data={workbookData} />
       </main>
     </div>
   );
