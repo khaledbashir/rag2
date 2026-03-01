@@ -151,6 +151,7 @@ export default function RfpAnalyzerClient() {
   const [quoteImportResult, setQuoteImportResult] = useState<any>(null);
   const [pricingPreview, setPricingPreview] = useState<PricingPreview | null>(null);
   const [loadingPricing, setLoadingPricing] = useState(false);
+  const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string }>>([]);
   const [resultsTab, setResultsTab] = useState<string>("displays");
   const [customTabs, setCustomTabs] = useState<Array<{ id: string; name: string; content: string }>>([]);
   const [drawingUpload, setDrawingUpload] = useState<{ uploading: boolean; results: Array<{ filename: string; pages: number }> }>({ uploading: false, results: [] });
@@ -214,23 +215,50 @@ export default function RfpAnalyzerClient() {
       pricingDisplays: pricingPreview?.displays || [],
       pricingSummary: pricingPreview?.summary || null,
       bidFormResult: bidFormResult || null,
+      availableProducts,
+      onProductSelect: handleProductSelect,
       onSourcePageClick: (pg) => {
         setPdfViewerPage(pg);
         setShowPdfPanel(true);
       },
     });
-  }, [result, pricingPreview, requirements, bidFormResult]);
+  }, [result, pricingPreview, requirements, bidFormResult, availableProducts, handleProductSelect]);
 
   // ========================================================================
   // Auto-run pricing when extraction completes (no manual step needed)
   // ========================================================================
 
   useEffect(() => {
-    if (result?.id && result.screens.length > 0 && !pricingPreview && !loadingPricing) {
+    if (result && result.screens.length > 0 && !pricingPreview && !loadingPricing) {
       autoPreviewPricing([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result?.id]);
+  }, [result?.id, result?.screens?.length]);
+
+  // Load available products for the dropdown selector
+  useEffect(() => {
+    if (!result?.id || availableProducts.length > 0) return;
+    fetch("/api/rfp/pipeline/products")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.products) setAvailableProducts(data.products); })
+      .catch((err) => console.error("[RFP] Failed to load products:", err));
+  }, [result?.id, availableProducts.length]);
+
+  const handleProductSelect = useCallback((displayName: string, productId: string) => {
+    const product = availableProducts.find((p) => p.id === productId);
+    if (!product || !pricingPreview) return;
+    setPricingPreview((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        displays: prev.displays.map((d) =>
+          d.name === displayName
+            ? { ...d, matchedProduct: { manufacturer: product.name.split(" ")[0], model: product.name, pitch: product.pitch, fitScore: 100 } }
+            : d
+        ),
+      };
+    });
+  }, [availableProducts, pricingPreview]);
 
   // Initialize enabled categories from triage data — relevant pages on, boilerplate off
   useEffect(() => {
@@ -630,22 +658,29 @@ export default function RfpAnalyzerClient() {
 
   // Auto-trigger pricing after quote import (accepts quotes directly so we don't depend on stale state)
   const autoPreviewPricing = async (quotes: any[]) => {
-    if (!result?.id) return;
+    if (!result || result.screens.length === 0) return;
     setLoadingPricing(true);
     try {
       const res = await fetch("/api/rfp/pipeline/pricing-preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          analysisId: result.id,
+          analysisId: result.id || undefined,
+          specs: result.screens,
+          project: result.project,
           quotes,
           includeBond: result.project.bondRequired,
         }),
       });
-      if (!res.ok) throw new Error(`Pricing failed (${res.status})`);
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        console.error(`[pricing-preview] ${res.status}:`, errBody);
+        throw new Error(`Pricing failed (${res.status})`);
+      }
       const data = await res.json();
       setPricingPreview(data);
     } catch (err: any) {
+      console.error("[autoPreviewPricing] Error:", err);
       setError(err.message);
     } finally {
       setLoadingPricing(false);
@@ -1042,7 +1077,7 @@ export default function RfpAnalyzerClient() {
           resultsTab={resultsTab}
           hasResult={!!result}
           hasPricing={!!pricingPreview}
-          specsFound={result?.stats.specsFound || 0}
+          specsFound={result?.screens?.length || result?.stats.specsFound || 0}
           onTabSwitch={setResultsTab}
         />
 
@@ -1143,7 +1178,7 @@ export default function RfpAnalyzerClient() {
                 accent="text-emerald-500"
               />
               <StatCard icon={FileText} label="Noise Filtered" value={result.stats.noisePages.toString()} sub="auto-removed" />
-              <StatCard icon={Monitor} label="LED Displays" value={result.stats.specsFound.toString()} accent="text-primary" />
+              <StatCard icon={Monitor} label="LED Displays" value={(result.screens.length || result.stats.specsFound).toString()} accent="text-primary" />
               <StatCard
                 icon={AlertTriangle}
                 label="Requirements"
@@ -1207,6 +1242,29 @@ export default function RfpAnalyzerClient() {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* ============ PRICING STATUS ============ */}
+            {result.screens.length > 0 && !pricingPreview && !loadingPricing && (
+              <div className="p-3 border border-amber-500/30 bg-amber-500/10 rounded-lg flex items-center gap-3">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <p className="text-sm text-amber-700 dark:text-amber-300 flex-1">
+                  Product matching hasn&apos;t loaded yet. The Product, $/sqft, and Total Cost columns may be empty.
+                </p>
+                <button
+                  onClick={() => autoPreviewPricing([])}
+                  className="px-3 py-1.5 bg-amber-600 text-white rounded-md text-xs font-medium hover:bg-amber-700 inline-flex items-center gap-1.5 whitespace-nowrap"
+                >
+                  <RefreshCcw className="w-3 h-3" />
+                  Match Products
+                </button>
+              </div>
+            )}
+            {loadingPricing && (
+              <div className="p-3 border border-blue-500/30 bg-blue-500/10 rounded-lg flex items-center gap-3">
+                <Loader2 className="w-4 h-4 text-blue-600 animate-spin shrink-0" />
+                <p className="text-sm text-blue-700 dark:text-blue-300">Matching products and calculating pricing...</p>
               </div>
             )}
 

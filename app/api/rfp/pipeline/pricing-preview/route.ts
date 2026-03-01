@@ -4,8 +4,14 @@
  * Preview pricing for all specs without generating Excel.
  * Returns JSON with priced displays for the UI to render.
  *
+ * Accepts specs from EITHER:
+ *   1. analysisId → loads from DB (existing flow)
+ *   2. specs[] + project → inline from client state (fallback when DB save failed)
+ *
  * Body: {
- *   analysisId: string,
+ *   analysisId?: string,
+ *   specs?: ExtractedLEDSpec[],
+ *   project?: ExtractedProjectInfo,
  *   quotes?: QuotedSpec[],
  *   zoneClass?: string,
  *   installComplexity?: string,
@@ -29,21 +35,32 @@ export async function POST(request: NextRequest) {
       includeBond = false,
     } = body;
 
-    if (!analysisId) {
-      return NextResponse.json({ error: "analysisId is required" }, { status: 400 });
+    let specs: ExtractedLEDSpec[] = [];
+    let project: ExtractedProjectInfo = {} as ExtractedProjectInfo;
+
+    // Priority 1: Load from DB by analysisId
+    if (analysisId) {
+      const analysis = await prisma.rfpAnalysis.findUnique({ where: { id: analysisId } });
+      if (analysis) {
+        specs = (analysis.screens as unknown as ExtractedLEDSpec[]) || [];
+        project = (analysis.project as unknown as ExtractedProjectInfo) || {};
+      } else {
+        console.warn(`[pricing-preview] Analysis ${analysisId} not found in DB`);
+      }
     }
 
-    const analysis = await prisma.rfpAnalysis.findUnique({ where: { id: analysisId } });
-    if (!analysis) {
-      return NextResponse.json({ error: "Analysis not found" }, { status: 404 });
+    // Priority 2: Use inline specs from client state (fallback)
+    if (specs.length === 0 && body.specs?.length > 0) {
+      console.log("[pricing-preview] Using inline specs from client state");
+      specs = body.specs;
+      project = body.project || {};
     }
-
-    const specs = (analysis.screens as unknown as ExtractedLEDSpec[]) || [];
-    const project = (analysis.project as unknown as ExtractedProjectInfo) || {};
 
     if (specs.length === 0) {
-      return NextResponse.json({ error: "No LED specs found in this analysis" }, { status: 400 });
+      return NextResponse.json({ error: "No LED specs found" }, { status: 400 });
     }
+
+    console.log(`[pricing-preview] Pricing ${specs.length} specs (source: ${analysisId ? "db" : "inline"})`);
 
     const { pricedDisplays } = await generateRateCardExcel({
       project,

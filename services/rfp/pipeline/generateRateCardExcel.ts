@@ -159,9 +159,21 @@ async function priceDisplay(
   let costSource: PricedDisplay["costSource"] = "rate_card";
   let rateCardEstimate: number | null = null;
 
-  // Always compute rate card estimate for delta comparison
-  const pitchKey = spec.pixelPitchMm != null ? String(spec.pixelPitchMm) : null;
-  const ratePerSqFt = pitchKey ? LED_COST_PER_SQFT_BY_PITCH[pitchKey] : null;
+  // Always compute rate card estimate for delta comparison.
+  // Exact key match first, then nearest pitch within 0.5mm tolerance.
+  const pitchVal = spec.pixelPitchMm;
+  let ratePerSqFt: number | null = null;
+  if (pitchVal != null) {
+    const exactKey = String(pitchVal);
+    ratePerSqFt = LED_COST_PER_SQFT_BY_PITCH[exactKey] ?? null;
+    if (!ratePerSqFt) {
+      const pitchKeys = Object.keys(LED_COST_PER_SQFT_BY_PITCH).map(Number).filter((n) => !isNaN(n));
+      const nearest = pitchKeys.reduce((best, k) => Math.abs(k - pitchVal) < Math.abs(best - pitchVal) ? k : best, pitchKeys[0]);
+      if (nearest != null && Math.abs(nearest - pitchVal) <= 0.5) {
+        ratePerSqFt = LED_COST_PER_SQFT_BY_PITCH[String(nearest)] ?? null;
+      }
+    }
+  }
   if (ratePerSqFt && ratePerSqFt > 0) {
     rateCardEstimate = round2(ratePerSqFt * areaSqFt * spec.quantity);
   }
@@ -178,14 +190,14 @@ async function priceDisplay(
     } else {
       // Priority 3: Product match
       try {
-        const match = await ProductMatcher.matchProduct({
+        const matchForCost = await ProductMatcher.matchProduct({
           widthFt,
           heightFt,
           pixelPitch: spec.pixelPitchMm ?? undefined,
           isOutdoor: spec.environment === "outdoor",
         });
         const product = getProductByPitch(
-          match.module.pitch,
+          matchForCost.module.pitch,
           spec.environment === "outdoor" ? "Outdoor" : "Indoor",
         );
         if (product) {
@@ -195,13 +207,13 @@ async function priceDisplay(
         } else {
           costSource = "no_match";
         }
-      } catch {
+      } catch (err: any) {
+        console.error(`[priceDisplay] Cost-source product match failed for "${spec.name}":`, err?.message || err);
         costSource = "no_match";
       }
     }
   }
 
-  // Try product matching for solution details
   let match: MatchedSolution | null = null;
   try {
     match = await ProductMatcher.matchProduct({
@@ -210,7 +222,14 @@ async function priceDisplay(
       pixelPitch: spec.pixelPitchMm ?? undefined,
       isOutdoor: spec.environment === "outdoor",
     });
-  } catch { /* no match */ }
+    if (match) {
+      console.log(`[priceDisplay] ✓ Matched "${spec.name}" → ${match.module.name} (pitch=${match.module.pitch}mm, fit=${match.fitScore}%, conf=${match.confidence})`);
+    } else {
+      console.warn(`[priceDisplay] ✗ No match for "${spec.name}" (pitch=${spec.pixelPitchMm}, ${widthFt}'×${heightFt}', ${spec.environment})`);
+    }
+  } catch (err: any) {
+    console.error(`[priceDisplay] ✗ ProductMatcher THREW for "${spec.name}" (pitch=${spec.pixelPitchMm}, ${widthFt}'×${heightFt}'):`, err?.message || err);
+  }
 
   // Calculate install/services costs using productCatalog's estimatePricing
   const pitchMm = spec.pixelPitchMm || (match?.module?.pitch) || (spec.environment === "outdoor" ? 10 : 3.9);
