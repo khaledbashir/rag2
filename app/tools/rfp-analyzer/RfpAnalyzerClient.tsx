@@ -1418,7 +1418,7 @@ export default function RfpAnalyzerClient() {
             {/* ============ WORKBOOK VIEW ============ */}
             <div className="flex gap-3">
             {/* Left: Workbook */}
-            <div className={showPdfPanel && pdfBlobUrl ? "flex-1 min-w-0" : "w-full"}>
+            <div className={showPdfPanel && pdfBlobUrl ? "flex-1 min-w-0 h-[75vh]" : "w-full h-[75vh]"}>
               <WorkbookShell
                 data={workbookData}
                 editable

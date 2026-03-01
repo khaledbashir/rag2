@@ -500,12 +500,11 @@ export default function AnalysisDetailPage() {
                 <p className="text-sm text-blue-700 dark:text-blue-300">Matching products...</p>
               </div>
             )}
+            <div className="h-[75vh]">
             <WorkbookShell
               data={workbookData}
               editable
               onCellEdit={handleCellEdit}
-              activeTab={0}
-              onTabChange={() => {}}
               footer={autoSaveStatus !== "idle" ? (
                 <div className="px-4 py-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
                   {autoSaveStatus === "saving" && <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</>}
@@ -514,6 +513,7 @@ export default function AnalysisDetailPage() {
                 </div>
               ) : undefined}
             />
+            </div>
           </div>
         )}
 
@@ -575,6 +575,7 @@ export default function AnalysisDetailPage() {
                 </button>
               </div>
             )}
+            <div className="h-[75vh]">
             <WorkbookShell
               data={workbookData}
               editable
@@ -589,6 +590,7 @@ export default function AnalysisDetailPage() {
                 </div>
               ) : undefined}
             />
+            </div>
           </div>
         )}
 
