@@ -352,11 +352,13 @@ function CellView({ cell, editable, isEditing, onClick, onChange, onBlur }: Cell
         )}
       >
         <select
-          value={String(cell.value)}
-          onChange={(e) => cell.onDropdownChange?.(e.target.value)}
-          className="w-full h-full text-xs bg-transparent border-none outline-none cursor-pointer hover:bg-blue-50/50 dark:hover:bg-blue-900/20"
+          value={String(cell.value || "")}
+          onChange={(e) => {
+            if (cell.onDropdownChange) cell.onDropdownChange(e.target.value);
+          }}
+          className="w-full text-xs bg-white dark:bg-zinc-900 border border-border rounded px-1 py-0.5 cursor-pointer focus:ring-1 focus:ring-blue-400 focus:outline-none appearance-auto"
         >
-          {!cell.value && <option value="">Select product...</option>}
+          <option value="">Select product...</option>
           {cell.dropdown.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}

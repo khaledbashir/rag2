@@ -156,9 +156,14 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
           .map((p) => ({ value: p.id, label: p.label }))
       : undefined;
 
+    // Find the matched product's ID so the <select> value matches an <option>
+    const matchedProductId = mp && input.availableProducts
+      ? input.availableProducts.find((p) => p.name === mp.model || p.label === mp.model)?.id || ""
+      : "";
+
     const productCell: SheetCell = dropdownOpts && dropdownOpts.length > 0
       ? {
-          value: productLabel,
+          value: matchedProductId,
           dropdown: dropdownOpts,
           onDropdownChange: input.onProductSelect
             ? (val: string) => input.onProductSelect!(spec.name, val)
