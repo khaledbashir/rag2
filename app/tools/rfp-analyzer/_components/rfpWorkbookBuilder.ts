@@ -127,7 +127,6 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     // Try to find matching pricing display
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
     const mp = pd?.matchedProduct;
-    const hwCost = pd?.hardwareCost ?? 0;
 
     // Use actual product dimensions if available, otherwise bid spec
     const activeH = mp?.activeHeightFt ?? bidH;
@@ -136,7 +135,12 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const activePxW = mp?.resolutionX ?? bidWPx;
     const activeSqFt = activeH * activeW * qty;
 
-    const costPerSqFt = activeSqFt > 0 ? hwCost / activeSqFt : 0;
+    // Derive stable $/sqft rate from pricing data, then recalculate cost
+    // When user changes QTY or dimensions, cost scales proportionally
+    const pricingSqFt = pd?.areaSqFt ?? 0; // original total sqft from pricing
+    const ratePerSqFt = pricingSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingSqFt : 0;
+    const hwCost = ratePerSqFt * activeSqFt;
+    const costPerSqFt = ratePerSqFt;
 
     // Build display name: "Name — Qty (Q) H' x W' — Pitch"
     const dimLabel = `${Math.round(bidH)}' H x ${Math.round(bidW)}' W`;
@@ -193,14 +197,20 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     };
   });
 
-  // Total row
-  const totalHwCost = input.pricingDisplays.reduce((s, d) => s + d.hardwareCost, 0);
+  // Total row — recalculate from user-edited dimensions/qty, not static pricing
+  let totalHwCost = 0;
   const totalSqFtAll = input.screens.reduce((s, spec) => {
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
     const mp = pd?.matchedProduct;
     const h = mp?.activeHeightFt ?? (spec.heightFt ?? 0);
     const w = mp?.activeWidthFt ?? (spec.widthFt ?? 0);
-    return s + (h * w * (spec.quantity || 1));
+    const q = spec.quantity || 1;
+    const sqFt = h * w * q;
+    // Use same rate derivation as per-row
+    const pricingSqFt = pd?.areaSqFt ?? 0;
+    const rate = pricingSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingSqFt : 0;
+    totalHwCost += rate * sqFt;
+    return s + sqFt;
   }, 0);
   const totalRow: SheetRow = {
     cells: [
