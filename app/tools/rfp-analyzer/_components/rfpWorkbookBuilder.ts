@@ -19,6 +19,8 @@ export interface PricingDisplay {
   areaSqFt: number;
   quantity: number;
   hardwareCost: number;
+  processorCost?: number;
+  shippingCost?: number;
   installCost?: number;
   structuralCost?: number;
   pmCost?: number;
@@ -33,7 +35,7 @@ export interface PricingDisplay {
     activeWidthFt?: number; activeHeightFt?: number;
     resolutionX?: number; resolutionY?: number;
   } | null;
-  isCustom?: boolean; // true for user-added line items
+  isCustom?: boolean;
 }
 
 export interface PricingSummary {
@@ -116,20 +118,21 @@ function num(value: number | null | undefined, opts?: Partial<SheetCell>): Sheet
 // ═══════════════════════════════════════════════════════════════════════════
 
 function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
-  // Jeremy's format: Display | Product | Bid Pitch | Active H | Active W | Px H | Px W | Qty | SqFt/Screen | $/sqft | Total Cost
+  // ANC format: Display | Vendor | Product | Pitch | H(ft) | W(ft) | H(px) | W(px) | SqFt/Screen | Qty | Total SqFt | NITs | Service | $/SqFt | Display Cost | Processor | Shipping | Total Cost | Margin % | Selling Price
   const cols = [
-    "Display", "Product", "Bid Pitch",
+    "Display", "Vendor", "Product", "Pitch",
     "H (ft)", "W (ft)", "H (px)", "W (px)",
-    "Qty", "Total SqFt", "$/sqft", "Total Cost",
+    "SqFt/Screen", "Qty", "Total SqFt",
+    "NITs", "Service",
+    "$/SqFt", "Display Cost", "Processor", "Shipping", "Total Cost",
+    "Margin %", "Selling Price",
   ];
 
-  // Header row
   const headerRow: SheetRow = {
     cells: cols.map((h) => c(h, { bold: true, header: true })),
     isHeader: true,
   };
 
-  // Data rows
   const dataRows: SheetRow[] = input.screens.map((spec) => {
     const bidPitch = spec.pixelPitchMm ?? 0;
     const bidW = spec.widthFt ?? 0;
@@ -138,47 +141,43 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const bidHPx = spec.heightPx ?? (bidPitch > 0 ? Math.round(bidH * 304.8 / bidPitch) : 0);
     const qty = spec.quantity || 1;
 
-    // Try to find matching pricing display
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
     const mp = pd?.matchedProduct;
 
-    // Use actual product dimensions if available, otherwise bid spec
     const activeH = mp?.activeHeightFt ?? bidH;
     const activeW = mp?.activeWidthFt ?? bidW;
     const activePxH = mp?.resolutionY ?? bidHPx;
     const activePxW = mp?.resolutionX ?? bidWPx;
-    const activeSqFt = activeH * activeW * qty;
+    const sqFtPerScreen = activeH * activeW;
+    const totalSqFt = sqFtPerScreen * qty;
 
-    // Derive stable $/sqft rate from pricing data, then recalculate cost
-    // When user changes QTY or dimensions, cost scales proportionally
-    const pricingSqFt = pd?.areaSqFt ?? 0; // original total sqft from pricing
+    // Derive stable $/sqft rate from pricing data
+    const pricingSqFt = pd?.areaSqFt ?? 0;
     const ratePerSqFt = pricingSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingSqFt : 0;
-    const hwCost = ratePerSqFt * activeSqFt;
-    const costPerSqFt = ratePerSqFt;
+    const displayCost = ratePerSqFt * totalSqFt;
+    const processorCost = pd?.processorCost ?? 0;
+    const shippingCost = pd?.shippingCost ?? 0;
+    const totalCost = displayCost + processorCost + shippingCost;
+    const margin = pd?.blendedMarginPct ?? 0;
+    const sellingPrice = margin > 0 ? totalCost / (1 - margin) : totalCost;
 
-    // Build display name: "Name — Qty (Q) H' x W' — Pitch"
-    const dimLabel = `${Math.round(bidH)}' H x ${Math.round(bidW)}' W`;
-    const qtyLabel = qty > 1 ? `Two (${qty})` : `One (1)`;
-    const pitchLabel = bidPitch > 0 ? `${bidPitch}mm` : "";
-    const displayDesc = `${spec.name} — ${qtyLabel} ${dimLabel}${pitchLabel ? ` — ${pitchLabel}` : ""}`;
-
-    const productLabel = mp ? `${mp.model}` : "";
+    const vendor = mp?.manufacturer ?? "";
+    const productLabel = mp?.model ?? "";
+    const nits = spec.brightnessNits ?? null;
+    const serviceType = spec.serviceType ?? "";
 
     const sourcePages = spec.sourcePages || [];
     const firstPage = sourcePages[0];
 
-    // Build product dropdown options, sorted alphabetically
+    // Product dropdown
     const dropdownOpts = input.availableProducts
       ? [...input.availableProducts]
           .sort((a, b) => a.label.localeCompare(b.label))
           .map((p) => ({ value: p.id, label: p.label }))
       : undefined;
-
-    // Find the matched product's ID so the <select> value matches an <option>
     const matchedProductId = mp && input.availableProducts
       ? input.availableProducts.find((p) => p.name === mp.model || p.label === mp.model)?.id || ""
       : "";
-
     const productCell: SheetCell = dropdownOpts && dropdownOpts.length > 0
       ? {
           value: matchedProductId,
@@ -193,47 +192,89 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
 
     return {
       cells: [
-        c(displayDesc, {
+        c(spec.name, {
           bold: true,
           onClick: firstPage && input.onSourcePageClick ? () => input.onSourcePageClick!(firstPage) : undefined,
         }),
+        c(vendor),
         productCell,
         c(bidPitch > 0 ? `${bidPitch}mm` : "", { align: "center" }),
-        num(activeH > 0 ? Math.round(activeH * 100) / 100 : null),
-        num(activeW > 0 ? Math.round(activeW * 100) / 100 : null),
+        num(activeH > 0 ? Math.round(activeH * 100) / 100 : null),       // H(ft) — editable
+        num(activeW > 0 ? Math.round(activeW * 100) / 100 : null),       // W(ft) — editable
         num(activePxH > 0 ? activePxH : null),
         num(activePxW > 0 ? activePxW : null),
-        num(qty, { align: "center" }),
-        num(Math.round(activeSqFt * 100) / 100 || null),
-        curr(costPerSqFt > 0 ? costPerSqFt : 0),
-        curr(hwCost, { bold: true }),
+        num(Math.round(sqFtPerScreen * 100) / 100 || null),
+        num(qty, { align: "center" }),                                     // Qty — editable
+        num(Math.round(totalSqFt * 100) / 100 || null),
+        num(nits),
+        c(serviceType || "—", { align: "center" }),
+        curr(ratePerSqFt > 0 ? ratePerSqFt : 0),
+        curr(displayCost),                                                 // Display Cost — editable
+        curr(processorCost),                                               // Processor — editable
+        curr(shippingCost),                                                // Shipping — editable
+        curr(totalCost, { bold: true }),
+        pct(margin, {
+          className: margin >= 0.25 ? "text-emerald-600" : margin >= 0.15 ? "text-amber-600" : "text-red-600",
+        }),                                                                // Margin % — editable
+        curr(sellingPrice, { bold: true }),
       ],
     };
   });
 
-  // Total row — recalculate from user-edited dimensions/qty, not static pricing
-  let totalHwCost = 0;
-  const totalSqFtAll = input.screens.reduce((s, spec) => {
+  // Total row
+  let totalDisplayCost = 0;
+  let totalProcessorCost = 0;
+  let totalShippingCost = 0;
+  let totalSqFtAll = 0;
+  input.screens.forEach((spec) => {
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
     const mp = pd?.matchedProduct;
     const h = mp?.activeHeightFt ?? (spec.heightFt ?? 0);
     const w = mp?.activeWidthFt ?? (spec.widthFt ?? 0);
     const q = spec.quantity || 1;
     const sqFt = h * w * q;
-    // Use same rate derivation as per-row
     const pricingSqFt = pd?.areaSqFt ?? 0;
     const rate = pricingSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingSqFt : 0;
-    totalHwCost += rate * sqFt;
-    return s + sqFt;
+    totalDisplayCost += rate * sqFt;
+    totalProcessorCost += pd?.processorCost ?? 0;
+    totalShippingCost += pd?.shippingCost ?? 0;
+    totalSqFtAll += sqFt;
+  });
+  const totalLedCost = totalDisplayCost + totalProcessorCost + totalShippingCost;
+  // Blended margin for total
+  const totalLedSell = input.screens.reduce((s, spec) => {
+    const pd = input.pricingDisplays.find((d) => d.name === spec.name);
+    const mp = pd?.matchedProduct;
+    const h = mp?.activeHeightFt ?? (spec.heightFt ?? 0);
+    const w = mp?.activeWidthFt ?? (spec.widthFt ?? 0);
+    const q = spec.quantity || 1;
+    const sqFt = h * w * q;
+    const pricingSqFt = pd?.areaSqFt ?? 0;
+    const rate = pricingSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingSqFt : 0;
+    const dc = rate * sqFt;
+    const pc = pd?.processorCost ?? 0;
+    const sc = pd?.shippingCost ?? 0;
+    const tc = dc + pc + sc;
+    const m = pd?.blendedMarginPct ?? 0;
+    return s + (m > 0 ? tc / (1 - m) : tc);
   }, 0);
+  const blendedMarginTotal = totalLedSell > 0 ? (totalLedSell - totalLedCost) / totalLedSell : 0;
+
   const totalRow: SheetRow = {
     cells: [
       c(`TOTAL (${input.screens.length} displays)`, { bold: true }),
-      c(""), c(""), c(""), c(""), c(""), c(""),
+      c(""), c(""), c(""),
+      c(""), c(""), c(""), c(""),
+      c(""),
       c(""),
       num(Math.round(totalSqFtAll * 100) / 100, { bold: true }),
-      c(""),
-      curr(totalHwCost, { bold: true, highlight: true }),
+      c(""), c(""), c(""),
+      curr(totalDisplayCost, { bold: true }),
+      curr(totalProcessorCost, { bold: true }),
+      curr(totalShippingCost, { bold: true }),
+      curr(totalLedCost, { bold: true, highlight: true }),
+      pct(blendedMarginTotal, { bold: true }),
+      curr(totalLedSell, { bold: true, highlight: true }),
     ],
     isTotal: true,
   };
@@ -243,7 +284,8 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     color: "#0A52EF",
     columns: cols,
     rows: [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow],
-    editableColumns: [0, 3, 4, 7], // Display name, H(ft), W(ft), Qty
+    // Editable: H(ft)=4, W(ft)=5, Qty=9, Display Cost=14, Processor=15, Shipping=16, Margin%=18
+    editableColumns: [4, 5, 9, 14, 15, 16, 18],
   };
 }
 
@@ -252,68 +294,106 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function buildMarginAnalysis(input: RfpWorkbookInput): SheetTab {
-  const cols = ["Display", "LED Hardware", "Install", "Structural", "PM / GC", "Engineering", "Total Cost", "Margin %", "Selling Price"];
+  // ANC flat format: one row per line item (displays + service categories)
+  const cols = ["Line Item", "Cost", "Selling Price", "Margin $", "Margin %"];
 
   const headerRow: SheetRow = {
     cells: cols.map((h) => c(h, { bold: true, header: true })),
     isHeader: true,
   };
 
-  const dataRows: SheetRow[] = input.pricingDisplays.map((d) => {
-    const totalCost = d.hardwareCost + (d.installCost ?? 0) + (d.structuralCost ?? 0) + (d.pmCost ?? 0) + (d.engCost ?? 0);
-    const sellingPrice = d.blendedMarginPct > 0 ? totalCost / (1 - d.blendedMarginPct) : totalCost;
-    return {
-      cells: [
-        d.isCustom
-          ? c(d.name, { bold: true, className: "text-blue-600" })
-          : c(d.name, { bold: true }),
-        curr(d.hardwareCost),
-        curr(d.installCost ?? 0),
-        curr(d.structuralCost ?? 0),
-        curr(d.pmCost ?? 0),
-        curr(d.engCost ?? 0),
-        curr(totalCost, { bold: true }),
-        pct(d.blendedMarginPct, {
-          className: d.blendedMarginPct >= 0.25
-            ? "text-emerald-600"
-            : d.blendedMarginPct >= 0.15
-              ? "text-amber-600"
-              : "text-red-600",
-        }),
-        curr(sellingPrice, { bold: true }),
-      ],
-    };
-  });
+  const lineItems: SheetRow[] = [];
 
-  // Recalculate totals from current data
-  const totalHw = input.pricingDisplays.reduce((s, d) => s + d.hardwareCost, 0);
-  const totalInstall = input.pricingDisplays.reduce((s, d) => s + (d.installCost ?? 0), 0);
-  const totalStructural = input.pricingDisplays.reduce((s, d) => s + (d.structuralCost ?? 0), 0);
-  const totalPm = input.pricingDisplays.reduce((s, d) => s + (d.pmCost ?? 0), 0);
-  const totalEng = input.pricingDisplays.reduce((s, d) => s + (d.engCost ?? 0), 0);
-  const totalCostAll = totalHw + totalInstall + totalStructural + totalPm + totalEng;
-  const totalSellAll = input.pricingDisplays.reduce((s, d) => {
-    const tc = d.hardwareCost + (d.installCost ?? 0) + (d.structuralCost ?? 0) + (d.pmCost ?? 0) + (d.engCost ?? 0);
-    return s + (d.blendedMarginPct > 0 ? tc / (1 - d.blendedMarginPct) : tc);
+  // Section 1: LED Displays (each display as a line item — LED hardware + processor + shipping)
+  for (const d of input.pricingDisplays.filter((x) => !x.isCustom)) {
+    const ledTotal = d.hardwareCost + (d.processorCost ?? 0) + (d.shippingCost ?? 0);
+    const sell = d.blendedMarginPct > 0 ? ledTotal / (1 - d.blendedMarginPct) : ledTotal;
+    const marginDollar = sell - ledTotal;
+    lineItems.push({
+      cells: [
+        c(d.name, { bold: true }),
+        curr(ledTotal),
+        curr(sell),
+        curr(marginDollar),
+        pct(d.blendedMarginPct, {
+          className: d.blendedMarginPct >= 0.25 ? "text-emerald-600" : d.blendedMarginPct >= 0.15 ? "text-amber-600" : "text-red-600",
+        }),
+      ],
+    });
+  }
+
+  // Section 2: Service categories (aggregated across all displays)
+  const serviceCategories: Array<{ label: string; field: string; }> = [
+    { label: "Structural Materials", field: "structuralCost" },
+    { label: "Installation Labor", field: "installCost" },
+    { label: "PM / Gen. Conditions", field: "pmCost" },
+    { label: "Engineering / Permits", field: "engCost" },
+  ];
+
+  // Use first display's margin as default for services, or 10%
+  const defaultServiceMargin = input.pricingDisplays[0]?.blendedMarginPct ?? 0.10;
+
+  for (const cat of serviceCategories) {
+    const cost = input.pricingDisplays.reduce((s, d) => s + ((d as any)[cat.field] ?? 0), 0);
+    if (cost === 0) continue; // skip empty categories
+    const margin = defaultServiceMargin;
+    const sell = margin > 0 ? cost / (1 - margin) : cost;
+    const marginDollar = sell - cost;
+    lineItems.push({
+      cells: [
+        c(cat.label, { bold: true }),
+        curr(cost),
+        curr(sell),
+        curr(marginDollar),
+        pct(margin, {
+          className: margin >= 0.25 ? "text-emerald-600" : margin >= 0.15 ? "text-amber-600" : "text-red-600",
+        }),
+      ],
+    });
+  }
+
+  // Section 3: Custom line items
+  for (const d of input.pricingDisplays.filter((x) => x.isCustom)) {
+    const cost = d.hardwareCost + (d.installCost ?? 0) + (d.structuralCost ?? 0) + (d.pmCost ?? 0) + (d.engCost ?? 0);
+    const sell = d.blendedMarginPct > 0 ? cost / (1 - d.blendedMarginPct) : cost;
+    const marginDollar = sell - cost;
+    lineItems.push({
+      cells: [
+        c(d.name, { bold: true, className: "text-blue-600" }),
+        curr(cost),
+        curr(sell),
+        curr(marginDollar),
+        pct(d.blendedMarginPct, {
+          className: d.blendedMarginPct >= 0.25 ? "text-emerald-600" : d.blendedMarginPct >= 0.15 ? "text-amber-600" : "text-red-600",
+        }),
+      ],
+    });
+  }
+
+  // Total row
+  const totalCost = lineItems.reduce((s, r) => {
+    const val = r.cells[1];
+    return s + (typeof val?.value === "number" ? val.value : (parseFloat(String(val?.value ?? "0").replace(/[,$]/g, "")) || 0));
   }, 0);
-  const blendedPct = totalSellAll > 0 ? (totalSellAll - totalCostAll) / totalSellAll : 0;
+  const totalSell = lineItems.reduce((s, r) => {
+    const val = r.cells[2];
+    return s + (typeof val?.value === "number" ? val.value : (parseFloat(String(val?.value ?? "0").replace(/[,$]/g, "")) || 0));
+  }, 0);
+  const totalMarginDollar = totalSell - totalCost;
+  const totalMarginPct = totalSell > 0 ? (totalSell - totalCost) / totalSell : 0;
 
   const totalRow: SheetRow = {
     cells: [
-      c("PROJECT TOTAL", { bold: true }),
-      curr(totalHw),
-      curr(totalInstall),
-      curr(totalStructural),
-      curr(totalPm),
-      curr(totalEng),
-      curr(totalCostAll, { bold: true, highlight: true }),
-      pct(blendedPct, { bold: true }),
-      curr(totalSellAll, { bold: true, highlight: true }),
+      c("TOTAL", { bold: true }),
+      curr(totalCost, { bold: true, highlight: true }),
+      curr(totalSell, { bold: true, highlight: true }),
+      curr(totalMarginDollar, { bold: true }),
+      pct(totalMarginPct, { bold: true }),
     ],
     isTotal: true,
   };
 
-  // Add Line Item row (clickable)
+  // Add Line Item row
   const addRow: SheetRow | null = input.onAddLineItem
     ? {
         cells: [
@@ -322,14 +402,14 @@ function buildMarginAnalysis(input: RfpWorkbookInput): SheetTab {
             className: "text-blue-600 cursor-pointer hover:text-blue-800",
             onClick: input.onAddLineItem,
           }),
-          c(""), c(""), c(""), c(""), c(""), c(""), c(""), c(""),
+          c(""), c(""), c(""), c(""),
         ],
       }
     : null;
 
   const summary = input.pricingSummary;
   const rows = summary
-    ? [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow, ...(addRow ? [addRow] : [])]
+    ? [headerRow, ...lineItems, { cells: [], isSeparator: true }, totalRow, ...(addRow ? [addRow] : [])]
     : [headerRow, { cells: [c("Run pricing preview to populate", { span: cols.length, align: "center" })], isSeparator: false }];
 
   return {
@@ -337,8 +417,8 @@ function buildMarginAnalysis(input: RfpWorkbookInput): SheetTab {
     color: "#217346",
     columns: cols,
     rows,
-    // Editable: LED Hardware(1), Install(2), Structural(3), PM/GC(4), Engineering(5), Margin %(7)
-    editableColumns: [1, 2, 3, 4, 5, 7],
+    // Editable: Cost(1), Margin %(4)
+    editableColumns: [1, 4],
   };
 }
 

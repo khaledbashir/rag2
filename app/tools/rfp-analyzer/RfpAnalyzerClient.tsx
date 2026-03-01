@@ -106,6 +106,8 @@ interface PricingPreview {
     areaSqFt: number;
     quantity: number;
     hardwareCost: number;
+    processorCost?: number;
+    shippingCost?: number;
     installCost?: number;
     structuralCost?: number;
     pmCost?: number;
@@ -1421,73 +1423,165 @@ export default function RfpAnalyzerClient() {
                 data={workbookData}
                 editable
                 onCellEdit={(sheetIdx, rowIdx, colIdx, value) => {
-                  // Sheet 0: LED Cost Sheet — edit specs
+                  // Sheet 0: LED Cost Sheet (ANC 20-col format)
+                  // Cols: Display(0) Vendor(1) Product(2) Pitch(3) H(ft)(4) W(ft)(5) H(px)(6) W(px)(7)
+                  //       SqFt/Screen(8) Qty(9) TotalSqFt(10) NITs(11) Service(12)
+                  //       $/SqFt(13) DisplayCost(14) Processor(15) Shipping(16) TotalCost(17) Margin%(18) SellingPrice(19)
                   if (sheetIdx === 0) {
-                    const fieldMap: Record<number, string> = { 0: "name", 3: "heightFt", 4: "widthFt", 7: "quantity" };
-                    const field = fieldMap[colIdx];
-                    if (!field) return;
-                    setResult(prev => {
-                      if (!prev) return prev;
-                      const specIdx = rowIdx - 1;
-                      if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
-                      const spec = { ...prev.screens[specIdx] };
-                      if (field === "name") {
-                        (spec as any)[field] = value;
-                      } else {
-                        (spec as any)[field] = parseFloat(value) || 0;
-                      }
-                      const updated = [...prev.screens];
-                      updated[specIdx] = spec;
-                      setEditableSpecs(updated);
-                      autoSaveSpecs(updated, prev.id);
-                      return { ...prev, screens: updated };
-                    });
-                    return;
-                  }
-                  // Sheet 1: Margin Analysis — edit costs + margin per display
-                  if (sheetIdx === 1) {
-                    // Cols: Display(0) | LED HW(1) | Install(2) | Structural(3) | PM/GC(4) | Eng(5) | TotalCost(6) | Margin%(7) | SellPrice(8)
-                    const costFieldMap: Record<number, string> = { 1: "hardwareCost", 2: "installCost", 3: "structuralCost", 4: "pmCost", 5: "engCost" };
-                    const isMarginEdit = colIdx === 7;
-                    const costField = costFieldMap[colIdx];
-                    if (!costField && !isMarginEdit) return;
+                    // Spec edits → update result.screens
+                    const specFieldMap: Record<number, string> = { 4: "heightFt", 5: "widthFt", 9: "quantity" };
+                    const specField = specFieldMap[colIdx];
+                    if (specField) {
+                      setResult(prev => {
+                        if (!prev) return prev;
+                        const specIdx = rowIdx - 1;
+                        if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
+                        const spec = { ...prev.screens[specIdx] };
+                        (spec as any)[specField] = parseFloat(value) || 0;
+                        const updated = [...prev.screens];
+                        updated[specIdx] = spec;
+                        setEditableSpecs(updated);
+                        autoSaveSpecs(updated, prev.id);
+                        return { ...prev, screens: updated };
+                      });
+                      return;
+                    }
+                    // Pricing edits → update pricingPreview.displays
+                    const pricingFieldMap: Record<number, string> = { 14: "hardwareCost", 15: "processorCost", 16: "shippingCost" };
+                    const pricingField = pricingFieldMap[colIdx];
+                    const isMarginEdit = colIdx === 18;
+                    if (!pricingField && !isMarginEdit) return;
                     setPricingPreview(prev => {
                       if (!prev) return prev;
-                      const displayIdx = rowIdx - 1;
-                      if (displayIdx < 0 || displayIdx >= prev.displays.length) return prev;
+                      const specIdx = rowIdx - 1;
+                      if (specIdx < 0 || specIdx >= prev.displays.length) return prev;
                       const updatedDisplays = prev.displays.map((d, i) => {
-                        if (i !== displayIdx) return d;
+                        if (i !== specIdx) return d;
                         const updated = { ...d };
                         if (isMarginEdit) {
-                          // Parse margin: user types "25" or "0.25" — normalize to decimal
                           let margin = parseFloat(value) || 0;
-                          if (margin > 1) margin = margin / 100; // "25" → 0.25
+                          if (margin > 1) margin = margin / 100;
                           updated.blendedMarginPct = margin;
                         } else {
-                          (updated as any)[costField] = parseFloat(value) || 0;
+                          (updated as any)[pricingField!] = parseFloat(value) || 0;
                         }
-                        // Recalculate totalCost
-                        updated.totalCost = updated.hardwareCost + (updated.installCost ?? 0) + (updated.structuralCost ?? 0) + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
-                        // Recalculate selling price from margin
+                        // Recalculate totalCost (LED hardware + processor + shipping)
+                        updated.hardwareCost = updated.hardwareCost ?? 0;
+                        const ledTotal = updated.hardwareCost + (updated.processorCost ?? 0) + (updated.shippingCost ?? 0);
+                        updated.totalCost = ledTotal + (updated.installCost ?? 0) + (updated.structuralCost ?? 0) + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
                         updated.totalSellingPrice = updated.blendedMarginPct > 0
                           ? updated.totalCost / (1 - updated.blendedMarginPct)
                           : updated.totalCost;
                         return updated;
                       });
-                      // Recalculate summary
                       const totalCost = updatedDisplays.reduce((s, d) => s + d.totalCost, 0);
                       const totalSell = updatedDisplays.reduce((s, d) => s + d.totalSellingPrice, 0);
                       return {
                         ...prev,
                         displays: updatedDisplays,
-                        summary: {
-                          ...prev.summary,
-                          totalCost,
-                          totalSellingPrice: totalSell,
-                          totalMargin: totalSell - totalCost,
-                          blendedMarginPct: totalSell > 0 ? Math.round(((totalSell - totalCost) / totalSell) * 1000) / 10 : 0,
-                        },
+                        summary: { ...prev.summary, totalCost, totalSellingPrice: totalSell, totalMargin: totalSell - totalCost, blendedMarginPct: totalSell > 0 ? Math.round(((totalSell - totalCost) / totalSell) * 1000) / 10 : 0 },
                       };
+                    });
+                    return;
+                  }
+                  // Sheet 1: Margin Analysis (ANC flat format)
+                  // Cols: LineItem(0) Cost(1) SellingPrice(2) Margin$(3) Margin%(4)
+                  // Row layout: [header, ...displays(non-custom), ...serviceCategories, ...customDisplays, separator, total, addRow]
+                  if (sheetIdx === 1) {
+                    const isCostEdit = colIdx === 1;
+                    const isMarginEdit = colIdx === 4;
+                    if (!isCostEdit && !isMarginEdit) return;
+                    setPricingPreview(prev => {
+                      if (!prev) return prev;
+                      const itemIdx = rowIdx - 1; // skip header row
+
+                      // Build the same row order as the workbook builder
+                      const nonCustomDisplays = prev.displays.filter(d => !d.isCustom);
+                      const serviceCategories = [
+                        { field: "structuralCost", label: "Structural Materials" },
+                        { field: "installCost", label: "Installation Labor" },
+                        { field: "pmCost", label: "PM / Gen. Conditions" },
+                        { field: "engCost", label: "Engineering / Permits" },
+                      ].filter(cat => prev.displays.reduce((s, d) => s + ((d as any)[cat.field] ?? 0), 0) > 0);
+                      const customDisplays = prev.displays.filter(d => d.isCustom);
+
+                      const displayCount = nonCustomDisplays.length;
+                      const serviceCount = serviceCategories.length;
+
+                      if (itemIdx < displayCount) {
+                        // Editing a display row
+                        const displayName = nonCustomDisplays[itemIdx].name;
+                        const updatedDisplays = prev.displays.map(d => {
+                          if (d.name !== displayName || d.isCustom) return d;
+                          const updated = { ...d };
+                          if (isMarginEdit) {
+                            let margin = parseFloat(value) || 0;
+                            if (margin > 1) margin = margin / 100;
+                            updated.blendedMarginPct = margin;
+                          } else {
+                            // Cost edit = total LED cost (hardware + processor + shipping)
+                            const newCost = parseFloat(value) || 0;
+                            updated.hardwareCost = newCost; // set hardware as the base
+                            updated.processorCost = 0;
+                            updated.shippingCost = 0;
+                          }
+                          updated.totalCost = updated.hardwareCost + (updated.processorCost ?? 0) + (updated.shippingCost ?? 0) + (updated.installCost ?? 0) + (updated.structuralCost ?? 0) + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
+                          updated.totalSellingPrice = updated.blendedMarginPct > 0
+                            ? updated.totalCost / (1 - updated.blendedMarginPct)
+                            : updated.totalCost;
+                          return updated;
+                        });
+                        const totalCost = updatedDisplays.reduce((s, d) => s + d.totalCost, 0);
+                        const totalSell = updatedDisplays.reduce((s, d) => s + d.totalSellingPrice, 0);
+                        return { ...prev, displays: updatedDisplays, summary: { ...prev.summary, totalCost, totalSellingPrice: totalSell, totalMargin: totalSell - totalCost, blendedMarginPct: totalSell > 0 ? Math.round(((totalSell - totalCost) / totalSell) * 1000) / 10 : 0 } };
+                      } else if (itemIdx < displayCount + serviceCount) {
+                        // Editing a service category row
+                        const catIdx = itemIdx - displayCount;
+                        const cat = serviceCategories[catIdx];
+                        if (isCostEdit) {
+                          // Distribute new total cost proportionally across displays
+                          const currentTotal = prev.displays.reduce((s, d) => s + ((d as any)[cat.field] ?? 0), 0);
+                          const newTotal = parseFloat(value) || 0;
+                          const ratio = currentTotal > 0 ? newTotal / currentTotal : 0;
+                          const updatedDisplays = prev.displays.map(d => {
+                            const updated = { ...d };
+                            const oldVal = (d as any)[cat.field] ?? 0;
+                            (updated as any)[cat.field] = currentTotal > 0 ? oldVal * ratio : newTotal / prev.displays.length;
+                            updated.totalCost = updated.hardwareCost + (updated.processorCost ?? 0) + (updated.shippingCost ?? 0) + (updated.installCost ?? 0) + (updated.structuralCost ?? 0) + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
+                            updated.totalSellingPrice = updated.blendedMarginPct > 0 ? updated.totalCost / (1 - updated.blendedMarginPct) : updated.totalCost;
+                            return updated;
+                          });
+                          const totalCost = updatedDisplays.reduce((s, d) => s + d.totalCost, 0);
+                          const totalSell = updatedDisplays.reduce((s, d) => s + d.totalSellingPrice, 0);
+                          return { ...prev, displays: updatedDisplays, summary: { ...prev.summary, totalCost, totalSellingPrice: totalSell, totalMargin: totalSell - totalCost, blendedMarginPct: totalSell > 0 ? Math.round(((totalSell - totalCost) / totalSell) * 1000) / 10 : 0 } };
+                        }
+                        // Margin edit for service category — can't change per-display margins from service row; skip
+                        return prev;
+                      } else if (itemIdx < displayCount + serviceCount + customDisplays.length) {
+                        // Editing a custom line item
+                        const customIdx = itemIdx - displayCount - serviceCount;
+                        const customName = customDisplays[customIdx].name;
+                        const updatedDisplays = prev.displays.map(d => {
+                          if (d.name !== customName || !d.isCustom) return d;
+                          const updated = { ...d };
+                          if (isMarginEdit) {
+                            let margin = parseFloat(value) || 0;
+                            if (margin > 1) margin = margin / 100;
+                            updated.blendedMarginPct = margin;
+                          } else {
+                            updated.hardwareCost = parseFloat(value) || 0;
+                          }
+                          updated.totalCost = updated.hardwareCost + (updated.installCost ?? 0) + (updated.structuralCost ?? 0) + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
+                          updated.totalSellingPrice = updated.blendedMarginPct > 0
+                            ? updated.totalCost / (1 - updated.blendedMarginPct)
+                            : updated.totalCost;
+                          return updated;
+                        });
+                        const totalCost = updatedDisplays.reduce((s, d) => s + d.totalCost, 0);
+                        const totalSell = updatedDisplays.reduce((s, d) => s + d.totalSellingPrice, 0);
+                        return { ...prev, displays: updatedDisplays, summary: { ...prev.summary, totalCost, totalSellingPrice: totalSell, totalMargin: totalSell - totalCost, blendedMarginPct: totalSell > 0 ? Math.round(((totalSell - totalCost) / totalSell) * 1000) / 10 : 0 } };
+                      }
+                      return prev;
                     });
                     return;
                   }
