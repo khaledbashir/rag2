@@ -201,6 +201,26 @@ export default function RfpAnalyzerClient() {
   }, []);
 
   // ========================================================================
+  // Product dropdown handler (must be defined before workbookData useMemo)
+  // ========================================================================
+
+  const handleProductSelect = useCallback((displayName: string, productId: string) => {
+    const product = availableProducts.find((p) => p.id === productId);
+    if (!product || !pricingPreview) return;
+    setPricingPreview((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        displays: prev.displays.map((d) =>
+          d.name === displayName
+            ? { ...d, matchedProduct: { manufacturer: product.name.split(" ")[0], model: product.name, pitch: product.pitch, fitScore: 100 } }
+            : d
+        ),
+      };
+    });
+  }, [availableProducts, pricingPreview]);
+
+  // ========================================================================
   // Workbook data — computed from state for WorkbookShell rendering
   // ========================================================================
 
@@ -243,22 +263,6 @@ export default function RfpAnalyzerClient() {
       .then((data) => { if (data?.products) setAvailableProducts(data.products); })
       .catch((err) => console.error("[RFP] Failed to load products:", err));
   }, [result?.id, availableProducts.length]);
-
-  const handleProductSelect = useCallback((displayName: string, productId: string) => {
-    const product = availableProducts.find((p) => p.id === productId);
-    if (!product || !pricingPreview) return;
-    setPricingPreview((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        displays: prev.displays.map((d) =>
-          d.name === displayName
-            ? { ...d, matchedProduct: { manufacturer: product.name.split(" ")[0], model: product.name, pitch: product.pitch, fitScore: 100 } }
-            : d
-        ),
-      };
-    });
-  }, [availableProducts, pricingPreview]);
 
   // Initialize enabled categories from triage data — relevant pages on, boilerplate off
   useEffect(() => {
