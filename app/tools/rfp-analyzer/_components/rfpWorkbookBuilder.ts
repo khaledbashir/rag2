@@ -737,6 +737,939 @@ function buildBidFormSheet(input: RfpWorkbookInput): SheetTab | null {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Sheet: Install (Base) — per-zone structural/labor/electrical
+// ═══════════════════════════════════════════════════════════════════════════
+
+function buildInstallBase(input: RfpWorkbookInput): SheetTab {
+  const cols = ["Description", "Category", "Est. Cost", "Margin %", "Selling Price"];
+
+  const headerRow: SheetRow = {
+    cells: cols.map((h) => c(h, { bold: true, header: true })),
+    isHeader: true,
+  };
+
+  const defaultMargin = 0.10; // 10% default for install categories
+  const allRows: SheetRow[] = [];
+
+  // Per-display zone breakdown
+  for (const d of input.pricingDisplays.filter((x) => !x.isCustom)) {
+    // Zone header
+    allRows.push({
+      cells: [c(d.name, { bold: true, header: true, span: 5 })],
+      isHeader: true,
+    });
+
+    const structural = d.structuralCost ?? 0;
+    const install = d.installCost ?? 0;
+    const pm = d.pmCost ?? 0;
+    const eng = d.engCost ?? 0;
+
+    // Structural Materials
+    const structItems = [
+      { label: "Steel / Mounting Structure", cost: structural * 0.45 },
+      { label: "Clips / Brackets / Hardware", cost: structural * 0.15 },
+      { label: "Rigging / Hoisting Equipment", cost: structural * 0.20 },
+      { label: "Catwalk / Access Platform", cost: structural * 0.10 },
+      { label: "Miscellaneous Structural", cost: structural * 0.10 },
+    ];
+    if (structural > 0) {
+      allRows.push({
+        cells: [c("Structural Materials", { bold: true, className: "text-blue-600" }), c(""), c(""), c(""), c("")],
+        isHeader: true,
+      });
+      for (const item of structItems) {
+        const sell = item.cost / (1 - defaultMargin);
+        allRows.push({
+          cells: [
+            c(`  ${item.label}`),
+            c("Structural"),
+            curr(Math.round(item.cost)),
+            pct(defaultMargin),
+            curr(Math.round(sell)),
+          ],
+        });
+      }
+    }
+
+    // Structural Labor and LED Installation
+    const installItems = [
+      { label: "Crew Labor (Install)", cost: install * 0.40 },
+      { label: "Travel / Per Diem", cost: install * 0.10 },
+      { label: "Heavy Equipment Rental", cost: install * 0.15 },
+      { label: "LED Component Installation", cost: install * 0.25 },
+      { label: "Commissioning / Testing", cost: install * 0.10 },
+    ];
+    if (install > 0) {
+      allRows.push({
+        cells: [c("Structural Labor & LED Install", { bold: true, className: "text-blue-600" }), c(""), c(""), c(""), c("")],
+        isHeader: true,
+      });
+      for (const item of installItems) {
+        const sell = item.cost / (1 - defaultMargin);
+        allRows.push({
+          cells: [
+            c(`  ${item.label}`),
+            c("Installation"),
+            curr(Math.round(item.cost)),
+            pct(defaultMargin),
+            curr(Math.round(sell)),
+          ],
+        });
+      }
+    }
+
+    // Electrical and Data
+    const elecCost = (pm + eng) * 0.6; // Approximate electrical from PM+Eng
+    const dataCost = (pm + eng) * 0.4;
+    if (pm + eng > 0) {
+      allRows.push({
+        cells: [c("Electrical & Data", { bold: true, className: "text-blue-600" }), c(""), c(""), c(""), c("")],
+        isHeader: true,
+      });
+      const elecItems = [
+        { label: "Conduit / Wire / Panels", cost: elecCost * 0.50 },
+        { label: "Data Cables / Fiber", cost: dataCost * 0.50 },
+        { label: "Electrical Labor", cost: elecCost * 0.50 },
+        { label: "Data Termination Labor", cost: dataCost * 0.50 },
+      ];
+      for (const item of elecItems) {
+        const sell = item.cost / (1 - defaultMargin);
+        allRows.push({
+          cells: [
+            c(`  ${item.label}`),
+            c("Electrical"),
+            curr(Math.round(item.cost)),
+            pct(defaultMargin),
+            curr(Math.round(sell)),
+          ],
+        });
+      }
+    }
+
+    // Zone subtotal
+    const zoneCost = structural + install + pm + eng;
+    const zoneSell = zoneCost / (1 - defaultMargin);
+    allRows.push({ cells: [], isSeparator: true });
+    allRows.push({
+      cells: [
+        c(`${d.name} — Subtotal`, { bold: true }),
+        c(""),
+        curr(Math.round(zoneCost), { bold: true }),
+        pct(defaultMargin, { bold: true }),
+        curr(Math.round(zoneSell), { bold: true }),
+      ],
+      isTotal: true,
+    });
+    allRows.push({ cells: [], isSeparator: true });
+  }
+
+  // PM / General Conditions section
+  allRows.push({
+    cells: [c("PROJECT MANAGEMENT / GENERAL CONDITIONS", { bold: true, header: true, span: 5 })],
+    isHeader: true,
+  });
+  const pmItems = [
+    { label: "Project Management", pct: 0.40 },
+    { label: "Structural Engineering", pct: 0.30 },
+    { label: "Electrical Engineering", pct: 0.15 },
+    { label: "Permits", pct: 0.10 },
+    { label: "As-Built Documentation", pct: 0.05 },
+  ];
+  const totalEng = input.pricingDisplays.reduce((s, d) => s + (d.engCost ?? 0), 0);
+  const totalPm = input.pricingDisplays.reduce((s, d) => s + (d.pmCost ?? 0), 0);
+  const pmBucket = totalPm + totalEng;
+  for (const item of pmItems) {
+    const cost = Math.round(pmBucket * item.pct);
+    const sell = cost / (1 - defaultMargin);
+    allRows.push({
+      cells: [
+        c(`  ${item.label}`),
+        c("PM/GC"),
+        curr(cost),
+        pct(defaultMargin),
+        curr(Math.round(sell)),
+      ],
+    });
+  }
+
+  // Grand total
+  const grandCost = input.pricingDisplays.reduce((s, d) =>
+    s + (d.installCost ?? 0) + (d.structuralCost ?? 0) + (d.pmCost ?? 0) + (d.engCost ?? 0), 0);
+  const grandSell = grandCost / (1 - defaultMargin);
+  allRows.push({ cells: [], isSeparator: true });
+  allRows.push({
+    cells: [
+      c("TOTAL ALL INSTALL", { bold: true }),
+      c(""),
+      curr(Math.round(grandCost), { bold: true, highlight: true }),
+      pct(defaultMargin, { bold: true }),
+      curr(Math.round(grandSell), { bold: true, highlight: true }),
+    ],
+    isTotal: true,
+  });
+
+  return {
+    name: "Install (Base)",
+    color: "#059669",
+    columns: cols,
+    rows: [headerRow, ...allRows],
+    editableColumns: [2, 3], // Cost and Margin % editable
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sheet: Extended Warranty — Year 3-10 pricing tiers
+// ═══════════════════════════════════════════════════════════════════════════
+
+function buildExtendedWarranty(input: RfpWorkbookInput): SheetTab {
+  const cols = ["Year", "LED Parts", "License Fee", "Cost (Parts)", "Retail (Parts)", "Annual Labor", "Cost (P+L)", "Retail (P+L)"];
+
+  const headerRow: SheetRow = {
+    cells: cols.map((h) => c(h, { bold: true, header: true })),
+    isHeader: true,
+  };
+
+  // Base LED parts cost scaled from total hardware
+  const totalHw = input.pricingDisplays.reduce((s, d) => s + d.hardwareCost, 0);
+  const warrantyMargin = 0.10;
+  // Standard warranty: ~1% of LED cost yr 3-5, ~2% yr 6-8, ~3.5% yr 9-10
+  const tiers = [
+    { years: "Year 3", partsPct: 0.010, laborBase: 15000 },
+    { years: "Year 4", partsPct: 0.010, laborBase: 15000 },
+    { years: "Year 5", partsPct: 0.010, laborBase: 15000 },
+    { years: "Year 6", partsPct: 0.020, laborBase: 21500 },
+    { years: "Year 7", partsPct: 0.020, laborBase: 21500 },
+    { years: "Year 8", partsPct: 0.020, laborBase: 21500 },
+    { years: "Year 9", partsPct: 0.035, laborBase: 24000 },
+    { years: "Year 10", partsPct: 0.035, laborBase: 24000 },
+  ];
+
+  const dataRows: SheetRow[] = tiers.map((t) => {
+    const ledParts = Math.round(totalHw * t.partsPct);
+    const licenseFee = 0;
+    const costParts = ledParts + licenseFee;
+    const retailParts = Math.round(costParts / (1 - warrantyMargin));
+    const labor = t.laborBase;
+    const costPL = costParts + labor;
+    const retailPL = Math.round(costPL / (1 - warrantyMargin));
+    return {
+      cells: [
+        c(t.years, { bold: true }),
+        curr(ledParts),
+        curr(licenseFee),
+        curr(costParts),
+        curr(retailParts),
+        curr(labor),
+        curr(costPL, { bold: true }),
+        curr(retailPL, { bold: true }),
+      ],
+    };
+  });
+
+  // Totals
+  const totalLedParts = tiers.reduce((s, t) => s + Math.round(totalHw * t.partsPct), 0);
+  const totalLabor = tiers.reduce((s, t) => s + t.laborBase, 0);
+  const totalCostPL = totalLedParts + totalLabor;
+  const totalRetailPL = Math.round(totalCostPL / (1 - warrantyMargin));
+
+  const totalRow: SheetRow = {
+    cells: [
+      c("TOTAL", { bold: true }),
+      curr(totalLedParts, { bold: true }),
+      curr(0),
+      curr(totalLedParts, { bold: true }),
+      curr(Math.round(totalLedParts / (1 - warrantyMargin)), { bold: true }),
+      curr(totalLabor, { bold: true }),
+      curr(totalCostPL, { bold: true, highlight: true }),
+      curr(totalRetailPL, { bold: true, highlight: true }),
+    ],
+    isTotal: true,
+  };
+
+  return {
+    name: "Extended Warranty",
+    color: "#7C3AED",
+    columns: cols,
+    rows: [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow],
+    editableColumns: [1, 5], // LED Parts and Annual Labor editable
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sheet: Responsibility Matrix — ANC vs Purchaser
+// ═══════════════════════════════════════════════════════════════════════════
+
+function buildResponsibilityMatrix(input: RfpWorkbookInput): SheetTab {
+  const cols = ["Description", "ANC", "Purchaser"];
+
+  const headerRow: SheetRow = {
+    cells: cols.map((h) => c(h, { bold: true, header: true })),
+    isHeader: true,
+  };
+
+  const sections: Array<{ title: string; items: Array<{ desc: string; anc: boolean }> }> = [
+    {
+      title: "ADMINISTRATIVE",
+      items: [
+        { desc: "Project Management / Scheduling", anc: true },
+        { desc: "Submittal Drawings / Engineering", anc: true },
+        { desc: "Structural Engineering", anc: true },
+        { desc: "Electrical Engineering", anc: true },
+        { desc: "Permits and Approvals", anc: false },
+        { desc: "Site Access / Scheduling Coordination", anc: false },
+        { desc: "Insurance / Bonding", anc: true },
+      ],
+    },
+    {
+      title: "PHYSICAL INSTALLATION",
+      items: [
+        { desc: "LED Display Shipping to Site", anc: true },
+        { desc: "Unloading / Staging at Venue", anc: true },
+        { desc: "Removal of Existing Displays", anc: true },
+        { desc: "Secondary Structural Steel Fabrication", anc: true },
+        { desc: "Secondary Structural Steel Installation", anc: true },
+        { desc: "LED Display Component Installation", anc: true },
+        { desc: "Heavy Equipment / Crane Rental", anc: true },
+        { desc: "Electrical — Conduit, Wire, Panels", anc: true },
+        { desc: "Data — Fiber, Cat6, Termination", anc: true },
+        { desc: "Power to Display (Primary Feed)", anc: false },
+        { desc: "Network Connection to Control Room", anc: false },
+      ],
+    },
+    {
+      title: "PROJECT CLOSE-OUT",
+      items: [
+        { desc: "Display Commissioning / Calibration", anc: true },
+        { desc: "Content Management System Setup", anc: true },
+        { desc: "Operator Training", anc: true },
+        { desc: "As-Built Documentation", anc: true },
+        { desc: "Punch List / Final Walkthrough", anc: true },
+        { desc: "Spare Parts Delivery (3%)", anc: true },
+        { desc: "Event Support (First 3 Events)", anc: true },
+      ],
+    },
+    {
+      title: "GENERAL CONDITIONS",
+      items: [
+        { desc: "Site Utilities (Power, Water, Restrooms)", anc: false },
+        { desc: "Dumpster / Waste Removal", anc: false },
+        { desc: "Security During Install", anc: false },
+        { desc: "Weather Protection / Tarping", anc: true },
+        { desc: "Safety / OSHA Compliance", anc: true },
+      ],
+    },
+  ];
+
+  const allRows: SheetRow[] = [];
+  for (const section of sections) {
+    allRows.push({
+      cells: [c(section.title, { bold: true, header: true, span: 3 })],
+      isHeader: true,
+    });
+    for (const item of section.items) {
+      allRows.push({
+        cells: [
+          c(item.desc),
+          c(item.anc ? "YES" : "", { bold: item.anc, align: "center", className: item.anc ? "text-emerald-600" : "" }),
+          c(!item.anc ? "YES" : "", { bold: !item.anc, align: "center", className: !item.anc ? "text-amber-600" : "" }),
+        ],
+      });
+    }
+    allRows.push({ cells: [], isSeparator: true });
+  }
+
+  return {
+    name: "Resp. Matrix",
+    color: "#0891B2",
+    columns: cols,
+    rows: [headerRow, ...allRows],
+    editableColumns: [],
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sheet: Form (Vendor Spec) — detailed specs per display
+// ═══════════════════════════════════════════════════════════════════════════
+
+function buildVendorSpecForm(input: RfpWorkbookInput): SheetTab {
+  // Dynamic columns: one per display
+  const displays = input.pricingDisplays.filter((d) => !d.isCustom);
+  const cols = ["Specification", ...displays.map((d) => d.name)];
+
+  const headerRow: SheetRow = {
+    cells: cols.map((h) => c(h, { bold: true, header: true })),
+    isHeader: true,
+  };
+
+  // Spec rows — extract from screens + matched products
+  const specFields: Array<{ label: string; getter: (d: typeof displays[0], spec: typeof input.screens[0]) => string }> = [
+    { label: "Manufacturer", getter: (d) => d.matchedProduct?.manufacturer ?? "—" },
+    { label: "Model", getter: (d) => d.matchedProduct?.model ?? "—" },
+    { label: "Pixel Pitch (mm)", getter: (d, s) => s.pixelPitchMm ? `${s.pixelPitchMm}mm` : "—" },
+    { label: "Width (ft)", getter: (d, s) => s.widthFt ? `${Math.round(s.widthFt * 100) / 100}'` : "—" },
+    { label: "Height (ft)", getter: (d, s) => s.heightFt ? `${Math.round(s.heightFt * 100) / 100}'` : "—" },
+    { label: "Width (px)", getter: (d, s) => {
+      const px = s.widthPx ?? (s.pixelPitchMm && s.widthFt ? Math.round(s.widthFt * 304.8 / s.pixelPitchMm) : 0);
+      return px > 0 ? String(px) : "—";
+    }},
+    { label: "Height (px)", getter: (d, s) => {
+      const px = s.heightPx ?? (s.pixelPitchMm && s.heightFt ? Math.round(s.heightFt * 304.8 / s.pixelPitchMm) : 0);
+      return px > 0 ? String(px) : "—";
+    }},
+    { label: "Total SQ FT", getter: (d) => d.areaSqFt > 0 ? `${Math.round(d.areaSqFt * 100) / 100}` : "—" },
+    { label: "Quantity", getter: (d) => `${d.quantity}` },
+    { label: "NIT Requirement", getter: (d, s) => s.brightnessNits ? `${s.brightnessNits.toLocaleString()}` : "—" },
+    { label: "Service Access", getter: (d, s) => s.serviceType ?? "—" },
+    { label: "Indoor / Outdoor", getter: () => input.project.isOutdoor ? "Outdoor" : "Indoor" },
+    { label: "IP Rating", getter: (d, s) => input.project.isOutdoor ? "IP65" : "IP40" },
+    { label: "Refresh Rate", getter: () => "≥ 3,840 Hz" },
+    { label: "Brightness", getter: (d, s) => {
+      const nits = s.brightnessNits;
+      return nits ? `${nits.toLocaleString()} NITs` : "—";
+    }},
+    { label: "Viewing Angle", getter: () => "≥ 160° H / 140° V" },
+    { label: "Power (per panel)", getter: () => "~750W max" },
+    { label: "Spare Panels (3%)", getter: (d, s) => {
+      const pitch = s.pixelPitchMm ?? 10;
+      const sqft = d.areaSqFt;
+      // Rough panel count estimate
+      const panelSqFt = pitch <= 4 ? 2.5 : pitch <= 8 ? 4.5 : 7.0;
+      const panels = Math.ceil(sqft / panelSqFt) * d.quantity;
+      return `${Math.ceil(panels * 0.03)}`;
+    }},
+  ];
+
+  const dataRows: SheetRow[] = specFields.map((sf) => ({
+    cells: [
+      c(sf.label, { bold: true }),
+      ...displays.map((d) => {
+        const spec = input.screens.find((s) => s.name === d.name);
+        return c(spec ? sf.getter(d, spec) : "—");
+      }),
+    ],
+  }));
+
+  return {
+    name: "Form",
+    color: "#6366F1",
+    columns: cols,
+    rows: [headerRow, ...dataRows],
+    editableColumns: [],
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sheet: Config — panel layout per display
+// ═══════════════════════════════════════════════════════════════════════════
+
+function buildConfig(input: RfpWorkbookInput): SheetTab {
+  const cols = ["Display", "Model", "Panels/W", "Panels/H", "Total Panels", "Controllers", "Fiber Conv."];
+
+  const headerRow: SheetRow = {
+    cells: cols.map((h) => c(h, { bold: true, header: true })),
+    isHeader: true,
+  };
+
+  const dataRows: SheetRow[] = input.screens.map((spec) => {
+    const pd = input.pricingDisplays.find((d) => d.name === spec.name);
+    const mp = pd?.matchedProduct;
+    const pitch = spec.pixelPitchMm ?? 10;
+    const wFt = mp?.activeWidthFt ?? spec.widthFt ?? 0;
+    const hFt = mp?.activeHeightFt ?? spec.heightFt ?? 0;
+
+    // Estimate panel counts from display size and pitch
+    const panelW = pitch <= 4 ? 1.64 : pitch <= 8 ? 1.64 : 3.28; // panel width in ft
+    const panelH = pitch <= 4 ? 1.64 : pitch <= 8 ? 1.64 : 3.28;
+    const panelsW = wFt > 0 ? Math.ceil(wFt / panelW) : 0;
+    const panelsH = hFt > 0 ? Math.ceil(hFt / panelH) : 0;
+    const totalPanels = panelsW * panelsH * (spec.quantity || 1);
+
+    // NovaStar 660 Pro: 8 ports, 650K px per port
+    const wPx = spec.widthPx ?? (pitch > 0 ? Math.round(wFt * 304.8 / pitch) : 0);
+    const hPx = spec.heightPx ?? (pitch > 0 ? Math.round(hFt * 304.8 / pitch) : 0);
+    const totalPx = wPx * hPx * (spec.quantity || 1);
+    const ports = totalPx > 0 ? Math.ceil(totalPx / 650000) : 0;
+    const controllers = ports > 0 ? Math.ceil(ports / 8) : 0;
+    const fiberConv = controllers * 2; // 2 per controller (send + receive)
+
+    return {
+      cells: [
+        c(spec.name, { bold: true }),
+        c(mp?.model ?? "—"),
+        num(panelsW || null),
+        num(panelsH || null),
+        num(totalPanels || null, { bold: true }),
+        num(controllers || null, { bold: true }),
+        num(fiberConv || null),
+      ],
+    };
+  });
+
+  const totalPanels = dataRows.reduce((s, r) => s + (typeof r.cells[4]?.value === "number" ? r.cells[4].value : 0), 0);
+  const totalControllers = dataRows.reduce((s, r) => s + (typeof r.cells[5]?.value === "number" ? r.cells[5].value : 0), 0);
+
+  const totalRow: SheetRow = {
+    cells: [
+      c("TOTAL", { bold: true }),
+      c(""),
+      c(""), c(""),
+      num(totalPanels || null, { bold: true, highlight: true }),
+      num(totalControllers || null, { bold: true, highlight: true }),
+      num(totalControllers * 2 || null, { bold: true }),
+    ],
+    isTotal: true,
+  };
+
+  return {
+    name: "Config.",
+    color: "#EC4899",
+    columns: cols,
+    rows: [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow],
+    editableColumns: [],
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sheet: Travel — per-person daily rates, weekly rollup
+// ═══════════════════════════════════════════════════════════════════════════
+
+function buildTravel(input: RfpWorkbookInput): SheetTab {
+  const cols = ["Category", "Rate", "Qty", "Subtotal"];
+
+  const headerRow: SheetRow = {
+    cells: cols.map((h) => c(h, { bold: true, header: true })),
+    isHeader: true,
+  };
+
+  // Master travel key
+  const travelItems = [
+    { label: "Flight (Round Trip)", rate: 600, qty: 2 },
+    { label: "Car Rental (per day)", rate: 125, qty: 7 },
+    { label: "Taxi / Rideshare", rate: 35, qty: 4 },
+    { label: "Per Diem (per day)", rate: 75, qty: 7 },
+    { label: "Lodging (per night)", rate: 185, qty: 7 },
+    { label: "Mileage / Fuel", rate: 30, qty: 5 },
+  ];
+
+  const dataRows: SheetRow[] = [];
+
+  // Travel key section
+  dataRows.push({
+    cells: [c("TRAVEL KEY (per person)", { bold: true, header: true, span: 4 })],
+    isHeader: true,
+  });
+  for (const item of travelItems) {
+    dataRows.push({
+      cells: [
+        c(item.label),
+        curr(item.rate),
+        num(item.qty, { align: "center" }),
+        curr(item.rate * item.qty, { bold: true }),
+      ],
+    });
+  }
+  const weeklyPerPerson = travelItems.reduce((s, i) => s + i.rate * i.qty, 0);
+  dataRows.push({
+    cells: [
+      c("Weekly Total (per person)", { bold: true }),
+      c(""), c(""),
+      curr(weeklyPerPerson, { bold: true }),
+    ],
+    isTotal: true,
+  });
+
+  // Crew estimate: 2 people, estimate weeks from display count
+  const displayCount = input.screens.length;
+  const estWeeks = Math.max(2, Math.ceil(displayCount * 1.5));
+  const crewSize = 2;
+
+  dataRows.push({ cells: [], isSeparator: true });
+  dataRows.push({
+    cells: [c("PROJECT TRAVEL ESTIMATE", { bold: true, header: true, span: 4 })],
+    isHeader: true,
+  });
+  dataRows.push({
+    cells: [c("Crew Size"), c(""), num(crewSize, { align: "center" }), c("")],
+  });
+  dataRows.push({
+    cells: [c("Estimated Weeks"), c(""), num(estWeeks, { align: "center" }), c("")],
+  });
+  dataRows.push({
+    cells: [c("Weekly Cost (crew)"), c(""), c(""), curr(weeklyPerPerson * crewSize, { bold: true })],
+  });
+  dataRows.push({ cells: [], isSeparator: true });
+
+  const totalTravel = weeklyPerPerson * crewSize * estWeeks;
+  dataRows.push({
+    cells: [
+      c("TOTAL PROJECT TRAVEL", { bold: true }),
+      c(""), c(""),
+      curr(totalTravel, { bold: true, highlight: true }),
+    ],
+    isTotal: true,
+  });
+
+  return {
+    name: "Travel",
+    color: "#F59E0B",
+    columns: cols,
+    rows: [headerRow, ...dataRows],
+    editableColumns: [1, 2], // Rate and Qty editable
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sheet: P&L — Revenue vs Budget vs Margin
+// ═══════════════════════════════════════════════════════════════════════════
+
+function buildPandL(input: RfpWorkbookInput): SheetTab {
+  const cols = ["Category", "Revenue", "Budgeted Cost", "Committed PO", "Margin $"];
+
+  const headerRow: SheetRow = {
+    cells: cols.map((h) => c(h, { bold: true, header: true })),
+    isHeader: true,
+  };
+
+  const summary = input.pricingSummary;
+  const displays = input.pricingDisplays;
+
+  // Derive category totals from pricing data
+  const ledCost = displays.reduce((s, d) => s + d.hardwareCost + (d.processorCost ?? 0) + (d.shippingCost ?? 0), 0);
+  const installCost = displays.reduce((s, d) => s + (d.installCost ?? 0), 0);
+  const structuralCost = displays.reduce((s, d) => s + (d.structuralCost ?? 0), 0);
+  const pmCost = displays.reduce((s, d) => s + (d.pmCost ?? 0), 0);
+  const engCost = displays.reduce((s, d) => s + (d.engCost ?? 0), 0);
+
+  const totalCost = summary?.totalCost ?? 0;
+  const totalSell = summary?.totalSellingPrice ?? 0;
+
+  const categories = [
+    { label: "LED Displays", cost: ledCost },
+    { label: "Installation Labor", cost: installCost },
+    { label: "Structural Materials", cost: structuralCost },
+    { label: "PM / General Conditions", cost: pmCost },
+    { label: "Engineering / Permits", cost: engCost },
+    { label: "ANC Travel", cost: 0 },
+    { label: "Bond", cost: 0 },
+    { label: "Tax", cost: 0 },
+  ];
+
+  const dataRows: SheetRow[] = [];
+
+  // Header section
+  dataRows.push({
+    cells: [c("PROJECTS BUDGET", { bold: true, header: true, span: 5 })],
+    isHeader: true,
+  });
+  dataRows.push({
+    cells: [
+      c("Base Contract Total", { bold: true }),
+      curr(totalSell, { bold: true }),
+      curr(totalCost),
+      curr(0), // Committed POs — user fills in
+      curr(totalSell - totalCost, { bold: true }),
+    ],
+  });
+  dataRows.push({ cells: [], isSeparator: true });
+
+  // Category breakdown
+  dataRows.push({
+    cells: [c("COST BREAKDOWN", { bold: true, header: true, span: 5 })],
+    isHeader: true,
+  });
+  for (const cat of categories) {
+    // Revenue = cost / (1 - blended margin)
+    const margin = summary?.blendedMarginPct ? summary.blendedMarginPct / 100 : 0.10;
+    const revenue = cat.cost > 0 ? cat.cost / (1 - margin) : 0;
+    dataRows.push({
+      cells: [
+        c(cat.label),
+        curr(Math.round(revenue)),
+        curr(Math.round(cat.cost)),
+        curr(0), // PO — user fills
+        curr(Math.round(revenue - cat.cost)),
+      ],
+    });
+  }
+
+  dataRows.push({ cells: [], isSeparator: true });
+  dataRows.push({
+    cells: [
+      c("GRAND TOTAL", { bold: true }),
+      curr(Math.round(totalSell), { bold: true, highlight: true }),
+      curr(Math.round(totalCost), { bold: true }),
+      curr(0, { bold: true }),
+      curr(Math.round(totalSell - totalCost), { bold: true, highlight: true }),
+    ],
+    isTotal: true,
+  });
+
+  return {
+    name: "P&L",
+    color: "#DC2626",
+    columns: cols,
+    rows: [headerRow, ...dataRows],
+    editableColumns: [3], // Committed PO column editable
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sheet: Cash Flow — monthly payment schedule
+// ═══════════════════════════════════════════════════════════════════════════
+
+function buildCashFlow(input: RfpWorkbookInput): SheetTab {
+  const cols = ["Milestone", "% of Contract", "Revenue", "Cost", "Net"];
+
+  const headerRow: SheetRow = {
+    cells: cols.map((h) => c(h, { bold: true, header: true })),
+    isHeader: true,
+  };
+
+  const totalSell = input.pricingSummary?.totalSellingPrice ?? 0;
+  const totalCost = input.pricingSummary?.totalCost ?? 0;
+
+  // Standard ANC payment terms: 50/20/20/10
+  const milestones = [
+    { label: "Contract Signed", pct: 0.50 },
+    { label: "Product Shipping", pct: 0.20 },
+    { label: "Substantial Completion", pct: 0.20 },
+    { label: "Final Sign-Off", pct: 0.10 },
+  ];
+
+  const dataRows: SheetRow[] = [];
+
+  dataRows.push({
+    cells: [c("PAYMENT TERMS: 50/20/20/10", { bold: true, header: true, span: 5 })],
+    isHeader: true,
+  });
+
+  for (const ms of milestones) {
+    const rev = Math.round(totalSell * ms.pct);
+    const cost = Math.round(totalCost * ms.pct);
+    dataRows.push({
+      cells: [
+        c(ms.label, { bold: true }),
+        pct(ms.pct),
+        curr(rev),
+        curr(cost),
+        curr(rev - cost, { bold: true, className: rev - cost >= 0 ? "text-emerald-600" : "text-red-600" }),
+      ],
+    });
+  }
+
+  dataRows.push({ cells: [], isSeparator: true });
+  dataRows.push({
+    cells: [
+      c("TOTAL", { bold: true }),
+      pct(1.0, { bold: true }),
+      curr(Math.round(totalSell), { bold: true, highlight: true }),
+      curr(Math.round(totalCost), { bold: true }),
+      curr(Math.round(totalSell - totalCost), { bold: true, highlight: true }),
+    ],
+    isTotal: true,
+  });
+
+  return {
+    name: "Cash Flow",
+    color: "#F97316",
+    columns: cols,
+    rows: [headerRow, ...dataRows],
+    editableColumns: [],
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sheet: PO's — Purchase Order tracking
+// ═══════════════════════════════════════════════════════════════════════════
+
+function buildPurchaseOrders(input: RfpWorkbookInput): SheetTab {
+  const cols = ["PO #", "Vendor", "Description", "Category", "Amount"];
+
+  const headerRow: SheetRow = {
+    cells: cols.map((h) => c(h, { bold: true, header: true })),
+    isHeader: true,
+  };
+
+  const projectCode = (input.project.clientName || "PRJ").substring(0, 6).toUpperCase().replace(/\s/g, "");
+  let poNum = 1;
+  const dataRows: SheetRow[] = [];
+
+  // Pre-populate PO slots from pricing data
+  for (const d of input.pricingDisplays.filter((x) => !x.isCustom)) {
+    const vendor = d.matchedProduct?.manufacturer ?? "TBD";
+    // LED PO
+    dataRows.push({
+      cells: [
+        c(`${projectCode}-${String(poNum++).padStart(3, "0")}`),
+        c(vendor),
+        c(`${d.name} — LED Display`),
+        c("LED"),
+        curr(Math.round(d.hardwareCost + (d.processorCost ?? 0) + (d.shippingCost ?? 0))),
+      ],
+    });
+  }
+
+  // Install PO
+  const totalInstall = input.pricingDisplays.reduce((s, d) => s + (d.installCost ?? 0), 0);
+  if (totalInstall > 0) {
+    dataRows.push({
+      cells: [
+        c(`${projectCode}-${String(poNum++).padStart(3, "0")}`),
+        c("TBD — Install Contractor"),
+        c("Installation Labor"),
+        c("Install"),
+        curr(Math.round(totalInstall)),
+      ],
+    });
+  }
+
+  // Structural PO
+  const totalStructural = input.pricingDisplays.reduce((s, d) => s + (d.structuralCost ?? 0), 0);
+  if (totalStructural > 0) {
+    dataRows.push({
+      cells: [
+        c(`${projectCode}-${String(poNum++).padStart(3, "0")}`),
+        c("TBD — Structural Engineer"),
+        c("Structural Engineering"),
+        c("Structural"),
+        curr(Math.round(totalStructural)),
+      ],
+    });
+  }
+
+  // Engineering PO
+  const totalEng = input.pricingDisplays.reduce((s, d) => s + (d.engCost ?? 0), 0);
+  if (totalEng > 0) {
+    dataRows.push({
+      cells: [
+        c(`${projectCode}-${String(poNum++).padStart(3, "0")}`),
+        c("TBD — Electrical Engineer"),
+        c("Electrical Engineering"),
+        c("Engineering"),
+        curr(Math.round(totalEng)),
+      ],
+    });
+  }
+
+  // Empty PO slots for user to fill
+  for (let i = 0; i < 5; i++) {
+    dataRows.push({
+      cells: [
+        c(`${projectCode}-${String(poNum++).padStart(3, "0")}`),
+        c(""),
+        c(""),
+        c(""),
+        curr(0),
+      ],
+    });
+  }
+
+  // Total
+  const totalPO = dataRows.reduce((s, r) => {
+    const val = r.cells[4];
+    return s + (typeof val?.value === "number" ? val.value : 0);
+  }, 0);
+
+  const totalRow: SheetRow = {
+    cells: [
+      c("TOTAL COMMITTED", { bold: true }),
+      c(""), c(""), c(""),
+      curr(totalPO, { bold: true, highlight: true }),
+    ],
+    isTotal: true,
+  };
+
+  return {
+    name: "PO's",
+    color: "#B45309",
+    columns: cols,
+    rows: [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow],
+    editableColumns: [1, 2, 3, 4], // Vendor, Description, Category, Amount all editable
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sheet: Vendor Pricing — panel-by-panel BOM from manufacturer
+// ═══════════════════════════════════════════════════════════════════════════
+
+function buildVendorPricing(input: RfpWorkbookInput): SheetTab {
+  const cols = ["Display", "Model", "Panel Qty", "Screen Qty", "Total Panels", "Unit Price", "Total Amount", "US$/SqFt"];
+
+  const headerRow: SheetRow = {
+    cells: cols.map((h) => c(h, { bold: true, header: true })),
+    isHeader: true,
+  };
+
+  const dataRows: SheetRow[] = [];
+
+  for (const d of input.pricingDisplays.filter((x) => !x.isCustom)) {
+    const mp = d.matchedProduct;
+    const spec = input.screens.find((s) => s.name === d.name);
+    const pitch = spec?.pixelPitchMm ?? 10;
+    const wFt = mp?.activeWidthFt ?? spec?.widthFt ?? 0;
+    const hFt = mp?.activeHeightFt ?? spec?.heightFt ?? 0;
+
+    // Estimate panel count
+    const panelW = pitch <= 4 ? 1.64 : pitch <= 8 ? 1.64 : 3.28;
+    const panelH = pitch <= 4 ? 1.64 : pitch <= 8 ? 1.64 : 3.28;
+    const panelsW = wFt > 0 ? Math.ceil(wFt / panelW) : 0;
+    const panelsH = hFt > 0 ? Math.ceil(hFt / panelH) : 0;
+    const panelQty = panelsW * panelsH;
+    const screenQty = d.quantity;
+    const totalPanels = panelQty * screenQty;
+    const unitPrice = totalPanels > 0 ? d.hardwareCost / totalPanels : 0;
+    const ratePerSqFt = d.areaSqFt > 0 ? d.hardwareCost / d.areaSqFt : 0;
+
+    dataRows.push({
+      cells: [
+        c(d.name, { bold: true }),
+        c(mp?.model ?? "—"),
+        num(panelQty || null),
+        num(screenQty),
+        num(totalPanels || null, { bold: true }),
+        curr(Math.round(unitPrice)),
+        curr(Math.round(d.hardwareCost), { bold: true }),
+        curr(Math.round(ratePerSqFt * 100) / 100),
+      ],
+    });
+  }
+
+  // Subtotal
+  const totalAmount = dataRows.reduce((s, r) => {
+    const val = r.cells[6];
+    return s + (typeof val?.value === "number" ? val.value : 0);
+  }, 0);
+
+  const totalRow: SheetRow = {
+    cells: [
+      c("TOTAL", { bold: true }),
+      c(""), c(""), c(""), c(""),
+      c(""),
+      curr(totalAmount, { bold: true, highlight: true }),
+      c(""),
+    ],
+    isTotal: true,
+  };
+
+  // Notes
+  const noteRows: SheetRow[] = [
+    { cells: [], isSeparator: true },
+    { cells: [c("Notes:", { bold: true, span: 8 })], isHeader: true },
+    { cells: [c("• 3% standard spare parts for panels only", { span: 8 })] },
+    { cells: [c("• 3 years standard warranty included", { span: 8 })] },
+    { cells: [c("• DDP (Delivered Duty Paid) unless noted", { span: 8 })] },
+  ];
+
+  return {
+    name: "Vendor Pricing",
+    color: "#475569",
+    columns: cols,
+    rows: [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow, ...noteRows],
+    editableColumns: [5, 6], // Unit Price and Total Amount editable
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Main builder
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -748,16 +1681,21 @@ export function buildRfpWorkbook(input: RfpWorkbookInput): WorkbookData {
   const sheets: SheetTab[] = [
     buildLedCostSheet(input),
     buildMarginAnalysis(input),
+    buildInstallBase(input),
     ...(bidFormSheet ? [bidFormSheet] : []),
     buildProjectInfo(input),
     buildRequirements(input),
     buildProcessorCount(input),
+    buildConfig(input),
+    buildVendorSpecForm(input),
+    buildVendorPricing(input),
+    buildExtendedWarranty(input),
+    buildResponsibilityMatrix(input),
+    buildPandL(input),
+    buildCashFlow(input),
+    buildPurchaseOrders(input),
+    buildTravel(input),
     buildPageTriage(input),
-    // Placeholder sheets — available in downloaded workbook
-    { name: "P&L", color: "#F59E0B", columns: ["Revenue", "Budget", "Margin"], rows: [], placeholder: true, placeholderMessage: "P&L available in Full Scoping Workbook download" },
-    { name: "Cash Flow", color: "#F59E0B", columns: ["Month", "Revenue", "Expenses"], rows: [], placeholder: true, placeholderMessage: "Cash flow projections available in Full Scoping Workbook download" },
-    { name: "PO's", color: "#F59E0B", columns: ["PO #", "Vendor", "Amount"], rows: [], placeholder: true, placeholderMessage: "Purchase order tracking available in Full Scoping Workbook download" },
-    { name: "Travel", color: "#F59E0B", columns: ["Category", "Cost", "Qty"], rows: [], placeholder: true, placeholderMessage: "Travel budget available in Full Scoping Workbook download" },
   ];
 
   return {
