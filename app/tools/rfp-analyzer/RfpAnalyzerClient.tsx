@@ -134,6 +134,90 @@ interface PricingPreview {
 type Phase = "upload" | "processing" | "results";
 
 // ==========================================================================
+// Mismatch detection: compare PDF-extracted vs bid form specs
+// ==========================================================================
+
+interface SpecMismatch {
+  displayName: string;
+  field: string;
+  pdfValue: string | number | null;
+  bidFormValue: string | number | null;
+  severity: "critical" | "warning";
+}
+
+function detectSpecMismatches(
+  pdfSpecs: ExtractedLEDSpec[],
+  bidFormSpecs: ExtractedLEDSpec[]
+): SpecMismatch[] {
+  const mismatches: SpecMismatch[] = [];
+
+  for (const bfSpec of bidFormSpecs) {
+    // Find matching PDF spec by name similarity
+    const pdfMatch = pdfSpecs.find((ps) => {
+      const bfTokens = new Set(bfSpec.name.toLowerCase().replace(/[^a-z0-9]/g, " ").trim().split(/\s+/).filter(t => t.length > 2));
+      const pdfTokens = new Set(ps.name.toLowerCase().replace(/[^a-z0-9]/g, " ").trim().split(/\s+/).filter(t => t.length > 2));
+      if (bfTokens.size === 0 || pdfTokens.size === 0) return false;
+      let overlap = 0;
+      for (const t of bfTokens) if (pdfTokens.has(t)) overlap++;
+      return overlap / Math.max(bfTokens.size, pdfTokens.size) > 0.4;
+    });
+    if (!pdfMatch) continue;
+
+    // Quantity mismatch (exact match required)
+    if (pdfMatch.quantity !== bfSpec.quantity && pdfMatch.quantity > 0 && bfSpec.quantity > 0) {
+      mismatches.push({
+        displayName: bfSpec.name,
+        field: "Quantity",
+        pdfValue: pdfMatch.quantity,
+        bidFormValue: bfSpec.quantity,
+        severity: "critical",
+      });
+    }
+
+    // Pixel pitch mismatch (tolerance ±0.3mm)
+    if (pdfMatch.pixelPitchMm != null && bfSpec.pixelPitchMm != null) {
+      if (Math.abs(pdfMatch.pixelPitchMm - bfSpec.pixelPitchMm) > 0.3) {
+        mismatches.push({
+          displayName: bfSpec.name,
+          field: "Pixel Pitch",
+          pdfValue: `${pdfMatch.pixelPitchMm}mm`,
+          bidFormValue: `${bfSpec.pixelPitchMm}mm`,
+          severity: "critical",
+        });
+      }
+    }
+
+    // Height mismatch (tolerance ±1ft)
+    if (pdfMatch.heightFt != null && bfSpec.heightFt != null) {
+      if (Math.abs(pdfMatch.heightFt - bfSpec.heightFt) > 1) {
+        mismatches.push({
+          displayName: bfSpec.name,
+          field: "Height (ft)",
+          pdfValue: pdfMatch.heightFt,
+          bidFormValue: bfSpec.heightFt,
+          severity: "warning",
+        });
+      }
+    }
+
+    // Width mismatch (tolerance ±1ft)
+    if (pdfMatch.widthFt != null && bfSpec.widthFt != null) {
+      if (Math.abs(pdfMatch.widthFt - bfSpec.widthFt) > 1) {
+        mismatches.push({
+          displayName: bfSpec.name,
+          field: "Width (ft)",
+          pdfValue: pdfMatch.widthFt,
+          bidFormValue: bfSpec.widthFt,
+          severity: "warning",
+        });
+      }
+    }
+  }
+
+  return mismatches;
+}
+
+// ==========================================================================
 // Main Component
 // ==========================================================================
 
@@ -178,6 +262,14 @@ export default function RfpAnalyzerClient() {
     unmatchedBlocks: string[];
     unmatchedScreens: string[];
   } | null>(null);
+  // Mismatch detection: original PDF vs bid form specs
+  const [specMismatches, setSpecMismatches] = useState<Array<{
+    displayName: string;
+    field: string;
+    pdfValue: string | number | null;
+    bidFormValue: string | number | null;
+    severity: "critical" | "warning";
+  }>>([]);
 
   // Debounced auto-save: patches screens to DB 2s after last edit
   const autoSaveSpecs = useCallback((specs: ExtractedLEDSpec[], analysisId: string | null) => {
@@ -235,6 +327,7 @@ export default function RfpAnalyzerClient() {
       pricingDisplays: pricingPreview?.displays || [],
       pricingSummary: pricingPreview?.summary || null,
       bidFormResult: bidFormResult || null,
+      specMismatches: specMismatches.length > 0 ? specMismatches : undefined,
       availableProducts,
       onProductSelect: handleProductSelect,
       onSourcePageClick: (pg) => {
@@ -242,7 +335,7 @@ export default function RfpAnalyzerClient() {
         setShowPdfPanel(true);
       },
     });
-  }, [result, pricingPreview, requirements, bidFormResult, availableProducts, handleProductSelect]);
+  }, [result, pricingPreview, requirements, bidFormResult, specMismatches, availableProducts, handleProductSelect]);
 
   // ========================================================================
   // Auto-run pricing when extraction completes (no manual step needed)
@@ -906,6 +999,15 @@ export default function RfpAnalyzerClient() {
           console.log(`[bid-form-supplement] ${result.screens.length} → ${newSpecs.length} specs from bid form (merged=${data.merged})`);
           // Re-run pricing with the bid form spec set
           setPricingPreview(null);
+
+          // Detect mismatches between PDF and bid form specs
+          if (data.pdfSpecs && data.bidFormSpecs) {
+            const mismatches = detectSpecMismatches(data.pdfSpecs, data.bidFormSpecs);
+            setSpecMismatches(mismatches);
+            if (mismatches.length > 0) {
+              console.log(`[mismatch] Found ${mismatches.length} discrepancies between PDF and bid form`);
+            }
+          }
         }
       } catch (err) {
         console.error("[bid-form-supplement] Error:", err);
@@ -942,6 +1044,7 @@ export default function RfpAnalyzerClient() {
     setEditableSpecs([]);
     setBidFormResult(null);
     setBidFormFile(null);
+    setSpecMismatches([]);
     bidFormAutoFilled.current = false;
     bidFormSpecsExtracted.current = false;
   };
@@ -1280,30 +1383,66 @@ export default function RfpAnalyzerClient() {
                 data={workbookData}
                 editable
                 onCellEdit={(sheetIdx, rowIdx, colIdx, value) => {
-                  // Only LED Cost Sheet (index 0) is editable
-                  if (sheetIdx !== 0) return;
-                  // Map column indices to spec fields
-                  const fieldMap: Record<number, string> = { 0: "name", 3: "heightFt", 4: "widthFt", 7: "quantity" };
-                  const field = fieldMap[colIdx];
-                  if (!field) return;
-                  // Use functional updater to always read latest state (avoids stale closure)
-                  setResult(prev => {
-                    if (!prev) return prev;
-                    const specIdx = rowIdx - 1;
-                    if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
-                    const spec = { ...prev.screens[specIdx] };
-                    if (field === "name") {
-                      (spec as any)[field] = value;
-                    } else {
-                      (spec as any)[field] = parseFloat(value) || 0;
-                    }
-                    const updated = [...prev.screens];
-                    updated[specIdx] = spec;
-                    // Side effects: save editable specs + auto-save to DB
-                    setEditableSpecs(updated);
-                    autoSaveSpecs(updated, prev.id);
-                    return { ...prev, screens: updated };
-                  });
+                  // Sheet 0: LED Cost Sheet — edit specs
+                  if (sheetIdx === 0) {
+                    const fieldMap: Record<number, string> = { 0: "name", 3: "heightFt", 4: "widthFt", 7: "quantity" };
+                    const field = fieldMap[colIdx];
+                    if (!field) return;
+                    setResult(prev => {
+                      if (!prev) return prev;
+                      const specIdx = rowIdx - 1;
+                      if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
+                      const spec = { ...prev.screens[specIdx] };
+                      if (field === "name") {
+                        (spec as any)[field] = value;
+                      } else {
+                        (spec as any)[field] = parseFloat(value) || 0;
+                      }
+                      const updated = [...prev.screens];
+                      updated[specIdx] = spec;
+                      setEditableSpecs(updated);
+                      autoSaveSpecs(updated, prev.id);
+                      return { ...prev, screens: updated };
+                    });
+                    return;
+                  }
+                  // Sheet 1: Margin Analysis — edit install/PM/eng costs
+                  if (sheetIdx === 1) {
+                    const costFieldMap: Record<number, string> = { 2: "installCost", 3: "pmCost", 4: "engCost" };
+                    const costField = costFieldMap[colIdx];
+                    if (!costField) return;
+                    setPricingPreview(prev => {
+                      if (!prev) return prev;
+                      const displayIdx = rowIdx - 1; // subtract header row
+                      if (displayIdx < 0 || displayIdx >= prev.displays.length) return prev;
+                      const updatedDisplays = prev.displays.map((d, i) => {
+                        if (i !== displayIdx) return d;
+                        const updated = { ...d, [costField]: parseFloat(value) || 0 };
+                        // Recalculate totalCost for this display
+                        updated.totalCost = updated.hardwareCost + (updated.installCost ?? 0) + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
+                        // Recalculate selling price from margin
+                        updated.totalSellingPrice = updated.blendedMarginPct > 0
+                          ? updated.totalCost / (1 - updated.blendedMarginPct)
+                          : updated.totalCost;
+                        return updated;
+                      });
+                      // Recalculate summary
+                      const totalCost = updatedDisplays.reduce((s, d) => s + d.totalCost, 0);
+                      const totalSell = updatedDisplays.reduce((s, d) => s + d.totalSellingPrice, 0);
+                      return {
+                        ...prev,
+                        displays: updatedDisplays,
+                        summary: {
+                          ...prev.summary,
+                          totalCost,
+                          totalSellingPrice: totalSell,
+                          totalMargin: totalSell - totalCost,
+                          blendedMarginPct: totalSell > 0 ? Math.round(((totalSell - totalCost) / totalSell) * 1000) / 10 : 0,
+                        },
+                      };
+                    });
+                    return;
+                  }
                 }}
                 onCellClick={(sheetIdx, rowIdx, colIdx) => {
                   // Cell click handlers are wired via onClick on individual cells

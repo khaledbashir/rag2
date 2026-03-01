@@ -69,12 +69,15 @@ export async function POST(request: NextRequest) {
           `[extract-bid-form-specs] Merged: ${existingScreens.length} existing + ${specs.length} bid form → ${merged.length} total`
         );
 
+        // Return original sources for mismatch detection
         return NextResponse.json({
           specs: merged,
           blockCount,
           merged: true,
           previousCount: existingScreens.length,
           newCount: merged.length,
+          pdfSpecs: existingScreens,
+          bidFormSpecs: specs,
         });
       }
     }

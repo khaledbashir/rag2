@@ -50,6 +50,14 @@ export interface BidFormMatchResult {
   unmatchedScreens: string[];
 }
 
+export interface SpecMismatchItem {
+  displayName: string;
+  field: string;
+  pdfValue: string | number | null;
+  bidFormValue: string | number | null;
+  severity: "critical" | "warning";
+}
+
 export interface RfpWorkbookInput {
   project: {
     clientName: string | null;
@@ -67,6 +75,8 @@ export interface RfpWorkbookInput {
   pricingDisplays: PricingDisplay[];
   pricingSummary: PricingSummary | null;
   bidFormResult?: BidFormMatchResult | null;
+  /** RFP vs bid form spec discrepancies */
+  specMismatches?: SpecMismatchItem[];
   /** Callback for source page jumps (passed as onClick on cells) */
   onSourcePageClick?: (page: number) => void;
   /** Available products for dropdown selector */
@@ -286,7 +296,7 @@ function buildMarginAnalysis(input: RfpWorkbookInput): SheetTab {
     rows: summary
       ? [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow]
       : [headerRow, { cells: [c("Run pricing preview to populate", { span: cols.length, align: "center" })], isSeparator: false }],
-    editableColumns: [],
+    editableColumns: [2, 3, 4], // Install, PM/GC, Engineering
   };
 }
 
@@ -507,6 +517,7 @@ function buildPageTriage(input: RfpWorkbookInput): SheetTab {
 function buildBidFormSheet(input: RfpWorkbookInput): SheetTab | null {
   if (!input.bidFormResult) return null;
 
+  const hasMismatches = (input.specMismatches?.length ?? 0) > 0;
   const cols = ["Bid Form Display", "Matched Screen", "Confidence", "Fields Filled", "Status"];
 
   const headerRow: SheetRow = {
@@ -557,11 +568,48 @@ function buildBidFormSheet(input: RfpWorkbookInput): SheetTab | null {
     isTotal: true,
   };
 
+  // Mismatch section — appended below match results when discrepancies exist
+  const mismatchRows: SheetRow[] = [];
+  if (hasMismatches) {
+    mismatchRows.push({ cells: [], isSeparator: true });
+    mismatchRows.push({
+      cells: [
+        c(`SPEC DISCREPANCIES (${input.specMismatches!.length})`, { bold: true, header: true, span: 5 }),
+      ],
+      isHeader: true,
+    });
+    // Mismatch header
+    mismatchRows.push({
+      cells: [
+        c("Display", { bold: true }),
+        c("Field", { bold: true }),
+        c("RFP / PDF Value", { bold: true }),
+        c("Bid Form Value", { bold: true }),
+        c("Severity", { bold: true }),
+      ],
+      isHeader: true,
+    });
+    for (const mm of input.specMismatches!) {
+      mismatchRows.push({
+        cells: [
+          c(mm.displayName, { bold: true }),
+          c(mm.field),
+          c(String(mm.pdfValue ?? "—")),
+          c(String(mm.bidFormValue ?? "—")),
+          c(mm.severity === "critical" ? "CRITICAL" : "Warning", {
+            bold: mm.severity === "critical",
+            className: mm.severity === "critical" ? "text-red-600" : "text-amber-600",
+          }),
+        ],
+      });
+    }
+  }
+
   return {
-    name: "Bid Form",
-    color: "#D97706",
+    name: hasMismatches ? `Bid Form (${input.specMismatches!.length} flags)` : "Bid Form",
+    color: hasMismatches ? "#DC2626" : "#D97706",
     columns: cols,
-    rows: [headerRow, ...matchRows, ...unmatchedBlockRows, ...unmatchedScreenRows, { cells: [], isSeparator: true }, summaryRow],
+    rows: [headerRow, ...matchRows, ...unmatchedBlockRows, ...unmatchedScreenRows, { cells: [], isSeparator: true }, summaryRow, ...mismatchRows],
     editableColumns: [],
   };
 }
