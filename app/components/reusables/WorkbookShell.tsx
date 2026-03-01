@@ -319,12 +319,25 @@ interface CellViewProps {
 
 function CellView({ cell, editable, isEditing, onClick, onChange, onBlur }: CellViewProps) {
   const [value, setValue] = React.useState(formatCellValue(cell));
+  const committedRef = React.useRef(false);
 
   React.useEffect(() => {
     setValue(formatCellValue(cell));
   }, [cell]);
 
+  // Reset committed flag when entering edit mode
+  React.useEffect(() => {
+    if (isEditing) committedRef.current = false;
+  }, [isEditing]);
+
   if (isEditing && editable) {
+    const commit = () => {
+      if (committedRef.current) return; // Prevent double-fire (Enter + blur)
+      committedRef.current = true;
+      onChange(value);
+      onBlur?.();
+    };
+
     return (
       <td className="px-0 py-0 border-r border-b border-border last:border-r-0 bg-white dark:bg-zinc-900">
         <input
@@ -332,10 +345,10 @@ function CellView({ cell, editable, isEditing, onClick, onChange, onBlur }: Cell
           type="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          onBlur={() => { onChange(value); onBlur?.(); }}
+          onBlur={commit}
           onKeyDown={(e) => {
-            if (e.key === "Enter") { onChange(value); onBlur?.(); }
-            if (e.key === "Escape") { setValue(formatCellValue(cell)); onBlur?.(); }
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") { committedRef.current = true; setValue(formatCellValue(cell)); onBlur?.(); }
           }}
           className="w-full h-full px-2 py-1 text-xs bg-transparent border-2 border-blue-500 focus:outline-none"
         />

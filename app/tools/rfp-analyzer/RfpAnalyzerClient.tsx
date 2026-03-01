@@ -1282,24 +1282,28 @@ export default function RfpAnalyzerClient() {
                 onCellEdit={(sheetIdx, rowIdx, colIdx, value) => {
                   // Only LED Cost Sheet (index 0) is editable
                   if (sheetIdx !== 0) return;
-                  // rowIdx 0 = header row, data starts at 1
-                  const specIdx = rowIdx - 1;
-                  if (specIdx < 0 || specIdx >= result.screens.length) return;
-                  const spec = { ...result.screens[specIdx] };
                   // Map column indices to spec fields
                   const fieldMap: Record<number, string> = { 0: "name", 3: "heightFt", 4: "widthFt", 7: "quantity" };
                   const field = fieldMap[colIdx];
                   if (!field) return;
-                  if (field === "name") {
-                    (spec as any)[field] = value;
-                  } else {
-                    (spec as any)[field] = parseFloat(value) || 0;
-                  }
-                  const updated = [...result.screens];
-                  updated[specIdx] = spec;
-                  setResult({ ...result, screens: updated });
-                  setEditableSpecs(updated);
-                  autoSaveSpecs(updated, result.id);
+                  // Use functional updater to always read latest state (avoids stale closure)
+                  setResult(prev => {
+                    if (!prev) return prev;
+                    const specIdx = rowIdx - 1;
+                    if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
+                    const spec = { ...prev.screens[specIdx] };
+                    if (field === "name") {
+                      (spec as any)[field] = value;
+                    } else {
+                      (spec as any)[field] = parseFloat(value) || 0;
+                    }
+                    const updated = [...prev.screens];
+                    updated[specIdx] = spec;
+                    // Side effects: save editable specs + auto-save to DB
+                    setEditableSpecs(updated);
+                    autoSaveSpecs(updated, prev.id);
+                    return { ...prev, screens: updated };
+                  });
                 }}
                 onCellClick={(sheetIdx, rowIdx, colIdx) => {
                   // Cell click handlers are wired via onClick on individual cells
