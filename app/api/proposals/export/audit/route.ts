@@ -12,6 +12,7 @@ export async function POST(req: NextRequest) {
     const bodyInternalAudit = body.internalAudit;
     const bodyScreens = Array.isArray(body.screens) ? body.screens : null;
     const bodyMode = typeof body.calculationMode === "string" ? body.calculationMode : undefined;
+    const currency = typeof body.currency === "string" ? body.currency : "USD";
     const bodyMirrorMode = typeof body.mirrorMode === "boolean" ? body.mirrorMode : undefined;
 
     if (!proposalId && !bodyScreens) {
@@ -89,6 +90,7 @@ export async function POST(req: NextRequest) {
         projectName: proposal?.clientName || body.projectName,
         screens: effectiveScreens,
         internalAudit,
+        currency,
       })
       : await generateAuditExcelBuffer(screensWithAudit, {
         proposalName,
@@ -103,6 +105,7 @@ export async function POST(req: NextRequest) {
         // REQ-86: Structural steel tonnage
         structuralTonnage: body.structuralTonnage ?? (proposal?.structuralTonnage ? Number(proposal.structuralTonnage) : undefined),
         reinforcingTonnage: body.reinforcingTonnage ?? (proposal?.reinforcingTonnage ? Number(proposal.reinforcingTonnage) : undefined),
+        currency,
       });
 
     return new Response(buffer as any, {

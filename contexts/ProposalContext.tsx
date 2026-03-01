@@ -1730,6 +1730,7 @@ export const ProposalContextProvider = ({
                     calculationMode: isMirror ? "MIRROR" : "INTELLIGENCE",
                     includePricingBreakdown: true,
                     showPricingTables: true,
+                    currency: data.details?.currency ?? "USD",
                 }),
             });
 
@@ -2821,6 +2822,7 @@ export const ProposalContextProvider = ({
                     mirrorMode: isMirror,
                     clientName: formValues?.receiver?.name ?? "",
                     projectName: formValues?.details?.proposalName ?? "",
+                    currency: formValues?.details?.currency ?? "USD",
                 }),
             });
 
