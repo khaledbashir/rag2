@@ -1297,7 +1297,7 @@ export default function RfpAnalyzerClient() {
                   }
                   const updated = [...result.screens];
                   updated[specIdx] = spec;
-                  result.screens = updated;
+                  setResult({ ...result, screens: updated });
                   setEditableSpecs(updated);
                   autoSaveSpecs(updated, result.id);
                 }}
