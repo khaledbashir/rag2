@@ -20,6 +20,7 @@ export interface PricingDisplay {
   quantity: number;
   hardwareCost: number;
   installCost?: number;
+  structuralCost?: number;
   pmCost?: number;
   engCost?: number;
   totalCost: number;
@@ -32,6 +33,7 @@ export interface PricingDisplay {
     activeWidthFt?: number; activeHeightFt?: number;
     resolutionX?: number; resolutionY?: number;
   } | null;
+  isCustom?: boolean; // true for user-added line items
 }
 
 export interface PricingSummary {
@@ -83,6 +85,8 @@ export interface RfpWorkbookInput {
   availableProducts?: Array<{ id: string; label: string; pitch: number; name: string }>;
   /** Callback when user selects a product for a display */
   onProductSelect?: (displayName: string, productId: string) => void;
+  /** Callback to add a custom line item to Margin Analysis */
+  onAddLineItem?: () => void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -248,55 +252,93 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function buildMarginAnalysis(input: RfpWorkbookInput): SheetTab {
-  const cols = ["Display", "LED Hardware", "Install", "PM / GC", "Engineering", "Total Cost", "Margin %", "Selling Price"];
+  const cols = ["Display", "LED Hardware", "Install", "Structural", "PM / GC", "Engineering", "Total Cost", "Margin %", "Selling Price"];
 
   const headerRow: SheetRow = {
     cells: cols.map((h) => c(h, { bold: true, header: true })),
     isHeader: true,
   };
 
-  const dataRows: SheetRow[] = input.pricingDisplays.map((d) => ({
-    cells: [
-      c(d.name, { bold: true }),
-      curr(d.hardwareCost),
-      curr(d.installCost ?? 0),
-      curr(d.pmCost ?? 0),
-      curr(d.engCost ?? 0),
-      curr(d.totalCost, { bold: true }),
-      pct(d.blendedMarginPct, {
-        className: d.blendedMarginPct >= 0.25
-          ? "text-emerald-600"
-          : d.blendedMarginPct >= 0.15
-            ? "text-amber-600"
-            : "text-red-600",
-      }),
-      curr(d.totalSellingPrice, { bold: true }),
-    ],
-  }));
+  const dataRows: SheetRow[] = input.pricingDisplays.map((d) => {
+    const totalCost = d.hardwareCost + (d.installCost ?? 0) + (d.structuralCost ?? 0) + (d.pmCost ?? 0) + (d.engCost ?? 0);
+    const sellingPrice = d.blendedMarginPct > 0 ? totalCost / (1 - d.blendedMarginPct) : totalCost;
+    return {
+      cells: [
+        d.isCustom
+          ? c(d.name, { bold: true, className: "text-blue-600" })
+          : c(d.name, { bold: true }),
+        curr(d.hardwareCost),
+        curr(d.installCost ?? 0),
+        curr(d.structuralCost ?? 0),
+        curr(d.pmCost ?? 0),
+        curr(d.engCost ?? 0),
+        curr(totalCost, { bold: true }),
+        pct(d.blendedMarginPct, {
+          className: d.blendedMarginPct >= 0.25
+            ? "text-emerald-600"
+            : d.blendedMarginPct >= 0.15
+              ? "text-amber-600"
+              : "text-red-600",
+        }),
+        curr(sellingPrice, { bold: true }),
+      ],
+    };
+  });
 
-  const summary = input.pricingSummary;
+  // Recalculate totals from current data
+  const totalHw = input.pricingDisplays.reduce((s, d) => s + d.hardwareCost, 0);
+  const totalInstall = input.pricingDisplays.reduce((s, d) => s + (d.installCost ?? 0), 0);
+  const totalStructural = input.pricingDisplays.reduce((s, d) => s + (d.structuralCost ?? 0), 0);
+  const totalPm = input.pricingDisplays.reduce((s, d) => s + (d.pmCost ?? 0), 0);
+  const totalEng = input.pricingDisplays.reduce((s, d) => s + (d.engCost ?? 0), 0);
+  const totalCostAll = totalHw + totalInstall + totalStructural + totalPm + totalEng;
+  const totalSellAll = input.pricingDisplays.reduce((s, d) => {
+    const tc = d.hardwareCost + (d.installCost ?? 0) + (d.structuralCost ?? 0) + (d.pmCost ?? 0) + (d.engCost ?? 0);
+    return s + (d.blendedMarginPct > 0 ? tc / (1 - d.blendedMarginPct) : tc);
+  }, 0);
+  const blendedPct = totalSellAll > 0 ? (totalSellAll - totalCostAll) / totalSellAll : 0;
+
   const totalRow: SheetRow = {
     cells: [
       c("PROJECT TOTAL", { bold: true }),
-      curr(input.pricingDisplays.reduce((s, d) => s + d.hardwareCost, 0)),
-      curr(input.pricingDisplays.reduce((s, d) => s + (d.installCost ?? 0), 0)),
-      curr(input.pricingDisplays.reduce((s, d) => s + (d.pmCost ?? 0), 0)),
-      curr(input.pricingDisplays.reduce((s, d) => s + (d.engCost ?? 0), 0)),
-      curr(summary?.totalCost ?? 0, { bold: true, highlight: true }),
-      pct(summary ? summary.blendedMarginPct / 100 : 0, { bold: true }),
-      curr(summary?.totalSellingPrice ?? 0, { bold: true, highlight: true }),
+      curr(totalHw),
+      curr(totalInstall),
+      curr(totalStructural),
+      curr(totalPm),
+      curr(totalEng),
+      curr(totalCostAll, { bold: true, highlight: true }),
+      pct(blendedPct, { bold: true }),
+      curr(totalSellAll, { bold: true, highlight: true }),
     ],
     isTotal: true,
   };
+
+  // Add Line Item row (clickable)
+  const addRow: SheetRow | null = input.onAddLineItem
+    ? {
+        cells: [
+          c("+ Add Line Item", {
+            bold: true,
+            className: "text-blue-600 cursor-pointer hover:text-blue-800",
+            onClick: input.onAddLineItem,
+          }),
+          c(""), c(""), c(""), c(""), c(""), c(""), c(""), c(""),
+        ],
+      }
+    : null;
+
+  const summary = input.pricingSummary;
+  const rows = summary
+    ? [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow, ...(addRow ? [addRow] : [])]
+    : [headerRow, { cells: [c("Run pricing preview to populate", { span: cols.length, align: "center" })], isSeparator: false }];
 
   return {
     name: "Margin Analysis",
     color: "#217346",
     columns: cols,
-    rows: summary
-      ? [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow]
-      : [headerRow, { cells: [c("Run pricing preview to populate", { span: cols.length, align: "center" })], isSeparator: false }],
-    editableColumns: [2, 3, 4], // Install, PM/GC, Engineering
+    rows,
+    // Editable: LED Hardware(1), Install(2), Structural(3), PM/GC(4), Engineering(5), Margin %(7)
+    editableColumns: [1, 2, 3, 4, 5, 7],
   };
 }
 

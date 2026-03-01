@@ -107,6 +107,7 @@ interface PricingPreview {
     quantity: number;
     hardwareCost: number;
     installCost?: number;
+    structuralCost?: number;
     pmCost?: number;
     engCost?: number;
     totalCost: number;
@@ -119,6 +120,7 @@ interface PricingPreview {
       activeWidthFt?: number; activeHeightFt?: number;
       resolutionX?: number; resolutionY?: number;
     } | null;
+    isCustom?: boolean;
   }>;
   summary: {
     totalCost: number;
@@ -313,6 +315,41 @@ export default function RfpAnalyzerClient() {
   }, [availableProducts, pricingPreview]);
 
   // ========================================================================
+  // Add custom line item to Margin Analysis
+  // ========================================================================
+
+  const handleAddLineItem = useCallback(() => {
+    const name = prompt("Line item name:");
+    if (!name?.trim()) return;
+    setPricingPreview(prev => {
+      if (!prev) return prev;
+      const newItem = {
+        name: name.trim(),
+        pixelPitch: null,
+        areaSqFt: 0,
+        quantity: 1,
+        hardwareCost: 0,
+        installCost: 0,
+        structuralCost: 0,
+        pmCost: 0,
+        engCost: 0,
+        totalCost: 0,
+        totalSellingPrice: 0,
+        blendedMarginPct: 0.25,
+        costSource: "manual",
+        rateCardEstimate: null,
+        matchedProduct: null,
+        isCustom: true,
+      };
+      return {
+        ...prev,
+        displays: [...prev.displays, newItem],
+        summary: { ...prev.summary, displayCount: prev.summary.displayCount + 1 },
+      };
+    });
+  }, []);
+
+  // ========================================================================
   // Workbook data — computed from state for WorkbookShell rendering
   // ========================================================================
 
@@ -330,12 +367,13 @@ export default function RfpAnalyzerClient() {
       specMismatches: specMismatches.length > 0 ? specMismatches : undefined,
       availableProducts,
       onProductSelect: handleProductSelect,
+      onAddLineItem: handleAddLineItem,
       onSourcePageClick: (pg) => {
         setPdfViewerPage(pg);
         setShowPdfPanel(true);
       },
     });
-  }, [result, pricingPreview, requirements, bidFormResult, specMismatches, availableProducts, handleProductSelect]);
+  }, [result, pricingPreview, requirements, bidFormResult, specMismatches, availableProducts, handleProductSelect, handleAddLineItem]);
 
   // ========================================================================
   // Auto-run pricing when extraction completes (no manual step needed)
@@ -1406,20 +1444,30 @@ export default function RfpAnalyzerClient() {
                     });
                     return;
                   }
-                  // Sheet 1: Margin Analysis — edit install/PM/eng costs
+                  // Sheet 1: Margin Analysis — edit costs + margin per display
                   if (sheetIdx === 1) {
-                    const costFieldMap: Record<number, string> = { 2: "installCost", 3: "pmCost", 4: "engCost" };
+                    // Cols: Display(0) | LED HW(1) | Install(2) | Structural(3) | PM/GC(4) | Eng(5) | TotalCost(6) | Margin%(7) | SellPrice(8)
+                    const costFieldMap: Record<number, string> = { 1: "hardwareCost", 2: "installCost", 3: "structuralCost", 4: "pmCost", 5: "engCost" };
+                    const isMarginEdit = colIdx === 7;
                     const costField = costFieldMap[colIdx];
-                    if (!costField) return;
+                    if (!costField && !isMarginEdit) return;
                     setPricingPreview(prev => {
                       if (!prev) return prev;
-                      const displayIdx = rowIdx - 1; // subtract header row
+                      const displayIdx = rowIdx - 1;
                       if (displayIdx < 0 || displayIdx >= prev.displays.length) return prev;
                       const updatedDisplays = prev.displays.map((d, i) => {
                         if (i !== displayIdx) return d;
-                        const updated = { ...d, [costField]: parseFloat(value) || 0 };
-                        // Recalculate totalCost for this display
-                        updated.totalCost = updated.hardwareCost + (updated.installCost ?? 0) + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
+                        const updated = { ...d };
+                        if (isMarginEdit) {
+                          // Parse margin: user types "25" or "0.25" — normalize to decimal
+                          let margin = parseFloat(value) || 0;
+                          if (margin > 1) margin = margin / 100; // "25" → 0.25
+                          updated.blendedMarginPct = margin;
+                        } else {
+                          (updated as any)[costField] = parseFloat(value) || 0;
+                        }
+                        // Recalculate totalCost
+                        updated.totalCost = updated.hardwareCost + (updated.installCost ?? 0) + (updated.structuralCost ?? 0) + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
                         // Recalculate selling price from margin
                         updated.totalSellingPrice = updated.blendedMarginPct > 0
                           ? updated.totalCost / (1 - updated.blendedMarginPct)
