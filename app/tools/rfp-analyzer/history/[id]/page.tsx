@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
@@ -112,6 +112,50 @@ export default function AnalysisDetailPage() {
   const [loadingPricing, setLoadingPricing] = useState(false);
   const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string }>>([]);
   const [pdfAvailable, setPdfAvailable] = useState<boolean | null>(null);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounced auto-save: patches screens to DB 2s after last edit
+  const autoSaveSpecs = useCallback((specs: ExtractedLEDSpec[], analysisId: string) => {
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    setAutoSaveStatus("saving");
+    autoSaveTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/rfp/analyses/${analysisId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ screens: specs }),
+        });
+        setAutoSaveStatus(res.ok ? "saved" : "error");
+        if (res.ok) setTimeout(() => setAutoSaveStatus("idle"), 3000);
+      } catch {
+        setAutoSaveStatus("error");
+      }
+    }, 2000);
+  }, []);
+
+  // Cell edit handler for LED Cost Sheet
+  const handleCellEdit = useCallback((sheetIdx: number, rowIdx: number, colIdx: number, value: string) => {
+    if (sheetIdx !== 0) return;
+    const fieldMap: Record<number, string> = { 0: "name", 3: "heightFt", 4: "widthFt", 7: "quantity" };
+    const field = fieldMap[colIdx];
+    if (!field) return;
+    setAnalysis(prev => {
+      if (!prev) return prev;
+      const specIdx = rowIdx - 1;
+      if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
+      const spec = { ...prev.screens[specIdx] };
+      if (field === "name") {
+        (spec as any)[field] = value;
+      } else {
+        (spec as any)[field] = parseFloat(value) || 0;
+      }
+      const updated = [...prev.screens];
+      updated[specIdx] = spec;
+      autoSaveSpecs(updated, prev.id);
+      return { ...prev, screens: updated };
+    });
+  }, [autoSaveSpecs]);
 
   useEffect(() => {
     if (!id) return;
@@ -458,8 +502,17 @@ export default function AnalysisDetailPage() {
             )}
             <WorkbookShell
               data={workbookData}
+              editable
+              onCellEdit={handleCellEdit}
               activeTab={0}
               onTabChange={() => {}}
+              footer={autoSaveStatus !== "idle" ? (
+                <div className="px-4 py-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                  {autoSaveStatus === "saving" && <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</>}
+                  {autoSaveStatus === "saved" && <><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Saved</>}
+                  {autoSaveStatus === "error" && <><AlertTriangle className="w-3 h-3 text-red-500" /> Save failed</>}
+                </div>
+              ) : undefined}
             />
           </div>
         )}
@@ -524,8 +577,17 @@ export default function AnalysisDetailPage() {
             )}
             <WorkbookShell
               data={workbookData}
+              editable
+              onCellEdit={handleCellEdit}
               onExport={handleScoping}
               exporting={downloading === "scoping"}
+              footer={autoSaveStatus !== "idle" ? (
+                <div className="px-4 py-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                  {autoSaveStatus === "saving" && <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</>}
+                  {autoSaveStatus === "saved" && <><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Saved</>}
+                  {autoSaveStatus === "error" && <><AlertTriangle className="w-3 h-3 text-red-500" /> Save failed</>}
+                </div>
+              ) : undefined}
             />
           </div>
         )}
