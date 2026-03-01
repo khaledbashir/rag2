@@ -163,13 +163,14 @@ export default function WorkbookShell({
       {footer}
 
       {/* ─── Sheet tabs ─── */}
-      <div className="flex items-end border-t border-border bg-zinc-50 dark:bg-zinc-800 shrink-0 overflow-x-auto">
+      <div className="flex items-end border-t border-border bg-zinc-50 dark:bg-zinc-800 shrink-0 overflow-x-auto scrollbar-thin" style={{ minHeight: 32 }}>
         {data.sheets.map((sheet, idx) => (
           <button
             key={idx}
-            onClick={() => setActiveTab(idx)}
+            type="button"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveTab(idx); }}
             className={cn(
-              "px-3 py-1.5 text-[11px] font-medium border-r border-border whitespace-nowrap transition-colors relative",
+              "px-2.5 py-1.5 text-[10px] font-medium border-r border-border whitespace-nowrap transition-colors relative cursor-pointer select-none shrink-0",
               idx === activeTab
                 ? "bg-white dark:bg-zinc-900 text-foreground"
                 : sheet.placeholder
@@ -184,7 +185,7 @@ export default function WorkbookShell({
               />
             )}
             <span
-              className={cn("inline-block w-2 h-2 rounded-full mr-1.5", sheet.placeholder && "opacity-40")}
+              className={cn("inline-block w-1.5 h-1.5 rounded-full mr-1", sheet.placeholder && "opacity-40")}
               style={{ backgroundColor: sheet.color }}
             />
             {sheet.name}
