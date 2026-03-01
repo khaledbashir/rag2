@@ -149,10 +149,10 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const sourcePages = spec.sourcePages || [];
     const firstPage = sourcePages[0];
 
-    // Build product dropdown options, sorted by pitch proximity
+    // Build product dropdown options, sorted alphabetically
     const dropdownOpts = input.availableProducts
       ? [...input.availableProducts]
-          .sort((a, b) => Math.abs(a.pitch - bidPitch) - Math.abs(b.pitch - bidPitch))
+          .sort((a, b) => a.label.localeCompare(b.label))
           .map((p) => ({ value: p.id, label: p.label }))
       : undefined;
 
