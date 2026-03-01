@@ -87,6 +87,20 @@ model User {
   accounts      Account[]
   sessions      Session[]
   proposals     Proposal[] // Projects created by this user
+  dashboardChats DashboardChatSession[]
+}
+
+model DashboardChatSession {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  Json     @default("[]") // Array of { role, content, sources?, thinking?, timestamp }
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([updatedAt])
 }
 
 // NextAuth Prisma adapter
@@ -175,6 +189,7 @@ model Proposal {
   createdByUserId String? // Who created this project
   createdByUser   User?   @relation(fields: [createdByUserId], references: [id])
 
+  deletedAt DateTime? // Soft delete — filtered globally by Prisma middleware
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 

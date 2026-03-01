@@ -17,16 +17,35 @@ function resolveDatabaseUrl() {
 
 const databaseUrl = resolveDatabaseUrl()
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient(
+function createPrisma(): PrismaClient {
+  const client = new PrismaClient(
     databaseUrl
-      ? {
-          datasources: {
-            db: { url: databaseUrl },
-          },
-        }
+      ? { datasources: { db: { url: databaseUrl } } }
       : undefined
   )
+
+  // Soft-delete middleware: automatically exclude deleted proposals from reads.
+  // To query deleted records explicitly, pass `where: { deletedAt: { not: null } }`.
+  client.$use(async (params, next) => {
+    if (params.model !== 'Proposal') return next(params)
+
+    const readOps = ['findFirst', 'findMany', 'findUnique', 'findFirstOrThrow', 'findUniqueOrThrow', 'count', 'aggregate', 'groupBy']
+
+    if (readOps.includes(params.action)) {
+      if (!params.args) params.args = {}
+      if (!params.args.where) params.args.where = {}
+
+      if (params.args.where.deletedAt === undefined) {
+        params.args.where.deletedAt = null
+      }
+    }
+
+    return next(params)
+  })
+
+  return client
+}
+
+export const prisma = globalForPrisma.prisma ?? createPrisma()
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma

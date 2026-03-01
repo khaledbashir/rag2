@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isImmutable, isFinancialLocked, LOCKED_FINANCIAL_FIELDS, validateApprovalTransition } from "@/lib/proposal-lifecycle";
 import { logActivity, detectMeaningfulChanges } from "@/services/proposal/server/activityLogService";
+import { auth } from "@/auth";
 
 import { prisma } from "@/lib/prisma";
 
@@ -386,7 +387,9 @@ export async function PATCH(
 
 /**
  * DELETE /api/projects/[id]
- * Hard-delete a project and all child records in a transaction.
+ * Soft-delete: sets deletedAt timestamp. Only ADMIN or project creator can delete.
+ * Child records are preserved for recovery. Prisma middleware filters deleted
+ * proposals from all reads automatically.
  */
 export async function DELETE(
     req: NextRequest,
@@ -394,34 +397,50 @@ export async function DELETE(
 ) {
     const { id } = await params;
     try {
-        // Get screen IDs so we can delete their CostLineItems first
-        const screens = await prisma.screenConfig.findMany({
-            where: { proposalId: id },
-            select: { id: true },
+        const session = await auth();
+        const userId = (session?.user as any)?.id;
+        const userRole = (session?.user as any)?.role || (session?.user as any)?.authRole;
+
+        if (!userId) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        const proposal = await prisma.proposal.findUnique({
+            where: { id },
+            select: { id: true, createdByUserId: true, clientName: true, status: true },
         });
-        const screenIds = screens.map((s) => s.id);
 
-        await prisma.$transaction([
-            // Deep children first: CostLineItem → ScreenConfig
-            ...(screenIds.length > 0
-                ? [prisma.costLineItem.deleteMany({ where: { screenConfigId: { in: screenIds } } })]
-                : []),
-            prisma.screenConfig.deleteMany({ where: { proposalId: id } }),
-            // Direct children
-            prisma.manualOverride.deleteMany({ where: { proposalId: id } }),
-            prisma.proposalVersion.deleteMany({ where: { proposalId: id } }),
-            prisma.signatureAuditTrail.deleteMany({ where: { proposalId: id } }),
-            prisma.comment.deleteMany({ where: { proposalId: id } }),
-            prisma.changeRequest.deleteMany({ where: { proposalId: id } }),
-            prisma.activityLog.deleteMany({ where: { proposalId: id } }),
-            prisma.bidVersion.deleteMany({ where: { proposalId: id } }),
-            prisma.proposalSnapshot.deleteMany({ where: { proposalId: id } }),
-            prisma.rfpDocument.deleteMany({ where: { proposalId: id } }),
-            // Finally the proposal itself
-            prisma.proposal.delete({ where: { id } }),
-        ]);
+        if (!proposal) {
+            return NextResponse.json({ error: "Project not found" }, { status: 404 });
+        }
 
-        return NextResponse.json({ success: true });
+        // Only ADMIN or the project creator can delete
+        const isAdmin = userRole === "ADMIN" || userRole === "admin";
+        const isCreator = proposal.createdByUserId === userId;
+
+        if (!isAdmin && !isCreator) {
+            return NextResponse.json(
+                { error: "You don't have permission to delete this project. Only administrators or the project creator can delete." },
+                { status: 403 }
+            );
+        }
+
+        // Block deletion of SIGNED/CLOSED proposals
+        if (proposal.status === "SIGNED" || proposal.status === "CLOSED") {
+            return NextResponse.json(
+                { error: `Cannot delete a ${proposal.status} proposal. This is a permanent contractual record.` },
+                { status: 403 }
+            );
+        }
+
+        await prisma.proposal.update({
+            where: { id },
+            data: { deletedAt: new Date() },
+        });
+
+        logActivity(id, "deleted", `Project "${proposal.clientName}" moved to trash`, userId).catch(() => {});
+
+        return NextResponse.json({ success: true, softDeleted: true });
     } catch (error: any) {
         console.error("DELETE /api/projects/[id] error:", error);
 
