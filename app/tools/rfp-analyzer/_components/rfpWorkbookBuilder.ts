@@ -276,6 +276,7 @@ function buildMarginAnalysis(input: RfpWorkbookInput): SheetTab {
     rows: summary
       ? [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow]
       : [headerRow, { cells: [c("Run pricing preview to populate", { span: cols.length, align: "center" })], isSeparator: false }],
+    editableColumns: [],
   };
 }
 
@@ -325,6 +326,7 @@ function buildProjectInfo(input: RfpWorkbookInput): SheetTab {
     color: "#6366F1",
     columns: cols,
     rows,
+    editableColumns: [],
   };
 }
 
@@ -375,6 +377,7 @@ function buildRequirements(input: RfpWorkbookInput): SheetTab {
     color: "#F59E0B",
     columns: cols,
     rows: [headerRow, ...dataRows],
+    editableColumns: [],
   };
 }
 
@@ -443,6 +446,7 @@ function buildProcessorCount(input: RfpWorkbookInput): SheetTab {
     color: "#8B5CF6",
     columns: cols,
     rows: [refRow, { cells: [], isSeparator: true }, headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow],
+    editableColumns: [],
   };
 }
 
@@ -482,6 +486,7 @@ function buildPageTriage(input: RfpWorkbookInput): SheetTab {
     color: "#94A3B8",
     columns: cols,
     rows: [headerRow, ...dataRows],
+    editableColumns: [],
   };
 }
 
@@ -547,6 +552,7 @@ function buildBidFormSheet(input: RfpWorkbookInput): SheetTab | null {
     color: "#D97706",
     columns: cols,
     rows: [headerRow, ...matchRows, ...unmatchedBlockRows, ...unmatchedScreenRows, { cells: [], isSeparator: true }, summaryRow],
+    editableColumns: [],
   };
 }
 
