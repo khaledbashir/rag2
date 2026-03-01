@@ -257,6 +257,22 @@ export default function ProjectsPage() {
         return `Pipeline: ${summary.projectCount} projects, ${summary.formattedPipeline} total value, ${summary.mirrorCount} Mirror, ${summary.intelligenceCount} Intelligence. Top projects: ${topProjects || "None"}. ${staleCount} stale draft projects.`;
     }, [projects, summary]);
 
+    const dashboardChatStats = useMemo(() => {
+        const staleCount = projects.filter((p) => {
+            const days = (Date.now() - new Date(p.updatedAt).getTime()) / (1000 * 60 * 60 * 24);
+            return days > 7 && p.status === "DRAFT";
+        }).length;
+        const mostRecent = [...projects].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
+        return {
+            projectCount: summary.projectCount,
+            mirrorCount: summary.mirrorCount,
+            intelligenceCount: summary.intelligenceCount,
+            formattedPipeline: summary.formattedPipeline,
+            staleCount,
+            recentProjectName: mostRecent?.clientName,
+        };
+    }, [projects, summary]);
+
     const handleCopilotMessage = useCallback(async (message: string) => {
         const lower = message.toLowerCase();
 
@@ -457,7 +473,7 @@ export default function ProjectsPage() {
                 {FEATURES.DASHBOARD_CHAT && (
                     <div className="fixed bottom-0 left-16 md:left-20 right-0 p-4 sm:p-8 flex justify-center pointer-events-none z-40">
                         <div className="w-full max-w-3xl min-w-0 pointer-events-auto">
-                            <DashboardChat />
+                            <DashboardChat pipelineStats={dashboardChatStats} />
                         </div>
                     </div>
                 )}
@@ -471,9 +487,9 @@ export default function ProjectsPage() {
                     <CopilotPanel
                         onSendMessage={handleCopilotMessage}
                         quickActions={[
-                            { label: "Pipeline Value", prompt: "What's my total pipeline value?" },
-                            { label: "Needs Attention", prompt: "Which projects need attention?" },
-                            { label: "New Proposal", prompt: "Start a new budget proposal." },
+                            { label: dashboardChatStats.formattedPipeline || "Pipeline Value", prompt: "What's my total pipeline value and how is it distributed?" },
+                            { label: dashboardChatStats.staleCount > 0 ? `${dashboardChatStats.staleCount} Stale Drafts` : "Needs Attention", prompt: dashboardChatStats.staleCount > 0 ? `Show me the ${dashboardChatStats.staleCount} stale draft projects.` : "Which projects need attention?" },
+                            { label: dashboardChatStats.recentProjectName ? `Latest: ${dashboardChatStats.recentProjectName.slice(0, 15)}` : "New Proposal", prompt: dashboardChatStats.recentProjectName ? `What do we know about the ${dashboardChatStats.recentProjectName} project?` : "Start a new budget proposal." },
                         ]}
                         className="!bottom-0 !right-0"
                     />

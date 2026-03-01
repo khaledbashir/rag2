@@ -26,10 +26,18 @@ export async function POST(req: NextRequest) {
             }, { status: 500 });
         }
 
+        const SYSTEM_GUARD = `[SYSTEM INSTRUCTIONS]
+You are Lux, the ANC Proposal Engine AI assistant on the dashboard.
+You ONLY have access to pipeline-level summary data: project counts, total pipeline value, status breakdowns, and project names.
+You CANNOT access individual project details like margins, pricing, screen specs, cost breakdowns, or line items.
+If the user asks about a specific project's data (e.g. "what's the margin on X" or "how much is the hardware for Y"), respond:
+"I don't have access to individual project details from the dashboard. Open that project and ask me there — I'll have full access to all the pricing and spec data."
+Never guess or estimate project-specific numbers you don't have. It is better to say you don't know than to give a wrong number.`;
+
+        const guardedMessage = `${SYSTEM_GUARD}\n\n[USER QUESTION]\n${message}`;
+
         console.log(`[Intelligence Core] Querying workspace: ${targetWorkspace} (Agent: ${useAgent ? 'YES' : 'NO'})`);
 
-        // Try to call AnythingLLM - if workspace doesn't exist, create it
-        // ANYTHING_LLM_BASE_URL already ends with /api/v1
         let response = await fetch(`${ANYTHING_LLM_BASE_URL}/workspace/${targetWorkspace}/chat`, {
             method: "POST",
             headers: {
@@ -37,7 +45,7 @@ export async function POST(req: NextRequest) {
                 "Authorization": `Bearer ${ANYTHING_LLM_KEY}`,
             },
             body: JSON.stringify({
-                message: useAgent ? `@agent ${message}` : message,
+                message: useAgent ? `@agent ${guardedMessage}` : guardedMessage,
                 mode: "chat",
                 sessionId: `dashboard-${targetWorkspace}`,
             }),
@@ -81,7 +89,7 @@ export async function POST(req: NextRequest) {
                             "Authorization": `Bearer ${ANYTHING_LLM_KEY}`,
                         },
                         body: JSON.stringify({
-                            message: useAgent ? `@agent ${message}` : message,
+                            message: useAgent ? `@agent ${guardedMessage}` : guardedMessage,
                             mode: "chat",
                             sessionId: `dashboard-${newSlug}`,
                         }),
