@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import {
   ArrowLeft,
+  ArrowRight,
   Loader2,
   FileText,
   Monitor,
@@ -24,7 +25,9 @@ import {
   Plus,
   ExternalLink,
   ChevronDown,
+  ChevronRight,
   RefreshCcw,
+  Upload,
 } from "lucide-react";
 import SpecsTable from "../../_components/SpecsTable";
 import RequirementsTable from "../../_components/RequirementsTable";
@@ -81,6 +84,18 @@ interface FullAnalysis {
 }
 
 // ============================================================================
+// Pipeline Stages
+// ============================================================================
+
+const HISTORY_STAGES = [
+  { id: "documents", label: "Documents", icon: Upload, sub: "Original RFP files" },
+  { id: "specs", label: "LED Specs", icon: Monitor, sub: "Extracted displays" },
+  { id: "review", label: "What's Inside", icon: FileText, sub: "Project & requirements" },
+  { id: "estimate", label: "Estimate", icon: DollarSign, sub: "Pricing & workbook" },
+  { id: "actions", label: "Actions", icon: ArrowRight, sub: "Export & proposal" },
+] as const;
+
+// ============================================================================
 // Detail Page
 // ============================================================================
 
@@ -91,11 +106,12 @@ export default function AnalysisDetailPage() {
   const [analysis, setAnalysis] = useState<FullAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"specs" | "requirements" | "triage">("specs");
+  const [activeStage, setActiveStage] = useState(2); // Default: "What's Inside"
   const [downloading, setDownloading] = useState<string | null>(null);
   const [pricingPreview, setPricingPreview] = useState<any>(null);
   const [loadingPricing, setLoadingPricing] = useState(false);
   const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string }>>([]);
+  const [pdfAvailable, setPdfAvailable] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -118,6 +134,14 @@ export default function AnalysisDetailPage() {
         setLoading(false);
       }
     })();
+  }, [id]);
+
+  // Check if PDF is available
+  useEffect(() => {
+    if (!id) return;
+    fetch(`/api/rfp/analyses/${id}/pdf`, { method: "HEAD" })
+      .then((res) => setPdfAvailable(res.ok))
+      .catch(() => setPdfAvailable(false));
   }, [id]);
 
   // Auto-load pricing when analysis loads
@@ -303,11 +327,10 @@ export default function AnalysisDetailPage() {
   const date = new Date(a.createdAt);
 
   const criticalReqs = requirements.filter((r) => r.status === "critical").length;
-  const riskReqs = requirements.filter((r) => r.status === "risk").length;
 
   return (
     <div className="flex-1 min-w-0 bg-background relative min-h-screen pb-24">
-      {/* Header */}
+      {/* Header — simplified */}
       <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border h-14 px-6 xl:px-8 flex items-center">
         <div className="flex items-center justify-between w-full max-w-[1600px] mx-auto">
           <div className="flex items-center gap-3">
@@ -341,44 +364,12 @@ export default function AnalysisDetailPage() {
                 <ExternalLink className="w-2.5 h-2.5 opacity-50" />
               </Link>
             )}
-            <button
-              onClick={handleScoping}
-              disabled={downloading === "scoping"}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold bg-[#217346] text-white rounded hover:bg-[#1a5c38] transition-colors disabled:opacity-50"
-            >
-              {downloading === "scoping" ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileSpreadsheet className="w-3 h-3" />}
-              Scoping Workbook
-            </button>
-            <button
-              onClick={handleRateCard}
-              disabled={downloading === "ratecard"}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium border border-border text-muted-foreground rounded hover:bg-muted transition-colors disabled:opacity-50"
-            >
-              {downloading === "ratecard" ? <Loader2 className="w-3 h-3 animate-spin" /> : <DollarSign className="w-3 h-3" />}
-              Rate Card
-            </button>
-            <button
-              onClick={handleExport}
-              disabled={downloading === "extraction"}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium border border-border text-muted-foreground rounded hover:bg-muted transition-colors disabled:opacity-50"
-            >
-              {downloading === "extraction" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-              Specs .xlsx
-            </button>
-            <button
-              onClick={handleCreateProposal}
-              disabled={downloading === "creating" || !session?.user?.email}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-[#0A52EF] text-white rounded hover:bg-[#0A52EF]/90 transition-colors disabled:opacity-50"
-            >
-              {downloading === "creating" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-              Create Proposal
-            </button>
           </div>
         </div>
       </header>
 
       <main className="p-6 xl:px-8 max-w-[1600px] mx-auto space-y-6">
-        {/* Stats row */}
+        {/* Stats row — always visible */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
           <StatCard icon={FileText} label="Total Pages" value={a.pageCount.toLocaleString()} />
           <StatCard
@@ -400,78 +391,309 @@ export default function AnalysisDetailPage() {
           <StatCard icon={Clock} label="Processing" value={`${(a.processingTimeMs / 1000).toFixed(1)}s`} />
         </div>
 
-        {/* Project info — collapsible */}
-        {(project.clientName || project.venue || project.projectName) && (
-          <ProjectInfoCard project={project} />
+        {/* Pipeline Stepper */}
+        <HistoryStepper
+          activeStage={activeStage}
+          onStageClick={setActiveStage}
+          specsCount={screens.length || a.specsFound}
+        />
+
+        {/* ═══ Stage 0: Documents ═══ */}
+        {activeStage === 0 && (
+          <div className="space-y-4 animate-in fade-in duration-300">
+            <div className="bg-card border border-border rounded-xl p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-foreground">{a.filename}</h3>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {a.pageCount.toLocaleString()} pages — {(a.fileSize / 1024 / 1024).toFixed(1)} MB — Uploaded {date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                  </p>
+                </div>
+                {pdfAvailable && (
+                  <a
+                    href={`/api/rfp/analyses/${a.id}/pdf`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download PDF
+                  </a>
+                )}
+              </div>
+            </div>
+            {pdfAvailable ? (
+              <div className="bg-card border border-border rounded-xl overflow-hidden" style={{ height: "70vh" }}>
+                <iframe
+                  src={`/api/rfp/analyses/${a.id}/pdf`}
+                  className="w-full h-full"
+                  title="RFP Document"
+                />
+              </div>
+            ) : pdfAvailable === false ? (
+              <div className="bg-card border border-border rounded-xl p-12 text-center">
+                <FileText className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
+                <p className="text-sm font-medium text-muted-foreground">PDF not available</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">
+                  The original file may have been removed after a container restart.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-card border border-border rounded-xl p-12 text-center">
+                <Loader2 className="w-6 h-6 mx-auto animate-spin text-muted-foreground" />
+                <p className="text-xs text-muted-foreground mt-2">Checking PDF availability...</p>
+              </div>
+            )}
+          </div>
         )}
 
-        {/* Tabs */}
-        <div className="border-b border-border">
-          <div className="flex gap-1">
-            <TabButton active={activeTab === "specs"} onClick={() => setActiveTab("specs")}>
-              <Monitor className="w-4 h-4" />
-              LED Displays ({screens.length})
-            </TabButton>
-            <TabButton active={activeTab === "requirements"} onClick={() => setActiveTab("requirements")}>
-              <Shield className="w-4 h-4" />
-              Requirements ({requirements.length})
-              {criticalReqs > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 bg-red-500/10 text-red-500 text-[10px] font-bold rounded-full">
-                  {criticalReqs}
-                </span>
+        {/* ═══ Stage 1: LED Specs ═══ */}
+        {activeStage === 1 && (
+          <div className="animate-in fade-in duration-300">
+            {loadingPricing && (
+              <div className="mb-4 p-3 border border-blue-500/30 bg-blue-500/10 rounded-lg flex items-center gap-3">
+                <Loader2 className="w-4 h-4 text-blue-600 animate-spin shrink-0" />
+                <p className="text-sm text-blue-700 dark:text-blue-300">Matching products...</p>
+              </div>
+            )}
+            <WorkbookShell
+              data={workbookData}
+              activeTab={0}
+              onTabChange={() => {}}
+            />
+          </div>
+        )}
+
+        {/* ═══ Stage 2: What's Inside (default) ═══ */}
+        {activeStage === 2 && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {(project.clientName || project.venue || project.projectName) && (
+              <ProjectInfoCard project={project} />
+            )}
+            <div className="bg-card border border-border rounded-xl p-5">
+              <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                <Shield className="w-4 h-4 text-muted-foreground" />
+                Requirements ({requirements.length})
+                {criticalReqs > 0 && (
+                  <span className="px-1.5 py-0.5 bg-red-500/10 text-red-500 text-[10px] font-bold rounded-full">
+                    {criticalReqs} critical
+                  </span>
+                )}
+              </h3>
+              {requirements.length > 0 ? (
+                <RequirementsTable requirements={requirements} />
+              ) : (
+                <p className="text-xs text-muted-foreground">No requirements extracted from this document.</p>
               )}
-            </TabButton>
-            <TabButton active={activeTab === "triage"} onClick={() => setActiveTab("triage")}>
-              <FileText className="w-4 h-4" />
-              Page Triage ({triage.length})
-            </TabButton>
-          </div>
-        </div>
-
-        {/* Tab content */}
-        {activeTab === "specs" && (
-          <div>
-            <SpecsTable specs={screens} />
+            </div>
+            {triage.length > 0 && (
+              <div className="bg-card border border-border rounded-xl p-5">
+                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-muted-foreground" />
+                  Page Triage ({triage.length} pages)
+                </h3>
+                <TriageMinimap triage={triage} />
+              </div>
+            )}
           </div>
         )}
 
-        {activeTab === "requirements" && (
-          <div>
-            <RequirementsTable requirements={requirements} />
+        {/* ═══ Stage 3: Estimate ═══ */}
+        {activeStage === 3 && (
+          <div className="space-y-4 animate-in fade-in duration-300">
+            {loadingPricing && (
+              <div className="p-3 border border-blue-500/30 bg-blue-500/10 rounded-lg flex items-center gap-3">
+                <Loader2 className="w-4 h-4 text-blue-600 animate-spin shrink-0" />
+                <p className="text-sm text-blue-700 dark:text-blue-300">Matching products and calculating pricing...</p>
+              </div>
+            )}
+            {!loadingPricing && !pricingPreview && screens.length > 0 && (
+              <div className="p-3 border border-amber-500/30 bg-amber-500/10 rounded-lg flex items-center gap-3">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <p className="text-sm text-amber-700 dark:text-amber-300 flex-1">
+                  Product matching hasn&apos;t loaded yet.
+                </p>
+                <button
+                  onClick={() => analysis && autoPreviewPricing(analysis)}
+                  className="px-3 py-1.5 bg-amber-600 text-white rounded-md text-xs font-medium hover:bg-amber-700 inline-flex items-center gap-1.5"
+                >
+                  <RefreshCcw className="w-3 h-3" />
+                  Match Products
+                </button>
+              </div>
+            )}
+            <WorkbookShell
+              data={workbookData}
+              onExport={handleScoping}
+              exporting={downloading === "scoping"}
+            />
           </div>
         )}
 
-        {activeTab === "triage" && (
-          <div className="bg-card border border-border rounded-xl p-5">
-            <TriageMinimap triage={triage} />
+        {/* ═══ Stage 4: Actions ═══ */}
+        {activeStage === 4 && (
+          <div className="animate-in fade-in duration-300">
+            <div className="grid gap-4 md:grid-cols-2 max-w-3xl mx-auto">
+              <ActionCard
+                icon={FileSpreadsheet}
+                title="Scoping Workbook"
+                description="Full scoping workbook with all sheets — LED cost, margin analysis, processors, P&L"
+                onClick={handleScoping}
+                loading={downloading === "scoping"}
+                accent="#217346"
+              />
+              <ActionCard
+                icon={DollarSign}
+                title="Rate Card"
+                description="Pricing rate card Excel for internal review and vendor comparison"
+                onClick={handleRateCard}
+                loading={downloading === "ratecard"}
+              />
+              <ActionCard
+                icon={Download}
+                title="Specs .xlsx"
+                description="Extracted LED specs spreadsheet — display dimensions, pitch, quantities"
+                onClick={handleExport}
+                loading={downloading === "extraction"}
+              />
+              <ActionCard
+                icon={Plus}
+                title="Create Proposal"
+                description="Launch a full proposal from this RFP analysis with pre-filled data"
+                onClick={handleCreateProposal}
+                loading={downloading === "creating"}
+                primary
+                disabled={!session?.user?.email}
+              />
+            </div>
           </div>
         )}
-
-        {/* Workbook with pricing */}
-        {loadingPricing && (
-          <div className="p-3 border border-blue-500/30 bg-blue-500/10 rounded-lg flex items-center gap-3">
-            <Loader2 className="w-4 h-4 text-blue-600 animate-spin shrink-0" />
-            <p className="text-sm text-blue-700 dark:text-blue-300">Matching products and calculating pricing...</p>
-          </div>
-        )}
-        {!loadingPricing && !pricingPreview && screens.length > 0 && (
-          <div className="p-3 border border-amber-500/30 bg-amber-500/10 rounded-lg flex items-center gap-3">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-            <p className="text-sm text-amber-700 dark:text-amber-300 flex-1">
-              Product matching hasn&apos;t loaded yet.
-            </p>
-            <button
-              onClick={() => analysis && autoPreviewPricing(analysis)}
-              className="px-3 py-1.5 bg-amber-600 text-white rounded-md text-xs font-medium hover:bg-amber-700 inline-flex items-center gap-1.5"
-            >
-              <RefreshCcw className="w-3 h-3" />
-              Match Products
-            </button>
-          </div>
-        )}
-        <WorkbookShell data={workbookData} />
       </main>
     </div>
+  );
+}
+
+// ============================================================================
+// History Pipeline Stepper
+// ============================================================================
+
+function HistoryStepper({
+  activeStage,
+  onStageClick,
+  specsCount,
+}: {
+  activeStage: number;
+  onStageClick: (idx: number) => void;
+  specsCount: number;
+}) {
+  return (
+    <div className="flex items-center">
+      {HISTORY_STAGES.map((stage, idx) => {
+        const isActive = idx === activeStage;
+        const Icon = stage.icon;
+
+        // Dynamic sub text
+        const subText = idx === 1 ? `${specsCount} displays found` : stage.sub;
+
+        return (
+          <React.Fragment key={stage.id}>
+            {/* Connector */}
+            {idx > 0 && (
+              <div className="flex-1 flex items-center px-1">
+                <div className="h-[2px] w-full rounded-full bg-emerald-500 transition-colors" />
+                <ChevronRight className="w-3 h-3 shrink-0 -ml-0.5 text-emerald-500" />
+              </div>
+            )}
+
+            {/* Stage button */}
+            <button
+              onClick={() => onStageClick(idx)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg shrink-0 transition-all cursor-pointer ${
+                isActive
+                  ? "bg-[#0A52EF]/10 border border-[#0A52EF]/30 text-[#0A52EF]"
+                  : "bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50/80 dark:hover:bg-emerald-500/15"
+              }`}
+            >
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
+                isActive
+                  ? "bg-[#0A52EF] text-white"
+                  : "bg-emerald-500 text-white"
+              }`}>
+                {isActive ? (
+                  <Icon className="w-3 h-3" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                )}
+              </div>
+              <div className="text-left hidden sm:block">
+                <div className="text-[11px] font-semibold leading-tight">{stage.label}</div>
+                <div className="text-[9px] opacity-70 leading-tight">{subText}</div>
+              </div>
+            </button>
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+// ============================================================================
+// Action Card (Stage 4)
+// ============================================================================
+
+function ActionCard({
+  icon: Icon,
+  title,
+  description,
+  onClick,
+  loading,
+  accent,
+  primary,
+  disabled,
+}: {
+  icon: typeof FileSpreadsheet;
+  title: string;
+  description: string;
+  onClick: () => void;
+  loading?: boolean;
+  accent?: string;
+  primary?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading || disabled}
+      className={`group text-left p-5 rounded-xl border transition-all disabled:opacity-50 ${
+        primary
+          ? "bg-[#0A52EF] text-white border-[#0A52EF] hover:bg-[#0941c3]"
+          : "bg-card border-border hover:border-primary/40 hover:shadow-md"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+          primary
+            ? "bg-white/20"
+            : accent
+              ? "text-white"
+              : "bg-primary/10"
+        }`} style={accent ? { backgroundColor: accent } : undefined}>
+          {loading ? (
+            <Loader2 className={`w-5 h-5 animate-spin ${primary ? "text-white" : accent ? "text-white" : "text-primary"}`} />
+          ) : (
+            <Icon className={`w-5 h-5 ${primary ? "text-white" : accent ? "text-white" : "text-primary"}`} />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <h4 className={`text-sm font-semibold ${primary ? "text-white" : "text-foreground"}`}>
+            {title}
+          </h4>
+          <p className={`text-xs mt-1 ${primary ? "text-white/70" : "text-muted-foreground"}`}>
+            {description}
+          </p>
+        </div>
+      </div>
+    </button>
   );
 }
 
@@ -596,21 +818,6 @@ function ProjectInfoCard({ project }: { project: any }) {
         </div>
       )}
     </div>
-  );
-}
-
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-        active
-          ? "border-primary text-primary"
-          : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 
