@@ -69,6 +69,10 @@ export interface RfpWorkbookInput {
   bidFormResult?: BidFormMatchResult | null;
   /** Callback for source page jumps (passed as onClick on cells) */
   onSourcePageClick?: (page: number) => void;
+  /** Available products for dropdown selector */
+  availableProducts?: Array<{ id: string; label: string; pitch: number; name: string }>;
+  /** Callback when user selects a product for a display */
+  onProductSelect?: (displayName: string, productId: string) => void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -140,14 +144,29 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const pitchLabel = bidPitch > 0 ? `${bidPitch}mm` : "";
     const displayDesc = `${spec.name} — ${qtyLabel} ${dimLabel}${pitchLabel ? ` — ${pitchLabel}` : ""}`;
 
-    // Product label
-    const productLabel = mp
-      ? `${mp.model}`
-      : "";
+    const productLabel = mp ? `${mp.model}` : "";
 
-    // Source page click
     const sourcePages = spec.sourcePages || [];
     const firstPage = sourcePages[0];
+
+    // Build product dropdown options, sorted by pitch proximity
+    const dropdownOpts = input.availableProducts
+      ? [...input.availableProducts]
+          .sort((a, b) => Math.abs(a.pitch - bidPitch) - Math.abs(b.pitch - bidPitch))
+          .map((p) => ({ value: p.id, label: p.label }))
+      : undefined;
+
+    const productCell: SheetCell = dropdownOpts && dropdownOpts.length > 0
+      ? {
+          value: productLabel,
+          dropdown: dropdownOpts,
+          onDropdownChange: input.onProductSelect
+            ? (val: string) => input.onProductSelect!(spec.name, val)
+            : undefined,
+        }
+      : c(productLabel || "No match", {
+          className: productLabel ? undefined : "text-red-500 italic text-[10px]",
+        });
 
     return {
       cells: [
@@ -155,7 +174,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
           bold: true,
           onClick: firstPage && input.onSourcePageClick ? () => input.onSourcePageClick!(firstPage) : undefined,
         }),
-        c(productLabel),
+        productCell,
         c(bidPitch > 0 ? `${bidPitch}mm` : "", { align: "center" }),
         num(activeH > 0 ? Math.round(activeH * 100) / 100 : null),
         num(activeW > 0 ? Math.round(activeW * 100) / 100 : null),

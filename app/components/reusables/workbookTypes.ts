@@ -17,6 +17,10 @@ export interface SheetCell {
   onClick?: () => void;
   /** CSS class override for special styling */
   className?: string;
+  /** Dropdown options — renders a <select> instead of text */
+  dropdown?: { value: string; label: string }[];
+  /** Callback when dropdown selection changes */
+  onDropdownChange?: (value: string) => void;
 }
 
 export interface SheetRow {

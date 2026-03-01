@@ -343,6 +343,28 @@ function CellView({ cell, editable, isEditing, onClick, onChange, onBlur }: Cell
     );
   }
 
+  if (cell.dropdown && cell.dropdown.length > 0) {
+    return (
+      <td
+        className={cn(
+          "px-1 py-0.5 border-r border-b border-border last:border-r-0",
+          cell.className,
+        )}
+      >
+        <select
+          value={String(cell.value)}
+          onChange={(e) => cell.onDropdownChange?.(e.target.value)}
+          className="w-full h-full text-xs bg-transparent border-none outline-none cursor-pointer hover:bg-blue-50/50 dark:hover:bg-blue-900/20"
+        >
+          {!cell.value && <option value="">Select product...</option>}
+          {cell.dropdown.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+      </td>
+    );
+  }
+
   return (
     <td
       onClick={onClick}
