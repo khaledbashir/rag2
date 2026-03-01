@@ -13,10 +13,12 @@ import {
   RefreshCw,
   ChevronDown,
   Zap,
+  BarChart3,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import PipelineClient from "./PipelineClient";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -69,7 +71,10 @@ function timeAgo(dateStr: string): string {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
+type OpsTab = "pipeline" | "activity";
+
 export default function OpsClient() {
+  const [activeTab, setActiveTab] = useState<OpsTab>("pipeline");
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -103,8 +108,8 @@ export default function OpsClient() {
   }, []);
 
   useEffect(() => {
-    fetchFeed();
-  }, [fetchFeed]);
+    if (activeTab === "activity" && feed.length === 0) fetchFeed();
+  }, [activeTab, fetchFeed]);
 
   // Group feed by date
   const groupedFeed = feed.reduce<Record<string, FeedItem[]>>((groups, item) => {
@@ -131,22 +136,54 @@ export default function OpsClient() {
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto py-10 px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-normal text-foreground serif-vault">
               Operations
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Platform activity feed — vendor eyes only.
+              Pipeline analytics & activity — vendor eyes only.
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fetchFeed()}
-            disabled={loading}
+        </div>
+
+        {/* Tabs */}
+        <div className="flex items-center gap-1 mb-6 border-b border-border pb-px">
+          <button
+            onClick={() => setActiveTab("pipeline")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              activeTab === "pipeline"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
           >
-            <RefreshCw className={cn("w-4 h-4 mr-2", loading && "animate-spin")} />
+            <BarChart3 className="w-4 h-4" />
+            Pipeline
+          </button>
+          <button
+            onClick={() => { setActiveTab("activity"); if (feed.length === 0) fetchFeed(); }}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              activeTab === "activity"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Activity className="w-4 h-4" />
+            Activity
+          </button>
+        </div>
+
+        {/* Pipeline Tab */}
+        {activeTab === "pipeline" && <PipelineClient />}
+
+        {/* Activity Tab */}
+        {activeTab === "activity" && <>
+
+        <div className="flex justify-end mb-4">
+          <Button variant="outline" size="sm" onClick={() => fetchFeed()} disabled={loading}>
+            <RefreshCw className={cn("w-3.5 h-3.5 mr-1.5", loading && "animate-spin")} />
             Refresh
           </Button>
         </div>
@@ -249,6 +286,8 @@ export default function OpsClient() {
             </Button>
           </div>
         )}
+
+        </>}
       </div>
     </div>
   );
