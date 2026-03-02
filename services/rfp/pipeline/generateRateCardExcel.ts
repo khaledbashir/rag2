@@ -146,7 +146,16 @@ async function priceDisplay(
   quote: QuotedSpec | null,
   zoneClass: ZoneClass,
   installComplexity: "simple" | "standard" | "complex" | "heavy",
+  projectIsOutdoor: boolean = false,
 ): Promise<PricedDisplay> {
+  // Project-level environment override: if the project is indoor but the AI
+  // tagged a screen as "outdoor", correct it. This fixes the common case where
+  // ribbon boards in indoor arenas get misclassified as outdoor by the AI.
+  if (!projectIsOutdoor && spec.environment === "outdoor") {
+    console.log(`[priceDisplay] ⚠ Overriding "${spec.name}" from outdoor → indoor (project is indoor)`);
+    spec = { ...spec, environment: "indoor" };
+  }
+
   // Calculate area — do NOT fake dimensions if missing
   const widthFt = spec.widthFt || 0;
   const heightFt = spec.heightFt || 0;
@@ -321,7 +330,7 @@ export async function generateRateCardExcel(
   const pricedDisplays: PricedDisplay[] = [];
   for (const spec of specs) {
     const quote = quotes.find((q) => q.displayName === spec.name && q.hasQuote) || null;
-    const priced = await priceDisplay(spec, quote, zoneClass, installComplexity);
+    const priced = await priceDisplay(spec, quote, zoneClass, installComplexity, project.isOutdoor);
     pricedDisplays.push(priced);
   }
 
