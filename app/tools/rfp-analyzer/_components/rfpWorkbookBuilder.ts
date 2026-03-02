@@ -144,11 +144,13 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
     const mp = pd?.matchedProduct;
 
-    const activeH = mp?.activeHeightFt ?? bidH;
-    const activeW = mp?.activeWidthFt ?? bidW;
-    const activePxH = mp?.resolutionY ?? bidHPx;
-    const activePxW = mp?.resolutionX ?? bidWPx;
-    const sqFtPerScreen = activeH * activeW;
+    // LED Cost Sheet shows RFP REQUESTED dimensions (what the client asked for)
+    // Product active dimensions are used internally for cost calc only
+    const displayH = bidH;
+    const displayW = bidW;
+    const displayPxH = bidHPx;
+    const displayPxW = bidWPx;
+    const sqFtPerScreen = displayH * displayW;
     const totalSqFt = sqFtPerScreen * qty;
 
     // Derive stable $/sqft rate from pricing data
@@ -199,10 +201,10 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
         c(vendor),
         productCell,
         c(bidPitch > 0 ? `${bidPitch}mm` : "", { align: "center" }),
-        num(activeH > 0 ? Math.round(activeH * 100) / 100 : null),       // H(ft) — editable
-        num(activeW > 0 ? Math.round(activeW * 100) / 100 : null),       // W(ft) — editable
-        num(activePxH > 0 ? activePxH : null),
-        num(activePxW > 0 ? activePxW : null),
+        num(displayH > 0 ? Math.round(displayH * 100) / 100 : null),       // H(ft) — editable
+        num(displayW > 0 ? Math.round(displayW * 100) / 100 : null),       // W(ft) — editable
+        num(displayPxH > 0 ? displayPxH : null),
+        num(displayPxW > 0 ? displayPxW : null),
         num(Math.round(sqFtPerScreen * 100) / 100 || null),
         num(qty, { align: "center" }),                                     // Qty — editable
         num(Math.round(totalSqFt * 100) / 100 || null),
@@ -228,9 +230,8 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   let totalSqFtAll = 0;
   input.screens.forEach((spec) => {
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
-    const mp = pd?.matchedProduct;
-    const h = mp?.activeHeightFt ?? (spec.heightFt ?? 0);
-    const w = mp?.activeWidthFt ?? (spec.widthFt ?? 0);
+    const h = spec.heightFt ?? 0;
+    const w = spec.widthFt ?? 0;
     const q = spec.quantity || 1;
     const sqFt = h * w * q;
     const pricingSqFt = pd?.areaSqFt ?? 0;
@@ -244,9 +245,8 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   // Blended margin for total
   const totalLedSell = input.screens.reduce((s, spec) => {
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
-    const mp = pd?.matchedProduct;
-    const h = mp?.activeHeightFt ?? (spec.heightFt ?? 0);
-    const w = mp?.activeWidthFt ?? (spec.widthFt ?? 0);
+    const h = spec.heightFt ?? 0;
+    const w = spec.widthFt ?? 0;
     const q = spec.quantity || 1;
     const sqFt = h * w * q;
     const pricingSqFt = pd?.areaSqFt ?? 0;
