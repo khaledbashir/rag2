@@ -122,6 +122,7 @@ function Card({
   onComment,
   onDelete,
   saving,
+  highlight,
 }: {
   item: TrackerItem;
   me: string;
@@ -129,6 +130,7 @@ function Card({
   onComment: (id: string, c: string) => void;
   onDelete: (id: string) => void;
   saving: string | null;
+  highlight?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
@@ -137,8 +139,12 @@ function Card({
 
   return (
     <div
-      className={`rounded-lg border transition-colors ${
-        open ? "bg-white border-gray-200 shadow-sm" : "bg-white border-gray-100 hover:border-gray-200"
+      className={`rounded-lg border transition-all duration-500 ${
+        highlight
+          ? "bg-[#0A52EF]/[0.03] border-[#0A52EF]/20 ring-1 ring-[#0A52EF]/10"
+          : open
+            ? "bg-white border-gray-200 shadow-sm"
+            : "bg-white border-gray-100 hover:border-gray-200"
       }`}
     >
       <div className="px-3.5 py-2.5 cursor-pointer flex items-start gap-3" onClick={() => setOpen(!open)}>
@@ -296,49 +302,57 @@ function Card({
 
 // ─── AI Panel ───────────────────────────────────────────────────────────────
 
-function AIPanel({ me, onDone }: { me: string; onDone: () => void }) {
+function AIPanel({ me, onDone, onHighlight }: { me: string; onDone: () => void; onHighlight: (ids: string[]) => void }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const [tasks, setTasks] = useState<TrackerItem[]>([]);
-  const [revealed, setRevealed] = useState(0);
-  const [phase, setPhase] = useState<"idle" | "thinking" | "revealing" | "done">("idle");
+  const [result, setResult] = useState<{ count: number } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const go = async () => {
     if (!text.trim() || busy) return;
-    setBusy(true); setErr(null); setTasks([]); setRevealed(0); setPhase("thinking");
+    setBusy(true);
+    setErr(null);
+    setResult(null);
     try {
       const res = await fetch("/api/tracker/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, author: me || "Team" }),
       });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Failed"); }
-      const d = await res.json();
-      const t = d.tasks as TrackerItem[];
-      if (!t.length) throw new Error("Couldn't extract tasks. Try more detail.");
-      setTasks(t); setPhase("revealing");
-      for (let i = 1; i <= t.length; i++) {
-        await new Promise((r) => setTimeout(r, i === 1 ? 500 : 300));
-        setRevealed(i);
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || "Failed");
       }
-      setPhase("done"); onDone();
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "Something went wrong"); setPhase("idle");
-    } finally { setBusy(false); }
-  };
+      const d = await res.json();
+      const tasks = d.tasks as TrackerItem[];
+      if (!tasks.length) throw new Error("Couldn't extract tasks. Try more detail.");
 
-  const reset = () => { setText(""); setTasks([]); setRevealed(0); setPhase("idle"); setErr(null); };
+      // Show success, highlight new tasks on board, collapse
+      setResult({ count: tasks.length });
+      onHighlight(tasks.map((t) => t.id));
+      onDone();
+
+      // Auto-reset after a moment
+      setTimeout(() => {
+        setText("");
+        setResult(null);
+        setOpen(false);
+      }, 2000);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="mb-4">
-      <div className={`border rounded-lg transition-colors ${open ? "bg-blue-50/30 border-[#0A52EF]/15" : "bg-white border-gray-100 hover:border-gray-200"}`}>
-        <button onClick={() => setOpen(!open)} className="w-full flex items-center gap-3 px-4 py-2.5 text-left">
-          <BrainCircuit className={`w-4 h-4 ${open ? "text-[#0A52EF]" : "text-gray-400"}`} />
-          <span className="text-sm font-medium text-gray-700">AI Task Breakdown</span>
-          <span className="text-xs text-gray-400 hidden sm:inline">Type anything, AI structures it</span>
-          <ChevronDown className={`w-3.5 h-3.5 text-gray-400 ml-auto transition-transform ${open ? "rotate-180" : ""}`} />
+      <div className={`border rounded-lg transition-colors ${open ? "bg-white border-gray-200" : "bg-white border-gray-100 hover:border-gray-200"}`}>
+        <button onClick={() => { setOpen(!open); setResult(null); setErr(null); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-left">
+          <Sparkles className={`w-4 h-4 ${open ? "text-[#0A52EF]" : "text-gray-300"}`} />
+          <span className="text-sm font-medium text-gray-600">AI: paste anything, get tasks</span>
+          <ChevronDown className={`w-3.5 h-3.5 text-gray-300 ml-auto transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
 
         <AnimatePresence>
@@ -350,88 +364,39 @@ function AIPanel({ me, onDone }: { me: string; onDone: () => void }) {
               transition={{ duration: 0.15 }}
               className="overflow-hidden"
             >
-              <div className="px-4 pb-4 space-y-3 border-t border-gray-100">
-                <p className="text-xs text-gray-400 pt-3">
-                  How do you imagine seeing Phase 2 completion? Or just dump any notes.
-                </p>
-
-                {(phase === "idle" || phase === "thinking") && (
-                  <div className="relative">
+              <div className="px-4 pb-4 space-y-3 border-t border-gray-100 pt-3">
+                {result ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center gap-2 text-sm text-green-600 font-medium py-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    {result.count} tasks added to the board
+                  </motion.div>
+                ) : (
+                  <>
                     <textarea
                       value={text}
                       onChange={(e) => setText(e.target.value)}
-                      placeholder='"upload an RFP, see all LEDs recognized, pricing matches quotes, generate vendor sheets, final PDF..."'
-                      className={`w-full h-24 px-3 py-2.5 text-sm bg-white border rounded-lg text-gray-700 placeholder:text-gray-300 focus:outline-none resize-none ${
-                        phase === "thinking" ? "border-[#0A52EF]/30 ring-1 ring-[#0A52EF]/10" : "border-gray-200 focus:border-[#0A52EF]/30 focus:ring-1 focus:ring-[#0A52EF]/10"
-                      }`}
+                      onKeyDown={(e) => { if (e.key === "Enter" && e.metaKey) go(); }}
+                      placeholder="Paste meeting notes, Slack messages, requirements, or describe what done looks like..."
+                      className="w-full h-20 px-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-700 placeholder:text-gray-400 focus:outline-none focus:border-[#0A52EF]/30 focus:ring-1 focus:ring-[#0A52EF]/10 resize-none"
                       disabled={busy}
                     />
-                    {phase === "thinking" && (
-                      <motion.div
-                        className="absolute inset-x-0 top-0 h-px bg-[#0A52EF]"
-                        animate={{ opacity: [0.2, 0.8, 0.2] }}
-                        transition={{ duration: 1.5, repeat: Infinity }}
-                      />
-                    )}
-                  </div>
-                )}
-
-                {err && <p className="text-xs text-red-500 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> {err}</p>}
-
-                {phase === "idle" && (
-                  <button
-                    onClick={go}
-                    disabled={!text.trim()}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-[#0A52EF] hover:bg-[#0847d0] text-white rounded-lg disabled:opacity-25 transition-colors"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" /> Break It Down
-                  </button>
-                )}
-
-                {phase === "thinking" && (
-                  <div className="flex items-center gap-2 text-sm text-[#0A52EF]">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Analyzing...
-                  </div>
-                )}
-
-                {(phase === "revealing" || phase === "done") && tasks.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-xs text-gray-400">
-                      {phase === "revealing" ? `Structuring... ${revealed}/${tasks.length}` : `${tasks.length} tasks added`}
-                      {phase === "done" && <Check className="w-3 h-3 text-green-500 inline ml-1" />}
-                    </p>
-
-                    {phase === "revealing" && (
-                      <motion.p animate={{ opacity: [0.4, 0.15] }} transition={{ duration: 2 }} className="text-[11px] text-gray-300 italic truncate">
-                        &ldquo;{text}&rdquo;
-                      </motion.p>
-                    )}
-
-                    <div className="space-y-1.5">
-                      {tasks.map((t, i) => {
-                        if (i >= revealed) return null;
-                        return (
-                          <motion.div
-                            key={t.id}
-                            initial={{ opacity: 0, x: -12 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ duration: 0.25 }}
-                            className="flex items-center gap-2.5 px-3 py-2 bg-white border border-gray-100 rounded-md"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5 text-green-500/60 shrink-0" />
-                            <span className="text-[13px] text-gray-700 flex-1">{t.description}</span>
-                            <span className="text-[10px] text-gray-300">{t.category}</span>
-                          </motion.div>
-                        );
-                      })}
-                    </div>
-
-                    {phase === "done" && (
-                      <button onClick={reset} className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 mt-1">
-                        <Plus className="w-3 h-3" /> Break down more
+                    {err && <p className="text-xs text-red-500">{err}</p>}
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={go}
+                        disabled={!text.trim() || busy}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-[#0A52EF] hover:bg-[#0847d0] text-white rounded-lg disabled:opacity-25 transition-colors"
+                      >
+                        {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                        {busy ? "Breaking down..." : "Break It Down"}
                       </button>
-                    )}
-                  </div>
+                      <span className="text-[11px] text-gray-400">{"\u2318"}+Enter</span>
+                    </div>
+                  </>
                 )}
               </div>
             </motion.div>
@@ -472,9 +437,15 @@ export default function TrackerPage() {
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
+  const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
   const [view, setView] = useState<"list" | "kanban">("list");
   const dragId = useRef<string | null>(null);
   const dragCol = useRef<string | null>(null);
+
+  const handleHighlight = useCallback((ids: string[]) => {
+    setHighlightIds(new Set(ids));
+    setTimeout(() => setHighlightIds(new Set()), 4000);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -652,7 +623,7 @@ export default function TrackerPage() {
       {/* Content */}
       <div className="max-w-7xl mx-auto px-6 pt-5 pb-12">
         {/* AI Panel */}
-        <AIPanel me={me} onDone={load} />
+        <AIPanel me={me} onDone={load} onHighlight={handleHighlight} />
 
         {/* Manual add */}
         <div className="flex gap-2 mb-4">
@@ -700,7 +671,7 @@ export default function TrackerPage() {
                       </div>
                       <div className="space-y-1.5">
                         {ci.map((item) => (
-                          <Card key={item.id} item={item} me={me} onAction={handleAction} onComment={handleComment} onDelete={handleDelete} saving={saving} />
+                          <Card key={item.id} item={item} me={me} onAction={handleAction} onComment={handleComment} onDelete={handleDelete} saving={saving} highlight={highlightIds.has(item.id)} />
                         ))}
                       </div>
                     </div>
@@ -735,7 +706,7 @@ export default function TrackerPage() {
                             onDragEnd={() => { dragId.current = null; }}
                             className="cursor-grab active:cursor-grabbing"
                           >
-                            <Card item={item} me={me} onAction={handleAction} onComment={handleComment} onDelete={handleDelete} saving={saving} />
+                            <Card item={item} me={me} onAction={handleAction} onComment={handleComment} onDelete={handleDelete} saving={saving} highlight={highlightIds.has(item.id)} />
                           </div>
                         ))}
                         {colItems.length === 0 && (
