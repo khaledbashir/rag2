@@ -24,6 +24,10 @@ import {
   Activity,
   Eye,
   GripVertical,
+  Sparkles,
+  BrainCircuit,
+  Plus,
+  ChevronUp,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -586,6 +590,327 @@ function ActivityTimeline({ activities }: { activities: ActivityEntry[] }) {
   );
 }
 
+// ─── AI Breakdown Panel ─────────────────────────────────────────────────────
+
+function AIBreakdownPanel({
+  selectedName,
+  onTasksCreated,
+}: {
+  selectedName: string;
+  onTasksCreated: () => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [inputText, setInputText] = useState("");
+  const [processing, setProcessing] = useState(false);
+  const [generatedTasks, setGeneratedTasks] = useState<TrackerItem[]>([]);
+  const [revealedCount, setRevealedCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [phase, setPhase] = useState<"input" | "scanning" | "revealing" | "done">("input");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleSubmit = async () => {
+    if (!inputText.trim() || processing) return;
+    setProcessing(true);
+    setError(null);
+    setGeneratedTasks([]);
+    setRevealedCount(0);
+    setPhase("scanning");
+
+    try {
+      const res = await fetch("/api/tracker/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: inputText,
+          author: selectedName || "Team",
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to process");
+      }
+
+      const data = await res.json();
+      const tasks = data.tasks as TrackerItem[];
+
+      if (tasks.length === 0) {
+        throw new Error("No tasks could be extracted. Try adding more detail.");
+      }
+
+      setGeneratedTasks(tasks);
+      setPhase("revealing");
+
+      // Staggered reveal — one task at a time
+      for (let i = 0; i <= tasks.length; i++) {
+        await new Promise((r) => setTimeout(r, i === 0 ? 600 : 400));
+        setRevealedCount(i);
+      }
+
+      setPhase("done");
+      onTasksCreated();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Something went wrong";
+      setError(message);
+      setPhase("input");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleReset = () => {
+    setInputText("");
+    setGeneratedTasks([]);
+    setRevealedCount(0);
+    setPhase("input");
+    setError(null);
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto px-6 mb-4">
+      <motion.div
+        layout
+        className={`border rounded-2xl overflow-hidden transition-all ${
+          isOpen
+            ? "bg-gradient-to-br from-[#0A52EF]/[0.04] via-[#0a0f1e] to-purple-900/[0.04] border-[#0A52EF]/20"
+            : "bg-white/[0.02] border-white/[0.06] hover:border-[#0A52EF]/15"
+        }`}
+      >
+        {/* Toggle bar */}
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="w-full flex items-center gap-3 px-5 py-3.5 text-left"
+        >
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#0A52EF] to-purple-600 flex items-center justify-center shadow-sm shadow-[#0A52EF]/20">
+            <BrainCircuit className="w-4 h-4 text-white" />
+          </div>
+          <div className="flex-1">
+            <span className="text-sm font-semibold text-white/90">AI Task Breakdown</span>
+            <span className="text-xs text-white/30 ml-2">
+              Type anything &mdash; AI structures it into tasks
+            </span>
+          </div>
+          <Sparkles className={`w-4 h-4 transition-colors ${isOpen ? "text-[#0A52EF]" : "text-white/20"}`} />
+          <ChevronDown className={`w-4 h-4 text-white/30 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+        </button>
+
+        {/* Expanded panel */}
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <div className="px-5 pb-5 space-y-4">
+                {/* Guiding question */}
+                <div className="flex items-start gap-3 p-3.5 bg-[#0A52EF]/[0.06] border border-[#0A52EF]/10 rounded-xl">
+                  <Sparkles className="w-4 h-4 text-[#0A52EF] mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm text-white/80 font-medium">
+                      How do you imagine seeing the completion of Phase 2?
+                    </p>
+                    <p className="text-xs text-white/35 mt-1">
+                      Describe what &ldquo;done&rdquo; looks like in your own words, or dump any requirements &mdash; AI will break it down into trackable tasks.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Input area */}
+                {(phase === "input" || phase === "scanning") && (
+                  <div className="relative">
+                    <textarea
+                      ref={textareaRef}
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      placeholder="e.g. &quot;I want to upload an RFP PDF, see all LEDs recognized, get pricing that matches our quotes, generate vendor sheets, and produce a final proposal PDF...&quot;"
+                      className={`w-full h-32 px-4 py-3 text-sm bg-white/[0.03] border rounded-xl text-white placeholder:text-white/20 focus:outline-none resize-none transition-all ${
+                        phase === "scanning"
+                          ? "border-[#0A52EF]/40 ring-1 ring-[#0A52EF]/20"
+                          : "border-white/10 focus:border-[#0A52EF]/30 focus:ring-1 focus:ring-[#0A52EF]/15"
+                      }`}
+                      disabled={processing}
+                    />
+
+                    {/* Scanning overlay */}
+                    {phase === "scanning" && (
+                      <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+                        <motion.div
+                          className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-[#0A52EF] to-transparent"
+                          initial={{ top: 0 }}
+                          animate={{ top: ["0%", "100%", "0%"] }}
+                          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                        />
+                        <div className="absolute inset-0 bg-[#0A52EF]/[0.02]" />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {error && (
+                  <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-sm text-red-400">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    {error}
+                  </div>
+                )}
+
+                {/* Submit button */}
+                {phase === "input" && (
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleSubmit}
+                      disabled={!inputText.trim() || processing}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#0A52EF] to-[#7c3aed] hover:from-[#0847d0] hover:to-[#6d31d4] text-white text-sm font-semibold rounded-xl disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm shadow-[#0A52EF]/20"
+                    >
+                      <BrainCircuit className="w-4 h-4" />
+                      Break It Down
+                    </button>
+                    <span className="text-xs text-white/20">
+                      AI will analyze your text and create structured tasks
+                    </span>
+                  </div>
+                )}
+
+                {/* Scanning state */}
+                {phase === "scanning" && (
+                  <div className="flex items-center gap-3 py-2">
+                    <div className="flex items-center gap-2 text-[#0A52EF]">
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      >
+                        <BrainCircuit className="w-5 h-5" />
+                      </motion.div>
+                      <span className="text-sm font-medium">Analyzing your input...</span>
+                    </div>
+                    <div className="flex gap-1">
+                      {[0, 1, 2].map((i) => (
+                        <motion.div
+                          key={i}
+                          className="w-1.5 h-1.5 bg-[#0A52EF] rounded-full"
+                          animate={{ opacity: [0.2, 1, 0.2] }}
+                          transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Generated tasks — revealed one at a time */}
+                {(phase === "revealing" || phase === "done") && generatedTasks.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-[#0A52EF]" />
+                      <span className="text-sm font-semibold text-white/80">
+                        {phase === "revealing"
+                          ? `Structuring... (${revealedCount}/${generatedTasks.length})`
+                          : `${generatedTasks.length} tasks created`}
+                      </span>
+                      {phase === "done" && (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 ml-1" />
+                      )}
+                    </div>
+
+                    {/* Original text fading out */}
+                    {phase === "revealing" && (
+                      <motion.div
+                        animate={{ opacity: [0.5, 0.2] }}
+                        transition={{ duration: 2 }}
+                        className="px-4 py-3 bg-white/[0.02] rounded-lg border border-white/[0.04] text-xs text-white/25 line-clamp-2 italic"
+                      >
+                        &ldquo;{inputText}&rdquo;
+                      </motion.div>
+                    )}
+
+                    {/* Tasks appearing */}
+                    <div className="space-y-2">
+                      {generatedTasks.map((task, i) => {
+                        const isRevealed = i < revealedCount;
+                        const catConfig = CATEGORY_CONFIG[task.category] || CATEGORY_CONFIG["Core Engine"];
+                        const CatIcon = catConfig.icon;
+
+                        if (!isRevealed) return null;
+
+                        return (
+                          <motion.div
+                            key={task.id}
+                            initial={{ opacity: 0, x: -20, scale: 0.95 }}
+                            animate={{ opacity: 1, x: 0, scale: 1 }}
+                            transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
+                            className="flex items-center gap-3 p-3 bg-[#111827]/80 border border-white/[0.08] rounded-xl"
+                          >
+                            <motion.div
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ delay: 0.1, type: "spring", stiffness: 400 }}
+                              className={`w-7 h-7 rounded-lg ${catConfig.bg} flex items-center justify-center shrink-0`}
+                            >
+                              <CatIcon className={`w-3.5 h-3.5 ${catConfig.accent}`} />
+                            </motion.div>
+
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-white/85 font-medium">{task.description}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded ${catConfig.bg} ${catConfig.accent} font-medium`}>
+                                  {task.category}
+                                </span>
+                                {task.priority !== "normal" && (
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                    task.priority === "critical"
+                                      ? "bg-red-500/15 text-red-400"
+                                      : "bg-amber-500/15 text-amber-400"
+                                  }`}>
+                                    {task.priority}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <motion.div
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              transition={{ delay: 0.2 }}
+                            >
+                              <CheckCircle2 className="w-4 h-4 text-emerald-500/50" />
+                            </motion.div>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Done state */}
+                    {phase === "done" && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.3 }}
+                        className="flex items-center gap-3 pt-2"
+                      >
+                        <button
+                          onClick={handleReset}
+                          className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/8 border border-white/10 text-white/60 text-sm font-medium rounded-xl transition-colors"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Break Down More
+                        </button>
+                        <span className="text-xs text-emerald-400/60">
+                          Tasks added to Awaiting Review
+                        </span>
+                      </motion.div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    </div>
+  );
+}
+
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function TrackerPage() {
@@ -820,6 +1145,9 @@ export default function TrackerPage() {
           </div>
         </div>
       </div>
+
+      {/* ━━━ AI Breakdown Panel ━━━ */}
+      <AIBreakdownPanel selectedName={selectedName} onTasksCreated={fetchItems} />
 
       {/* ━━━ Main Content ━━━ */}
       <div className="max-w-7xl mx-auto px-6 pb-12">
