@@ -1,6 +1,6 @@
 /**
  * GET  /api/tracker/[id] — Get a single tracker item with comments & activity
- * PATCH /api/tracker/[id] — Update a tracker item (verify, dispute, comment, move column)
+ * PATCH /api/tracker/[id] — Update a tracker item (verify, dispute, comment, move, delete)
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -13,19 +13,55 @@ interface Verification {
   date: string;
 }
 
+// Safe include — falls back if new tables don't exist yet
+async function findItemWithRelations(id: string) {
+  try {
+    return await prisma.trackerItem.findUnique({
+      where: { id },
+      include: {
+        comments: { orderBy: { createdAt: "desc" }, take: 50 },
+        _count: { select: { comments: true } },
+      },
+    });
+  } catch {
+    // Comments table may not exist yet
+    return await prisma.trackerItem.findUnique({ where: { id } });
+  }
+}
+
+async function logActivity(data: { itemId?: string; actor: string; action: string; details?: string }) {
+  try {
+    await prisma.trackerActivity.create({
+      data: {
+        itemId: data.itemId || null,
+        actor: data.actor,
+        action: data.action,
+        details: data.details || null,
+      },
+    });
+  } catch {
+    // Activity table may not exist yet
+  }
+}
+
+async function addComment(itemId: string, author: string, body: string) {
+  try {
+    return await prisma.trackerComment.create({
+      data: { itemId, author, body, type: "comment" },
+    });
+  } catch {
+    // Comments table may not exist yet
+    return null;
+  }
+}
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
-    const item = await prisma.trackerItem.findUnique({
-      where: { id },
-      include: {
-        comments: { orderBy: { createdAt: "desc" }, take: 50 },
-        activities: { orderBy: { createdAt: "desc" }, take: 20 },
-      },
-    });
+    const item = await findItemWithRelations(id);
     if (!item) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }
@@ -58,7 +94,6 @@ export async function PATCH(
       }
 
       const verifications = (item.verifications as unknown as Verification[]) || [];
-
       const existing = verifications.findIndex((v) => v.name === name);
       const entry: Verification = {
         name,
@@ -73,7 +108,6 @@ export async function PATCH(
         verifications.push(entry);
       }
 
-      // Auto-update status + column based on verifications
       const hasDispute = verifications.some((v) => v.status === "disputed");
       const verifiedCount = verifications.filter((v) => v.status === "verified").length;
       let newStatus = item.status;
@@ -93,32 +127,14 @@ export async function PATCH(
           status: newStatus,
           column: newColumn,
         },
-        include: { comments: { orderBy: { createdAt: "desc" }, take: 50 } },
       });
 
-      // Log activity
-      await prisma.trackerActivity.create({
-        data: {
-          itemId: id,
-          actor: name,
-          action: body.action,
-          details: comment || null,
-        },
-      });
+      await logActivity({ itemId: id, actor: name, action: body.action, details: comment || undefined });
+      if (comment) await addComment(id, name, comment);
 
-      // Auto-create a comment for the verification
-      if (comment) {
-        await prisma.trackerComment.create({
-          data: {
-            itemId: id,
-            author: name,
-            body: comment,
-            type: "comment",
-          },
-        });
-      }
-
-      return NextResponse.json({ item: updated });
+      // Re-fetch with relations
+      const full = await findItemWithRelations(id);
+      return NextResponse.json({ item: full || updated });
     }
 
     // ── Action: add comment ──
@@ -128,23 +144,8 @@ export async function PATCH(
         return NextResponse.json({ error: "name and comment required" }, { status: 400 });
       }
 
-      const newComment = await prisma.trackerComment.create({
-        data: {
-          itemId: id,
-          author: name,
-          body: commentText,
-          type: "comment",
-        },
-      });
-
-      await prisma.trackerActivity.create({
-        data: {
-          itemId: id,
-          actor: name,
-          action: "commented",
-          details: commentText.substring(0, 100),
-        },
-      });
+      const newComment = await addComment(id, name, commentText);
+      await logActivity({ itemId: id, actor: name, action: "commented", details: commentText.substring(0, 100) });
 
       return NextResponse.json({ comment: newComment });
     }
@@ -157,7 +158,6 @@ export async function PATCH(
         return NextResponse.json({ error: `column must be one of: ${validColumns.join(", ")}` }, { status: 400 });
       }
 
-      // Map column to status
       const statusMap: Record<string, string> = {
         awaiting_review: "claimed",
         in_review: "claimed",
@@ -167,25 +167,27 @@ export async function PATCH(
 
       const updated = await prisma.trackerItem.update({
         where: { id },
-        data: {
-          column,
-          status: statusMap[column] || item.status,
-        },
-        include: { comments: { orderBy: { createdAt: "desc" }, take: 50 } },
+        data: { column, status: statusMap[column] || item.status },
       });
 
       if (name) {
-        await prisma.trackerActivity.create({
-          data: {
-            itemId: id,
-            actor: name,
-            action: "moved",
-            details: `Moved to ${column.replace(/_/g, " ")}`,
-          },
-        });
+        await logActivity({ itemId: id, actor: name, action: "moved", details: `Moved to ${column.replace(/_/g, " ")}` });
       }
 
       return NextResponse.json({ item: updated });
+    }
+
+    // ── Action: delete ──
+    if (body.action === "delete") {
+      // Clean up related records safely
+      try { await prisma.trackerComment.deleteMany({ where: { itemId: id } }); } catch { /* */ }
+      try { await prisma.trackerActivity.deleteMany({ where: { itemId: id } }); } catch { /* */ }
+
+      await prisma.trackerItem.delete({ where: { id } });
+
+      await logActivity({ actor: body.name || "System", action: "deleted", details: item.description.substring(0, 80) });
+
+      return NextResponse.json({ deleted: true });
     }
 
     // ── Action: update notes ──
@@ -208,25 +210,6 @@ export async function PATCH(
         },
       });
       return NextResponse.json({ item: updated });
-    }
-
-    // ── Action: delete ──
-    if (body.action === "delete") {
-      await prisma.trackerComment.deleteMany({ where: { itemId: id } });
-      await prisma.trackerActivity.deleteMany({ where: { itemId: id } });
-      await prisma.trackerItem.delete({ where: { id } });
-
-      if (body.name) {
-        await prisma.trackerActivity.create({
-          data: {
-            actor: body.name,
-            action: "deleted",
-            details: item.description.substring(0, 80),
-          },
-        });
-      }
-
-      return NextResponse.json({ deleted: true });
     }
 
     return NextResponse.json({ error: "No valid action" }, { status: 400 });

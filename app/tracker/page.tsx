@@ -74,7 +74,7 @@ const TEAM = [
   { name: "Matt", initials: "MM" },
   { name: "Jireh", initials: "JH" },
   { name: "Eric", initials: "EP" },
-  { name: "Alison", initials: "AW" },
+  { name: "Ahmad", initials: "AB" },
 ];
 
 const COLUMNS = [
@@ -157,8 +157,19 @@ function Card({
           <p className={`text-[13px] leading-snug ${item.status === "verified" ? "text-gray-400 line-through" : "text-gray-800"}`}>
             {item.description}
           </p>
-          <div className="flex items-center gap-2 mt-1.5">
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             <span className="text-[10px] text-gray-400 font-medium">{item.category}</span>
+            {item.status === "claimed" && item.claimedBy && (
+              <span className="text-[10px] text-[#0A52EF]/70 bg-[#0A52EF]/5 px-1.5 py-0.5 rounded font-medium">
+                {item.claimedBy} claims: done
+              </span>
+            )}
+            {item.status === "verified" && (
+              <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded font-medium">Verified</span>
+            )}
+            {item.status === "disputed" && (
+              <span className="text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded font-medium">Needs work</span>
+            )}
             {vf.length > 0 && (
               <div className="flex -space-x-1 ml-1">
                 {vf.map((v) => (
@@ -566,7 +577,7 @@ export default function TrackerPage() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-lg font-semibold text-gray-900">Phase 2 Acceptance</h1>
-              <p className="text-xs text-gray-400 mt-0.5">ANC Proposal Engine</p>
+              <p className="text-xs text-gray-400 mt-0.5">Ahmad claims these are done. Your job: verify or flag.</p>
             </div>
             <div className="flex items-center gap-2">
               <div className="flex bg-gray-100 rounded-md p-0.5">
