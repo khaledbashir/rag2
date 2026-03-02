@@ -37,6 +37,7 @@ export interface PipelineEvent {
 
 interface UploadZoneProps {
   onUpload: (files: File[], bidFormFile?: File) => void;
+  onExcelUpload?: (file: File) => void;
   isLoading: boolean;
   events: PipelineEvent[];
 }
@@ -50,7 +51,7 @@ interface StageState {
   count?: string;
 }
 
-export default function UploadZone({ onUpload, isLoading, events }: UploadZoneProps) {
+export default function UploadZone({ onUpload, onExcelUpload, isLoading, events }: UploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -80,9 +81,14 @@ export default function UploadZone({ onUpload, isLoading, events }: UploadZonePr
     const pdfFiles = files.filter((f) => f.type === "application/pdf" || f.name.endsWith(".pdf"));
     const excelFiles = files.filter((f) => f.name.endsWith(".xlsx") || f.name.endsWith(".xls"));
 
-    // If only Excel dropped, store as bid form
+    // If only Excel dropped — analyze it directly as starting point
     if (pdfFiles.length === 0 && excelFiles.length > 0) {
-      setBidFormFile(excelFiles[0]);
+      if (onExcelUpload) {
+        setFileName(excelFiles[0].name);
+        onExcelUpload(excelFiles[0]);
+      } else {
+        setBidFormFile(excelFiles[0]);
+      }
       return;
     }
 
@@ -125,7 +131,7 @@ export default function UploadZone({ onUpload, isLoading, events }: UploadZonePr
         {!isLoading && (
           <input
             type="file"
-            accept="application/pdf"
+            accept="application/pdf,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             multiple
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             onChange={handleFileChange}
@@ -194,12 +200,15 @@ export default function UploadZone({ onUpload, isLoading, events }: UploadZonePr
               <div className="text-center">
                 <h3 className="text-lg font-semibold text-foreground">Drop your RFP here</h3>
                 <p className="text-sm text-muted-foreground mt-1.5 max-w-md">
-                  Project manuals, spec books, bid documents — drop any PDF and we&apos;ll pull out every LED display spec automatically.
+                  Project manuals, spec books, bid documents — drop any PDF or Excel file and we&apos;ll pull out every LED display spec automatically.
                 </p>
               </div>
               <div className="flex gap-2 text-[11px] text-muted-foreground">
                 <span className="bg-muted/80 px-2.5 py-1 rounded-md flex items-center gap-1.5">
                   <FileIcon className="w-3 h-3" /> PDF up to 2GB
+                </span>
+                <span className="bg-muted/80 px-2.5 py-1 rounded-md flex items-center gap-1.5">
+                  <FileSpreadsheet className="w-3 h-3" /> Excel (.xlsx)
                 </span>
                 <span className="bg-muted/80 px-2.5 py-1 rounded-md flex items-center gap-1.5">
                   <Sparkles className="w-3 h-3" /> Auto-extract

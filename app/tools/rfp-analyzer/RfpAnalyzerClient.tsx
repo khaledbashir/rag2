@@ -727,6 +727,58 @@ export default function RfpAnalyzerClient() {
     }
   }, []);
 
+  // ========================================================================
+  // Excel upload — direct parse, no SSE (Jireh's Excel-as-starting-point)
+  // ========================================================================
+
+  const handleExcelUpload = useCallback(async (file: File) => {
+    setPhase("processing");
+    setError(null);
+    setEvents([
+      { type: "stage", stage: "uploading", message: `Parsing ${file.name}...` },
+    ]);
+    setResult(null);
+    setQuoteImportResult(null);
+    setPricingPreview(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      setEvents([
+        { type: "stage", stage: "uploading", message: `Parsing ${file.name}...` },
+        { type: "stage", stage: "extracting", message: "Extracting LED specs from Excel..." },
+      ]);
+
+      const res = await fetch("/api/rfp/analyze/excel", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: `Failed (${res.status})` }));
+        throw new Error(body.error || `Failed to parse Excel (${res.status})`);
+      }
+
+      const data = await res.json();
+      const analysisResult: AnalysisResult = data.result;
+
+      // Fire "complete" events so the stepper shows all-done
+      setEvents([
+        { type: "stage", stage: "uploaded", message: "File received" },
+        { type: "stage", stage: "extracted", message: `Found ${analysisResult.screens.length} displays` },
+        { type: "complete", result: analysisResult },
+      ]);
+
+      setResult(analysisResult);
+      setPhase("results");
+    } catch (err: any) {
+      console.error("Excel upload error:", err);
+      setError(err.message || "Failed to parse Excel file");
+      setPhase("upload");
+    }
+  }, []);
+
   const handleResumeAnalysis = useCallback(async () => {
     if (!lastSessionData.current) return;
     setPhase("processing");
@@ -1467,6 +1519,7 @@ export default function RfpAnalyzerClient() {
           <>
             <UploadZone
               onUpload={handleUpload}
+              onExcelUpload={handleExcelUpload}
               isLoading={phase === "processing"}
               events={events}
             />
