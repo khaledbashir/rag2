@@ -955,3 +955,46 @@ model RfpAnalysis {
   @@index([createdAt])
   @@index([status])
 }
+
+// Phase 2 Completion Tracker — acceptance checklist for stakeholder sign-off
+model TrackerItem {
+  id          String   @id @default(cuid())
+  category    String   // "Core Engine", "Quote Workflow", "Validation", "Output"
+  description String   // Line item description
+  sortOrder   Int      @default(0)
+  // Kanban column: "awaiting_review" | "in_review" | "verified" | "disputed"
+  column      String   @default("awaiting_review")
+  // Status: "pending" | "claimed" | "verified" | "disputed"
+  status      String   @default("pending")
+  claimedBy   String?  // Who claims it's done (e.g. "Ahmad")
+  claimedAt   DateTime?
+  // Verifications from team members (JSON array)
+  // [{name, status: "verified"|"disputed", comment, date}]
+  verifications Json   @default("[]")
+  notes       String?  // General notes
+  priority    String   @default("normal") // "normal" | "high" | "critical"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  comments    TrackerComment[]
+  activities  TrackerActivity[]
+}
+
+model TrackerComment {
+  id        String   @id @default(cuid())
+  itemId    String
+  item      TrackerItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  author    String   // Team member name
+  body      String   // Comment text
+  type      String   @default("comment") // "comment" | "status_change" | "system"
+  createdAt DateTime @default(now())
+}
+
+model TrackerActivity {
+  id        String   @id @default(cuid())
+  itemId    String?  // Null for global activities
+  item      TrackerItem? @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  actor     String   // Who did it
+  action    String   // "verified", "disputed", "commented", "moved", "reset"
+  details   String?  // Extra detail text
+  createdAt DateTime @default(now())
+}
