@@ -148,12 +148,14 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
     const mp = pd?.matchedProduct;
 
-    // LED Cost Sheet shows RFP REQUESTED dimensions (what the client asked for)
-    // Product active dimensions are used internally for cost calc only
-    const displayH = bidH;
-    const displayW = bidW;
-    const displayPxH = bidHPx;
-    const displayPxW = bidWPx;
+    // When user overrides product via dropdown, show the actual active dimensions
+    // from the matched product (cabinet grid). Otherwise show RFP requested dims.
+    const hasProductOverride = mp?.activeWidthFt && mp?.activeHeightFt;
+    const displayH = hasProductOverride ? mp.activeHeightFt : bidH;
+    const displayW = hasProductOverride ? mp.activeWidthFt : bidW;
+    const activePitch = hasProductOverride && mp.pitch ? mp.pitch : bidPitch;
+    const displayPxH = hasProductOverride && mp.resolutionY ? mp.resolutionY : bidHPx;
+    const displayPxW = hasProductOverride && mp.resolutionX ? mp.resolutionX : bidWPx;
     const sqFtPerScreen = displayH * displayW;
     const totalSqFt = sqFtPerScreen * qty;
 
@@ -205,7 +207,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
         }),
         c(vendor),
         productCell,
-        c(bidPitch > 0 ? `${bidPitch}mm` : "", { align: "center" }),
+        c(activePitch > 0 ? `${activePitch}mm` : "", { align: "center" }),
         num(displayH > 0 ? Math.round(displayH * 100) / 100 : null),       // H(ft) — editable
         num(displayW > 0 ? Math.round(displayW * 100) / 100 : null),       // W(ft) — editable
         num(displayPxH > 0 ? displayPxH : null),
