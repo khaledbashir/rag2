@@ -239,7 +239,7 @@ export default function RfpAnalyzerClient() {
   const [quoteImportResult, setQuoteImportResult] = useState<any>(null);
   const [pricingPreview, setPricingPreview] = useState<PricingPreview | null>(null);
   const [loadingPricing, setLoadingPricing] = useState(false);
-  const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string }>>([]);
+  const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string; widthMm?: number; heightMm?: number; manufacturer?: string }>>([]);
   const [resultsTab, setResultsTab] = useState<string>("displays");
   const [customTabs, setCustomTabs] = useState<Array<{ id: string; name: string; content: string }>>([]);
   const [drawingUpload, setDrawingUpload] = useState<{ uploading: boolean; results: Array<{ filename: string; pages: number }> }>({ uploading: false, results: [] });
@@ -305,18 +305,67 @@ export default function RfpAnalyzerClient() {
   const handleProductSelect = useCallback((displayName: string, productId: string) => {
     const product = availableProducts.find((p) => p.id === productId);
     if (!product || !pricingPreview) return;
+
+    // Recalculate active dimensions using new product's cabinet size
+    const cabWidthMm = product.widthMm || 960;
+    const cabHeightMm = product.heightMm || 960;
+
+    // Find the current spec to get requested dimensions
+    const currentSpec = editableSpecs.find((s) => s.name === displayName)
+      || result?.screens?.find((s: ExtractedLEDSpec) => s.name === displayName);
+    const requestedWidthMm = (currentSpec?.widthFt || 0) * 304.8;
+    const requestedHeightMm = (currentSpec?.heightFt || 0) * 304.8;
+
+    // Calculate module grid (round to nearest — Jeremy's rounding rule TBD)
+    const cols = requestedWidthMm > 0 ? Math.max(1, Math.round(requestedWidthMm / cabWidthMm)) : 1;
+    const rows = requestedHeightMm > 0 ? Math.max(1, Math.round(requestedHeightMm / cabHeightMm)) : 1;
+    const activeWidthMm = cols * cabWidthMm;
+    const activeHeightMm = rows * cabHeightMm;
+    const activeWidthFt = activeWidthMm / 304.8;
+    const activeHeightFt = activeHeightMm / 304.8;
+    const newPitch = product.pitch;
+
+    // Update editableSpecs with new dimensions from the selected product
+    setEditableSpecs((prev) =>
+      prev.map((s) =>
+        s.name === displayName
+          ? {
+              ...s,
+              widthFt: Math.round(activeWidthFt * 100) / 100,
+              heightFt: Math.round(activeHeightFt * 100) / 100,
+              widthPx: Math.round(activeWidthMm / newPitch),
+              heightPx: Math.round(activeHeightMm / newPitch),
+              pixelPitchMm: newPitch,
+            }
+          : s
+      )
+    );
+
     setPricingPreview((prev) => {
       if (!prev) return prev;
       return {
         ...prev,
         displays: prev.displays.map((d) =>
           d.name === displayName
-            ? { ...d, matchedProduct: { manufacturer: product.name.split(" ")[0], model: product.name, pitch: product.pitch, fitScore: 100 } }
+            ? {
+                ...d,
+                matchedProduct: {
+                  manufacturer: product.manufacturer || product.name.split(" ")[0],
+                  model: product.name,
+                  pitch: product.pitch,
+                  totalModules: cols * rows,
+                  fitScore: 100,
+                  activeWidthFt: Math.round(activeWidthFt * 100) / 100,
+                  activeHeightFt: Math.round(activeHeightFt * 100) / 100,
+                  resolutionX: Math.round(activeWidthMm / newPitch),
+                  resolutionY: Math.round(activeHeightMm / newPitch),
+                },
+              }
             : d
         ),
       };
     });
-  }, [availableProducts, pricingPreview]);
+  }, [availableProducts, pricingPreview, editableSpecs, result?.screens]);
 
   // ========================================================================
   // Add custom line item to Margin Analysis

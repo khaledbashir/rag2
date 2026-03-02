@@ -110,7 +110,7 @@ export default function AnalysisDetailPage() {
   const [downloading, setDownloading] = useState<string | null>(null);
   const [pricingPreview, setPricingPreview] = useState<any>(null);
   const [loadingPricing, setLoadingPricing] = useState(false);
-  const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string }>>([]);
+  const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string; widthMm?: number; heightMm?: number; manufacturer?: string }>>([]);
   const [pdfAvailable, setPdfAvailable] = useState<boolean | null>(null);
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -233,18 +233,43 @@ export default function AnalysisDetailPage() {
   const handleProductSelect = useCallback((displayName: string, productId: string) => {
     const product = availableProducts.find((p) => p.id === productId);
     if (!product || !pricingPreview) return;
+
+    // Recalculate active dimensions using new product's cabinet size
+    const cabWidthMm = product.widthMm || 960;
+    const cabHeightMm = product.heightMm || 960;
+    const currentSpec = analysis?.screens?.find((s: any) => s.name === displayName);
+    const requestedWidthMm = (currentSpec?.widthFt || 0) * 304.8;
+    const requestedHeightMm = (currentSpec?.heightFt || 0) * 304.8;
+    const cols = requestedWidthMm > 0 ? Math.max(1, Math.round(requestedWidthMm / cabWidthMm)) : 1;
+    const rows = requestedHeightMm > 0 ? Math.max(1, Math.round(requestedHeightMm / cabHeightMm)) : 1;
+    const activeWidthMm = cols * cabWidthMm;
+    const activeHeightMm = rows * cabHeightMm;
+
     setPricingPreview((prev: any) => {
       if (!prev) return prev;
       return {
         ...prev,
         displays: prev.displays.map((d: any) =>
           d.name === displayName
-            ? { ...d, matchedProduct: { manufacturer: product.name.split(" ")[0], model: product.name, pitch: product.pitch, fitScore: 100 } }
+            ? {
+                ...d,
+                matchedProduct: {
+                  manufacturer: product.manufacturer || product.name.split(" ")[0],
+                  model: product.name,
+                  pitch: product.pitch,
+                  totalModules: cols * rows,
+                  fitScore: 100,
+                  activeWidthFt: Math.round((activeWidthMm / 304.8) * 100) / 100,
+                  activeHeightFt: Math.round((activeHeightMm / 304.8) * 100) / 100,
+                  resolutionX: Math.round(activeWidthMm / product.pitch),
+                  resolutionY: Math.round(activeHeightMm / product.pitch),
+                },
+              }
             : d
         ),
       };
     });
-  }, [availableProducts, pricingPreview]);
+  }, [availableProducts, pricingPreview, analysis?.screens]);
 
   const workbookData = useMemo(() => {
     if (!analysis) return { fileName: "RFP Analysis", sheets: [] };
