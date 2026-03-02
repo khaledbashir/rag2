@@ -210,6 +210,25 @@ export async function PATCH(
       return NextResponse.json({ item: updated });
     }
 
+    // ── Action: delete ──
+    if (body.action === "delete") {
+      await prisma.trackerComment.deleteMany({ where: { itemId: id } });
+      await prisma.trackerActivity.deleteMany({ where: { itemId: id } });
+      await prisma.trackerItem.delete({ where: { id } });
+
+      if (body.name) {
+        await prisma.trackerActivity.create({
+          data: {
+            actor: body.name,
+            action: "deleted",
+            details: item.description.substring(0, 80),
+          },
+        });
+      }
+
+      return NextResponse.json({ deleted: true });
+    }
+
     return NextResponse.json({ error: "No valid action" }, { status: 400 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to update";

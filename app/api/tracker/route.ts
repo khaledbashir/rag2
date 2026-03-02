@@ -101,6 +101,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ items: seeded, reset: true });
     }
 
+    // Action: add a single task manually
+    if (action === "add") {
+      const { description, category = "Custom", author = "System" } = body;
+      if (!description || !description.trim()) {
+        return NextResponse.json({ error: "description is required" }, { status: 400 });
+      }
+      const maxItem = await prisma.trackerItem.findFirst({
+        orderBy: { sortOrder: "desc" },
+        select: { sortOrder: true },
+      });
+      const item = await prisma.trackerItem.create({
+        data: {
+          description: description.trim(),
+          category,
+          sortOrder: (maxItem?.sortOrder || 0) + 1,
+          status: "claimed",
+          column: "awaiting_review",
+          claimedBy: author,
+          claimedAt: new Date(),
+        },
+        include: { comments: true, _count: { select: { comments: true } } },
+      });
+      await prisma.trackerActivity.create({
+        data: { itemId: item.id, actor: author, action: "added", details: description.trim().substring(0, 80) },
+      });
+      return NextResponse.json({ item });
+    }
+
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed";
