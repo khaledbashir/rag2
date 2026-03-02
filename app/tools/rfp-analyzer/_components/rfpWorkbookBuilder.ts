@@ -167,8 +167,11 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const totalSqFt = sqFtPerScreen * qty;
 
     // Derive stable $/sqft rate from pricing data
+    // NOTE: pd.hardwareCost already includes quantity, pd.areaSqFt does NOT.
+    // Use (areaSqFt × qty) to back-derive the true per-sqft rate.
     const pricingSqFt = pd?.areaSqFt ?? 0;
-    const ratePerSqFt = pricingSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingSqFt : 0;
+    const pricingTotalSqFt = pricingSqFt * qty;
+    const ratePerSqFt = pricingTotalSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingTotalSqFt : 0;
     const displayCost = ratePerSqFt * totalSqFt;
     const processorCost = pd?.processorCost ?? 0;
     const shippingCost = pd?.shippingCost ?? 0;
@@ -270,7 +273,8 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const q = spec.quantity || 1;
     const sqFt = h * w * q;
     const pricingSqFt = pd?.areaSqFt ?? 0;
-    const rate = pricingSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingSqFt : 0;
+    const pricingTotalSqFt = pricingSqFt * q;
+    const rate = pricingTotalSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingTotalSqFt : 0;
     totalDisplayCost += rate * sqFt;
     totalProcessorCost += pd?.processorCost ?? 0;
     totalShippingCost += pd?.shippingCost ?? 0;
@@ -288,7 +292,8 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const q = spec.quantity || 1;
     const sqFt = h * w * q;
     const pricingSqFt = pd?.areaSqFt ?? 0;
-    const rate = pricingSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingSqFt : 0;
+    const pricingTotalSqFt = pricingSqFt * q;
+    const rate = pricingTotalSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingTotalSqFt : 0;
     const dc = rate * sqFt;
     const pc = pd?.processorCost ?? 0;
     const sc = pd?.shippingCost ?? 0;
@@ -1686,7 +1691,8 @@ function buildVendorPricing(input: RfpWorkbookInput): SheetTab {
     const screenQty = d.quantity;
     const totalPanels = panelQty * screenQty;
     const unitPrice = totalPanels > 0 ? d.hardwareCost / totalPanels : 0;
-    const ratePerSqFt = d.areaSqFt > 0 ? d.hardwareCost / d.areaSqFt : 0;
+    const totalAreaSqFt = d.areaSqFt * screenQty;
+    const ratePerSqFt = totalAreaSqFt > 0 ? d.hardwareCost / totalAreaSqFt : 0;
 
     dataRows.push({
       cells: [
