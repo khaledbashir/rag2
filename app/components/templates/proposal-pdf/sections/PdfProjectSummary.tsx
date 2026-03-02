@@ -14,8 +14,8 @@ const SectionHeader = ({ title, subtitle, colors }: SectionHeaderProps) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: subtitle ? '4px' : '8px' }}>
         <div style={{ width: '3px', height: '14px', borderRadius: '1px', background: colors.primary, flexShrink: 0 }} />
         <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>{title}</span>
-            {subtitle && <div className="text-[8px] mt-0.5" style={{ color: colors.textMuted }}>{subtitle}</div>}
+            <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>{title}</span>
+            {subtitle && <div className="text-[11px] mt-0.5" style={{ color: colors.textMuted }}>{subtitle}</div>}
         </div>
     </div>
 );
@@ -85,12 +85,12 @@ export const MasterTableSummary = ({
         <div data-preview-section="pricing" className="px-6 mt-4 break-inside-avoid" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
                 <div style={{ width: '3px', height: '12px', borderRadius: '1px', background: colors.primary, flexShrink: 0 }} />
-                <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>Project Pricing</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>Project Pricing</span>
             </div>
             <div className="rounded-lg border overflow-hidden" style={{ borderColor: colors.border }}>
                 {/* Clean header — text + thin blue underline (no background fill) */}
                 <div
-                    className="grid grid-cols-12 px-3 py-1 text-[9px] font-semibold uppercase tracking-wider border-b-2 break-inside-avoid"
+                    className="grid grid-cols-12 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider border-b-2 break-inside-avoid"
                     style={{ borderColor: colors.primary, color: colors.primaryDark, background: 'transparent' }}
                 >
                     <div className="col-span-8">{colHeaderLeft}</div>
@@ -113,7 +113,7 @@ export const MasterTableSummary = ({
                                 minHeight: '24px',
                             }}
                         >
-                            <div className="col-span-8 font-bold text-[10px] tracking-wide uppercase" style={{ color: colors.text }}>
+                            <div className="col-span-8 font-bold text-[11px] tracking-wide uppercase" style={{ color: colors.text }}>
                                 {desc.toUpperCase()}
                             </div>
                             <div className="col-span-4 text-right font-bold text-xs whitespace-nowrap" style={{ color: colors.primaryDark }}>
@@ -126,7 +126,7 @@ export const MasterTableSummary = ({
                 {/* Subtotal */}
                 {rows.length > 0 && Math.abs(subtotal) >= 0.01 && subtotal !== grandTotal && (
                     <div className="grid grid-cols-12 px-3 py-1 border-t break-inside-avoid" style={{ borderColor: colors.border }}>
-                        <div className="col-span-8 font-bold text-[10px] uppercase tracking-wide" style={{ color: colors.textMuted }}>Subtotal</div>
+                        <div className="col-span-8 font-bold text-[11px] uppercase tracking-wide" style={{ color: colors.textMuted }}>Subtotal</div>
                         <div className="col-span-4 text-right font-bold text-xs" style={{ color: colors.text }}>
                             {formatCurrency(subtotal, currency)}
                         </div>
@@ -136,7 +136,7 @@ export const MasterTableSummary = ({
                 {/* Tax */}
                 {Math.abs(tax) >= 0.01 && (
                     <div className="grid grid-cols-12 px-3 py-1 border-t break-inside-avoid" style={{ borderColor: colors.borderLight }}>
-                        <div className="col-span-8 text-[10px] uppercase tracking-wide" style={{ color: colors.textMuted }}>Tax</div>
+                        <div className="col-span-8 text-[11px] uppercase tracking-wide" style={{ color: colors.textMuted }}>Tax</div>
                         <div className="col-span-4 text-right text-xs" style={{ color: colors.text }}>
                             {formatCurrency(tax, currency)}
                         </div>
@@ -146,7 +146,7 @@ export const MasterTableSummary = ({
                 {/* Bond */}
                 {Math.abs(bond) >= 0.01 && (
                     <div className="grid grid-cols-12 px-3 py-1 border-t break-inside-avoid" style={{ borderColor: colors.borderLight }}>
-                        <div className="col-span-8 text-[10px] uppercase tracking-wide" style={{ color: colors.textMuted }}>Performance Bond</div>
+                        <div className="col-span-8 text-[11px] uppercase tracking-wide" style={{ color: colors.textMuted }}>Performance Bond</div>
                         <div className="col-span-4 text-right text-xs" style={{ color: colors.text }}>
                             {formatCurrency(bond, currency)}
                         </div>
@@ -158,7 +158,7 @@ export const MasterTableSummary = ({
                     className="grid grid-cols-12 px-3 py-1 border-t-2 break-inside-avoid"
                     style={{ borderColor: colors.primary, background: colors.primaryLight }}
                 >
-                    <div className="col-span-8 font-bold text-[10px] uppercase tracking-wide" style={{ color: colors.primaryDark }}>
+                    <div className="col-span-8 font-bold text-[11px] uppercase tracking-wide" style={{ color: colors.primaryDark }}>
                         {label.toUpperCase()}{currency === "CAD" ? " (CAD)" : ""}
                     </div>
                     <div className="col-span-4 text-right font-bold text-xs" style={{ color: colors.primaryDark }}>
