@@ -326,8 +326,10 @@ export default function RfpAnalyzerClient() {
     const newPitch = product.pitch;
 
     // Update editableSpecs with new dimensions from the selected product
-    setEditableSpecs((prev) =>
-      prev.map((s) =>
+    // If editableSpecs is empty, seed it from result.screens first
+    setEditableSpecs((prev) => {
+      const base = prev.length > 0 ? prev : (result?.screens || []);
+      return base.map((s: ExtractedLEDSpec) =>
         s.name === displayName
           ? {
               ...s,
@@ -338,8 +340,8 @@ export default function RfpAnalyzerClient() {
               pixelPitchMm: newPitch,
             }
           : s
-      )
-    );
+      );
+    });
 
     setPricingPreview((prev) => {
       if (!prev) return prev;
