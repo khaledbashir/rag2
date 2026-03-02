@@ -261,6 +261,11 @@ export default function RfpAnalyzerClient() {
   const lastSessionData = useRef<{ sessionId: string; filename: string; mergeSessionIds?: string[] } | null>(null);
   // Bid form fill results (for workbook preview + results display)
   const bidFormInputRef = useRef<HTMLInputElement>(null);
+  const scopingImportRef = useRef<HTMLInputElement>(null);
+  const [scopingImportResult, setScopingImportResult] = useState<{
+    updatedCount: number; missingCount: number; warnings: string[];
+    summary: { totalCostAfter: number; costDelta: number };
+  } | null>(null);
   const [bidFormResult, setBidFormResult] = useState<{
     matches: Array<{ sheetName: string; displayName: string; matchedScreen: string; confidence: number; fieldsFilled: string[]; fieldsSkipped?: string[] }>;
     unmatchedBlocks: string[];
@@ -974,6 +979,85 @@ export default function RfpAnalyzerClient() {
       URL.revokeObjectURL(url);
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  // ========================================================================
+  // Import Scoping Workbook — reverse of export
+  // ========================================================================
+
+  const handleImportScopingWorkbook = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !result?.id) return;
+    e.target.value = "";
+    setDownloading("importing");
+    setScopingImportResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("analysisId", result.id);
+      const res = await fetch("/api/rfp/pipeline/import-scoping-workbook", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `Import failed (${res.status})`);
+      }
+      const data = await res.json();
+      setScopingImportResult({
+        updatedCount: data.updatedCount,
+        missingCount: data.missingCount,
+        warnings: data.warnings,
+        summary: data.summary,
+      });
+
+      // Apply imported data to pricing state
+      if (data.displays?.length > 0 && pricingPreview) {
+        setPricingPreview((prev) => {
+          if (!prev) return prev;
+          const updated = [...prev.displays];
+          for (const imp of data.displays) {
+            if (!imp.hasUpdates) continue;
+            const existing = updated[imp.specIndex];
+            if (!existing) continue;
+            // Merge imported values into existing pricing display
+            if (imp.hardwareCost != null) existing.hardwareCost = imp.hardwareCost;
+            if (imp.processorCost != null) existing.processorCost = imp.processorCost;
+            if (imp.shippingCost != null) existing.shippingCost = imp.shippingCost;
+            if (imp.installCost != null) existing.installCost = imp.installCost;
+            if (imp.structuralCost != null) existing.structuralCost = imp.structuralCost;
+            if (imp.pmCost != null) existing.pmCost = imp.pmCost;
+            if (imp.engCost != null) existing.engCost = imp.engCost;
+            if (imp.marginPct != null) existing.blendedMarginPct = imp.marginPct;
+            if (imp.totalCost != null) existing.totalCost = imp.totalCost;
+            if (imp.sellingPrice != null) existing.totalSellingPrice = imp.sellingPrice;
+          }
+          const totalCost = updated.reduce((s, d) => s + d.totalCost, 0);
+          const totalSell = updated.reduce((s, d) => s + d.totalSellingPrice, 0);
+          return {
+            ...prev,
+            displays: updated,
+            summary: {
+              ...prev.summary,
+              totalCost,
+              totalSellingPrice: totalSell,
+              totalMargin: totalSell - totalCost,
+              blendedMarginPct: totalSell > 0 ? Math.round(((totalSell - totalCost) / totalSell) * 1000) / 10 : 0,
+            },
+          };
+        });
+      }
+
+      console.log(`[import-scoping] Imported ${data.updatedCount} displays from ${file.name}`);
+      if (data.warnings?.length > 0) {
+        console.warn("[import-scoping] Warnings:", data.warnings);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Import failed";
+      setError(message);
     } finally {
       setDownloading(null);
     }
@@ -1806,6 +1890,22 @@ export default function RfpAnalyzerClient() {
                       className="hidden"
                     />
                     <button
+                      onClick={() => scopingImportRef.current?.click()}
+                      disabled={downloading === "importing" || !result?.id}
+                      className="flex items-center gap-1 px-2 py-0.5 bg-emerald-600/80 hover:bg-emerald-600 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                      title="Upload a previously downloaded scoping workbook with updated costs"
+                    >
+                      {downloading === "importing" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                      Import Workbook
+                    </button>
+                    <input
+                      ref={scopingImportRef}
+                      type="file"
+                      accept=".xlsx,.xls"
+                      onChange={handleImportScopingWorkbook}
+                      className="hidden"
+                    />
+                    <button
                       onClick={handleCreateProposal}
                       disabled={downloading === "creating" || !result?.id || !session?.user?.email}
                       className="flex items-center gap-1 px-3 py-1 bg-[#0A52EF] text-white hover:bg-[#0941c3] rounded text-[10px] font-bold transition-colors disabled:opacity-50 shadow-sm ml-1"
@@ -1831,6 +1931,24 @@ export default function RfpAnalyzerClient() {
                 }
                 footer={
                   <div className="px-4 py-2 space-y-2">
+                    {scopingImportResult && (
+                      <div className="flex items-center gap-1.5 text-[10px] text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 rounded px-2 py-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        Imported {scopingImportResult.updatedCount} display(s)
+                        {scopingImportResult.missingCount > 0 && ` (${scopingImportResult.missingCount} unmatched)`}
+                        {scopingImportResult.warnings.length > 0 && (
+                          <span className="text-amber-600 ml-1">
+                            — {scopingImportResult.warnings[0]}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => setScopingImportResult(null)}
+                          className="ml-auto text-muted-foreground hover:text-foreground"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
                     {autoSaveStatus !== "idle" && (
                       <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                         {autoSaveStatus === "saving" && <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</>}
