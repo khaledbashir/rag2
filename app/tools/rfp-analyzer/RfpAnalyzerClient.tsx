@@ -1539,7 +1539,9 @@ export default function RfpAnalyzerClient() {
               <WorkbookShell
                 data={workbookData}
                 editable
-                onCellEdit={(sheetIdx, rowIdx, colIdx, value) => {
+                onCellEdit={(sheetIdx, rowIdx, colIdx, rawValue) => {
+                  // Strip currency/percent formatting ($, commas, %) before parsing
+                  const value = rawValue.replace(/[$,%]/g, '').replace(/,/g, '').trim();
                   // Sheet 0: LED Cost Sheet (ANC 20-col format)
                   // Cols: Display(0) Vendor(1) Product(2) Pitch(3) H(ft)(4) W(ft)(5) H(px)(6) W(px)(7)
                   //       SqFt/Screen(8) Qty(9) TotalSqFt(10) NITs(11) Service(12)
