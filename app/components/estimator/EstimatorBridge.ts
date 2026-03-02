@@ -28,6 +28,7 @@ const DEFAULT_COST_PER_SQFT: Record<string, number> = {
     "3.9": 250,
     "4": 220,
     "6": 180,
+    "8": 150,
     "10": 120,
     "16": 80,
 };
@@ -1136,7 +1137,9 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
     } else {
         let totalStruct = 0, totalInstall = 0, totalElec = 0, totalEquip = 0, totalPm = 0, totalShip = 0, totalAll = 0;
 
-        for (const c of calcs) {
+        for (let i = 0; i < calcs.length; i++) {
+            const c = calcs[i];
+            const d = answers.displays[i];
             const equipData = c.equipmentCost + c.dataCablingCost;
             const lineTotal = c.structureCost + c.installCost + c.electricalCost + equipData + c.pmCost + c.engineeringCost + c.shippingCost + c.demolitionCost;
             totalStruct += c.structureCost;
@@ -1150,19 +1153,50 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
             const lineSell = svcMarginPct < 1 ? lineTotal / (1 - svcMarginPct) : lineTotal;
             const lineMargin = lineSell - lineTotal;
 
+            // Display name with dimensions and sqft
+            const displayLabel = `${c.name} (${c.widthFt}×${c.heightFt} ft, ${Math.round(c.areaSqFt)} sqft)`;
+
             rows.push({
                 cells: [
-                    { value: c.name },
+                    { value: displayLabel },
                     { value: c.structureCost, currency: true, align: "right" },
                     { value: c.installCost, currency: true, align: "right" },
                     { value: c.electricalCost, currency: true, align: "right" },
                     { value: equipData, currency: true, align: "right" },
                     { value: c.pmCost + c.engineeringCost, currency: true, align: "right" },
                     { value: c.shippingCost, currency: true, align: "right" },
-                    { value: lineTotal, currency: true, align: "right", bold: true },
+                    { value: lineTotal, currency: true, align: "right", bold: true, formula: "ROW_SUM" },
                     { value: lineSell, currency: true, align: "right" },
                     { value: svcMarginPct, percent: true, align: "center" },
                     { value: lineMargin, currency: true, align: "right" },
+                ],
+            });
+
+            // Calculation breakdown row — show how each cost is derived
+            const unionMult = answers.isUnion ? 1.15 : 1.0;
+            const steelScope = d?.steelScope || "full";
+            const structPctUsed = d?.useExistingStructure ? 5
+                : steelScope === "existing" ? 5
+                : steelScope === "secondary" ? 12
+                : (d?.serviceType === "Top" ? 10 : 20);
+            const installComplexity = d?.installComplexity || "standard";
+            const powerDist = d?.powerDistance || "near";
+            const powerMultLabel = powerDist === "near" ? "1.0×" : powerDist === "medium" ? "1.3×" : "1.8×";
+            const weightEst = Math.round(c.areaSqFt * 0.0929 * 45);
+
+            rows.push({
+                cells: [
+                    { value: `  Basis: ${Math.round(c.areaSqFt)} sqft, ${c.pixelPitch}mm, $${c.costPerSqFt}/sqft`, className: "text-muted-foreground" },
+                    { value: `HW×${structPctUsed}%`, align: "right", className: "text-muted-foreground" },
+                    { value: `${Math.round(c.areaSqFt)} sqft×$${LED_INSTALL_RATES[installComplexity] || 105}`, align: "right", className: "text-muted-foreground" },
+                    { value: `${Math.round(c.areaSqFt)} sqft×$125${powerMultLabel !== "1.0×" ? `×${powerMultLabel}` : ""}`, align: "right", className: "text-muted-foreground" },
+                    { value: d?.liftType === "none" ? "No equip" : `${(d?.liftType || "scissor")}${c.dataCablingCost > 0 ? "+fiber" : ""}`, align: "right", className: "text-muted-foreground" },
+                    { value: `PM+Eng (${answers.pmComplexity || "standard"})`, align: "right", className: "text-muted-foreground" },
+                    { value: `${weightEst.toLocaleString()} lbs×$0.50`, align: "right", className: "text-muted-foreground" },
+                    { value: "=SUM(B:G)", align: "right", className: "text-muted-foreground" },
+                    { value: "", className: "text-muted-foreground" },
+                    { value: "", className: "text-muted-foreground" },
+                    { value: "", className: "text-muted-foreground" },
                 ],
             });
         }
@@ -1180,42 +1214,13 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                 { value: totalEquip, currency: true, align: "right", bold: true },
                 { value: totalPm, currency: true, align: "right", bold: true },
                 { value: totalShip, currency: true, align: "right", bold: true },
-                { value: totalAll, currency: true, align: "right", bold: true },
+                { value: totalAll, currency: true, align: "right", bold: true, formula: "ROW_SUM" },
                 { value: totalSellPrice, currency: true, align: "right", bold: true },
                 { value: svcMarginPct, percent: true, align: "center", bold: true },
                 { value: totalMarginDollars, currency: true, align: "right", bold: true },
             ],
             isTotal: true,
         });
-
-        // ── Rate Basis Detail ──
-        const unionLabel = answers.isUnion ? " (union +15%)" : "";
-        rows.push({ cells: [{ value: "" }], isSeparator: true });
-        rows.push({
-            cells: [{ value: "RATE BASIS", bold: true, header: true, span: COLS, align: "center" }],
-            isHeader: true,
-        });
-        rows.push({ cells: [{ value: "" }], isSeparator: true });
-        rows.push({ cells: [
-            { value: "Structural", bold: true, span: 5 },
-            { value: `% of hardware cost${unionLabel}`, span: 6 },
-        ]});
-        rows.push({ cells: [
-            { value: "LED Install", bold: true, span: 5 },
-            { value: `Steel fab rate + panel install rate per sqft${unionLabel}`, span: 6 },
-        ]});
-        rows.push({ cells: [
-            { value: "Electrical", bold: true, span: 5 },
-            { value: `Materials per sqft × power distance multiplier${unionLabel}`, span: 6 },
-        ]});
-        rows.push({ cells: [
-            { value: "PM / Engineering", bold: true, span: 5 },
-            { value: `Base fee × complexity multiplier (${answers.pmComplexity || "standard"})`, span: 6 },
-        ]});
-        rows.push({ cells: [
-            { value: "Shipping", bold: true, span: 5 },
-            { value: "Estimated weight × $0.50/lb", span: 6 },
-        ]});
     }
 
     return {

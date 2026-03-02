@@ -87,6 +87,21 @@ export async function exportEstimatorExcel(data: ExcelPreviewData): Promise<Blob
             });
             const exRow = ws.addRow(values);
 
+            // Inject ROW_SUM formulas (e.g., TOTAL COST = SUM of preceding columns)
+            for (let ci = 0; ci < sheet.columns.length; ci++) {
+                const sc = row.cells[ci];
+                if (sc?.formula === "ROW_SUM" && typeof sc.value === "number") {
+                    // Sum columns B through G (indices 1-6, Excel cols B-G)
+                    const startCol = colLetter(1); // B
+                    const endCol = colLetter(ci - 1); // column before this one
+                    const rn = exRow.number;
+                    exRow.getCell(ci + 1).value = {
+                        formula: `SUM(${startCol}${rn}:${endCol}${rn})`,
+                        result: sc.value as number,
+                    };
+                }
+            }
+
             // Track data rows for SUM formulas
             if (row.isHeader) {
                 if (inDataSection && sectionStart > 0) {
@@ -102,6 +117,8 @@ export async function exportEstimatorExcel(data: ExcelPreviewData): Promise<Blob
 
                     for (let ci = 0; ci < sheet.columns.length; ci++) {
                         const sc = row.cells[ci];
+                        // Skip cells with ROW_SUM — they already have a row-wise formula
+                        if (sc?.formula === "ROW_SUM") continue;
                         if (sc && (sc.currency || sc.percent) && typeof sc.value === "number" && sc.value !== 0) {
                             const col = colLetter(ci);
                             const cell = exRow.getCell(ci + 1);
