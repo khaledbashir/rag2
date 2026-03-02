@@ -38,6 +38,9 @@ import {
   ArrowRight,
   Eye,
   EyeOff,
+  Zap,
+  Wrench,
+  Cpu,
 } from "lucide-react";
 
 // ==========================================================================
@@ -913,6 +916,40 @@ export default function RfpAnalyzerClient() {
       a.click();
       URL.revokeObjectURL(url);
       setQuotePreviewOpen(false);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  // ========================================================================
+  // Download vendor-specific quote sheets (electrician, installer, LED supplier)
+  // ========================================================================
+
+  const handleDownloadVendorSheet = async (vendorType: "electrician" | "installer" | "led_supplier") => {
+    if (!result?.id) return;
+    setDownloading(vendorType);
+    try {
+      const specsToSend = quotePreviewOpen && editableSpecs.length > 0 ? editableSpecs : undefined;
+      const res = await fetch("/api/rfp/pipeline/vendor-quote-sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          analysisId: result.id,
+          vendorType,
+          specs: specsToSend,
+          pricingDisplays: pricingPreview?.displays,
+        }),
+      });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = res.headers.get("Content-Disposition")?.split("filename=")[1]?.replace(/"/g, "") || `${vendorType}_quote.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -1925,6 +1962,34 @@ export default function RfpAnalyzerClient() {
                     >
                       {downloading === "extraction" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
                       Specs .xlsx
+                    </button>
+                    {/* Vendor-specific quote sheets */}
+                    <button
+                      onClick={() => handleDownloadVendorSheet("electrician")}
+                      disabled={downloading === "electrician" || !result?.id}
+                      className="flex items-center gap-1 px-2 py-0.5 bg-yellow-500/80 hover:bg-yellow-500 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                      title="Generate electrical quote request sheet"
+                    >
+                      {downloading === "electrician" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                      Electrical
+                    </button>
+                    <button
+                      onClick={() => handleDownloadVendorSheet("installer")}
+                      disabled={downloading === "installer" || !result?.id}
+                      className="flex items-center gap-1 px-2 py-0.5 bg-green-600/80 hover:bg-green-600 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                      title="Generate install/structural quote request sheet"
+                    >
+                      {downloading === "installer" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wrench className="w-3 h-3" />}
+                      Install
+                    </button>
+                    <button
+                      onClick={() => handleDownloadVendorSheet("led_supplier")}
+                      disabled={downloading === "led_supplier" || !result?.id}
+                      className="flex items-center gap-1 px-2 py-0.5 bg-blue-600/80 hover:bg-blue-600 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                      title="Generate LED supply quote request sheet"
+                    >
+                      {downloading === "led_supplier" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Cpu className="w-3 h-3" />}
+                      LED Supply
                     </button>
                     <button
                       onClick={() => bidFormInputRef.current?.click()}
