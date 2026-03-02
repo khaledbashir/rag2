@@ -266,6 +266,8 @@ export default function RfpAnalyzerClient() {
     unmatchedBlocks: string[];
     unmatchedScreens: string[];
   } | null>(null);
+  const [filledBidFormBlob, setFilledBidFormBlob] = useState<Blob | null>(null);
+  const [filledBidFormName, setFilledBidFormName] = useState<string>("");
   // Mismatch detection: original PDF vs bid form specs
   const [specMismatches, setSpecMismatches] = useState<Array<{
     displayName: string;
@@ -940,11 +942,12 @@ export default function RfpAnalyzerClient() {
   // Fill Bid Form — auto-populate vendor column in client-provided bid form
   // ========================================================================
 
-  /** Core bid form fill logic — used by both manual button and auto-fill */
-  const executeBidFormFill = async (file: File, autoDownload: boolean = true) => {
+  /** Core bid form fill logic — fills and stores blob for review (no auto-download) */
+  const executeBidFormFill = async (file: File) => {
     if (!result?.id) return;
     setDownloading("bidform");
     setBidFormResult(null);
+    setFilledBidFormBlob(null);
     try {
       const formData = new FormData();
       formData.append("bidForm", file);
@@ -998,16 +1001,11 @@ export default function RfpAnalyzerClient() {
         });
       }
 
-      // Download the filled file
-      if (autoDownload) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = res.headers.get("Content-Disposition")?.split("filename=")[1]?.replace(/"/g, "") || "BidForm_Filled.xlsx";
-        a.click();
-        URL.revokeObjectURL(url);
-      }
+      // Store filled blob for on-demand download (no auto-download — user reviews first)
+      const blob = await res.blob();
+      setFilledBidFormBlob(blob);
+      const dispositionName = res.headers.get("Content-Disposition")?.split("filename=")[1]?.replace(/"/g, "") || "BidForm_Filled.xlsx";
+      setFilledBidFormName(dispositionName);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -1072,10 +1070,23 @@ export default function RfpAnalyzerClient() {
   useEffect(() => {
     if (bidFormFile && pricingPreview && result?.id && !bidFormAutoFilled.current) {
       bidFormAutoFilled.current = true;
-      executeBidFormFill(bidFormFile, true);
+      executeBidFormFill(bidFormFile);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pricingPreview, bidFormFile, result?.id]);
+
+  // Step 3: Re-fill bid form when user edits specs/pricing (debounced 2s)
+  const bidFormRefillTimer = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    // Only re-fill if the initial auto-fill already happened
+    if (!bidFormAutoFilled.current || !bidFormFile || !pricingPreview || !result?.id) return;
+    if (bidFormRefillTimer.current) clearTimeout(bidFormRefillTimer.current);
+    bidFormRefillTimer.current = setTimeout(() => {
+      executeBidFormFill(bidFormFile);
+    }, 2000);
+    return () => { if (bidFormRefillTimer.current) clearTimeout(bidFormRefillTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editableSpecs, pricingPreview]);
 
   // ========================================================================
   // Reset
@@ -1095,6 +1106,8 @@ export default function RfpAnalyzerClient() {
     setQuotePreviewOpen(false);
     setEditableSpecs([]);
     setBidFormResult(null);
+    setFilledBidFormBlob(null);
+    setFilledBidFormName("");
     setBidFormFile(null);
     setSpecMismatches([]);
     bidFormAutoFilled.current = false;
@@ -1355,13 +1368,31 @@ export default function RfpAnalyzerClient() {
 
             {/* Bid Form Fill Result */}
             {bidFormResult && (
-              <div className="border border-amber-500/30 bg-amber-50 dark:bg-amber-950/20 rounded-lg p-4">
+              <div className="border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/20 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <FileSpreadsheet className="w-4 h-4 text-amber-600" />
-                  <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">
-                    Bid Form Filled — {bidFormResult.matches.length} display{bidFormResult.matches.length !== 1 ? "s" : ""} matched
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                    Bid Form Ready — {bidFormResult.matches.length} display{bidFormResult.matches.length !== 1 ? "s" : ""} matched
                   </span>
-                  <button onClick={() => setBidFormResult(null)} className="ml-auto text-xs text-amber-600 hover:text-amber-800">Dismiss</button>
+                  <div className="ml-auto flex items-center gap-2">
+                    {filledBidFormBlob && (
+                      <button
+                        onClick={() => {
+                          const url = URL.createObjectURL(filledBidFormBlob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = filledBidFormName;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-md text-xs font-medium hover:bg-emerald-700 transition-colors"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Download Filled Form
+                      </button>
+                    )}
+                    <button onClick={() => { setBidFormResult(null); setFilledBidFormBlob(null); }} className="text-xs text-muted-foreground hover:text-foreground">Dismiss</button>
+                  </div>
                 </div>
                 <div className="space-y-1 text-xs">
                   {bidFormResult.matches.map((m, i) => (
