@@ -393,11 +393,26 @@ function CellView({ cell, editable, isEditing, onClick, onChange, onBlur }: Cell
         cell.align === "center" && "text-center",
         cell.onClick && "text-[#0A52EF] hover:underline cursor-pointer",
         editable && !cell.onClick && "cursor-cell hover:bg-blue-50/50 dark:hover:bg-blue-900/20",
+        cell.onRemove && "group/cell",
         cell.className,
       )}
       title={cell.formula || undefined}
     >
-      {formatCellValue(cell)}
+      {cell.onRemove ? (
+        <span className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); cell.onRemove!(); }}
+            className="opacity-0 group-hover/cell:opacity-100 text-red-400 hover:text-red-600 transition-opacity shrink-0"
+            title="Remove row"
+          >
+            ×
+          </button>
+          <span>{formatCellValue(cell)}</span>
+        </span>
+      ) : (
+        formatCellValue(cell)
+      )}
     </td>
   );
 }

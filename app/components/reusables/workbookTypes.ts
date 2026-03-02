@@ -21,6 +21,8 @@ export interface SheetCell {
   dropdown?: { value: string; label: string }[];
   /** Callback when dropdown selection changes */
   onDropdownChange?: (value: string) => void;
+  /** Remove row callback — renders a small × button */
+  onRemove?: () => void;
 }
 
 export interface SheetRow {

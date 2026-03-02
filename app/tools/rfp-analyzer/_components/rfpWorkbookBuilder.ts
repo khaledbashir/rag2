@@ -89,6 +89,10 @@ export interface RfpWorkbookInput {
   onProductSelect?: (displayName: string, productId: string) => void;
   /** Callback to add a custom line item to Margin Analysis */
   onAddLineItem?: () => void;
+  /** Callback to add a new screen to LED Cost Sheet */
+  onAddScreen?: () => void;
+  /** Callback to remove a screen by name from LED Cost Sheet */
+  onRemoveScreen?: (screenName: string) => void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -197,6 +201,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
         c(spec.name, {
           bold: true,
           onClick: firstPage && input.onSourcePageClick ? () => input.onSourcePageClick!(firstPage) : undefined,
+          onRemove: input.onRemoveScreen ? () => input.onRemoveScreen!(spec.name) : undefined,
         }),
         c(vendor),
         productCell,
@@ -279,11 +284,24 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     isTotal: true,
   };
 
+  // "Add Screen" row
+  const addScreenRow: SheetRow | null = input.onAddScreen
+    ? {
+        cells: [
+          c("+ Add Screen", {
+            className: "text-[#0A52EF] hover:underline cursor-pointer text-[10px] italic",
+            onClick: input.onAddScreen,
+          }),
+          ...Array.from({ length: cols.length - 1 }, () => c("")),
+        ],
+      }
+    : null;
+
   return {
     name: "LED Cost Sheet",
     color: "#0A52EF",
     columns: cols,
-    rows: [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow],
+    rows: [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow, ...(addScreenRow ? [addScreenRow] : [])],
     // Editable: H(ft)=4, W(ft)=5, Qty=9, Display Cost=14, Processor=15, Shipping=16, Margin%=18
     editableColumns: [4, 5, 9, 14, 15, 16, 18],
   };

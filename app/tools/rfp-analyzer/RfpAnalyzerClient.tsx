@@ -353,6 +353,78 @@ export default function RfpAnalyzerClient() {
     });
   }, []);
 
+  const handleAddScreen = useCallback(() => {
+    const name = prompt("Display name (e.g., 'Main Scoreboard'):");
+    if (!name?.trim()) return;
+    const newSpec: ExtractedLEDSpec = {
+      name: name.trim(),
+      pixelPitchMm: null,
+      widthFt: 0,
+      heightFt: 0,
+      widthPx: null,
+      heightPx: null,
+      quantity: 1,
+      location: "",
+      serviceType: null,
+      brightnessNits: null,
+      sourcePages: [],
+      confidence: 1,
+    };
+    // Add to result.screens + editableSpecs
+    setResult(prev => {
+      if (!prev) return prev;
+      const updated = [...prev.screens, newSpec];
+      setEditableSpecs(updated);
+      return { ...prev, screens: updated };
+    });
+    // Also add to pricing displays
+    setPricingPreview(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        displays: [...prev.displays, {
+          name: name.trim(),
+          pixelPitch: null,
+          areaSqFt: 0,
+          quantity: 1,
+          hardwareCost: 0,
+          installCost: 0,
+          structuralCost: 0,
+          pmCost: 0,
+          engCost: 0,
+          totalCost: 0,
+          totalSellingPrice: 0,
+          blendedMarginPct: 0.25,
+          costSource: "manual",
+          rateCardEstimate: null,
+          matchedProduct: null,
+          isCustom: false,
+        }],
+        summary: { ...prev.summary, displayCount: prev.summary.displayCount + 1 },
+      };
+    });
+  }, []);
+
+  const handleRemoveScreen = useCallback((screenName: string) => {
+    if (!confirm(`Remove "${screenName}" from the LED Cost Sheet?`)) return;
+    // Remove from result.screens + editableSpecs
+    setResult(prev => {
+      if (!prev) return prev;
+      const updated = prev.screens.filter(s => s.name !== screenName);
+      setEditableSpecs(updated);
+      autoSaveSpecs(updated, prev.id);
+      return { ...prev, screens: updated };
+    });
+    setPricingPreview(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        displays: prev.displays.filter(d => d.name !== screenName),
+        summary: { ...prev.summary, displayCount: Math.max(0, prev.summary.displayCount - 1) },
+      };
+    });
+  }, [autoSaveSpecs]);
+
   // ========================================================================
   // Workbook data — computed from state for WorkbookShell rendering
   // ========================================================================
@@ -362,7 +434,7 @@ export default function RfpAnalyzerClient() {
     if (!result) return { fileName: "RFP Analysis", sheets: [] };
     return buildRfpWorkbook({
       project: result.project,
-      screens: result.screens,
+      screens: editableSpecs.length > 0 ? editableSpecs : result.screens,
       requirements,
       triage: result.triage || [],
       pricingDisplays: pricingPreview?.displays || [],
@@ -372,12 +444,14 @@ export default function RfpAnalyzerClient() {
       availableProducts,
       onProductSelect: handleProductSelect,
       onAddLineItem: handleAddLineItem,
+      onAddScreen: handleAddScreen,
+      onRemoveScreen: handleRemoveScreen,
       onSourcePageClick: (pg) => {
         setPdfViewerPage(pg);
         setShowPdfPanel(true);
       },
     });
-  }, [result, pricingPreview, requirements, bidFormResult, specMismatches, availableProducts, handleProductSelect, handleAddLineItem]);
+  }, [result, editableSpecs, pricingPreview, requirements, bidFormResult, specMismatches, availableProducts, handleProductSelect, handleAddLineItem, handleAddScreen, handleRemoveScreen]);
 
   // ========================================================================
   // Auto-run pricing when extraction completes (no manual step needed)
