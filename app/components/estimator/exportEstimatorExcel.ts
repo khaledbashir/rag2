@@ -292,5 +292,6 @@ function getColumnWidth(colName: string, _index: number, _sheet: SheetTab): numb
     if (name.includes("PRICE") || name.includes("COST") || name.includes("TOTAL") || name.includes("SALE")) return 18;
     if (name === "QTY" || name === "UNIT" || name === "PITCH") return 10;
     if (name.includes("MARGIN")) return 14;
+    if (name.includes("BTU") || name.includes("CIRCUIT")) return 14;
     return 16;
 }
