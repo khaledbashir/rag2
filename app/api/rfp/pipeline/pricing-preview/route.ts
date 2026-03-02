@@ -112,6 +112,13 @@ export async function POST(request: NextRequest) {
           activeHeightFt: pd.match.activeHeightFt,
           resolutionX: pd.match.resolutionX,
           resolutionY: pd.match.resolutionY,
+          // Power & weight per cabinet + totals
+          weightKgPerCab: pd.match.module.weightKg,
+          maxPowerWPerCab: pd.match.module.maxPowerWatts,
+          totalWeightKg: Math.round(pd.match.module.weightKg * pd.match.totalModules * 10) / 10,
+          totalWeightLbs: Math.round(pd.match.module.weightKg * pd.match.totalModules * 2.205),
+          totalMaxPowerW: pd.match.module.maxPowerWatts * pd.match.totalModules,
+          nits: pd.match.module.nits,
         } : null,
       })),
       summary: {

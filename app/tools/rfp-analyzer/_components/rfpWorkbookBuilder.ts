@@ -34,6 +34,10 @@ export interface PricingDisplay {
     manufacturer: string; model: string; pitch: number; fitScore: number;
     activeWidthFt?: number; activeHeightFt?: number;
     resolutionX?: number; resolutionY?: number;
+    totalModules?: number;
+    weightKgPerCab?: number; maxPowerWPerCab?: number;
+    totalWeightKg?: number; totalWeightLbs?: number; totalMaxPowerW?: number;
+    nits?: number;
   } | null;
   isCustom?: boolean;
 }
@@ -122,12 +126,13 @@ function num(value: number | null | undefined, opts?: Partial<SheetCell>): Sheet
 // ═══════════════════════════════════════════════════════════════════════════
 
 function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
-  // ANC format: Display | Vendor | Product | Pitch | H(ft) | W(ft) | H(px) | W(px) | SqFt/Screen | Qty | Total SqFt | NITs | Service | $/SqFt | Display Cost | Processor | Shipping | Total Cost | Margin % | Selling Price
+  // ANC format: Display | Vendor | Product | Pitch | H(ft) | W(ft) | H(px) | W(px) | SqFt/Screen | Qty | Total SqFt | NITs | Service | Modules | Weight (lbs) | Power (W) | Amps (120V) | $/SqFt | Display Cost | Processor | Shipping | Total Cost | Margin % | Selling Price
   const cols = [
     "Display", "Vendor", "Product", "Pitch",
     "H (ft)", "W (ft)", "H (px)", "W (px)",
     "SqFt/Screen", "Qty", "Total SqFt",
     "NITs", "Service",
+    "Modules", "Weight (lbs)", "Power (W)", "Amps (120V)",
     "$/SqFt", "Display Cost", "Processor", "Shipping", "Total Cost",
     "Margin %", "Selling Price",
   ];
@@ -171,8 +176,13 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
 
     const vendor = mp?.manufacturer ?? "";
     const productLabel = mp?.model ?? "";
-    const nits = spec.brightnessNits ?? null;
+    const nits = mp?.nits ?? spec.brightnessNits ?? null;
     const serviceType = spec.serviceType ?? "";
+    const totalModules = mp?.totalModules ?? null;
+    const totalWeightLbs = mp?.totalWeightLbs ?? null;
+    const totalMaxPowerW = mp?.totalMaxPowerW ?? null;
+    // Amps at 120V = Watts / 120
+    const amps120V = totalMaxPowerW ? Math.round(totalMaxPowerW / 120 * 10) / 10 : null;
 
     const sourcePages = spec.sourcePages || [];
     const firstPage = sourcePages[0];
@@ -217,6 +227,10 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
         num(Math.round(totalSqFt * 100) / 100 || null),
         num(nits),
         c(serviceType || "—", { align: "center" }),
+        num(totalModules),
+        num(totalWeightLbs),
+        num(totalMaxPowerW),
+        num(amps120V),
         curr(ratePerSqFt > 0 ? ratePerSqFt : 0),
         curr(displayCost),                                                 // Display Cost — editable
         curr(processorCost),                                               // Processor — editable
@@ -235,6 +249,9 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   let totalProcessorCost = 0;
   let totalShippingCost = 0;
   let totalSqFtAll = 0;
+  let totalModulesAll = 0;
+  let totalWeightLbsAll = 0;
+  let totalPowerWAll = 0;
   input.screens.forEach((spec) => {
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
     const h = spec.heightFt ?? 0;
@@ -247,6 +264,9 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     totalProcessorCost += pd?.processorCost ?? 0;
     totalShippingCost += pd?.shippingCost ?? 0;
     totalSqFtAll += sqFt;
+    totalModulesAll += pd?.matchedProduct?.totalModules ?? 0;
+    totalWeightLbsAll += pd?.matchedProduct?.totalWeightLbs ?? 0;
+    totalPowerWAll += pd?.matchedProduct?.totalMaxPowerW ?? 0;
   });
   const totalLedCost = totalDisplayCost + totalProcessorCost + totalShippingCost;
   // Blended margin for total
@@ -267,6 +287,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   }, 0);
   const blendedMarginTotal = totalLedSell > 0 ? (totalLedSell - totalLedCost) / totalLedSell : 0;
 
+  const totalAmps120V = totalPowerWAll > 0 ? Math.round(totalPowerWAll / 120 * 10) / 10 : null;
   const totalRow: SheetRow = {
     cells: [
       c(`TOTAL (${input.screens.length} displays)`, { bold: true }),
@@ -275,7 +296,12 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
       c(""),
       c(""),
       num(Math.round(totalSqFtAll * 100) / 100, { bold: true }),
-      c(""), c(""), c(""),
+      c(""), c(""),
+      num(totalModulesAll > 0 ? totalModulesAll : null, { bold: true }),
+      num(totalWeightLbsAll > 0 ? totalWeightLbsAll : null, { bold: true }),
+      num(totalPowerWAll > 0 ? totalPowerWAll : null, { bold: true }),
+      num(totalAmps120V, { bold: true }),
+      c(""),
       curr(totalDisplayCost, { bold: true }),
       curr(totalProcessorCost, { bold: true }),
       curr(totalShippingCost, { bold: true }),
@@ -304,8 +330,8 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     color: "#0A52EF",
     columns: cols,
     rows: [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow, ...(addScreenRow ? [addScreenRow] : [])],
-    // Editable: H(ft)=4, W(ft)=5, Qty=9, Display Cost=14, Processor=15, Shipping=16, Margin%=18
-    editableColumns: [4, 5, 9, 14, 15, 16, 18],
+    // Editable: H(ft)=4, W(ft)=5, Qty=9, Display Cost=18, Processor=19, Shipping=20, Margin%=22
+    editableColumns: [4, 5, 9, 18, 19, 20, 22],
   };
 }
 
