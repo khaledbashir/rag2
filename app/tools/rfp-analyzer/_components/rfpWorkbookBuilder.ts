@@ -126,14 +126,15 @@ function num(value: number | null | undefined, opts?: Partial<SheetCell>): Sheet
 // ═══════════════════════════════════════════════════════════════════════════
 
 function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
-  // ANC format: Display | Vendor | Product | Pitch | H(ft) | W(ft) | H(px) | W(px) | SqFt/Screen | Qty | Total SqFt | NITs | Service | Modules | Weight (lbs) | Power (W) | Amps (120V) | BTU/hr | Circuits (20A) | $/SqFt | Display Cost | Processor | Shipping | Total Cost | Margin % | Selling Price
+  // ANC format — electrical columns use Jeremy's 208V circuit formula:
+  // One 20A 208V circuit = max 3328W. Cabs/circuit = floor(3328 / W per cab). Circuits = ceil(totalCabs / cabsPerCircuit).
   const cols = [
     "Display", "Vendor", "Product", "Pitch",
     "H (ft)", "W (ft)", "H (px)", "W (px)",
     "SqFt/Screen", "Qty", "Total SqFt",
     "NITs", "Service",
-    "Modules", "Weight (lbs)", "Power (W)", "Amps (120V)",
-    "BTU/hr", "Circuits (20A)",
+    "Modules", "Weight (lbs)", "W/Cab", "Total Power (W)",
+    "BTU/hr", "Cab/Circuit", "Circuits (208V)",
     "$/SqFt", "Display Cost", "Processor", "Shipping", "Total Cost",
     "Margin %", "Selling Price",
   ];
@@ -181,13 +182,15 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const serviceType = spec.serviceType ?? "";
     const totalModules = mp?.totalModules ?? null;
     const totalWeightLbs = mp?.totalWeightLbs ?? null;
+    const wattsPerCab = mp?.maxPowerWPerCab ?? null;
     const totalMaxPowerW = mp?.totalMaxPowerW ?? null;
-    // Amps at 120V = Watts / 120
-    const amps120V = totalMaxPowerW ? Math.round(totalMaxPowerW / 120 * 10) / 10 : null;
     // BTU/hr = Watts × 3.412
     const btuPerHr = totalMaxPowerW ? Math.round(totalMaxPowerW * 3.412) : null;
-    // Circuits at 20A standard breaker (80% NEC derating = 16A usable per circuit)
-    const circuits20A = amps120V ? Math.ceil(amps120V / 16) : null;
+    // Jeremy's 208V circuit formula: 20A × 208V × 0.8 NEC = 3328W per circuit
+    const WATTS_PER_CIRCUIT = 3328; // 20A 208V 2-Pole 1PH, 80% NEC derating
+    const cabsPerCircuit = wattsPerCab ? Math.floor(WATTS_PER_CIRCUIT / wattsPerCab) : null;
+    const circuits208V = (totalModules && cabsPerCircuit && cabsPerCircuit > 0)
+      ? Math.ceil(totalModules / cabsPerCircuit) : null;
 
     const sourcePages = spec.sourcePages || [];
     const firstPage = sourcePages[0];
@@ -234,10 +237,11 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
         c(serviceType || "—", { align: "center" }),
         num(totalModules),
         num(totalWeightLbs),
+        num(wattsPerCab),
         num(totalMaxPowerW),
-        num(amps120V),
         num(btuPerHr),
-        num(circuits20A),
+        num(cabsPerCircuit),
+        num(circuits208V, { bold: true }),
         curr(ratePerSqFt > 0 ? ratePerSqFt : 0),
         curr(displayCost),                                                 // Display Cost — editable
         curr(processorCost),                                               // Processor — editable
@@ -294,9 +298,15 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   }, 0);
   const blendedMarginTotal = totalLedSell > 0 ? (totalLedSell - totalLedCost) / totalLedSell : 0;
 
-  const totalAmps120V = totalPowerWAll > 0 ? Math.round(totalPowerWAll / 120 * 10) / 10 : null;
   const totalBtuPerHr = totalPowerWAll > 0 ? Math.round(totalPowerWAll * 3.412) : null;
-  const totalCircuits20A = totalAmps120V ? Math.ceil(totalAmps120V / 16) : null;
+  // Sum circuits across all displays (each display has its own cab/circuit ratio)
+  const totalCircuits208V = input.screens.reduce((sum, spec) => {
+    const pd = input.pricingDisplays.find((d) => d.name === spec.name);
+    const mp = pd?.matchedProduct;
+    if (!mp?.totalModules || !mp?.maxPowerWPerCab) return sum;
+    const cabsPerCir = Math.floor(3328 / mp.maxPowerWPerCab);
+    return sum + (cabsPerCir > 0 ? Math.ceil(mp.totalModules / cabsPerCir) : 0);
+  }, 0);
   const totalRow: SheetRow = {
     cells: [
       c(`TOTAL (${input.screens.length} displays)`, { bold: true }),
@@ -308,10 +318,11 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
       c(""), c(""),
       num(totalModulesAll > 0 ? totalModulesAll : null, { bold: true }),
       num(totalWeightLbsAll > 0 ? totalWeightLbsAll : null, { bold: true }),
+      c(""),
       num(totalPowerWAll > 0 ? totalPowerWAll : null, { bold: true }),
-      num(totalAmps120V, { bold: true }),
       num(totalBtuPerHr, { bold: true }),
-      num(totalCircuits20A, { bold: true, highlight: true }),
+      c(""),
+      num(totalCircuits208V > 0 ? totalCircuits208V : null, { bold: true, highlight: true }),
       c(""),
       curr(totalDisplayCost, { bold: true }),
       curr(totalProcessorCost, { bold: true }),
@@ -341,8 +352,8 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     color: "#0A52EF",
     columns: cols,
     rows: [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow, ...(addScreenRow ? [addScreenRow] : [])],
-    // Editable: H(ft)=4, W(ft)=5, Qty=9, Display Cost=20, Processor=21, Shipping=22, Margin%=24
-    editableColumns: [4, 5, 9, 20, 21, 22, 24],
+    // Editable: H(ft)=4, W(ft)=5, Qty=9, Display Cost=21, Processor=22, Shipping=23, Margin%=25
+    editableColumns: [4, 5, 9, 21, 22, 23, 25],
   };
 }
 
