@@ -27,6 +27,8 @@ export interface QuestionOption {
     value: string;
     label: string;
     description?: string;
+    /** Optional environment tag for filtering (e.g., pixel pitch by indoor/outdoor) */
+    environment?: "indoor" | "outdoor" | "both";
 }
 
 export interface Question {
@@ -287,15 +289,16 @@ export const DISPLAY_QUESTIONS: Question[] = [
         label: "Pixel pitch?",
         subtitle: "Smaller pitch = higher resolution = higher cost",
         options: [
-            { value: "1.2", label: "1.2mm", description: "Ultra-fine — premium indoor" },
-            { value: "1.5", label: "1.5mm", description: "Fine — indoor close-view" },
-            { value: "1.875", label: "1.875mm", description: "Fine — indoor standard" },
-            { value: "2.5", label: "2.5mm", description: "Standard indoor" },
-            { value: "3.9", label: "3.9mm", description: "Indoor/outdoor versatile" },
-            { value: "4", label: "4mm", description: "Standard indoor/outdoor" },
-            { value: "6", label: "6mm", description: "Outdoor medium distance" },
-            { value: "10", label: "10mm", description: "Outdoor — large viewing distance" },
-            { value: "16", label: "16mm", description: "Outdoor — highway/billboard" },
+            { value: "1.2", label: "1.2mm", description: "Ultra-fine — premium indoor", environment: "indoor" },
+            { value: "1.5", label: "1.5mm", description: "Fine — indoor close-view", environment: "indoor" },
+            { value: "1.875", label: "1.875mm", description: "Fine — indoor standard", environment: "indoor" },
+            { value: "2.5", label: "2.5mm", description: "Standard indoor", environment: "indoor" },
+            { value: "3.9", label: "3.9mm", description: "Indoor/outdoor versatile", environment: "both" },
+            { value: "4", label: "4mm", description: "Standard indoor/outdoor", environment: "both" },
+            { value: "6", label: "6mm", description: "Outdoor medium distance", environment: "outdoor" },
+            { value: "8", label: "8mm", description: "Outdoor — medium/large viewing distance", environment: "outdoor" },
+            { value: "10", label: "10mm", description: "Outdoor — large viewing distance", environment: "outdoor" },
+            { value: "16", label: "16mm", description: "Outdoor — highway/billboard", environment: "outdoor" },
         ],
         defaultValue: "4",
         required: true,

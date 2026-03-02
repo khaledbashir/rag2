@@ -1266,10 +1266,18 @@ function QuestionInput({
                 </div>
             );
 
-        case "select":
+        case "select": {
+            // Filter options by environment when the question has environment-tagged options
+            const filteredOptions = question.options?.filter((opt) => {
+                if (!opt.environment) return true;
+                const isIndoor = answers?.isIndoor ?? true;
+                if (isIndoor) return opt.environment === "indoor" || opt.environment === "both";
+                return opt.environment === "outdoor" || opt.environment === "both";
+            }) ?? [];
+
             return (
                 <div className="space-y-2 mt-2">
-                    {question.options?.map((opt) => (
+                    {filteredOptions.map((opt) => (
                         <button
                             key={opt.value}
                             onClick={() => { onChange(opt.value); setTimeout(onNext, 200); }}
@@ -1298,6 +1306,7 @@ function QuestionInput({
                     ))}
                 </div>
             );
+        }
 
         case "dimensions": {
             const currentDisplay = (phase === "display" && answers?.displays) ? answers.displays[displayIndex ?? 0] : null;
