@@ -302,24 +302,67 @@ function Card({
 
 // ─── AI Panel ───────────────────────────────────────────────────────────────
 
+// Simulated reasoning steps the AI "thinks through"
+function getThinkingSteps(input: string): string[] {
+  const wordCount = input.trim().split(/\s+/).length;
+  const steps: string[] = [
+    "Reading input...",
+    `Parsing ${wordCount} words of unstructured text`,
+  ];
+  // Contextual thinking based on what they typed
+  const lower = input.toLowerCase();
+  if (lower.includes("rfp") || lower.includes("pdf")) steps.push("Detected RFP/document workflow requirements");
+  if (lower.includes("pric") || lower.includes("cost") || lower.includes("math")) steps.push("Identified pricing & math validation criteria");
+  if (lower.includes("excel") || lower.includes("sheet") || lower.includes("quote")) steps.push("Found quote/Excel workflow items");
+  if (lower.includes("install") || lower.includes("electric")) steps.push("Noted installation & electrical references");
+  if (lower.includes("led") || lower.includes("display") || lower.includes("screen")) steps.push("Extracting LED display specifications");
+  if (lower.includes("bid") || lower.includes("proposal")) steps.push("Mapping bid form & proposal output needs");
+  steps.push("Breaking into individual acceptance criteria...");
+  steps.push("Assigning categories and priority levels");
+  steps.push("Creating tasks on the board");
+  return steps;
+}
+
 function AIPanel({ me, onDone, onHighlight }: { me: string; onDone: () => void; onHighlight: (ids: string[]) => void }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ count: number } | null>(null);
+  const [phase, setPhase] = useState<"idle" | "thinking" | "done">("idle");
+  const [thinkingLines, setThinkingLines] = useState<string[]>([]);
+  const [resultCount, setResultCount] = useState(0);
   const [err, setErr] = useState<string | null>(null);
+  const thinkingRef = useRef<HTMLDivElement>(null);
 
   const go = async () => {
     if (!text.trim() || busy) return;
     setBusy(true);
     setErr(null);
-    setResult(null);
+    setThinkingLines([]);
+    setPhase("thinking");
+
+    // Start the thinking animation immediately
+    const steps = getThinkingSteps(text);
+    let stepIdx = 0;
+    const thinkInterval = setInterval(() => {
+      if (stepIdx < steps.length) {
+        setThinkingLines((prev) => [...prev, steps[stepIdx]]);
+        stepIdx++;
+        // Auto-scroll thinking box
+        setTimeout(() => {
+          thinkingRef.current?.scrollTo({ top: thinkingRef.current.scrollHeight, behavior: "smooth" });
+        }, 50);
+      }
+    }, 600);
+
     try {
       const res = await fetch("/api/tracker/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, author: me || "Team" }),
       });
+
+      clearInterval(thinkInterval);
+
       if (!res.ok) {
         const d = await res.json();
         throw new Error(d.error || "Failed");
@@ -328,19 +371,29 @@ function AIPanel({ me, onDone, onHighlight }: { me: string; onDone: () => void; 
       const tasks = d.tasks as TrackerItem[];
       if (!tasks.length) throw new Error("Couldn't extract tasks. Try more detail.");
 
-      // Show success, highlight new tasks on board, collapse
-      setResult({ count: tasks.length });
+      // Show remaining thinking steps instantly
+      setThinkingLines(steps);
+
+      // Brief pause then show result
+      await new Promise((r) => setTimeout(r, 500));
+      setResultCount(tasks.length);
+      setPhase("done");
       onHighlight(tasks.map((t) => t.id));
       onDone();
 
-      // Auto-reset after a moment
+      // Auto-collapse after showing result
       setTimeout(() => {
         setText("");
-        setResult(null);
+        setPhase("idle");
+        setThinkingLines([]);
+        setResultCount(0);
         setOpen(false);
-      }, 2000);
+      }, 3000);
     } catch (e: unknown) {
+      clearInterval(thinkInterval);
       setErr(e instanceof Error ? e.message : "Something went wrong");
+      setPhase("idle");
+      setThinkingLines([]);
     } finally {
       setBusy(false);
     }
@@ -349,9 +402,9 @@ function AIPanel({ me, onDone, onHighlight }: { me: string; onDone: () => void; 
   return (
     <div className="mb-4">
       <div className={`border rounded-lg transition-colors ${open ? "bg-white border-gray-200" : "bg-white border-gray-100 hover:border-gray-200"}`}>
-        <button onClick={() => { setOpen(!open); setResult(null); setErr(null); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-left">
+        <button onClick={() => { if (phase === "idle") { setOpen(!open); setErr(null); } }} className="w-full flex items-center gap-3 px-4 py-2.5 text-left">
           <Sparkles className={`w-4 h-4 ${open ? "text-[#0A52EF]" : "text-gray-300"}`} />
-          <span className="text-sm font-medium text-gray-600">AI: paste anything, get tasks</span>
+          <span className="text-sm font-medium text-gray-600">AI: paste anything, get structured tasks</span>
           <ChevronDown className={`w-3.5 h-3.5 text-gray-300 ml-auto transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
 
@@ -365,16 +418,8 @@ function AIPanel({ me, onDone, onHighlight }: { me: string; onDone: () => void; 
               className="overflow-hidden"
             >
               <div className="px-4 pb-4 space-y-3 border-t border-gray-100 pt-3">
-                {result ? (
-                  <motion.div
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex items-center gap-2 text-sm text-green-600 font-medium py-2"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    {result.count} tasks added to the board
-                  </motion.div>
-                ) : (
+                {/* Input */}
+                {phase === "idle" && (
                   <>
                     <textarea
                       value={text}
@@ -382,21 +427,72 @@ function AIPanel({ me, onDone, onHighlight }: { me: string; onDone: () => void; 
                       onKeyDown={(e) => { if (e.key === "Enter" && e.metaKey) go(); }}
                       placeholder="Paste meeting notes, Slack messages, requirements, or describe what done looks like..."
                       className="w-full h-20 px-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-700 placeholder:text-gray-400 focus:outline-none focus:border-[#0A52EF]/30 focus:ring-1 focus:ring-[#0A52EF]/10 resize-none"
-                      disabled={busy}
                     />
                     {err && <p className="text-xs text-red-500">{err}</p>}
                     <div className="flex items-center gap-3">
                       <button
                         onClick={go}
-                        disabled={!text.trim() || busy}
+                        disabled={!text.trim()}
                         className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-[#0A52EF] hover:bg-[#0847d0] text-white rounded-lg disabled:opacity-25 transition-colors"
                       >
-                        {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                        {busy ? "Breaking down..." : "Break It Down"}
+                        <Sparkles className="w-3.5 h-3.5" /> Break It Down
                       </button>
-                      <span className="text-[11px] text-gray-400">{"\u2318"}+Enter</span>
+                      <span className="text-[11px] text-gray-300">{"\u2318"}+Enter</span>
                     </div>
                   </>
+                )}
+
+                {/* Thinking — the cinematic part */}
+                {phase === "thinking" && (
+                  <div className="space-y-2">
+                    {/* Original input fading */}
+                    <div className="px-3 py-2 bg-gray-50 rounded-lg border border-gray-100">
+                      <p className="text-xs text-gray-400 italic line-clamp-2">&ldquo;{text}&rdquo;</p>
+                    </div>
+
+                    {/* Reasoning stream */}
+                    <div
+                      ref={thinkingRef}
+                      className="px-3 py-2.5 bg-gray-900 rounded-lg max-h-40 overflow-y-auto font-mono"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-2 h-2 rounded-full bg-[#0A52EF] animate-pulse" />
+                        <span className="text-[10px] text-gray-500 uppercase tracking-wider font-sans">AI Reasoning</span>
+                      </div>
+                      {thinkingLines.map((line, i) => (
+                        <motion.div
+                          key={i}
+                          initial={{ opacity: 0, x: -8 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="flex items-start gap-2 py-0.5"
+                        >
+                          <span className="text-gray-600 text-[11px] shrink-0 mt-px">{'>'}</span>
+                          <span className="text-[12px] text-gray-400">{line}</span>
+                        </motion.div>
+                      ))}
+                      <motion.span
+                        animate={{ opacity: [1, 0] }}
+                        transition={{ duration: 0.8, repeat: Infinity }}
+                        className="inline-block w-1.5 h-3.5 bg-[#0A52EF] ml-4 mt-1"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Done */}
+                {phase === "done" && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="flex items-center gap-3 py-3 px-4 bg-green-50 rounded-lg border border-green-100"
+                  >
+                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                    <div>
+                      <p className="text-sm font-medium text-green-800">{resultCount} tasks added to the board</p>
+                      <p className="text-[11px] text-green-600 mt-0.5">Scroll down to see them highlighted</p>
+                    </div>
+                  </motion.div>
                 )}
               </div>
             </motion.div>
