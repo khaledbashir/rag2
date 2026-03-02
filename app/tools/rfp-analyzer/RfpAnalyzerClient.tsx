@@ -953,14 +953,26 @@ export default function RfpAnalyzerClient() {
       if (editableSpecs.length > 0) {
         formData.append("specs", JSON.stringify(editableSpecs));
       }
-      // Send pricing data if available
+      // Send pricing data + matched product specs if available
       if (pricingPreview?.displays) {
         const pricingData = pricingPreview.displays.map((d) => ({
           name: d.name,
           hardwareCost: d.hardwareCost,
+          processingCost: d.processorCost ?? 0,
+          shippingCost: d.shippingCost ?? 0,
           installCost: d.installCost,
           totalCost: d.totalCost,
           totalSellingPrice: d.totalSellingPrice,
+          // Matched product specs for ANC column (actual product dimensions/specs)
+          matchedProduct: d.matchedProduct ? {
+            manufacturer: d.matchedProduct.manufacturer,
+            model: d.matchedProduct.model,
+            pitch: d.matchedProduct.pitch,
+            activeWidthFt: d.matchedProduct.activeWidthFt,
+            activeHeightFt: d.matchedProduct.activeHeightFt,
+            resolutionX: d.matchedProduct.resolutionX,
+            resolutionY: d.matchedProduct.resolutionY,
+          } : null,
         }));
         formData.append("pricing", JSON.stringify(pricingData));
       }

@@ -48,6 +48,10 @@ interface SpecBlock {
     electricalData: number | null;
     chainMotors: number | null;
     secondarySteel: number | null;
+    // Computed/derived fields
+    totalPixels: number | null;
+    totalSqFt: number | null;
+    pixelDensity: number | null;
   };
   /** Column B pitch value (for single-sheet matching) */
   colBPitch: number | null;
@@ -85,6 +89,16 @@ export interface PricingData {
   installCost?: number;
   totalCost: number;
   totalSellingPrice: number;
+  /** Matched ANC product specs — actual dimensions/resolution from catalog */
+  matchedProduct?: {
+    manufacturer: string;
+    model: string;
+    pitch: number;
+    activeWidthFt?: number;
+    activeHeightFt?: number;
+    resolutionX?: number;
+    resolutionY?: number;
+  } | null;
 }
 
 export async function fillBidForm(
@@ -195,6 +209,9 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
           electricalData: null as number | null,
           chainMotors: null as number | null,
           secondarySteel: null as number | null,
+          totalPixels: null as number | null,
+          totalSqFt: null as number | null,
+          pixelDensity: null as number | null,
         };
 
         // Read Column B pitch value for matching
@@ -230,6 +247,14 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
             cells.viewAngleV = r;
           } else if (/power\s*draw|total\s*power|max\s*amps/i.test(label)) {
             cells.powerDraw = r;
+          }
+          // Computed / derived fields
+          else if (/total\s*pixels/i.test(label) && !/density/i.test(label)) {
+            cells.totalPixels = r;
+          } else if (/total\s*sq\.?\s*ft/i.test(label) && !/density|pixel/i.test(label)) {
+            cells.totalSqFt = r;
+          } else if (/pixel\s*density/i.test(label)) {
+            cells.pixelDensity = r;
           }
           // Pricing fields
           else if (/total\s*display\s*price/i.test(label)) {
@@ -586,31 +611,64 @@ function fillBlockCells(
 
   // Column C = 3
   const C = 3;
+  const mp = pricing?.matchedProduct;
 
-  // Core spec fields
-  if (screen.pixelPitchMm != null) {
-    setCell(block.cells.pixelPitch, C, screen.pixelPitchMm, "Pixel Pitch");
+  // Rename header: "VENDOR NAME" → "ANC" in Column C of the header row
+  const headerCell = sheet.getRow(block.headerRow).getCell(C);
+  const headerText = getCellText(headerCell);
+  if (/vendor\s*name/i.test(headerText)) {
+    headerCell.value = "ANC";
   }
 
+  // ─── Column C should contain ACTUAL ANC PRODUCT specs (not RFP specs) ───
+  // If we have a matched product, use its real dimensions/resolution.
+  // Fall back to RFP specs only if no product match exists.
+
+  // Pixel Pitch — use matched product pitch if available
+  const ancPitch = mp?.pitch ?? screen.pixelPitchMm;
+  if (ancPitch != null) {
+    setCell(block.cells.pixelPitch, C, ancPitch, "Pixel Pitch");
+  }
+
+  // Quantity stays the same (ANC proposes same qty as requested)
   setCell(block.cells.quantity, C, screen.quantity, "Quantity");
 
-  if (screen.heightPx != null) {
-    setCell(block.cells.pixelHeight, C, screen.heightPx, "Pixel Height");
+  // Resolution — use matched product resolution, fall back to RFP
+  const ancHeightPx = mp?.resolutionY ?? screen.heightPx;
+  const ancWidthPx = mp?.resolutionX ?? screen.widthPx;
+  if (ancHeightPx != null) {
+    setCell(block.cells.pixelHeight, C, ancHeightPx, "Pixel Height");
+  }
+  if (ancWidthPx != null) {
+    setCell(block.cells.pixelLength, C, ancWidthPx, "Pixel Length");
   }
 
-  if (screen.widthPx != null) {
-    setCell(block.cells.pixelLength, C, screen.widthPx, "Pixel Length");
+  // Physical dimensions — use matched product active dimensions, fall back to RFP
+  const ancHeightFt = mp?.activeHeightFt ?? screen.heightFt;
+  const ancWidthFt = mp?.activeWidthFt ?? screen.widthFt;
+  if (ancHeightFt != null) {
+    setCell(block.cells.systemHeight, C, Math.round(ancHeightFt * 100) / 100, "System Height (ft)");
+  }
+  if (ancWidthFt != null) {
+    setCell(block.cells.systemLength, C, Math.round(ancWidthFt * 100) / 100, "System Length (ft)");
   }
 
-  if (screen.heightFt != null) {
-    setCell(block.cells.systemHeight, C, screen.heightFt, "System Height (ft)");
+  // Computed derived fields from ANC specs
+  if (ancHeightPx != null && ancWidthPx != null && block.cells.totalPixels) {
+    setCell(block.cells.totalPixels, C, ancHeightPx * ancWidthPx, "Total Pixels");
+  }
+  if (ancHeightFt != null && ancWidthFt != null && block.cells.totalSqFt) {
+    const totalSqFt = Math.round(ancHeightFt * ancWidthFt);
+    setCell(block.cells.totalSqFt, C, totalSqFt, "Total Sq. Ft");
+  }
+  if (ancHeightPx != null && ancWidthPx != null && ancHeightFt != null && ancWidthFt != null && block.cells.pixelDensity) {
+    const totalPx = ancHeightPx * ancWidthPx;
+    const totalSqFt = ancHeightFt * ancWidthFt;
+    const density = totalSqFt > 0 ? Math.round(totalPx / totalSqFt) : 0;
+    setCell(block.cells.pixelDensity, C, density, "Pixel Density Sq. Ft");
   }
 
-  if (screen.widthFt != null) {
-    setCell(block.cells.systemLength, C, screen.widthFt, "System Length (ft)");
-  }
-
-  // Extended spec fields
+  // Extended spec fields — these stay from RFP (ANC matches the requirement)
   if (screen.brightnessNits != null && block.cells.brightness) {
     setCell(block.cells.brightness, C, screen.brightnessNits, "Brightness (nits)");
   }
