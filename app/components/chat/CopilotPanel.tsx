@@ -810,6 +810,8 @@ export default function CopilotPanel({
             { id: assistantId, role: "assistant", content: "", thinking: "", isThinking: false, timestamp: Date.now() },
         ]);
 
+        let answerBuf = "";
+
         try {
             const res = await fetch("/api/copilot/stream", {
                 method: "POST",
@@ -828,7 +830,6 @@ export default function CopilotPanel({
             const decoder = new TextDecoder();
 
             let thinkBuf = "";
-            let answerBuf = "";
             let inThink = false;
 
             const updateMsg = (partial: Partial<ChatMessage>) => {
@@ -915,8 +916,12 @@ export default function CopilotPanel({
                 return next;
             });
         } catch (err: any) {
+            const partial = answerBuf?.trim();
+            const fallback = partial
+                ? `${partial}\n\n*(Response was cut short — try rephrasing your question.)*`
+                : "The AI couldn't complete that request. Try rephrasing or asking something simpler.";
             setMessages((prev) => {
-                const next = prev.map((m) => (m.id === assistantId ? { ...m, content: `Stream error: ${err?.message || String(err)}` } : m));
+                const next = prev.map((m) => (m.id === assistantId ? { ...m, content: fallback, isThinking: false } : m));
                 void persistChatState(next);
                 return next;
             });

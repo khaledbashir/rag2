@@ -59,19 +59,34 @@ export async function POST(req: NextRequest) {
 
         console.log(`[Copilot/Stream] Project ${projectId} → ${streamPath}`);
 
-        // Call AnythingLLM stream-chat
-        const upstreamRes = await fetch(streamPath, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${ANYTHING_LLM_KEY}`,
-            },
-            body: JSON.stringify({
-                message: useAgent ? `@agent ${message}` : message,
-                mode: "chat",
-                sessionId: `copilot-${projectId}`,
-            }),
-        });
+        // Call AnythingLLM stream-chat (60s timeout to prevent hanging)
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 60_000);
+        let upstreamRes: Response;
+        try {
+            upstreamRes = await fetch(streamPath, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${ANYTHING_LLM_KEY}`,
+                },
+                body: JSON.stringify({
+                    message: useAgent ? `@agent ${message}` : message,
+                    mode: "chat",
+                    sessionId: `copilot-${projectId}`,
+                }),
+                signal: controller.signal,
+            });
+        } catch (fetchErr: any) {
+            clearTimeout(timeout);
+            const isTimeout = fetchErr?.name === "AbortError";
+            console.error(`[Copilot/Stream] ${isTimeout ? "Timeout" : "Fetch error"}:`, fetchErr?.message);
+            return new Response(
+                JSON.stringify({ error: isTimeout ? "AI took too long to respond. Try a simpler question." : "AI service unavailable" }),
+                { status: 504, headers: { "Content-Type": "application/json" } }
+            );
+        }
+        clearTimeout(timeout);
 
         if (!upstreamRes.ok) {
             const errorText = await upstreamRes.text();
