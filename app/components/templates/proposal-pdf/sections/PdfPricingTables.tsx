@@ -106,8 +106,6 @@ const PdfPricingTables = ({
             const resolvedName = mirrorMode ? tableName : (screenNameMap[tableName] || tableName);
             const label = (override || resolvedName || "Section").toString().replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, ' ').trim();
             const items = (table?.items || []) as any[];
-            // Detect if this table IS a promoted alternates section (should not show grand total)
-            const isAlternateTable = /alternate/i.test(tableName);
             // Fix 5: Only include alternates that have actual content (non-empty description AND non-zero price)
             const alternates = ((table?.alternates || []) as any[]).filter((alt: any) => {
                 const desc = (alt?.description || "").toString().trim();
@@ -160,8 +158,7 @@ const PdfPricingTables = ({
                             );
                         })}
 
-                        {/* Footer: Subtotal / Tax / Bond / Grand Total — skip for alternate tables (each alt is independent) */}
-                        {!isAlternateTable && (
+                        {/* Footer: Subtotal / Tax / Bond / Grand Total */}
                         <div className="border-t-2" style={{ borderColor: colors.border }}>
                             {Math.abs(subtotal) >= 0.01 && subtotal !== grandTotal && (
                                 <div className="grid grid-cols-12 px-3 py-1 text-[13px] font-bold" style={{ color: colors.text }}>
@@ -189,7 +186,6 @@ const PdfPricingTables = ({
                                 <div className="col-span-4 text-right font-bold text-xs" style={{ color: colors.primaryDark }}>{formatCurrency(grandTotal, currency)}</div>
                             </div>
                         </div>
-                        )}
                     </div>
 
                     {/* Alternates — separate table AFTER grand total (mirrors Excel structure) */}
