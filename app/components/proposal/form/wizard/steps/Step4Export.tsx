@@ -412,8 +412,9 @@ const Step4Export = () => {
     }, [allScreensValid, effectiveExceptions, excelPreview, excelSourceData, hasOptionPlaceholder, internalAudit, reconciliation, isGatekeeperLocked, unverifiedAiFields]);
 
     const isMirrorReadyToExport = mirrorBlockingIssues.length === 0;
+    // Mirror PDF only needs pricing tables — screen dimensions are for audit workbook, not the PDF
     const isPdfPreviewBlocked = mirrorMode
-        ? !allScreensValid || hasOptionPlaceholder || isGatekeeperLocked
+        ? isGatekeeperLocked
         : !allScreensValid || isGatekeeperLocked;
     const pricingTables = useMemo(() => (((pricingDocument as any)?.tables || []) as any[]), [pricingDocument]);
 
