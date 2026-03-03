@@ -307,6 +307,16 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
         const next = { ...answers };
         if (phase === "project" || phase === "financial") {
             (next as any)[currentQ.id] = val;
+            // Sync margin tier → individual margin fields
+            if (currentQ.id === "marginTier") {
+                if (val === "budget") {
+                    next.ledMargin = 15;
+                    next.servicesMargin = 20;
+                } else if (val === "proposal") {
+                    next.ledMargin = 38;
+                    next.servicesMargin = 20;
+                }
+            }
         } else if (phase === "display") {
             // Ensure display exists
             while (next.displays.length <= displayIndex) {

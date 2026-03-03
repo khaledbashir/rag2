@@ -370,11 +370,10 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
 
     // Tiered margins: separate LED hardware vs services margins
     // Small project tier: <100sqft gets higher services margin per rate card
-    const ledMarginPct = (answers.ledMargin || answers.defaultMargin || 30) / 100;
+    const ledMarginPct = ((answers.ledMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
     const smallProjectThreshold = 100; // sqft
     const smallSvcMargin = rc(rates, "margin.services_small", 0.30);
-    const baseSvcMarginPct = (answers.servicesMargin !== undefined && answers.servicesMargin !== null
-        ? answers.servicesMargin : (answers.defaultMargin || 30)) / 100;
+    const baseSvcMarginPct = ((answers.servicesMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
     const svcMarginPct = (area < smallProjectThreshold && baseSvcMarginPct < smallSvcMargin)
         ? smallSvcMargin : baseSvcMarginPct;
     const serviceCost = adjStructureCost + adjInstallCost + adjElectricalCost
@@ -385,10 +384,10 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
     const sellPrice = hardwareSell + servicesSell;
     const marginPct = totalCost > 0 ? 1 - (totalCost / sellPrice) : 0;
 
-    const bondRate = (answers.bondRate || 1.5) / 100;
+    const bondRate = (answers.bondRate ?? 1.5) / 100;
     const bondCost = sellPrice * bondRate;
 
-    const taxRate = (answers.salesTaxRate || 9.5) / 100;
+    const taxRate = (answers.salesTaxRate ?? 9.5) / 100;
     const salesTaxCost = (sellPrice + bondCost) * taxRate;
 
     const finalTotal = sellPrice + bondCost + salesTaxCost;
@@ -524,12 +523,12 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
     });
 
     const financialRows: [string, string | number][] = [
-        ["Margin Tier", answers.marginTier === "proposal" ? "Proposal (LED 38%, Svc 20%)" : "Budget (LED 15%, Svc 20%)"],
-        ["LED Hardware Margin", `${answers.ledMargin || 15}%`],
-        ["Installation Services Margin", answers.servicesMargin === 0 ? "Supply Only" : `${answers.servicesMargin || 20}%`],
-        ["Default Blended Margin", `${answers.defaultMargin || 30}%`],
-        ["Bond Rate", `${answers.bondRate || 1.5}%`],
-        ["Sales Tax Rate", `${answers.salesTaxRate || 9.5}%`],
+        ["Margin Tier", `${answers.marginTier === "proposal" ? "Proposal" : "Budget"} (LED ${answers.ledMargin ?? 15}%, Svc ${answers.servicesMargin ?? 20}%)`],
+        ["LED Hardware Margin", `${answers.ledMargin ?? 15}%`],
+        ["Installation Services Margin", answers.servicesMargin === 0 ? "Supply Only" : `${answers.servicesMargin ?? 20}%`],
+        ["Default Blended Margin", `${answers.defaultMargin ?? 30}%`],
+        ["Bond Rate", `${answers.bondRate ?? 1.5}%`],
+        ["Sales Tax Rate", `${answers.salesTaxRate ?? 9.5}%`],
         ["Cost/sqft Override", answers.costPerSqFtOverride > 0 ? `$${answers.costPerSqFtOverride}` : "None (catalog pricing)"],
         ["PM Complexity", (answers.pmComplexity || "standard").charAt(0).toUpperCase() + (answers.pmComplexity || "standard").slice(1)],
         ["Target Price (Profit Shield)", answers.targetPrice > 0 ? fmt(answers.targetPrice) : "Not set"],
@@ -555,8 +554,7 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
         });
 
         // Include CMS, Scoring, Warranty add-on costs
-        const svcMPct = (answers.servicesMargin !== undefined && answers.servicesMargin !== null
-            ? answers.servicesMargin : (answers.defaultMargin || 30)) / 100;
+        const svcMPct = ((answers.servicesMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
         const addOnCost = (answers.includeCms ? answers.cmsAllocation : 0)
             + (answers.includeScoring ? answers.scoringAllocation : 0)
             + (answers.includeWarranty === "priced" ? (answers.warrantyAllocation > 0 ? answers.warrantyAllocation : calcs.reduce((s, c) => s + c.hardwareCost, 0) * 0.03 * (parseInt(answers.warrantyYears) || 1)) : 0);
@@ -564,8 +562,8 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
 
         const totalCost = calcs.reduce((s, c) => s + c.totalCost, 0) + addOnCost;
         const totalSell = calcs.reduce((s, c) => s + c.sellPrice, 0) + addOnSellPI;
-        const bRate = (answers.bondRate || 1.5) / 100;
-        const tRate = (answers.salesTaxRate || 9.5) / 100;
+        const bRate = (answers.bondRate ?? 1.5) / 100;
+        const tRate = (answers.salesTaxRate ?? 9.5) / 100;
         const grandTotal = totalSell + (totalSell * bRate) + ((totalSell + totalSell * bRate) * tRate);
         const blended = totalCost > 0 ? ((1 - totalCost / totalSell) * 100).toFixed(1) : "0";
 
@@ -649,8 +647,7 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
         }
 
         // Services — broken out by line item
-        const svcMarginPctBudget = (answers.servicesMargin !== undefined && answers.servicesMargin !== null
-            ? answers.servicesMargin : (answers.defaultMargin || 30)) / 100;
+        const svcMarginPctBudget = ((answers.servicesMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
         rows.push({
             cells: [{ value: "2.0 INSTALLATION SERVICES", bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }],
         });
@@ -827,8 +824,8 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
         const totalCost = calcs.reduce((s, c) => s + c.totalCost, 0) + cmsCost + scoringCost + warrantyCost;
         const totalSell = calcs.reduce((s, c) => s + c.sellPrice, 0) + cmsSell + scoringSell + warrantySell;
         const addOnSell = cmsSell + scoringSell + warrantySell;
-        const bondRate = (answers.bondRate || 1.5) / 100;
-        const taxRate = (answers.salesTaxRate || 9.5) / 100;
+        const bondRate = (answers.bondRate ?? 1.5) / 100;
+        const taxRate = (answers.salesTaxRate ?? 9.5) / 100;
         const baseBond = calcs.reduce((s, c) => s + c.bondCost, 0);
         const totalBond = baseBond + (addOnSell * bondRate);
         const baseTax = calcs.reduce((s, c) => s + c.salesTaxCost, 0);
@@ -847,11 +844,11 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
             isTotal: true,
         });
         rows.push({
-            cells: [{ value: `BOND (${answers.bondRate || 1.5}%)`, bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" },
+            cells: [{ value: `BOND (${answers.bondRate ?? 1.5}%)`, bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" },
                 { value: totalBond, currency: true, align: "right" }, { value: "" }, { value: "" }],
         });
         rows.push({
-            cells: [{ value: `SALES TAX (${answers.salesTaxRate || 9.5}%)`, bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" },
+            cells: [{ value: `SALES TAX (${answers.salesTaxRate ?? 9.5}%)`, bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" },
                 { value: totalTax, currency: true, align: "right" }, { value: "" }, { value: "" }],
         });
         rows.push({ cells: [{ value: "" }], isSeparator: true });
@@ -1116,8 +1113,7 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
     const rows: SheetRow[] = [];
     const COLS = 11;
 
-    const svcMarginPct = (answers.servicesMargin !== undefined && answers.servicesMargin !== null
-        ? answers.servicesMargin : (answers.defaultMargin || 30)) / 100;
+    const svcMarginPct = ((answers.servicesMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
 
     rows.push({
         cells: [{ value: "INSTALLATION & LABOR COSTS", bold: true, header: true, span: COLS, align: "center" }],
