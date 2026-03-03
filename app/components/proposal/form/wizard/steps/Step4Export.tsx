@@ -413,7 +413,7 @@ const Step4Export = () => {
 
     const isMirrorReadyToExport = mirrorBlockingIssues.length === 0;
     const isPdfPreviewBlocked = mirrorMode
-        ? !allScreensValid || hasOptionPlaceholder || !internalAudit || isGatekeeperLocked
+        ? !allScreensValid || hasOptionPlaceholder || isGatekeeperLocked
         : !allScreensValid || isGatekeeperLocked;
     const pricingTables = useMemo(() => (((pricingDocument as any)?.tables || []) as any[]), [pricingDocument]);
 
