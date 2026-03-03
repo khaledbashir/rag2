@@ -1318,6 +1318,69 @@ function QuestionInput({
             );
         }
 
+        case "multi-select": {
+            // Filter options by environment + exclude the primary pitch
+            const primaryPitch = (phase === "display" && answers?.displays)
+                ? answers.displays[displayIndex ?? 0]?.pixelPitch || "4"
+                : "4";
+            const msFilteredOptions = question.options?.filter((opt) => {
+                if (opt.value === primaryPitch) return false; // Can't pick the primary as alt
+                if (!opt.environment) return true;
+                const isIndoor = answers?.isIndoor ?? true;
+                if (isIndoor) return opt.environment === "indoor" || opt.environment === "both";
+                return opt.environment === "outdoor" || opt.environment === "both";
+            }) ?? [];
+            const selected: string[] = Array.isArray(value) ? value : [];
+
+            return (
+                <div className="space-y-2 mt-2">
+                    <div className="text-xs text-muted-foreground mb-1">
+                        Primary: <span className="font-semibold text-foreground">{primaryPitch}mm</span> — select alternates below
+                    </div>
+                    {msFilteredOptions.map((opt) => {
+                        const isChecked = selected.includes(opt.value);
+                        return (
+                            <button
+                                key={opt.value}
+                                onClick={() => {
+                                    const next = isChecked
+                                        ? selected.filter((v) => v !== opt.value)
+                                        : [...selected, opt.value];
+                                    onChange(next);
+                                }}
+                                className={cn(
+                                    "w-full text-left px-4 py-3 rounded-lg border-2 transition-all",
+                                    isChecked
+                                        ? "border-[#0A52EF] bg-[#0A52EF]/5"
+                                        : "border-border hover:border-[#0A52EF]/40 hover:bg-accent/20"
+                                )}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className={cn(
+                                        "w-5 h-5 rounded border-2 flex items-center justify-center shrink-0",
+                                        isChecked ? "border-[#0A52EF] bg-[#0A52EF]" : "border-border"
+                                    )}>
+                                        {isChecked && <Check className="w-3 h-3 text-white" />}
+                                    </div>
+                                    <div>
+                                        <div className="text-sm font-medium">{opt.label}</div>
+                                        {opt.description && (
+                                            <div className="text-xs text-muted-foreground mt-0.5">{opt.description}</div>
+                                        )}
+                                    </div>
+                                </div>
+                            </button>
+                        );
+                    })}
+                    {selected.length === 0 && (
+                        <div className="text-xs text-muted-foreground pt-1">
+                            No alternates selected — press Next to skip
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
         case "dimensions": {
             const currentDisplay = (phase === "display" && answers?.displays) ? answers.displays[displayIndex ?? 0] : null;
             const currentProductId = currentDisplay?.productId;

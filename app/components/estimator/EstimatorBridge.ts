@@ -233,6 +233,10 @@ export interface ScreenCalc {
     profitShieldMargin?: number;
     /** Cabinet layout if product selected with cabinet dimensions */
     cabinetLayout?: CabinetLayout | null;
+    /** True if this is an alternate pitch variant (not the primary) */
+    isAlt?: boolean;
+    /** Index of the primary display this is an alternate of */
+    altOfIndex?: number;
 }
 
 export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, rates?: RateCard, productSpec?: ProductSpec | null): ScreenCalc {
@@ -439,6 +443,67 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
     };
 }
 
+/**
+ * Generate alt-pitch variants for a display.
+ * Only LED hardware cost changes — services, labor, structure all stay the same.
+ * Returns an array of ScreenCalc with isAlt=true for each alt pitch.
+ */
+function calculateAltPitchVariants(
+    d: DisplayAnswers,
+    primaryCalc: ScreenCalc,
+    primaryIndex: number,
+    answers: EstimatorAnswers,
+    rates?: RateCard,
+): ScreenCalc[] {
+    const altPitches = d.altPitches || [];
+    if (altPitches.length === 0) return [];
+
+    return altPitches.map((altPitch) => {
+        // Clone display with the alt pitch, recalculate just LED hardware
+        const altDisplay: DisplayAnswers = { ...d, pixelPitch: altPitch, altPitches: [] };
+        const full = calculateDisplay(altDisplay, answers, rates);
+
+        // Services cost stays identical to primary
+        const svcCost = primaryCalc.structureCost + primaryCalc.installCost + primaryCalc.electricalCost
+            + primaryCalc.equipmentCost + primaryCalc.dataCablingCost + primaryCalc.pmCost
+            + primaryCalc.engineeringCost + primaryCalc.shippingCost + primaryCalc.demolitionCost
+            + primaryCalc.bundleCost;
+        const totalCost = full.hardwareCost + svcCost;
+
+        // Recalculate sell price with new hardware
+        const hwSell = full.hardwareCost / (1 - primaryCalc.ledMarginPct);
+        const svcSell = primaryCalc.svcMarginPct < 1 ? svcCost / (1 - primaryCalc.svcMarginPct) : svcCost;
+        const sellPrice = hwSell + svcSell;
+        const marginPct = totalCost > 0 ? 1 - (totalCost / sellPrice) : 0;
+
+        const bondRate = (answers.bondRate ?? 1.5) / 100;
+        const bondCost = sellPrice * bondRate;
+        const taxRate = (answers.salesTaxRate ?? 9.5) / 100;
+        const salesTaxCost = (sellPrice + bondCost) * taxRate;
+
+        return {
+            ...primaryCalc,
+            name: `${primaryCalc.name} (ALT ${altPitch}mm)`,
+            pixelPitch: full.pixelPitch,
+            pixelsW: full.pixelsW,
+            pixelsH: full.pixelsH,
+            totalPixels: full.totalPixels,
+            costPerSqFt: full.costPerSqFt,
+            hardwareCost: full.hardwareCost,
+            spareParts: full.spareParts,
+            totalCost,
+            sellPrice,
+            marginPct,
+            bondCost,
+            salesTaxCost,
+            finalTotal: sellPrice + bondCost + salesTaxCost,
+            cabinetLayout: null,
+            isAlt: true,
+            altOfIndex: primaryIndex,
+        };
+    });
+}
+
 // ============================================================================
 // BUILD PREVIEW SHEETS
 // ============================================================================
@@ -453,11 +518,28 @@ export function buildPreviewSheets(answers: EstimatorAnswers, rates?: RateCard):
 
     const calcs = answers.displays.map((d) => calculateDisplay(d, answers, rates));
 
+    // Generate alt-pitch variants (interleaved after each primary)
+    const allCalcs: ScreenCalc[] = [];
+    const allDisplays: DisplayAnswers[] = [];
+    for (let i = 0; i < calcs.length; i++) {
+        allCalcs.push(calcs[i]);
+        allDisplays.push(answers.displays[i]);
+        const alts = calculateAltPitchVariants(answers.displays[i], calcs[i], i, answers, rates);
+        for (const alt of alts) {
+            allCalcs.push(alt);
+            // Alt display: same as primary but with the alt pitch
+            allDisplays.push({ ...answers.displays[i], pixelPitch: String(alt.pixelPitch), altPitches: [] });
+        }
+    }
+
+    // Use allCalcs/allDisplays for sheets that need alt rows, calcs for labor/services (no alts)
+    const answersWithAlts = { ...answers, displays: allDisplays };
+
     const sheets: SheetTab[] = [
         buildProjectInfo(answers, calcs),
-        buildBudgetSummary(answers, calcs),
-        buildDisplayDetails(answers, calcs),
-        buildLaborWorksheet(answers, calcs),
+        buildBudgetSummary(answersWithAlts, allCalcs),
+        buildDisplayDetails(answersWithAlts, allCalcs),
+        buildLaborWorksheet(answers, calcs), // Labor doesn't change for alts
     ];
 
     // Add Cost Category Breakdown (3A-3G) in Detailed mode
@@ -628,33 +710,37 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
             const ledMargin = c.ledMarginPct;
             const hwSell = c.hardwareCost / (1 - ledMargin);
             const hwMarginDollar = hwSell - c.hardwareCost;
+            const isAlt = c.isAlt === true;
             // TVs: show model name (no pitch), LEDs: show name with pitch
-            const desc = isTvDisplay(d)
-                ? displayDescription(d, c)
-                : `${c.name} — ${c.pixelPitch}mm`;
+            const desc = isAlt
+                ? `  ↳ ALT ${c.pixelPitch}mm`
+                : isTvDisplay(d)
+                    ? displayDescription(d, c)
+                    : `${c.name} — ${c.pixelPitch}mm`;
             rows.push({
                 cells: [
-                    { value: "" },
-                    { value: desc },
+                    { value: isAlt ? "" : "" },
+                    { value: desc, highlight: isAlt },
                     { value: 1, align: "center" },
                     { value: "EA", align: "center" },
-                    { value: c.hardwareCost, currency: true, align: "right" },
-                    { value: hwSell, currency: true, align: "right" },
+                    { value: c.hardwareCost, currency: true, align: "right", highlight: isAlt },
+                    { value: hwSell, currency: true, align: "right", highlight: isAlt },
                     { value: ledMargin, percent: true, align: "center" },
-                    { value: hwMarginDollar, currency: true, align: "right" },
+                    { value: hwMarginDollar, currency: true, align: "right", highlight: isAlt },
                 ],
             });
         }
 
-        // Services — broken out by line item
+        // Services — broken out by line item (primary displays only, services don't change for alts)
+        const primaryCalcs = calcs.filter((c) => !c.isAlt);
         const svcMarginPctBudget = ((answers.servicesMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
         rows.push({
             cells: [{ value: "2.0 INSTALLATION SERVICES", bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }],
         });
 
-        // Aggregate labor line items across all displays
+        // Aggregate labor line items across primary displays only
         let totStruct = 0, totInstall = 0, totElec = 0, totEquip = 0, totPm = 0, totEng = 0, totShip = 0, totDemo = 0;
-        for (const c of calcs) {
+        for (const c of primaryCalcs) {
             totStruct += c.structureCost;
             totInstall += c.installCost;
             totElec += c.electricalCost;
@@ -694,9 +780,9 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
             });
         }
 
-        // Accessories / Bundle Items
+        // Accessories / Bundle Items (primary only)
         const allBundleItems: { name: string; cost: number }[] = [];
-        for (const c of calcs) {
+        for (const c of primaryCalcs) {
             if (c.bundleItems) {
                 for (const item of c.bundleItems) {
                     const existing = allBundleItems.find((b) => b.name === item.name);
@@ -791,7 +877,7 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
             const years = parseInt(answers.warrantyYears || "1") || 1;
             if (answers.includeWarranty === "priced") {
                 // Use manual allocation, or auto-calc: 3% of total hardware cost per year
-                const totalHw = calcs.reduce((s, c) => s + c.hardwareCost, 0);
+                const totalHw = primaryCalcs.reduce((s, c) => s + c.hardwareCost, 0);
                 warrantyCost = answers.warrantyAllocation > 0 ? answers.warrantyAllocation : totalHw * 0.03 * years;
                 warrantySell = svcMarginPctBudget < 1 ? warrantyCost / (1 - svcMarginPctBudget) : warrantyCost;
             }
@@ -819,16 +905,16 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
             });
         }
 
-        // Totals
+        // Totals (primary displays only — alts are informational)
         rows.push({ cells: [{ value: "" }], isSeparator: true });
-        const totalCost = calcs.reduce((s, c) => s + c.totalCost, 0) + cmsCost + scoringCost + warrantyCost;
-        const totalSell = calcs.reduce((s, c) => s + c.sellPrice, 0) + cmsSell + scoringSell + warrantySell;
+        const totalCost = primaryCalcs.reduce((s, c) => s + c.totalCost, 0) + cmsCost + scoringCost + warrantyCost;
+        const totalSell = primaryCalcs.reduce((s, c) => s + c.sellPrice, 0) + cmsSell + scoringSell + warrantySell;
         const addOnSell = cmsSell + scoringSell + warrantySell;
         const bondRate = (answers.bondRate ?? 1.5) / 100;
         const taxRate = (answers.salesTaxRate ?? 9.5) / 100;
-        const baseBond = calcs.reduce((s, c) => s + c.bondCost, 0);
+        const baseBond = primaryCalcs.reduce((s, c) => s + c.bondCost, 0);
         const totalBond = baseBond + (addOnSell * bondRate);
-        const baseTax = calcs.reduce((s, c) => s + c.salesTaxCost, 0);
+        const baseTax = primaryCalcs.reduce((s, c) => s + c.salesTaxCost, 0);
         const totalTax = baseTax + ((addOnSell + addOnSell * bondRate) * taxRate);
         const grandTotal = totalSell + totalBond + totalTax;
 
@@ -859,7 +945,7 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
         });
 
         // Profit Shield analysis (folded from Margin Analysis)
-        if (calcs[0]?.profitShieldMargin != null) {
+        if (primaryCalcs[0]?.profitShieldMargin != null) {
             rows.push({ cells: [{ value: "" }], isSeparator: true });
             rows.push({
                 cells: [{ value: "PROFIT SHIELD ANALYSIS", bold: true, header: true, span: 8 }],
@@ -995,20 +1081,24 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                 const ledMargin = c.ledMarginPct;
                 const hwSell = c.hardwareCost / (1 - ledMargin);
                 const marginDollar = hwSell - c.hardwareCost;
+                const isAlt = c.isAlt === true;
+                const displayLabel = isAlt
+                    ? `  ↳ ALT ${c.pixelPitch}mm`
+                    : displayDescription(d, c);
                 rows.push({
                     cells: [
-                        { value: displayDescription(d, c) },
-                        { value: (d?.displayType || "custom").replace(/_/g, " ") },
+                        { value: displayLabel, highlight: isAlt },
+                        { value: isAlt ? "alternate" : (d?.displayType || "custom").replace(/_/g, " ") },
                         { value: c.widthFt, align: "center" },
                         { value: c.heightFt, align: "center" },
                         { value: Math.round(c.areaSqFt * 100) / 100, align: "center" },
-                        { value: `${c.pixelPitch}mm`, align: "center" },
+                        { value: `${c.pixelPitch}mm`, align: "center", highlight: isAlt },
                         { value: c.totalPixels.toLocaleString(), align: "right" },
-                        { value: c.costPerSqFt, currency: true, align: "right" },
-                        { value: c.hardwareCost, currency: true, align: "right" },
-                        { value: hwSell, currency: true, align: "right" },
+                        { value: c.costPerSqFt, currency: true, align: "right", highlight: isAlt },
+                        { value: c.hardwareCost, currency: true, align: "right", highlight: isAlt },
+                        { value: hwSell, currency: true, align: "right", highlight: isAlt },
                         { value: ledMargin, percent: true, align: "center" },
-                        { value: marginDollar, currency: true, align: "right" },
+                        { value: marginDollar, currency: true, align: "right", highlight: isAlt },
                     ],
                 });
             }
@@ -1082,9 +1172,10 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
             }
         }
 
-        // Total row
-        const totalHwCost = calcs.reduce((s, c) => s + c.hardwareCost, 0);
-        const totalHwSell = calcs.reduce((s, c) => s + c.hardwareCost / (1 - c.ledMarginPct), 0);
+        // Total row (primary displays only — alts are informational)
+        const primaryOnly = calcs.filter((c) => !c.isAlt);
+        const totalHwCost = primaryOnly.reduce((s, c) => s + c.hardwareCost, 0);
+        const totalHwSell = primaryOnly.reduce((s, c) => s + c.hardwareCost / (1 - c.ledMarginPct), 0);
         const totalMarginDollar = totalHwSell - totalHwCost;
         const totalMarginPct = totalHwCost > 0 ? 1 - (totalHwCost / totalHwSell) : 0;
         rows.push({ cells: [{ value: "" }], isSeparator: true });

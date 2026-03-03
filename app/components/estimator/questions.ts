@@ -305,6 +305,28 @@ export const DISPLAY_QUESTIONS: Question[] = [
         affectsSheet: "Display Details",
     },
     {
+        id: "altPitches",
+        phase: "display",
+        type: "multi-select",
+        label: "Alternate pitches?",
+        subtitle: "Pick additional pitch options — same display, only LED cost changes. Skip if no alternates needed.",
+        options: [
+            { value: "1.2", label: "1.2mm", description: "Ultra-fine — premium indoor", environment: "indoor" },
+            { value: "1.5", label: "1.5mm", description: "Fine — indoor close-view", environment: "indoor" },
+            { value: "1.875", label: "1.875mm", description: "Fine — indoor standard", environment: "indoor" },
+            { value: "2.5", label: "2.5mm", description: "Standard indoor", environment: "indoor" },
+            { value: "3.9", label: "3.9mm", description: "Indoor/outdoor versatile", environment: "both" },
+            { value: "4", label: "4mm", description: "Standard indoor/outdoor", environment: "both" },
+            { value: "6", label: "6mm", description: "Medium distance", environment: "both" },
+            { value: "8", label: "8mm", description: "Medium/large viewing distance", environment: "both" },
+            { value: "10", label: "10mm", description: "Large viewing distance", environment: "both" },
+            { value: "16", label: "16mm", description: "Highway/billboard", environment: "outdoor" },
+        ],
+        defaultValue: [],
+        required: false,
+        affectsSheet: "Display Details",
+    },
+    {
         id: "productId",
         phase: "display",
         type: "product-select",
@@ -722,6 +744,8 @@ export interface DisplayAnswers {
     dataRunDistance: string;    // "copper" | "fiber"
     // Smart Assembly Bundle — excluded accessory IDs
     excludedBundleItems: string[];
+    // Alt pitch — alternate pixel pitch options (only LED cost changes)
+    altPitches: string[];
 }
 
 export function getDefaultAnswers(): EstimatorAnswers {
@@ -775,6 +799,7 @@ export function getDefaultDisplayAnswers(): DisplayAnswers {
         powerDistance: "near",
         dataRunDistance: "copper",
         excludedBundleItems: [],
+        altPitches: [],
     };
 }
 
