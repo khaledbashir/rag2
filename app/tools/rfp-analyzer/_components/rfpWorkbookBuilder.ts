@@ -425,7 +425,29 @@ function buildMarginAnalysis(input: RfpWorkbookInput): SheetTab {
     });
   }
 
-  // Section 3: Custom line items
+  // Section 3: CMS placeholder
+  lineItems.push({
+    cells: [
+      c("CMS (Content Management System)", { bold: true }),
+      curr(0),
+      curr(0),
+      curr(0),
+      pct(0.10, { className: "text-amber-600" }),
+    ],
+  });
+
+  // Section 4: Scoring placeholder
+  lineItems.push({
+    cells: [
+      c("Scoring System", { bold: true }),
+      curr(0),
+      curr(0),
+      curr(0),
+      pct(0.10, { className: "text-amber-600" }),
+    ],
+  });
+
+  // Section 5: Custom line items
   for (const d of input.pricingDisplays.filter((x) => x.isCustom)) {
     const cost = d.hardwareCost + (d.installCost ?? 0) + (d.structuralCost ?? 0) + (d.pmCost ?? 0) + (d.engCost ?? 0);
     const sell = d.blendedMarginPct > 0 ? cost / (1 - d.blendedMarginPct) : cost;
@@ -1754,12 +1776,12 @@ export function buildRfpWorkbook(input: RfpWorkbookInput): WorkbookData {
 
   const sheets: SheetTab[] = [
     buildLedCostSheet(input),
+    buildProcessorCount(input),
     buildMarginAnalysis(input),
     buildInstallBase(input),
     ...(bidFormSheet ? [bidFormSheet] : []),
     buildProjectInfo(input),
     buildRequirements(input),
-    buildProcessorCount(input),
     buildConfig(input),
     buildVendorSpecForm(input),
     buildVendorPricing(input),
