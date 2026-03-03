@@ -17,21 +17,67 @@ export async function POST(req: NextRequest) {
 
         const buffer = Buffer.from(await file.arrayBuffer());
 
-        // Parse with existing service (for backwards compatibility)
-        const data = await parseANCExcel(buffer, file.name);
-
-        // NEW: Also parse with PricingTable parser for Natalia Mirror Mode
+        // --- Step 1: Try Intelligence Mode parser (full LED Sheet extraction) ---
+        let data: any = null;
+        let intelligenceError: Error | null = null;
         try {
-            const workbook = xlsx.read(buffer, { type: "buffer" });
-            const sourceWorkbookHash = crypto.createHash("sha256").update(buffer).digest("hex");
-            const { document: pricingDocument, validation } = parsePricingTablesWithValidation(workbook, file.name, {
+            data = await parseANCExcel(buffer, file.name);
+        } catch (err) {
+            intelligenceError = err instanceof Error ? err : new Error(String(err));
+            console.warn("[EXCEL IMPORT] Intelligence parser skipped:", intelligenceError.message);
+        }
+
+        // --- Step 2: Always try PricingTable parser (Mirror Mode) ---
+        const workbook = xlsx.read(buffer, { type: "buffer" });
+        const sourceWorkbookHash = crypto.createHash("sha256").update(buffer).digest("hex");
+        let pricingDocument: any = null;
+        let validation: any = null;
+        try {
+            const result = parsePricingTablesWithValidation(workbook, file.name, {
                 strict: true,
                 sourceWorkbookHash,
             });
+            pricingDocument = result.document;
+            validation = result.validation;
+        } catch (pricingErr) {
+            Sentry.captureException(pricingErr, { tags: { area: "pricingTableParser" } });
+            console.warn("[EXCEL IMPORT] PricingTable parser warning:", pricingErr);
+        }
 
-            if (validation.status === "FAIL" || !pricingDocument) {
+        // --- Step 3: Handle results ---
+
+        // Case A: Intelligence parser succeeded — enrich with pricing data
+        if (data) {
+            if (pricingDocument && pricingDocument.tables.length > 0 && data.formData?.details) {
+                (data.formData.details as any).pricingDocument = pricingDocument;
+                (data.formData.details as any).parserValidationReport = validation;
+                (data.formData.details as any).parserStrictVersion = PRICING_PARSER_STRICT_VERSION;
+                (data.formData.details as any).sourceWorkbookHash = sourceWorkbookHash;
+
+                // REQ-127: Backfill screen.group if missing by correlating with Pricing Tables
+                const screens = (data.formData.details.screens as any[]) || [];
+                const tables = pricingDocument.tables;
+                const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "").trim();
+
+                screens.forEach((screen: any) => {
+                    if (!screen.group) {
+                        const sName = norm(screen.name);
+                        const match = tables.find((t: any) => {
+                            const tName = norm(t.name);
+                            return tName.includes(sName) || sName.includes(tName);
+                        });
+                        if (match) {
+                            screen.group = match.name;
+                            console.log(`[EXCEL IMPORT] Backfilled group for screen "${screen.name}" -> "${match.name}"`);
+                        }
+                    }
+                });
+
+                console.log(`[EXCEL IMPORT] PricingDocument: ${pricingDocument.tables.length} tables, ${pricingDocument.documentTotal} total`);
+                (data as any).validation = validation;
+            } else if (validation?.status === "FAIL" || !pricingDocument) {
                 const respCandidates = validation?.evidence?.respMatrixSheetCandidates || [];
-                const hasRespHint = respCandidates.length > 0 || validation.errors.some((e) => /resp matrix/i.test(e));
+                const hasRespHint = respCandidates.length > 0 || validation?.errors?.some((e: string) => /resp matrix/i.test(e));
                 const message = hasRespHint
                     ? "We couldn't read the Responsibility Matrix from this Excel. If your file includes one, make sure the sheet name starts with 'Resp Matrix' and includes ANC/Purchaser columns."
                     : "We couldn't read the pricing tables from this Excel. Please confirm the workbook has a valid Margin Analysis tab with Description, Cost, and Selling Price columns.";
@@ -45,50 +91,41 @@ export async function POST(req: NextRequest) {
                 }, { status: 422 });
             }
 
-            if (pricingDocument && pricingDocument.tables.length > 0) {
-                // Attach pricingDocument to the response inside details so it persists
-                if (data.formData && data.formData.details) {
-                    (data.formData.details as any).pricingDocument = pricingDocument;
-                    (data.formData.details as any).parserValidationReport = validation;
-                    (data.formData.details as any).parserStrictVersion = PRICING_PARSER_STRICT_VERSION;
-                    (data.formData.details as any).sourceWorkbookHash = sourceWorkbookHash;
-
-                    // REQ-127: Backfill screen.group if missing by correlating with Pricing Tables
-                    // This ensures the link between Screens (LED Sheet) and Tables (Margin Analysis) is robust
-                    // even if the excelImportService's fuzzy matcher missed the section header.
-                    const screens = (data.formData.details.screens as any[]) || [];
-                    const tables = pricingDocument.tables;
-
-                    const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "").trim();
-
-                    screens.forEach(screen => {
-                        if (!screen.group) {
-                            const sName = norm(screen.name);
-                            // Find table with matching name (fuzzy)
-                            const match = tables.find(t => {
-                                const tName = norm(t.name);
-                                return tName.includes(sName) || sName.includes(tName);
-                            });
-
-                            if (match) {
-                                screen.group = match.name;
-                                console.log(`[EXCEL IMPORT] Backfilled group for screen "${screen.name}" -> "${match.name}"`);
-                            }
-                        }
-                    });
-                }
-                console.log(`[EXCEL IMPORT] PricingDocument: ${pricingDocument.tables.length} tables, ${pricingDocument.documentTotal} total`);
-                (data as any).validation = validation;
-            }
-        } catch (pricingErr) {
-            Sentry.captureException(pricingErr, { tags: { area: "pricingTableParser" } });
-            console.warn("[EXCEL IMPORT] PricingTable parser warning:", pricingErr);
+            return NextResponse.json(data);
         }
 
-        return NextResponse.json(data);
-    } catch (err) {
-        // Standard parsers failed — try the Frankenstein normalizer as fallback
-        console.warn("[EXCEL IMPORT] Standard parser failed, trying normalizer:", String(err));
+        // Case B: Intelligence parser failed but Mirror Mode (pricingTableParser) succeeded
+        // This handles simple cost-analysis-only files (e.g. CAA ICON single-product proposals)
+        if (pricingDocument && pricingDocument.tables.length > 0 && validation?.status !== "FAIL") {
+            console.log(`[EXCEL IMPORT] Mirror-only mode: ${pricingDocument.tables.length} tables, ${pricingDocument.documentTotal} total`);
+
+            // Build a minimal formData envelope so the frontend can hydrate the proposal
+            const minimalData = {
+                formData: {
+                    details: {
+                        proposalName: pricingDocument.projectName || file.name.replace(/\.(xlsx?|csv)$/i, ""),
+                        screens: [],
+                        items: [],
+                        pricingDocument,
+                        parserValidationReport: validation,
+                        parserStrictVersion: PRICING_PARSER_STRICT_VERSION,
+                        sourceWorkbookHash,
+                        calculationMode: "MIRROR",
+                        mirrorMode: true,
+                    },
+                    receiver: {
+                        name: pricingDocument.projectName || "",
+                    },
+                },
+                validation,
+                mirrorModeOnly: true,
+            };
+
+            return NextResponse.json(minimalData);
+        }
+
+        // Case C: Both parsers failed — try the Frankenstein normalizer as fallback
+        console.warn("[EXCEL IMPORT] Both parsers failed, trying normalizer. Intelligence error:", intelligenceError?.message);
         try {
             const fallbackFormData = await req.clone().formData();
             const fallbackFile = fallbackFormData.get("file") as File;
@@ -97,18 +134,16 @@ export async function POST(req: NextRequest) {
                 const normResult = await normalizeExcel(fallbackBuffer, fallbackFile.name);
 
                 if (normResult.status === "success") {
-                    // Profile matched — return extracted data with a flag
                     return NextResponse.json({
                         ...normResult,
                         normalizedImport: true,
                     });
                 }
 
-                // No profile — return 202 so frontend shows the Mapping Wizard
                 return NextResponse.json({
                     ...normResult,
                     normalizedImport: true,
-                    originalError: String(err),
+                    originalError: String(intelligenceError),
                 }, { status: 202 });
             }
         } catch (normErr) {
@@ -116,9 +151,14 @@ export async function POST(req: NextRequest) {
             console.error("[EXCEL IMPORT] Normalizer fallback also failed:", normErr);
         }
 
-        // Both parsers failed — return the original error
+        // All parsers failed
+        const finalErr = intelligenceError || new Error("All parsers failed");
+        Sentry.captureException(finalErr, { tags: { area: "excelImport" } });
+        console.error("Excel import error:", finalErr);
+        return NextResponse.json({ error: String(finalErr) }, { status: 500 });
+    } catch (err) {
         Sentry.captureException(err, { tags: { area: "excelImport" } });
-        console.error("Excel import error:", err);
+        console.error("Excel import unexpected error:", err);
         return NextResponse.json({ error: String(err) }, { status: 500 });
     }
 }
