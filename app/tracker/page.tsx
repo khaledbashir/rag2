@@ -134,19 +134,43 @@ function Card({
 }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
+  const [confirming, setConfirming] = useState(false);
   const vf = (item.verifications || []) as Verification[];
   const cc = item._count?.comments || item.comments?.length || 0;
 
   return (
     <div
       className={`group rounded-lg border transition-all duration-500 ${
-        highlight
-          ? "bg-[#0A52EF]/[0.03] border-[#0A52EF]/20 ring-1 ring-[#0A52EF]/10"
-          : open
-            ? "bg-white border-gray-200 shadow-sm"
-            : "bg-white border-gray-100 hover:border-gray-200"
+        confirming
+          ? "bg-red-50/50 border-red-200"
+          : highlight
+            ? "bg-[#0A52EF]/[0.03] border-[#0A52EF]/20 ring-1 ring-[#0A52EF]/10"
+            : open
+              ? "bg-white border-gray-200 shadow-sm"
+              : "bg-white border-gray-100 hover:border-gray-200"
       }`}
     >
+      {/* Inline delete confirmation bar */}
+      {confirming && (
+        <div className="flex items-center justify-between px-3.5 py-2 bg-red-50 border-b border-red-100 rounded-t-lg">
+          <span className="text-xs text-red-700 font-medium">Delete this task?</span>
+          <div className="flex gap-1.5">
+            <button
+              onClick={(e) => { e.stopPropagation(); setConfirming(false); onDelete(item.id); }}
+              className="px-2.5 py-1 text-xs font-medium bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors"
+            >
+              Delete
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); setConfirming(false); }}
+              className="px-2.5 py-1 text-xs font-medium bg-white hover:bg-gray-50 text-gray-600 border border-gray-200 rounded-md transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="px-3.5 py-2.5 cursor-pointer flex items-start gap-3" onClick={() => setOpen(!open)}>
         {/* Status dot */}
         <div className="mt-1.5 shrink-0">
@@ -197,9 +221,9 @@ function Card({
           </div>
         </div>
 
-        {/* Delete button — always visible on hover, no name needed */}
+        {/* Delete button — shows on hover, triggers inline confirm */}
         <button
-          onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
+          onClick={(e) => { e.stopPropagation(); setConfirming(true); }}
           className="mt-1 shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all"
           title="Delete"
         >
@@ -582,13 +606,12 @@ export default function TrackerPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this item?")) return;
     setItems((p) => p.filter((i) => i.id !== id));
     try {
       await fetch(`/api/tracker/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", name: me || "System" }),
+        body: JSON.stringify({ action: "delete", name: me || "Ahmad" }),
       });
       load();
     } catch { load(); }
@@ -600,7 +623,7 @@ export default function TrackerPage() {
       await fetch(`/api/tracker/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "move", column: col, name: me || "System" }),
+        body: JSON.stringify({ action: "move", column: col, name: me || "Ahmad" }),
       });
       load();
     } catch { load(); }
@@ -617,7 +640,7 @@ export default function TrackerPage() {
       await fetch("/api/tracker", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add", description: addText, category: addCat, author: me || "System" }),
+        body: JSON.stringify({ action: "add", description: addText, category: addCat, author: me || "Ahmad" }),
       });
       setAddText("");
       load();
