@@ -130,7 +130,7 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
             <div className="mt-1 break-inside-avoid" style={{ marginBottom: `${exhibitAHeaderGap}px` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <div style={{ width: '3px', height: '12px', borderRadius: '1px', background: '#0A52EF', flexShrink: 0 }} />
-                    <h2 className="text-[10px] font-semibold text-[#002C73] uppercase tracking-[0.15em]" style={{ margin: 0 }}>
+                    <h2 className="text-[12px] font-semibold text-[#002C73] uppercase tracking-[0.15em]" style={{ margin: 0 }}>
                         {headerText}
                     </h2>
                 </div>
@@ -139,7 +139,7 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
             <div className="border border-gray-300 break-inside-avoid overflow-hidden">
                 {/* Use HTML table for reliable PDF column separation (avoids merged headers in Puppeteer) */}
                 {/* fontFamily forced on table to kill LaTeX-style math font fallback in Puppeteer */}
-                <table className="w-full text-[8px] border-collapse" style={{ tableLayout: "fixed", pageBreakInside: 'auto', fontFamily: "Arial, Helvetica, sans-serif" }}>
+                <table className="w-full text-[10px] border-collapse" style={{ tableLayout: "fixed", pageBreakInside: 'auto', fontFamily: "Arial, Helvetica, sans-serif" }}>
                     <colgroup>
                         {isCondensed ? (
                             <>
@@ -159,7 +159,7 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
                         )}
                     </colgroup>
                     <thead>
-                        <tr className="text-[8px] font-semibold uppercase tracking-wider" style={{ color: "#002C73", borderBottom: "2px solid #0A52EF", background: "transparent", pageBreakInside: 'avoid', breakInside: 'avoid', fontFamily: "Arial, Helvetica, sans-serif" }}>
+                        <tr className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#002C73", borderBottom: "2px solid #0A52EF", background: "transparent", pageBreakInside: 'avoid', breakInside: 'avoid', fontFamily: "Arial, Helvetica, sans-serif" }}>
                             <th className="text-left" style={{ whiteSpace: "nowrap", padding: "4px 10px" }}>DISPLAY NAME</th>
                             <th className="text-left" style={{ whiteSpace: "nowrap", padding: "4px 10px" }}>DIMENSIONS</th>
                             {!isCondensed && <th className="text-right" style={{ whiteSpace: "nowrap", padding: "4px 10px" }}>PITCH</th>}
@@ -196,28 +196,28 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
                                         className="border-b border-gray-200 last:border-b-0 break-inside-avoid"
                                         style={{ minHeight: 16, pageBreakInside: 'avoid', breakInside: 'avoid' }}
                                     >
-                                        <td className="font-semibold text-[7px] align-top" style={{ ...cellStyle, wordBreak: "break-word", whiteSpace: "normal" }}>
+                                        <td className="font-semibold text-[9px] align-top" style={{ ...cellStyle, wordBreak: "break-word", whiteSpace: "normal" }}>
                                             {name}
                                         </td>
-                                        <td className="text-gray-800 text-[7px] align-top" style={{ ...cellStyle, whiteSpace: "nowrap" }}>
+                                        <td className="text-gray-800 text-[9px] align-top" style={{ ...cellStyle, whiteSpace: "nowrap" }}>
                                             {formatFeet(h)} x {formatFeet(w)}
                                         </td>
                                         {!isCondensed && (
-                                            <td className="text-right tabular-nums text-[7px] align-top" style={{ ...cellStyle, whiteSpace: "nowrap" }}>
+                                            <td className="text-right tabular-nums text-[9px] align-top" style={{ ...cellStyle, whiteSpace: "nowrap" }}>
                                                 {pitch ? `${formatPitchMm(pitch)}mm` : "\u2014"}
                                             </td>
                                         )}
                                         {!isCondensed && (
-                                            <td className="text-right tabular-nums text-[7px] align-top" style={{ ...cellStyle, whiteSpace: "nowrap" }}>
+                                            <td className="text-right tabular-nums text-[9px] align-top" style={{ ...cellStyle, whiteSpace: "nowrap" }}>
                                                 {resolution}
                                             </td>
                                         )}
                                         {!isCondensed && hasAnyBrightness && (
-                                            <td className="text-right tabular-nums text-[7px] align-top" style={{ ...cellStyle, whiteSpace: "nowrap" }}>
+                                            <td className="text-right tabular-nums text-[9px] align-top" style={{ ...cellStyle, whiteSpace: "nowrap" }}>
                                                 {brightnessText}
                                             </td>
                                         )}
-                                        <td className="text-right tabular-nums text-[7px] align-top" style={cellStyle}>
+                                        <td className="text-right tabular-nums text-[9px] align-top" style={cellStyle}>
                                             {isFinite(qty) ? qty : "\u2014"}
                                         </td>
                                     </tr>

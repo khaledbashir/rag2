@@ -68,28 +68,28 @@ const ExhibitA_SOW = ({ data }: ExhibitAProps) => {
         <div className="pt-4">
             <div className="text-center mb-4">
                 <h2 className="text-sm font-bold text-[#0A52EF] uppercase tracking-wider">Exhibit B</h2>
-                <h3 className="text-[11px] font-semibold text-[#002C73] uppercase tracking-widest">Statement of Work</h3>
+                <h3 className="text-[13px] font-semibold text-[#002C73] uppercase tracking-widest">Statement of Work</h3>
             </div>
 
             {/* AI-Generated Risk Detection Banner */}
             {(riskScan.hasUnionRequirement || riskScan.hasOutdoorRequirement || riskScan.hasLiquidatedDamages) && (
                 <div className="mb-8 p-4 bg-[#0A52EF]/5 border border-[#0A52EF]/20 rounded-xl">
-                    <h4 className="text-[10px] font-bold text-[#0A52EF] uppercase tracking-wider mb-2">
+                    <h4 className="text-[12px] font-bold text-[#0A52EF] uppercase tracking-wider mb-2">
                         AI-Detected RFP Requirements
                     </h4>
                     <div className="flex flex-wrap gap-2">
                         {riskScan.hasUnionRequirement && (
-                            <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-medium bg-amber-100 text-amber-800">
+                            <span className="inline-flex items-center px-2 py-1 rounded text-[12px] font-medium bg-amber-100 text-amber-800">
                                 ⚡ Union Labor Required
                             </span>
                         )}
                         {riskScan.hasOutdoorRequirement && (
-                            <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-medium bg-[#0A52EF]/10 text-[#0A52EF]">
+                            <span className="inline-flex items-center px-2 py-1 rounded text-[12px] font-medium bg-[#0A52EF]/10 text-[#0A52EF]">
                                 🌤️ Outdoor/IP65 Rated
                             </span>
                         )}
                         {riskScan.hasLiquidatedDamages && (
-                            <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-medium bg-red-100 text-red-800">
+                            <span className="inline-flex items-center px-2 py-1 rounded text-[12px] font-medium bg-red-100 text-red-800">
                                 ⏰ Liquidated Damages Apply
                             </span>
                         )}
@@ -103,24 +103,24 @@ const ExhibitA_SOW = ({ data }: ExhibitAProps) => {
             {/* 1. DESIGN SERVICES - AI-Enhanced */}
             {(designSections.length > 0 || hasAIGeneratedContent) && (
                 <div className="mb-6">
-                    <h4 className="text-[10px] font-semibold bg-transparent text-[#002C73] py-1 px-0 mb-4 uppercase tracking-wider border-b-2 border-[#0A52EF]">1. Design & Engineering Services</h4>
+                    <h4 className="text-[12px] font-semibold bg-transparent text-[#002C73] py-1 px-0 mb-4 uppercase tracking-wider border-b-2 border-[#0A52EF]">1. Design & Engineering Services</h4>
                     <div className="space-y-6 px-2">
                         {/* AI-Generated Design Services */}
                         {aiGeneratedSOW.designServices && (
                             <div>
-                                <h5 className="text-[10px] font-bold text-[#0A52EF] border-b border-gray-100 pb-1 mb-2 uppercase tracking-wider flex items-center gap-2">
+                                <h5 className="text-[12px] font-bold text-[#0A52EF] border-b border-gray-100 pb-1 mb-2 uppercase tracking-wider flex items-center gap-2">
                                     Design Services
-                                    <span className="text-[8px] px-1.5 py-0.5 bg-[#0A52EF]/10 text-[#0A52EF] rounded">AI-Generated</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 bg-[#0A52EF]/10 text-[#0A52EF] rounded">AI-Generated</span>
                                 </h5>
-                                <p className="text-[9px] leading-relaxed text-gray-700 whitespace-pre-wrap text-justify">{aiGeneratedSOW.designServices}</p>
+                                <p className="text-[13px] leading-relaxed text-gray-700 whitespace-pre-wrap text-justify">{aiGeneratedSOW.designServices}</p>
                             </div>
                         )}
                         
                         {/* Traditional Design Sections */}
                         {designSections.map((section, idx) => (
                             <div key={idx}>
-                                <h5 className="text-[10px] font-bold text-[#0A52EF] border-b border-gray-100 pb-1 mb-2 uppercase tracking-wider">{section.title}</h5>
-                                <p className="text-[9px] leading-relaxed text-gray-700 whitespace-pre-wrap text-justify">{section.content}</p>
+                                <h5 className="text-[12px] font-bold text-[#0A52EF] border-b border-gray-100 pb-1 mb-2 uppercase tracking-wider">{section.title}</h5>
+                                <p className="text-[13px] leading-relaxed text-gray-700 whitespace-pre-wrap text-justify">{section.content}</p>
                             </div>
                         ))}
                     </div>
@@ -130,24 +130,24 @@ const ExhibitA_SOW = ({ data }: ExhibitAProps) => {
             {/* 2. CONSTRUCTION SERVICES - AI-Enhanced */}
             {(constructionSections.length > 0 || hasAIGeneratedContent) && (
                 <div className="mb-6">
-                    <h4 className="text-[10px] font-semibold bg-transparent text-[#002C73] py-1 px-0 mb-4 uppercase tracking-wider border-b-2 border-[#0A52EF]">2. Construction & Technical Logistics</h4>
+                    <h4 className="text-[12px] font-semibold bg-transparent text-[#002C73] py-1 px-0 mb-4 uppercase tracking-wider border-b-2 border-[#0A52EF]">2. Construction & Technical Logistics</h4>
                     <div className="space-y-6 px-2">
                         {/* AI-Generated Construction Logistics */}
                         {aiGeneratedSOW.constructionLogistics && (
                             <div>
-                                <h5 className="text-[10px] font-bold text-[#0A52EF] border-b border-gray-100 pb-1 mb-2 uppercase tracking-wider flex items-center gap-2">
+                                <h5 className="text-[12px] font-bold text-[#0A52EF] border-b border-gray-100 pb-1 mb-2 uppercase tracking-wider flex items-center gap-2">
                                     Construction Logistics
-                                    <span className="text-[8px] px-1.5 py-0.5 bg-[#0A52EF]/10 text-[#0A52EF] rounded">AI-Generated</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 bg-[#0A52EF]/10 text-[#0A52EF] rounded">AI-Generated</span>
                                 </h5>
-                                <p className="text-[9px] leading-relaxed text-gray-700 whitespace-pre-wrap text-justify">{aiGeneratedSOW.constructionLogistics}</p>
+                                <p className="text-[13px] leading-relaxed text-gray-700 whitespace-pre-wrap text-justify">{aiGeneratedSOW.constructionLogistics}</p>
                             </div>
                         )}
                         
                         {/* Traditional Construction Sections */}
                         {constructionSections.map((section, idx) => (
                             <div key={idx}>
-                                <h5 className="text-[10px] font-bold text-[#0A52EF] border-b border-gray-100 pb-1 mb-2 uppercase tracking-wider">{section.title}</h5>
-                                <p className="text-[9px] leading-relaxed text-gray-700 whitespace-pre-wrap text-justify">{section.content}</p>
+                                <h5 className="text-[12px] font-bold text-[#0A52EF] border-b border-gray-100 pb-1 mb-2 uppercase tracking-wider">{section.title}</h5>
+                                <p className="text-[13px] leading-relaxed text-gray-700 whitespace-pre-wrap text-justify">{section.content}</p>
                             </div>
                         ))}
                     </div>
@@ -157,13 +157,13 @@ const ExhibitA_SOW = ({ data }: ExhibitAProps) => {
             {/* 3. PROJECT CONSTRAINTS - AI-Enhanced */}
             {(constraintSections.length > 0 || aiGeneratedSOW.constraints) && (
                 <div className="mb-6">
-                    <h4 className="text-[10px] font-semibold bg-transparent text-[#002C73] py-1 px-0 mb-4 uppercase tracking-wider border-b-2 border-[#0A52EF]">3. Project Constraints & Compliance</h4>
+                    <h4 className="text-[12px] font-semibold bg-transparent text-[#002C73] py-1 px-0 mb-4 uppercase tracking-wider border-b-2 border-[#0A52EF]">3. Project Constraints & Compliance</h4>
 
                     {/* Venue Specific Dates (REQ-47) - Integrated into Constraints */}
                     {(details?.venue === "Milan Puskar Stadium" || details?.venue === "WVU Coliseum") && (
                         <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-xl break-inside-avoid">
-                            <h5 className="text-[10px] font-bold text-gray-900 uppercase mb-3 border-b border-gray-300 pb-1">Site Logistics & Liquidated Damages</h5>
-                            <div className="grid grid-cols-2 gap-4 text-[10px]">
+                            <h5 className="text-[12px] font-bold text-gray-900 uppercase mb-3 border-b border-gray-300 pb-1">Site Logistics & Liquidated Damages</h5>
+                            <div className="grid grid-cols-2 gap-4 text-[12px]">
                                 <div>
                                     <span className="font-bold text-gray-500 uppercase">Substantial Completion:</span>
                                     <p className="text-brand-blue font-bold">
@@ -184,18 +184,18 @@ const ExhibitA_SOW = ({ data }: ExhibitAProps) => {
                         {/* AI-Generated Constraints */}
                         {aiGeneratedSOW.constraints && (
                             <div>
-                                <h5 className="text-[10px] font-bold text-[#0A52EF] border-b border-gray-100 pb-1 mb-2 uppercase tracking-wider flex items-center gap-2">
+                                <h5 className="text-[12px] font-bold text-[#0A52EF] border-b border-gray-100 pb-1 mb-2 uppercase tracking-wider flex items-center gap-2">
                                     Project Constraints
-                                    <span className="text-[8px] px-1.5 py-0.5 bg-[#0A52EF]/10 text-[#0A52EF] rounded">AI-Generated</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 bg-[#0A52EF]/10 text-[#0A52EF] rounded">AI-Generated</span>
                                 </h5>
-                                <p className="text-[9px] leading-relaxed text-gray-700 whitespace-pre-wrap text-justify">{aiGeneratedSOW.constraints}</p>
+                                <p className="text-[13px] leading-relaxed text-gray-700 whitespace-pre-wrap text-justify">{aiGeneratedSOW.constraints}</p>
                             </div>
                         )}
 
                         {constraintSections.map((section, idx) => (
                             <div key={idx}>
-                                <h5 className="text-[10px] font-bold text-[#0A52EF] border-b border-gray-100 pb-1 mb-2 uppercase tracking-wider">{section.title}</h5>
-                                <p className="text-[9px] leading-relaxed text-gray-700 whitespace-pre-wrap text-justify">{section.content}</p>
+                                <h5 className="text-[12px] font-bold text-[#0A52EF] border-b border-gray-100 pb-1 mb-2 uppercase tracking-wider">{section.title}</h5>
+                                <p className="text-[13px] leading-relaxed text-gray-700 whitespace-pre-wrap text-justify">{section.content}</p>
                             </div>
                         ))}
                     </div>
@@ -209,8 +209,8 @@ const ExhibitA_SOW = ({ data }: ExhibitAProps) => {
                         <div className="space-y-6 px-2">
                             {otherSections.map((section, idx) => (
                                 <div key={idx}>
-                                    <h5 className="text-[11px] font-bold text-gray-900 border-b border-gray-100 pb-1 mb-2 uppercase tracking-wider">{section.title}</h5>
-                                    <p className="text-[9px] leading-relaxed text-gray-700 whitespace-pre-wrap text-justify">{section.content}</p>
+                                    <h5 className="text-[13px] font-bold text-gray-900 border-b border-gray-100 pb-1 mb-2 uppercase tracking-wider">{section.title}</h5>
+                                    <p className="text-[13px] leading-relaxed text-gray-700 whitespace-pre-wrap text-justify">{section.content}</p>
                                 </div>
                             ))}
                         </div>

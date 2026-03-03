@@ -11,7 +11,7 @@ const SectionHeader = ({ title, colors }: SectionHeaderProps) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
         <div style={{ width: '3px', height: '14px', borderRadius: '1px', background: colors.primary, flexShrink: 0 }} />
         <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>{title}</span>
+            <span className="text-[13px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>{title}</span>
         </div>
     </div>
 );
@@ -42,7 +42,7 @@ const PdfResponsibilityMatrix = ({ colors, respMatrix }: PdfResponsibilityMatrix
     return (
         <div data-preview-section="exhibit-a" className="px-6">
             <SectionHeader title="Exhibit B — Statement of Work" colors={colors} />
-            <table className="w-full text-[11px] border-collapse" style={{ borderColor: colors.border, border: `1px solid ${colors.border}`, pageBreakInside: 'auto', fontFamily: "Arial, Helvetica, sans-serif" }}>
+            <table className="w-full text-[13px] border-collapse" style={{ borderColor: colors.border, border: `1px solid ${colors.border}`, pageBreakInside: 'auto', fontFamily: "Arial, Helvetica, sans-serif" }}>
                 <colgroup>
                     <col style={{ width: "66%" }} />
                     <col style={{ width: "17%" }} />
@@ -62,15 +62,15 @@ const PdfResponsibilityMatrix = ({ colors, respMatrix }: PdfResponsibilityMatrix
                                 <tr style={{ borderBottom: `2px solid ${colors.primary}`, pageBreakInside: 'avoid', breakInside: 'avoid' }}>
                                     <td
                                         colSpan={sectionType === "table" ? 1 : 3}
-                                        className="text-[11px] font-semibold uppercase tracking-wider"
+                                        className="text-[13px] font-semibold uppercase tracking-wider"
                                         style={{ padding: '4px 16px', color: colors.primaryDark, background: 'transparent' }}
                                     >
                                         {cat.name}
                                     </td>
                                     {sectionType === "table" && (
                                         <>
-                                            <td className="text-[11px] font-semibold uppercase tracking-wider text-center" style={{ padding: '4px 8px', color: colors.primaryDark }}>ANC</td>
-                                            <td className="text-[11px] font-semibold uppercase tracking-wider text-center" style={{ padding: '4px 8px', color: colors.primaryDark }}>PURCHASER</td>
+                                            <td className="text-[13px] font-semibold uppercase tracking-wider text-center" style={{ padding: '4px 8px', color: colors.primaryDark }}>ANC</td>
+                                            <td className="text-[13px] font-semibold uppercase tracking-wider text-center" style={{ padding: '4px 8px', color: colors.primaryDark }}>PURCHASER</td>
                                         </>
                                     )}
                                 </tr>

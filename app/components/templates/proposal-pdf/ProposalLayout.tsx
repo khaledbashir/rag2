@@ -158,7 +158,7 @@ export default function ProposalLayout({ data, children, disableFixedFooter = fa
                     {/* FIXED FOOTER — www.anc.com + decorative slashes */}
                     {!disableFixedFooter && (
                         <div className="absolute bottom-4 left-6 right-6 flex items-center justify-between border-t pt-2" style={{ borderColor: '#E5E7EB' }}>
-                            <p className="text-[8px] font-semibold text-[#0A52EF] tracking-wide">www.anc.com</p>
+                            <p className="text-[10px] font-semibold text-[#0A52EF] tracking-wide">www.anc.com</p>
                             <div className="flex items-center gap-1">
                                 {[...Array(5)].map((_, i) => (
                                     <div
