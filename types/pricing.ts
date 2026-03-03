@@ -23,6 +23,9 @@ export interface PricingLineItem {
 
   /** Original row index from Excel (for debugging/auditing) */
   sourceRow?: number;
+
+  /** True if this row was hidden in the original Excel */
+  isHidden?: boolean;
 }
 
 export interface AlternateItem {

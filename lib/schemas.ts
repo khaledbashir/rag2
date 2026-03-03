@@ -395,6 +395,8 @@ const ProposalDetailsSchema = z.object({
     parserStrictVersion: z.string().optional().nullable(),
     // Prompt 51: index of table used for project grand total summary
     masterTableIndex: z.number().int().nullable().optional().default(null),
+    // Show/hide rows that were hidden in the original Excel workbook
+    showHiddenRows: z.boolean().optional().default(false),
     // FR-4.2: Custom Proposal Notes (ad-hoc text injection)
     customProposalNotes: z.string().optional(),
     // FR-4.3: Editable Introduction Text (custom header blurb with currency disclaimers)

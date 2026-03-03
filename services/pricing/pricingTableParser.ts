@@ -106,6 +106,17 @@ function parsePricingTablesInner(
   const sheet = workbook.Sheets[sheetName];
   const data: any[][] = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
+  // 2b. Extract hidden row metadata from Excel
+  const hiddenRowSet = new Set<number>();
+  if (sheet['!rows']) {
+    (sheet['!rows'] as any[]).forEach((rowInfo: any, idx: number) => {
+      if (rowInfo?.hidden === true) hiddenRowSet.add(idx);
+    });
+  }
+  if (hiddenRowSet.size > 0) {
+    console.log(`[PRICING PARSER] Hidden rows detected: ${hiddenRowSet.size} rows`);
+  }
+
   // 3. Detect currency from sheet name + cell content (first 20 rows)
   const cellSample = data.slice(0, 20).flat().map(c => String(c || "")).join(" ");
   const currency = detectCurrency(sheetName, cellSample);
@@ -123,8 +134,8 @@ function parsePricingTablesInner(
   if (!Number.isFinite(headerRowIdx) || headerRowIdx < 0) {
     return fail("Could not locate header row for pricing columns", sheetName);
   }
-  let rows = parseAllRows(data, columnMap, headerRowIdx);
-  console.log(`[PRICING PARSER] Parsed ${rows.length} rows`);
+  let rows = parseAllRows(data, columnMap, headerRowIdx, hiddenRowSet);
+  console.log(`[PRICING PARSER] Parsed ${rows.length} rows (${hiddenRowSet.size} hidden)`);
 
   // 5b. Extract header row label (e.g. "TOTAL:") — used for summary section naming
   const headerRowLabel = String(data[headerRowIdx]?.[columnMap.label] ?? "").trim();
@@ -171,7 +182,7 @@ function parsePricingTablesInner(
         console.warn(`[PRICING PARSER] ${shiftMsg}`);
         parserWarnings.push(shiftMsg);
         columnMap = shiftedMap;
-        rows = parseAllRows(data, columnMap, headerRowIdx);
+        rows = parseAllRows(data, columnMap, headerRowIdx, hiddenRowSet);
       }
     }
 

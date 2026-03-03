@@ -88,6 +88,7 @@ export function extractTable(
           sellingPrice: effectiveSell,
           isIncluded: false,
           sourceRow: row.rowIndex,
+          isHidden: row.isHidden || undefined,
         });
         continue;
       }
@@ -120,6 +121,7 @@ export function extractTable(
         isExcluded,
         textValue,
         sourceRow: row.rowIndex,
+        isHidden: row.isHidden || undefined,
       });
     } else if (row.label && !row.isEmpty && !row.isSubtotal && !row.isTax && !row.isBond && !row.isGrandTotal && !row.isAlternateHeader) {
       // Text-only rows (e.g. "Control System") with no price data — include as $0 line items
@@ -128,6 +130,7 @@ export function extractTable(
         sellingPrice: 0,
         isIncluded: true,
         sourceRow: row.rowIndex,
+        isHidden: row.isHidden || undefined,
       });
     }
   }

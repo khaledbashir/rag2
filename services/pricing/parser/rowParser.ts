@@ -27,6 +27,7 @@ export interface RawRow {
   isGrandTotal: boolean;
   isAlternateHeader: boolean;
   isAlternateLine: boolean;
+  isHidden: boolean;
 }
 
 // ============================================================================
@@ -73,7 +74,8 @@ export function isSubtotalRow(labelNorm: string, hasNumericData: boolean): boole
 export function parseAllRows(
   data: any[][],
   columnMap: ColumnMap,
-  headerRowIdxOverride?: number
+  headerRowIdxOverride?: number,
+  hiddenRowSet?: Set<number>
 ): RawRow[] {
   const norm = (s: any) => String(s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
   const rows: RawRow[] = [];
@@ -158,6 +160,7 @@ export function parseAllRows(
       isGrandTotal,
       isAlternateHeader,
       isAlternateLine: isAlternateLine && hasNumericData,
+      isHidden: hiddenRowSet ? hiddenRowSet.has(i) : false,
     });
   }
 

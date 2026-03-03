@@ -184,6 +184,12 @@ export default function PricingTableEditor() {
         + Object.keys(descriptionOverrides).length
         + Object.keys(priceOverrides).length;
 
+    // Hidden rows toggle
+    const showHiddenRows: boolean = useWatch({ control, name: "details.showHiddenRows" as any }) ?? false;
+    const hiddenItemCount = tables.reduce((count, t) =>
+        count + (t.items || []).filter((item) => item.isHidden).length, 0
+    );
+
     // ── Handlers ──
 
     const handleHeaderChange = (tableId: string, newName: string) => {
@@ -386,6 +392,28 @@ export default function PricingTableEditor() {
                     {/* Grand Total intentionally hidden — Natalia request */}
                 </div>
             </div>
+
+            {/* ── Hidden Rows Toggle (only show if Excel had hidden rows) ── */}
+            {hiddenItemCount > 0 && (
+                <div className="flex items-center justify-between px-4 py-2 bg-muted/50 border border-border/50 rounded-lg">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <EyeOff className="w-3.5 h-3.5" />
+                        <span>{hiddenItemCount} hidden row{hiddenItemCount !== 1 ? "s" : ""} from Excel</span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setValue("details.showHiddenRows", !showHiddenRows)}
+                        className={`flex items-center gap-1.5 text-[11px] font-medium px-3 py-1 rounded-full transition-colors ${
+                            showHiddenRows
+                                ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
+                                : "bg-muted text-muted-foreground hover:bg-muted/80"
+                        }`}
+                    >
+                        {showHiddenRows ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                        {showHiddenRows ? "Showing Hidden" : "Show Hidden"}
+                    </button>
+                </div>
+            )}
 
             {/* ── Pricing Sections ── */}
             {tables.map((table) => (

@@ -89,6 +89,7 @@ const PdfPricingTables = ({
     const softCostItems = internalAudit?.softCostItems || [];
     const pricingTables = (pricingDocument?.tables || []) as any[];
     const tableHeaderOverrides = ((details as any)?.tableHeaderOverrides || {}) as Record<string, string>;
+    const showHiddenRows = (details as any)?.showHiddenRows === true;
 
     // Mirror Mode: render each table with full item detail
     if (pricingTables.length > 0) {
@@ -132,6 +133,7 @@ const PdfPricingTables = ({
                         {items.map((item: any, idx: number) => {
                             const itemPrice = detailTotals.items.find(ri => ri.originalIndex === idx);
                             if (!itemPrice) return null; // filtered out by computeTableTotals ($0 items)
+                            if (item.isHidden && !showHiddenRows) return null; // respect Excel hidden rows
                             return (
                                 <div
                                     key={`${tableId}-item-${idx}`}
