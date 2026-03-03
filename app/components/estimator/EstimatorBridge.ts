@@ -217,6 +217,10 @@ export interface ScreenCalc {
     demolitionCost: number;
     totalCost: number;
     marginPct: number;
+    /** LED hardware margin (decimal, e.g. 0.15 for 15%) */
+    ledMarginPct: number;
+    /** Services margin (decimal, e.g. 0.20 for 20%) */
+    svcMarginPct: number;
     sellPrice: number;
     bondCost: number;
     salesTaxCost: number;
@@ -423,6 +427,8 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         bundleItems: bundle.items,
         totalCost,
         marginPct,
+        ledMarginPct,
+        svcMarginPct,
         sellPrice,
         bondCost,
         salesTaxCost,
@@ -621,7 +627,8 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
         for (let i = 0; i < calcs.length; i++) {
             const c = calcs[i];
             const d = answers.displays[i];
-            const hwSell = c.hardwareCost / (1 - c.marginPct);
+            const ledMargin = c.ledMarginPct;
+            const hwSell = c.hardwareCost / (1 - ledMargin);
             const hwMarginDollar = hwSell - c.hardwareCost;
             // TVs: show model name (no pitch), LEDs: show name with pitch
             const desc = isTvDisplay(d)
@@ -635,7 +642,7 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
                     { value: "EA", align: "center" },
                     { value: c.hardwareCost, currency: true, align: "right" },
                     { value: hwSell, currency: true, align: "right" },
-                    { value: c.marginPct, percent: true, align: "center" },
+                    { value: ledMargin, percent: true, align: "center" },
                     { value: hwMarginDollar, currency: true, align: "right" },
                 ],
             });
@@ -988,7 +995,8 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
             });
 
             for (const { d, c } of ledDisplays) {
-                const hwSell = c.hardwareCost / (1 - c.marginPct);
+                const ledMargin = c.ledMarginPct;
+                const hwSell = c.hardwareCost / (1 - ledMargin);
                 const marginDollar = hwSell - c.hardwareCost;
                 rows.push({
                     cells: [
@@ -1002,7 +1010,7 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                         { value: c.costPerSqFt, currency: true, align: "right" },
                         { value: c.hardwareCost, currency: true, align: "right" },
                         { value: hwSell, currency: true, align: "right" },
-                        { value: c.marginPct, percent: true, align: "center" },
+                        { value: ledMargin, percent: true, align: "center" },
                         { value: marginDollar, currency: true, align: "right" },
                     ],
                 });
@@ -1042,7 +1050,8 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                 const model = d.productName || d.displayName || c.name;
                 const inches = diagonalInches(c.widthFt, c.heightFt);
                 const key = `${model}__${inches}`;
-                const hwSell = c.hardwareCost / (1 - c.marginPct);
+                const ledMargin = c.ledMarginPct;
+                const hwSell = c.hardwareCost / (1 - ledMargin);
                 const existing = tvGroups.get(key);
                 if (existing) {
                     existing.qty += 1;
@@ -1051,7 +1060,7 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                 } else {
                     // Derive location from display name (e.g., "Suite TV 1" → "Suite")
                     const loc = (d.displayName || c.name).replace(/\s*(tv|display|monitor)\s*\d*/gi, "").replace(/\d+$/, "").trim() || d.locationType || "";
-                    tvGroups.set(key, { model, location: loc, inches, qty: 1, unitCost: c.hardwareCost, totalCost: c.hardwareCost, totalSell: hwSell, marginPct: c.marginPct });
+                    tvGroups.set(key, { model, location: loc, inches, qty: 1, unitCost: c.hardwareCost, totalCost: c.hardwareCost, totalSell: hwSell, marginPct: ledMargin });
                 }
             }
 
@@ -1078,7 +1087,7 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
 
         // Total row
         const totalHwCost = calcs.reduce((s, c) => s + c.hardwareCost, 0);
-        const totalHwSell = calcs.reduce((s, c) => s + c.hardwareCost / (1 - c.marginPct), 0);
+        const totalHwSell = calcs.reduce((s, c) => s + c.hardwareCost / (1 - c.ledMarginPct), 0);
         const totalMarginDollar = totalHwSell - totalHwCost;
         const totalMarginPct = totalHwCost > 0 ? 1 - (totalHwCost / totalHwSell) : 0;
         rows.push({ cells: [{ value: "" }], isSeparator: true });
