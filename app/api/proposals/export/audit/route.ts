@@ -86,6 +86,9 @@ export async function POST(req: NextRequest) {
           : proposal?.calculationMode ?? "INTELLIGENCE";
 
     console.log(`[Audit Export] Mode: ${effectiveMode}, Screens: ${effectiveScreens.length}, InternalAudit keys: ${internalAudit ? Object.keys(internalAudit).join(',') : 'null'}, pricingDocument tables: ${pricingDocument?.tables?.length ?? 'null'}`);
+    if (effectiveMode === "MIRROR" && !pricingDocument?.tables?.length) {
+      console.warn(`[Audit Export] WARNING: MIRROR mode proposal missing pricingDocument. Margin Analysis will use flat fallback (screens only). Re-upload the source Excel to populate per-section pricing data.`);
+    }
 
     const proposalName = (body.projectName || proposal?.clientName || body.clientName || "Proposal").toString();
     const safeFilename = proposalName.replace(/\s+/g, "_").replace(/[^\w\-_.]/g, "") || "Proposal";

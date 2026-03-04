@@ -249,6 +249,10 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     }
   } else {
     // ─── Fallback: flat layout (no pricingDocument) ───
+    // NOTE: This fallback only shows LED display screens (from estimator).
+    // Non-LED items (structural, electrical, labor, PM, etc.) are NOT included.
+    // To get full per-section Margin Analysis, re-upload the source Excel.
+    console.warn("[MIRROR EXPORT] pricingDocument missing — using flat fallback (screens only, no per-section breakdown)");
     setHeaderRow(marginSheet, 5, ["Item Name / Category", "Cost", "Selling Price", "Margin $", "Margin %"]);
 
     let sumCost = 0;
