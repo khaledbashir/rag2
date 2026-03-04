@@ -201,7 +201,7 @@ export default function SpecSheetButton({ file, venueName, clientName, clientAdd
                     }
                 } catch { /* recall is best-effort */ }
 
-                const autoFills = autoFillAllGroups(parsedDisplays, memoryBank);
+                const autoFills = await autoFillAllGroups(parsedDisplays, memoryBank);
                 setAutoFillMeta(autoFills);
                 const preFilledOverrides = autoFillToOverrides(autoFills);
                 setGroupOverrides(preFilledOverrides);

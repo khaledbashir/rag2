@@ -6,9 +6,10 @@
  * manual-only spec fields.
  *
  * Matching strategy (in priority order):
- *   1. Exact manufacturer + pitch + environment
- *   2. Exact manufacturer + nearest pitch
- *   3. Any manufacturer + exact pitch + environment
+ *   0. DB product catalog (ManufacturerProduct table) — Phase 2 source of truth
+ *   1. Exact manufacturer + pitch + environment (hardcoded fallback)
+ *   2. Exact manufacturer + nearest pitch (hardcoded fallback)
+ *   3. Any manufacturer + exact pitch + environment (hardcoded fallback)
  *   4. Fallback defaults by environment (Indoor vs Outdoor)
  *
  * Every returned value includes a `source` tag so the UI can show
@@ -18,6 +19,7 @@
 import { getAllProducts, type ProductType } from "@/services/rfp/productCatalog";
 import type { DisplaySpec } from "@/services/specsheet/formSheetParser";
 import { MANUAL_ONLY_FIELDS, getModelKey } from "@/services/specsheet/formSheetParser";
+import prisma from "@/lib/prisma";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -71,17 +73,108 @@ function normalizeManufacturer(s: string): string {
     return (s || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-function matchProduct(
-    display: DisplaySpec,
-): { product: ProductType; confidence: "exact" | "pitch" | "fallback" } | null {
-    const allProducts = getAllProducts();
-    if (allProducts.length === 0) return null;
+/** Convert a ManufacturerProduct DB row into the ProductType shape used by field mapping. */
+function dbProductToProductType(mp: {
+    id: string;
+    displayName: string;
+    manufacturer: string;
+    pixelPitch: number;
+    maxNits: number;
+    maxPowerWattsPerCab: number;
+    weightKgPerCabinet: number;
+    cabinetWidthMm: number;
+    cabinetHeightMm: number;
+    cabinetDepthMm: number | null;
+    environment: string;
+    extendedSpecs: any;
+}): ProductType {
+    const ext = (mp.extendedSpecs || {}) as Record<string, any>;
+    const envMap: Record<string, "Indoor" | "Outdoor" | "Both"> = {
+        indoor: "Indoor",
+        outdoor: "Outdoor",
+        indoor_outdoor: "Both",
+    };
+    return {
+        id: mp.id,
+        name: mp.displayName,
+        manufacturer: mp.manufacturer,
+        pitchMm: mp.pixelPitch,
+        brightnessNits: mp.maxNits,
+        powerDensityWm2: 0,
+        weightDensityLbm2: 0,
+        avgMaxRatio: 0.33,
+        pixelDensityPPF: 0,
+        colorTempK: {
+            nominal: ext.colorTempNominal ?? 6500,
+            min: ext.colorTempMin ?? 3200,
+            max: ext.colorTempMax ?? 9300,
+        },
+        diode: ext.smdLedModel || ext.diode || "SMD",
+        processing: ext.processing || "Novastar",
+        hardware: ext.hardware || mp.displayName,
+        lifespanHours: ext.lifespanHours ?? 100000,
+        defaultCabinet: {
+            widthMm: mp.cabinetWidthMm,
+            heightMm: mp.cabinetHeightMm,
+            depthMm: mp.cabinetDepthMm ?? 100,
+            weightKg: mp.weightKgPerCabinet,
+            maxPowerW: mp.maxPowerWattsPerCab,
+        },
+        smallCabinet: null,
+        environment: envMap[mp.environment] || "Indoor",
+    };
+}
 
+/** Query ManufacturerProduct DB first, then fall back to hardcoded catalog. */
+async function matchProduct(
+    display: DisplaySpec,
+): Promise<{ product: ProductType; confidence: "exact" | "pitch" | "fallback" } | null> {
     const mfr = normalizeManufacturer(display.manufacturer);
     const pitch = display.pixelPitch;
     const env = (display.indoorOutdoor || "").toLowerCase().includes("outdoor")
         ? "Outdoor"
         : "Indoor";
+    const dbEnv = env === "Outdoor" ? "outdoor" : "indoor";
+
+    // ── Pass 0: DB exact model match ───────────────────────────────────────
+    if (display.model) {
+        const modelNorm = display.model.trim();
+        const exact = await prisma.manufacturerProduct.findFirst({
+            where: {
+                isActive: true,
+                OR: [
+                    { modelNumber: { equals: modelNorm, mode: "insensitive" } },
+                    { displayName: { contains: modelNorm, mode: "insensitive" } },
+                ],
+            },
+        });
+        if (exact) {
+            return { product: dbProductToProductType(exact), confidence: "exact" };
+        }
+    }
+
+    // ── Pass 0b: DB vendor + closest pitch (within 2mm) ────────────────────
+    if (pitch != null && mfr) {
+        const candidates = await prisma.manufacturerProduct.findMany({
+            where: {
+                isActive: true,
+                manufacturer: { equals: display.manufacturer.trim(), mode: "insensitive" },
+                pixelPitch: { gte: pitch - 2, lte: pitch + 2 },
+            },
+            orderBy: { pixelPitch: "asc" },
+        });
+        if (candidates.length > 0) {
+            const nearest = candidates.reduce((best, c) =>
+                Math.abs(c.pixelPitch - pitch) < Math.abs(best.pixelPitch - pitch) ? c : best,
+            );
+            const conf = Math.abs(nearest.pixelPitch - pitch) < 0.5 ? "exact" as const : "pitch" as const;
+            return { product: dbProductToProductType(nearest), confidence: conf };
+        }
+    }
+
+    // ── Pass 1–3: Hardcoded catalog fallback ───────────────────────────────
+    const allProducts = getAllProducts();
+    if (allProducts.length === 0) return null;
 
     // Pass 1: Exact manufacturer + pitch within 0.5mm + matching environment
     if (pitch != null) {
@@ -155,13 +248,13 @@ function mapProductToSpecFields(
 /**
  * Auto-fill spec fields for a single display group.
  *
- * Priority: DB memory → catalog match → environment defaults.
+ * Priority: DB memory → DB product catalog → hardcoded catalog → environment defaults.
  * DB memory always wins because it contains user-verified values.
  */
-export function autoFillForDisplay(
+export async function autoFillForDisplay(
     display: DisplaySpec,
     memoryBank?: MemoryBank,
-): GroupAutoFill {
+): Promise<GroupAutoFill> {
     const modelKey = getModelKey(display);
     const totalManualFields = MANUAL_ONLY_FIELDS.length;
     const memory = memoryBank?.[modelKey];
@@ -170,7 +263,7 @@ export function autoFillForDisplay(
         ? "Outdoor" as const
         : "Indoor" as const;
 
-    const match = matchProduct(display);
+    const match = await matchProduct(display);
     const catalogMapped = match
         ? mapProductToSpecFields(match.product, env)
         : null;
@@ -191,7 +284,7 @@ export function autoFillForDisplay(
             continue;
         }
 
-        // Priority 2: Catalog match
+        // Priority 2: Catalog match (DB first, then hardcoded)
         const catVal = catalogMapped?.[fieldKey];
         if (catVal) {
             fields[fieldKey] = {
@@ -229,10 +322,10 @@ export function autoFillForDisplay(
  *
  * If memoryBank is provided, DB memory values take priority over catalog.
  */
-export function autoFillAllGroups(
+export async function autoFillAllGroups(
     displays: DisplaySpec[],
     memoryBank?: MemoryBank,
-): Record<string, GroupAutoFill> {
+): Promise<Record<string, GroupAutoFill>> {
     const result: Record<string, GroupAutoFill> = {};
     const seen = new Set<string>();
 
@@ -240,7 +333,7 @@ export function autoFillAllGroups(
         const key = getModelKey(d);
         if (seen.has(key)) continue;
         seen.add(key);
-        result[key] = autoFillForDisplay(d, memoryBank);
+        result[key] = await autoFillForDisplay(d, memoryBank);
     }
 
     return result;

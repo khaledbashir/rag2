@@ -142,7 +142,7 @@ const PRODUCTS: Record<string, ProductType> = {
         pixelDensityPPF: 5806,
         colorTempK: { nominal: 6600, min: 3200, max: 9300 },
         diode: "Nationstar RS2020",
-        processing: "Nova Star",
+        processing: "Novastar",
         hardware: "Nitxeon LED Module",
         lifespanHours: 100_000,
         defaultCabinet: {
@@ -165,7 +165,7 @@ const PRODUCTS: Record<string, ProductType> = {
         pixelDensityPPF: 929, // (1000/10)^2 / 10.764
         colorTempK: { nominal: 6600, min: 3200, max: 9300 },
         diode: "SMD Nationstar",
-        processing: "Nova Star",
+        processing: "Novastar",
         hardware: "Nitxeon LED Module (Mesh)",
         lifespanHours: 100_000,
         defaultCabinet: {
@@ -188,7 +188,7 @@ const PRODUCTS: Record<string, ProductType> = {
         pixelDensityPPF: 14863,
         colorTempK: { nominal: 6700, min: 3200, max: 9300 },
         diode: "Nationstar MIP A1010WN",
-        processing: "Nova Star",
+        processing: "Novastar",
         hardware: "Nationstar MIP Module",
         lifespanHours: 100_000,
         defaultCabinet: {

@@ -668,13 +668,22 @@ function fillBlockCells(
     setCell(block.cells.pixelDensity, C, density, "Pixel Density Sq. Ft");
   }
 
-  // Extended spec fields — these stay from RFP (ANC matches the requirement)
+  // Extended spec fields — fill from RFP data or catalog defaults
   if (screen.brightnessNits != null && block.cells.brightness) {
     setCell(block.cells.brightness, C, screen.brightnessNits, "Brightness (nits)");
   }
 
   if (screen.maxPowerW != null && block.cells.powerDraw) {
     setCell(block.cells.powerDraw, C, screen.maxPowerW, "Power Draw");
+  }
+
+  // Viewing angles — use Natalia/Jeremy rules: Indoor 160°, Outdoor 140°H/70°V
+  const isOutdoor = screen.environment === "outdoor";
+  if (block.cells.viewAngleH) {
+    setCell(block.cells.viewAngleH, C, isOutdoor ? 140 : 160, "Viewing Angle H");
+  }
+  if (block.cells.viewAngleV) {
+    setCell(block.cells.viewAngleV, C, isOutdoor ? 70 : 160, "Viewing Angle V");
   }
 
   // Pricing fields — only fill if pricing data is available
