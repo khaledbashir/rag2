@@ -167,6 +167,55 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
   marginSheet.getCell(`E${subtotalRow}`).numFmt = percentFmt;
   marginSheet.getRow(subtotalRow).font = { bold: true };
 
+  // Tech Specs Only — no pricing, for installers/subs
+  const techSheet = workbook.addWorksheet("Tech Specs (Installers)");
+  techSheet.getCell("A1").value = `Project Name: ${args.projectName || args.clientName || ""}`.trim();
+  techSheet.getCell("A2").value = `Generated: ${new Date().toLocaleDateString()}`;
+  techSheet.getCell("A3").value = "Technical specifications only — no pricing data.";
+  techSheet.getCell("A3").font = { italic: true, color: { argb: "FF6C757D" } };
+
+  setHeaderRow(techSheet, 4, [
+    "Display Name", "Qty", "Pixel Pitch (mm)", "Height (ft)", "Width (ft)",
+    "Pixels H", "Pixels W", "Sq Ft", "Brightness (nits)", "Service", "Environment",
+  ]);
+
+  args.screens.forEach((screen, idx) => {
+    const audit = perScreen?.[idx] || null;
+    const qty = toNumber(audit?.quantity) || 1;
+    const heightFt = toNumber(screen.height);
+    const widthFt = toNumber(screen.width);
+    const pitch = toNumber(screen.pixelPitch);
+    const sqFt = heightFt * widthFt;
+    const matrix = tryParseMatrix(audit?.pixelMatrix) || tryParseMatrix(audit?.pixelResolution) || null;
+    const pixelsH = matrix?.h ?? (pitch > 0 ? Math.round((heightFt * 304.8) / pitch) : null);
+    const pixelsW = matrix?.w ?? (pitch > 0 ? Math.round((widthFt * 304.8) / pitch) : null);
+
+    const r = 5 + idx;
+    techSheet.getCell(`A${r}`).value = screen.name || "Unnamed Display";
+    techSheet.getCell(`B${r}`).value = qty;
+    techSheet.getCell(`C${r}`).value = pitch || null;
+    techSheet.getCell(`D${r}`).value = heightFt || null;
+    techSheet.getCell(`E${r}`).value = widthFt || null;
+    techSheet.getCell(`F${r}`).value = pixelsH;
+    techSheet.getCell(`G${r}`).value = pixelsW;
+    techSheet.getCell(`H${r}`).value = sqFt > 0 ? Math.round(sqFt * 100) / 100 : null;
+    techSheet.getCell(`I${r}`).value = null; // Brightness not always available in mirror
+    techSheet.getCell(`J${r}`).value = null;
+    techSheet.getCell(`K${r}`).value = null;
+  });
+
+  techSheet.getColumn(1).width = 45;
+  techSheet.getColumn(2).width = 8;
+  techSheet.getColumn(3).width = 16;
+  techSheet.getColumn(4).width = 12;
+  techSheet.getColumn(5).width = 12;
+  techSheet.getColumn(6).width = 12;
+  techSheet.getColumn(7).width = 12;
+  techSheet.getColumn(8).width = 10;
+  techSheet.getColumn(9).width = 16;
+  techSheet.getColumn(10).width = 14;
+  techSheet.getColumn(11).width = 12;
+
   const buffer = await workbook.xlsx.writeBuffer();
   return buffer as unknown as Buffer;
 }

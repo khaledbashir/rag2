@@ -138,6 +138,12 @@ export async function generateAuditExcel(
     });
     buildSOWSheet(sowSheet, options);
 
+    // 12. Tech Specs Only (no pricing — for installers/subs)
+    const techSpecsSheet = workbook.addWorksheet('Tech Specs (Installers)', {
+        properties: { tabColor: { argb: 'FF6C757D' } } // Grey
+    });
+    buildTechSpecsOnlySheet(techSpecsSheet, screens, options);
+
     return workbook;
 }
 
@@ -711,4 +717,58 @@ function setupTableHeaders(sheet: ExcelJS.Worksheet, row: number, headers: strin
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDEE2E6' } };
         cell.alignment = { horizontal: 'center' };
     });
+}
+
+/**
+ * Tech Specs Only sheet — LED Cost Sheet replica without pricing columns.
+ * For sharing with installers and subcontractors (Jeremy/Matt can extract and send).
+ */
+function buildTechSpecsOnlySheet(sheet: ExcelJS.Worksheet, screens: any[], options?: AuditExcelOptions) {
+    sheet.mergeCells('A1:H1');
+    const titleCell = sheet.getCell('A1');
+    titleCell.value = `${options?.proposalName || options?.clientName || 'Project'} — LED Technical Specifications (No Pricing)`;
+    titleCell.font = { size: 13, bold: true, color: { argb: 'FF002C73' } };
+    titleCell.alignment = { horizontal: 'left', vertical: 'middle' };
+
+    sheet.getCell('A2').value = `Generated: ${new Date().toLocaleDateString()}`;
+    sheet.getCell('A2').font = { size: 9, color: { argb: 'FF6C757D' } };
+
+    const headers = ['Display Name', 'Qty', 'Pixel Pitch (mm)', 'Height (ft)', 'Width (ft)', 'Pixels H', 'Pixels W', 'Sq Ft', 'Brightness (nits)', 'Service Type', 'Environment'];
+    setupTableHeaders(sheet, 4, headers);
+
+    let currentRow = 5;
+    screens.forEach(s => {
+        const audit = s.internalAudit || s._internalAudit || s.audit;
+        const heightFt = Number(s.heightFt || s.height || 0);
+        const widthFt = Number(s.widthFt || s.width || 0);
+        const pitch = Number(s.pixelPitch || s.pitchMm || 0);
+        const sqFt = heightFt * widthFt;
+        const pixelsH = pitch > 0 ? Math.round((heightFt * 304.8) / pitch) : 0;
+        const pixelsW = pitch > 0 ? Math.round((widthFt * 304.8) / pitch) : 0;
+
+        sheet.getCell(`A${currentRow}`).value = s.name || s.externalName || 'Unnamed Display';
+        sheet.getCell(`B${currentRow}`).value = Number(s.quantity || audit?.quantity || 1);
+        sheet.getCell(`C${currentRow}`).value = pitch || null;
+        sheet.getCell(`D${currentRow}`).value = heightFt || null;
+        sheet.getCell(`E${currentRow}`).value = widthFt || null;
+        sheet.getCell(`F${currentRow}`).value = pixelsH || null;
+        sheet.getCell(`G${currentRow}`).value = pixelsW || null;
+        sheet.getCell(`H${currentRow}`).value = sqFt > 0 ? Math.round(sqFt * 100) / 100 : null;
+        sheet.getCell(`I${currentRow}`).value = Number(s.brightness || s.brightnessNits || 0) || null;
+        sheet.getCell(`J${currentRow}`).value = s.serviceType || (s.isOutdoor ? 'Rear' : 'Front') || null;
+        sheet.getCell(`K${currentRow}`).value = s.isOutdoor ? 'Outdoor' : 'Indoor';
+        currentRow++;
+    });
+
+    sheet.getColumn(1).width = 40;
+    sheet.getColumn(2).width = 8;
+    sheet.getColumn(3).width = 16;
+    sheet.getColumn(4).width = 12;
+    sheet.getColumn(5).width = 12;
+    sheet.getColumn(6).width = 12;
+    sheet.getColumn(7).width = 12;
+    sheet.getColumn(8).width = 10;
+    sheet.getColumn(9).width = 16;
+    sheet.getColumn(10).width = 14;
+    sheet.getColumn(11).width = 12;
 }
