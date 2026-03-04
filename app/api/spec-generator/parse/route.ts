@@ -13,6 +13,31 @@ import { parseCostAnalysis, type CostAnalysisDisplay } from "@/services/specshee
 
 const prisma = new PrismaClient();
 
+// ─── SpecFieldMemory recall helper ──────────────────────────────────────────
+
+async function recallSpecMemory(
+  manufacturer: string,
+  model: string,
+  pitchMm: number,
+): Promise<Record<string, string>> {
+  try {
+    const records = await prisma.specFieldMemory.findMany({
+      where: {
+        manufacturer: { equals: manufacturer, mode: "insensitive" },
+        model: { equals: model, mode: "insensitive" },
+        pitchMm: { in: [pitchMm, 0] }, // 0 = applies to all pitches
+      },
+    });
+    const map: Record<string, string> = {};
+    for (const r of records) {
+      map[r.fieldKey] = r.fieldValue;
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface TemplateField {
@@ -352,6 +377,7 @@ function lookupLgSpecs(model: string): Record<string, string | number> | null {
 async function fillDisplay(
   display: CostAnalysisDisplay,
   templateFields: TemplateField[],
+  warnings: string[],
 ): Promise<FilledDisplay> {
   // Match product from database
   const dbMatch = await matchProductFromDB(
@@ -361,11 +387,24 @@ async function fillDisplay(
   // Look up LG specs from KB
   const lgSpecs = /\blg\b/i.test(display.vendor) ? lookupLgSpecs(display.model) : null;
 
+  // Recall spec memory (user-verified values from previous projects)
+  const memory = await recallSpecMemory(
+    display.vendor || dbMatch?.manufacturer || "",
+    display.model || dbMatch?.modelNumber || "",
+    display.pixelPitch,
+  );
+
   // LSCC018 correction: cost analysis often says 1.9mm, actual is 1.875mm
   let correctedPitch = display.pixelPitch;
   if (/LSCC018/i.test(display.model) && Math.abs(display.pixelPitch - 1.9) < 0.1) {
     correctedPitch = 1.875;
   }
+
+  // Warn about missing critical data
+  if (!display.vendor) warnings.push(`${display.shortId}: No vendor/manufacturer found`);
+  if (!display.model) warnings.push(`${display.shortId}: No product model found`);
+  if (!display.widthFt || !display.heightFt) warnings.push(`${display.shortId}: Missing display dimensions`);
+  if (!display.pixelPitch) warnings.push(`${display.shortId}: No pixel pitch detected`);
 
   // Get cabinet specs for calculations
   const cabWidthMm = dbMatch?.cabinetWidthMm ?? (display.isOutdoor ? 960 : 500);
@@ -374,10 +413,18 @@ async function fillDisplay(
   const avgWPerCab = dbMatch?.typicalPowerWattsPerCab ?? maxWPerCab * 0.33;
   const kgPerCab = dbMatch?.weightKgPerCabinet ?? (display.isOutdoor ? 30 : 10);
 
+  if (!dbMatch) {
+    warnings.push(`${display.shortId}: No product match in catalog — using estimated cabinet defaults for power/weight`);
+  }
+
   // Calculate cabinet count
   const cabAreaM2 = (cabWidthMm * cabHeightMm) / 1_000_000;
   const displayAreaM2 = display.sqFt * 0.0929;
-  const cabinetCount = cabAreaM2 > 0 ? Math.ceil(displayAreaM2 / cabAreaM2) : 0;
+  const cabinetCount = cabAreaM2 > 0 && displayAreaM2 > 0 ? Math.ceil(displayAreaM2 / cabAreaM2) : 0;
+
+  if (cabinetCount === 0 && display.sqFt > 0) {
+    warnings.push(`${display.shortId}: Cabinet count calculated as 0 — power/weight values will be zero`);
+  }
 
   // Power calculations
   const powerAt100_KW = (maxWPerCab * cabinetCount) / 1000;
@@ -399,6 +446,18 @@ async function fillDisplay(
   // Get defaults
   const defaults = getDefaults(display.isOutdoor, display.vendor);
   const ext = dbMatch?.extendedSpecs as Record<string, any> || {};
+
+  // Priority chain: memory > extendedSpecs > LG KB > defaults
+  // Helper to resolve a spec value through the priority chain
+  const resolve = (fieldKey: string, ...sources: (string | number | undefined | null)[]): string | number => {
+    // Memory first (user-verified from previous projects)
+    if (memory[fieldKey]) return memory[fieldKey];
+    // Then try each source in order
+    for (const src of sources) {
+      if (src != null && src !== "" && src !== "—") return src;
+    }
+    return "—";
+  };
 
   // Build specs map — fill every field
   const specs: Record<string, string | number> = {
@@ -424,26 +483,26 @@ async function fillDisplay(
     numberOfScreens: display.quantity,
     pixelDensity: pixelDensity || "—",
 
-    // Optical specs — priority: extendedSpecs > LG KB > defaults
-    viewingAngleH: ext.viewingAngleH ?? lgSpecs?.viewingAngleH ?? defaults.viewingAngleH,
-    viewingAngleUp: ext.viewingAngleUp ?? lgSpecs?.viewingAngleUp ?? defaults.viewingAngleUp,
-    viewingAngleDown: ext.viewingAngleDown ?? lgSpecs?.viewingAngleDown ?? defaults.viewingAngleDown,
-    pixelFillFactor: ext.pixelFillFactor ?? defaults.pixelFillFactor,
-    maxBrightness: dbMatch?.maxNits ?? lgSpecs?.maxBrightness ?? (display.nitRequirement || "—"),
+    // Optical specs — priority: memory > extendedSpecs > LG KB > defaults
+    viewingAngleH: resolve("viewingAngleH", ext.viewingAngleH, lgSpecs?.viewingAngleH as string | undefined, defaults.viewingAngleH),
+    viewingAngleUp: resolve("viewingAngleUp", ext.viewingAngleUp, lgSpecs?.viewingAngleUp as string | undefined, defaults.viewingAngleUp),
+    viewingAngleDown: resolve("viewingAngleDown", ext.viewingAngleDown, lgSpecs?.viewingAngleDown as string | undefined, defaults.viewingAngleDown),
+    pixelFillFactor: resolve("pixelFillFactor", ext.pixelFillFactor, defaults.pixelFillFactor),
+    maxBrightness: resolve("maxBrightness", dbMatch?.maxNits, lgSpecs?.maxBrightness as number | undefined, display.nitRequirement || undefined),
 
-    // OEM info
-    oemLedModuleMfr: (ext.oemLedModuleMfr ?? lgSpecs?.oemProcessorMfr) ? display.vendor : defaults.oemLedModuleMfr,
-    oemProcessorMfr: ext.oemProcessorMfr ?? lgSpecs?.oemProcessorMfr ?? defaults.oemProcessorMfr,
-    factory: ext.factory ?? lgSpecs?.factory ?? defaults.factory,
-    ledLampType: ext.ledLampType ?? lgSpecs?.ledLampType ?? defaults.ledLampType,
+    // OEM info — fixed: use correct field keys for lookups
+    oemLedModuleMfr: resolve("oemLedModuleMfr", ext.oemLedModuleMfr, display.vendor || undefined, defaults.oemLedModuleMfr),
+    oemProcessorMfr: resolve("oemProcessorMfr", ext.oemProcessorMfr, lgSpecs?.oemProcessorMfr as string | undefined, defaults.oemProcessorMfr),
+    factory: resolve("factory", ext.factory, lgSpecs?.factory as string | undefined, defaults.factory),
+    ledLampType: resolve("ledLampType", ext.ledLampType, lgSpecs?.ledLampType as string | undefined, defaults.ledLampType),
 
     // Color specs
-    brightnessAdjustment: ext.brightnessAdjustment ?? defaults.brightnessAdjustment,
-    colorTemperatureK: ext.colorTemperatureK ?? lgSpecs?.colorTemperatureK ?? defaults.colorTemperatureK,
-    colorTempAdjustability: ext.colorTempAdjustability ?? defaults.colorTempAdjustability,
-    colorSpaceRec709: ext.colorSpaceRec709 ?? defaults.colorSpaceRec709,
-    colorSpaceDciP3: ext.colorSpaceDciP3 ?? defaults.colorSpaceDciP3,
-    colorSpaceRec2020: ext.colorSpaceRec2020 ?? defaults.colorSpaceRec2020,
+    brightnessAdjustment: resolve("brightnessAdjustment", ext.brightnessAdjustment, defaults.brightnessAdjustment),
+    colorTemperatureK: resolve("colorTemperatureK", ext.colorTemperatureK, lgSpecs?.colorTemperatureK as string | undefined, defaults.colorTemperatureK),
+    colorTempAdjustability: resolve("colorTempAdjustability", ext.colorTempAdjustability, defaults.colorTempAdjustability),
+    colorSpaceRec709: resolve("colorSpaceRec709", ext.colorSpaceRec709, defaults.colorSpaceRec709),
+    colorSpaceDciP3: resolve("colorSpaceDciP3", ext.colorSpaceDciP3, defaults.colorSpaceDciP3),
+    colorSpaceRec2020: resolve("colorSpaceRec2020", ext.colorSpaceRec2020, defaults.colorSpaceRec2020),
 
     // Power & weight
     powerAt0: +powerAt0_KW.toFixed(2),
@@ -452,14 +511,14 @@ async function fillDisplay(
     btuAt0,
     btuAvg,
     btuAt100,
-    powerRequirements: ext.powerRequirements ?? defaults.powerRequirements,
+    powerRequirements: resolve("powerRequirements", ext.powerRequirements, defaults.powerRequirements),
     totalWeight: `${totalWeightLbs} lbs`,
 
     // Other fields
-    gradationMethod: ext.gradationMethod ?? defaults.gradationMethod,
-    tonalGradation: ext.tonalGradation ?? defaults.tonalGradation,
-    ventilationRequirements: ext.ventilationRequirements ?? defaults.ventilationRequirements,
-    smdLedModel: ext.smdLedModel ?? defaults.smdLedModel,
+    gradationMethod: resolve("gradationMethod", ext.gradationMethod, defaults.gradationMethod),
+    tonalGradation: resolve("tonalGradation", ext.tonalGradation, defaults.tonalGradation),
+    ventilationRequirements: resolve("ventilationRequirements", ext.ventilationRequirements, defaults.ventilationRequirements),
+    smdLedModel: resolve("smdLedModel", ext.smdLedModel, defaults.smdLedModel),
     serviceType: display.serviceType || dbMatch?.serviceType || "—",
   };
 
@@ -535,7 +594,7 @@ export async function POST(request: NextRequest) {
 
     // Step 3-5: Match products and fill specs
     const filledDisplays = await Promise.all(
-      costDisplays.map((d) => fillDisplay(d, templateFields))
+      costDisplays.map((d) => fillDisplay(d, templateFields, warnings))
     );
 
     const matched = filledDisplays.filter((d) => d.matchStatus !== "defaults").length;

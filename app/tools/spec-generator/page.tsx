@@ -7,8 +7,8 @@ const SpecGeneratorClient = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="min-h-screen bg-[#0B1120] flex items-center justify-center">
-        <div className="text-sm text-gray-400">Loading Spec Generator...</div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-sm text-muted-foreground">Loading Spec Generator...</div>
       </div>
     ),
   }

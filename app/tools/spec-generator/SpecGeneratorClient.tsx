@@ -174,15 +174,15 @@ export default function SpecGeneratorClient() {
   // ═════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="min-h-screen bg-[#0B1120] text-white">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <div className="border-b border-white/10 bg-[#0B1120]/80 backdrop-blur-sm sticky top-0 z-20">
+      <div className="border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <FileSpreadsheet className="w-6 h-6 text-blue-400" />
+            <FileSpreadsheet className="w-6 h-6 text-primary" />
             <div>
               <h1 className="text-lg font-semibold">Spec Generator</h1>
-              <p className="text-xs text-gray-400">Product Data Form Automation</p>
+              <p className="text-xs text-muted-foreground">Product Data Form Automation</p>
             </div>
           </div>
 
@@ -190,7 +190,7 @@ export default function SpecGeneratorClient() {
             <div className="flex items-center gap-3">
               <button
                 onClick={handleReset}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-400 hover:text-white transition-colors"
+                className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 <RefreshCw className="w-4 h-4" />
                 New Upload
@@ -198,7 +198,7 @@ export default function SpecGeneratorClient() {
               <button
                 onClick={handleDownload}
                 disabled={exporting}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
               >
                 {exporting ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -215,7 +215,7 @@ export default function SpecGeneratorClient() {
       {/* Error banner */}
       {error && (
         <div className="max-w-7xl mx-auto px-6 mt-4">
-          <div className="flex items-center gap-3 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+          <div className="flex items-center gap-3 px-4 py-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm">
             <AlertTriangle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
             <button onClick={() => setError(null)} className="ml-auto">
@@ -230,7 +230,7 @@ export default function SpecGeneratorClient() {
         <div className="max-w-4xl mx-auto px-6 py-16">
           <div className="text-center mb-12">
             <h2 className="text-2xl font-bold mb-2">Upload Your Files</h2>
-            <p className="text-gray-400">
+            <p className="text-muted-foreground">
               Upload the blank Product Data Form template and the Cost Analysis workbook
             </p>
           </div>
@@ -244,8 +244,8 @@ export default function SpecGeneratorClient() {
               className={`
                 relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all
                 ${templateFile
-                  ? "border-green-500/50 bg-green-500/5"
-                  : "border-white/20 hover:border-blue-400/50 hover:bg-white/[0.02]"
+                  ? "border-emerald-500/50 bg-emerald-500/5 dark:bg-emerald-950/20"
+                  : "border-border hover:border-primary/50 hover:bg-muted/30"
                 }
               `}
             >
@@ -261,26 +261,26 @@ export default function SpecGeneratorClient() {
               />
               {templateFile ? (
                 <>
-                  <CheckCircle2 className="w-10 h-10 text-green-400 mx-auto mb-3" />
-                  <p className="text-sm font-medium text-green-300">{templateFile.name}</p>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
+                  <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">{templateFile.name}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
                     {(templateFile.size / 1024).toFixed(0)} KB
                   </p>
                   <button
                     onClick={(e) => { e.stopPropagation(); setTemplateFile(null); }}
-                    className="absolute top-3 right-3 p-1 rounded-full hover:bg-white/10"
+                    className="absolute top-3 right-3 p-1 rounded-full hover:bg-muted"
                   >
-                    <X className="w-4 h-4 text-gray-500" />
+                    <X className="w-4 h-4 text-muted-foreground" />
                   </button>
                 </>
               ) : (
                 <>
-                  <FileSpreadsheet className="w-10 h-10 text-blue-400 mx-auto mb-3" />
+                  <FileSpreadsheet className="w-10 h-10 text-primary mx-auto mb-3" />
                   <p className="text-sm font-medium mb-1">Blank Product Data Form</p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     The empty form template with your layout
                   </p>
-                  <p className="text-xs text-gray-600 mt-3">
+                  <p className="text-xs text-muted-foreground/60 mt-3">
                     Drag & drop or click to browse
                   </p>
                 </>
@@ -295,8 +295,8 @@ export default function SpecGeneratorClient() {
               className={`
                 relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all
                 ${costFile
-                  ? "border-green-500/50 bg-green-500/5"
-                  : "border-white/20 hover:border-blue-400/50 hover:bg-white/[0.02]"
+                  ? "border-emerald-500/50 bg-emerald-500/5 dark:bg-emerald-950/20"
+                  : "border-border hover:border-primary/50 hover:bg-muted/30"
                 }
               `}
             >
@@ -312,26 +312,26 @@ export default function SpecGeneratorClient() {
               />
               {costFile ? (
                 <>
-                  <CheckCircle2 className="w-10 h-10 text-green-400 mx-auto mb-3" />
-                  <p className="text-sm font-medium text-green-300">{costFile.name}</p>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
+                  <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">{costFile.name}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
                     {(costFile.size / 1024).toFixed(0)} KB
                   </p>
                   <button
                     onClick={(e) => { e.stopPropagation(); setCostFile(null); }}
-                    className="absolute top-3 right-3 p-1 rounded-full hover:bg-white/10"
+                    className="absolute top-3 right-3 p-1 rounded-full hover:bg-muted"
                   >
-                    <X className="w-4 h-4 text-gray-500" />
+                    <X className="w-4 h-4 text-muted-foreground" />
                   </button>
                 </>
               ) : (
                 <>
-                  <Table className="w-10 h-10 text-amber-400 mx-auto mb-3" />
+                  <Table className="w-10 h-10 text-amber-500 mx-auto mb-3" />
                   <p className="text-sm font-medium mb-1">Cost Analysis Workbook</p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     Excel with LED Cost Sheet tab
                   </p>
-                  <p className="text-xs text-gray-600 mt-3">
+                  <p className="text-xs text-muted-foreground/60 mt-3">
                     Drag & drop or click to browse
                   </p>
                 </>
@@ -347,8 +347,8 @@ export default function SpecGeneratorClient() {
               className={`
                 inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold transition-all
                 ${templateFile && costFile
-                  ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20"
-                  : "bg-white/5 text-gray-500 cursor-not-allowed"
+                  ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20"
+                  : "bg-muted text-muted-foreground cursor-not-allowed"
                 }
               `}
             >
@@ -356,7 +356,7 @@ export default function SpecGeneratorClient() {
               Generate Spec Sheets
             </button>
             {(!templateFile || !costFile) && (
-              <p className="text-xs text-gray-600 mt-2">
+              <p className="text-xs text-muted-foreground/60 mt-2">
                 Upload both files to continue
               </p>
             )}
@@ -368,9 +368,9 @@ export default function SpecGeneratorClient() {
       {phase === "processing" && (
         <div className="max-w-xl mx-auto px-6 py-20">
           <div className="text-center mb-10">
-            <Loader2 className="w-10 h-10 text-blue-400 mx-auto mb-4 animate-spin" />
+            <Loader2 className="w-10 h-10 text-primary mx-auto mb-4 animate-spin" />
             <h2 className="text-xl font-bold mb-1">Generating Spec Sheets</h2>
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-muted-foreground">
               {templateFile?.name} + {costFile?.name}
             </p>
           </div>
@@ -385,17 +385,17 @@ export default function SpecGeneratorClient() {
                   key={stage.key}
                   className={`
                     flex items-center gap-3 px-4 py-3 rounded-lg transition-all
-                    ${isDone ? "bg-green-500/10 text-green-300" : ""}
-                    ${isActive ? "bg-blue-500/10 text-blue-300" : ""}
-                    ${!isDone && !isActive ? "text-gray-600" : ""}
+                    ${isDone ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : ""}
+                    ${isActive ? "bg-primary/10 text-primary" : ""}
+                    ${!isDone && !isActive ? "text-muted-foreground/50" : ""}
                   `}
                 >
                   {isDone ? (
-                    <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0" />
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
                   ) : isActive ? (
-                    <Loader2 className="w-5 h-5 text-blue-400 animate-spin shrink-0" />
+                    <Loader2 className="w-5 h-5 text-primary animate-spin shrink-0" />
                   ) : (
-                    <div className="w-5 h-5 rounded-full border border-gray-700 shrink-0" />
+                    <div className="w-5 h-5 rounded-full border border-border shrink-0" />
                   )}
                   <span className="text-sm">{stage.label}</span>
                 </div>
@@ -439,11 +439,11 @@ export default function SpecGeneratorClient() {
           {/* Warnings */}
           {parsedData.stats.warnings.length > 0 && (
             <div className="mb-4 px-4 py-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-              <div className="flex items-center gap-2 text-amber-400 text-sm font-medium mb-2">
+              <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 text-sm font-medium mb-2">
                 <AlertTriangle className="w-4 h-4" />
                 Warnings
               </div>
-              <ul className="text-xs text-amber-300/80 space-y-1">
+              <ul className="text-xs text-amber-700 dark:text-amber-300/80 space-y-1">
                 {parsedData.stats.warnings.map((w, i) => (
                   <li key={i}>- {w}</li>
                 ))}
@@ -452,7 +452,7 @@ export default function SpecGeneratorClient() {
           )}
 
           {/* WorkbookShell */}
-          <div className="bg-[#111827] border border-white/10 rounded-xl overflow-hidden">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
             <WorkbookShell data={workbookData} />
           </div>
         </div>
@@ -473,10 +473,10 @@ function StatBadge({
   color: "blue" | "green" | "amber" | "red";
 }) {
   const colors = {
-    blue: "bg-blue-500/10 text-blue-300 border-blue-500/20",
-    green: "bg-green-500/10 text-green-300 border-green-500/20",
-    amber: "bg-amber-500/10 text-amber-300 border-amber-500/20",
-    red: "bg-red-500/10 text-red-300 border-red-500/20",
+    blue: "bg-primary/10 text-primary border-primary/20",
+    green: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+    amber: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+    red: "bg-destructive/10 text-destructive border-destructive/20",
   };
 
   return (

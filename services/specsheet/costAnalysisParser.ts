@@ -58,18 +58,18 @@ interface ColumnMap {
 
 /** Regex patterns to match header labels → column roles */
 const HEADER_PATTERNS: [keyof ColumnMap, RegExp][] = [
-  ["location",       /^(location|display\s*location|loc\.?|area|zone)\s*$/i],
-  ["vendor",         /^(vendor|manufacturer|mfg|mfr|brand)\s*$/i],
-  ["model",          /^(model|product\s*model|product|sku)\s*$/i],
-  ["pixelPitch",     /^(pixel\s*pitch|pitch|pp|p\.?p\.?)\s*$/i],
-  ["heightFt",       /^(height|h|h\s*\(ft\)|height\s*\(ft\)|ht)\s*$/i],
-  ["widthFt",        /^(width|w|w\s*\(ft\)|width\s*\(ft\)|wd)\s*$/i],
-  ["pixelsH",        /^(pixels?\s*h|px\s*h|res\.?\s*h|height\s*px|v(?:ert)?\s*px)\s*$/i],
-  ["pixelsW",        /^(pixels?\s*w|px\s*w|res\.?\s*w|width\s*px|h(?:oriz)?\s*px)\s*$/i],
-  ["sqFt",           /^(sq\s*ft|area|sqft|square\s*feet?|sq\s*ft\s*per\s*screen)\s*$/i],
-  ["nitRequirement", /^(nit|nits|nit\s*req|brightness|nit\s*requirement)\s*$/i],
-  ["serviceType",    /^(service|service\s*type|svc|access)\s*$/i],
-  ["quantity",       /^(qty|quantity|count|#|num)\s*$/i],
+  ["location",       /^(location|display\s*location|loc\.?|area|zone|room|wall)\s*$/i],
+  ["vendor",         /^(vendor|manufacturer|mfg\.?|mfr\.?|brand|make)\s*$/i],
+  ["model",          /^(model|product\s*model|product|sku|model\s*#?|part\s*#?)\s*$/i],
+  ["pixelPitch",     /^(pixel\s*pitch|pitch|pp|p\.?p\.?|pitch\s*\(mm\))\s*$/i],
+  ["heightFt",       /^(height|h|h\s*\(ft\)|height\s*\(ft\)|ht|h[''])\s*$/i],
+  ["widthFt",        /^(width|w|w\s*\(ft\)|width\s*\(ft\)|wd|w[''])\s*$/i],
+  ["pixelsH",        /^(pixels?\s*h|px\s*h|res\.?\s*h|height\s*px|v(?:ert)?\s*px|vert\s*res)\s*$/i],
+  ["pixelsW",        /^(pixels?\s*w|px\s*w|res\.?\s*w|width\s*px|h(?:oriz)?\s*px|horiz\s*res)\s*$/i],
+  ["sqFt",           /^(sq\s*ft|area|sqft|square\s*feet?|sq\s*ft\s*per\s*screen|total\s*sf|sf)\s*$/i],
+  ["nitRequirement", /^(nit|nits|nit\s*req|brightness|nit\s*requirement|nit\s*rating)\s*$/i],
+  ["serviceType",    /^(service|service\s*type|svc|access|front\/?rear)\s*$/i],
+  ["quantity",       /^(qty|quantity|count|#|num|screens?)\s*$/i],
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -216,8 +216,18 @@ export function parseCostAnalysis(buffer: Buffer): CostAnalysisResult {
   // Detect header row and column mapping
   const detection = detectColumns(data);
   if (!detection) {
-    // Fallback: use typical ANC column layout
-    warnings.push("Could not auto-detect column headers, using default ANC layout");
+    warnings.push("Could not auto-detect column headers — using default ANC layout. Verify column order matches: A=Name, B=Location, C=Vendor, D=Model, F=Pitch, G=Height, H=Width, I=PxH, K=PxW, L=SqFt, O=NITs, P=Service");
+  } else {
+    // Warn about any critical columns that weren't detected
+    const critical: [keyof ColumnMap, string][] = [
+      ["vendor", "Vendor/Manufacturer"], ["model", "Model"], ["pixelPitch", "Pixel Pitch"],
+      ["heightFt", "Height"], ["widthFt", "Width"],
+    ];
+    for (const [key, label] of critical) {
+      if (detection.columns[key] < 0) {
+        warnings.push(`Column "${label}" not detected in header row — values may be missing`);
+      }
+    }
   }
 
   const cols = detection?.columns ?? {
@@ -285,6 +295,14 @@ export function parseCostAnalysis(buffer: Buffer): CostAnalysisResult {
 
     const isOutdoor = inferOutdoor(fullName, nitRequirement);
     const isAlternate = inferAlternate(fullName);
+
+    // Per-display data quality warnings
+    if (!vendor && !model) {
+      warnings.push(`${shortId}: Missing both vendor and model — product matching will fail`);
+    }
+    if (!heightFt && !widthFt && !sqFt) {
+      warnings.push(`${shortId}: No display dimensions found — calculations will use defaults`);
+    }
 
     displays.push({
       shortId,

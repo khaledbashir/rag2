@@ -337,16 +337,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Apply user edits to display specs
+    // editedCells format: { "displayIdx:fieldKey": "new value" }
+    // OR legacy format: { "sheetIdx-rowIdx-colIdx": "value" } with templateFields lookup
     if (editedCells) {
       for (const [key, value] of Object.entries(editedCells)) {
-        // Key format: "sheetIdx-rowIdx-colIdx"
-        const [sheetIdxStr, , ] = key.split("-");
-        const sheetIdx = parseInt(sheetIdxStr);
-        // sheetIdx 0 = summary, 1+ = displays
-        const displayIdx = sheetIdx - 1;
-        if (displayIdx >= 0 && displayIdx < displays.length) {
-          // Find the field key from the row index and update specs
-          // For simplicity, the client sends edited specs directly
+        // New format: "displayIdx:fieldKey"
+        if (key.includes(":")) {
+          const [idxStr, fieldKey] = key.split(":");
+          const idx = parseInt(idxStr);
+          if (idx >= 0 && idx < displays.length && fieldKey) {
+            displays[idx].specs[fieldKey] = value;
+          }
+          continue;
+        }
+        // Legacy format: "sheetIdx-rowIdx-colIdx"
+        const parts = key.split("-");
+        if (parts.length >= 2) {
+          const sheetIdx = parseInt(parts[0]);
+          const rowIdx = parseInt(parts[1]);
+          const displayIdx = sheetIdx - 1; // 0 = summary, 1+ = displays
+          if (displayIdx >= 0 && displayIdx < displays.length && templateFields?.length > 0) {
+            // Find the field key from templateFields at this row position
+            const field = templateFields[rowIdx];
+            if (field?.fieldKey) {
+              displays[displayIdx].specs[field.fieldKey] = value;
+            }
+          }
         }
       }
     }
