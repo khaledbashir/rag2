@@ -123,6 +123,8 @@ export async function POST(request: NextRequest) {
       triage: [],
       aiWorkspaceSlug: null,
       warnings: warnings.length > 0 ? warnings : undefined,
+      hasMarginAnalysis: !!marginSheet,
+      hasLedCostSheet: !!ledSheet,
     };
 
     console.log(`[analyze-excel] Parsed ${screens.length} displays from ${file.name} in ${Date.now() - startTime}ms`);

@@ -125,6 +125,12 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
         return rawBrightness != null && rawBrightness !== "" && rawBrightness !== 0 && isFinite(brightnessNumber) && brightnessNumber > 0;
     });
 
+    // Show Weight / Power columns only when at least one screen has calculatedExhibitG data (Intelligence Mode)
+    const hasAnyExhibitG = specRows.some((screen: any) => {
+        const ex = screen?.calculatedExhibitG;
+        return ex && (Number(ex.totalWeightLbs) > 0 || Number(ex.maxPowerW) > 0);
+    });
+
     return (
         <div className="pt-2 break-inside-avoid">
             <div className="mt-1 break-inside-avoid" style={{ marginBottom: `${exhibitAHeaderGap}px` }}>
@@ -147,6 +153,17 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
                                 <col style={{ width: "30%" }} />
                                 <col style={{ width: "15%" }} />
                             </>
+                        ) : hasAnyExhibitG ? (
+                            <>
+                                <col style={{ width: hasAnyBrightness ? "24%" : "28%" }} />
+                                <col style={{ width: "12%" }} />
+                                <col style={{ width: "10%" }} />
+                                <col style={{ width: "14%" }} />
+                                {hasAnyBrightness && <col style={{ width: "10%" }} />}
+                                <col style={{ width: "11%" }} />
+                                <col style={{ width: "11%" }} />
+                                <col style={{ width: hasAnyBrightness ? "8%" : "8%" }} />
+                            </>
                         ) : (
                             <>
                                 <col style={{ width: hasAnyBrightness ? "34%" : "38%" }} />
@@ -165,6 +182,8 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
                             {!isCondensed && <th className="text-right" style={{ whiteSpace: "nowrap", padding: "4px 10px" }}>PITCH</th>}
                             {!isCondensed && <th className="text-right" style={{ whiteSpace: "nowrap", padding: "4px 10px" }}>RESOLUTION</th>}
                             {!isCondensed && hasAnyBrightness && <th className="text-right" style={{ whiteSpace: "nowrap", padding: "4px 10px" }}>BRIGHTNESS</th>}
+                            {!isCondensed && hasAnyExhibitG && <th className="text-right" style={{ whiteSpace: "nowrap", padding: "4px 10px" }}>WEIGHT</th>}
+                            {!isCondensed && hasAnyExhibitG && <th className="text-right" style={{ whiteSpace: "nowrap", padding: "4px 10px" }}>MAX POWER</th>}
                             <th className="text-right" style={{ whiteSpace: "nowrap", padding: "4px 10px" }}>QTY</th>
                         </tr>
                     </thead>
@@ -217,6 +236,21 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
                                                 {brightnessText}
                                             </td>
                                         )}
+                                        {!isCondensed && hasAnyExhibitG && (() => {
+                                            const ex = screen?.calculatedExhibitG;
+                                            const weightLbs = Number(ex?.totalWeightLbs);
+                                            const maxPower = Number(ex?.maxPowerW);
+                                            return (
+                                                <>
+                                                    <td className="text-right tabular-nums text-[9px] align-top" style={{ ...cellStyle, whiteSpace: "nowrap" }}>
+                                                        {isFinite(weightLbs) && weightLbs > 0 ? formatNumberWithCommas(Math.round(weightLbs)) + " lbs" : "\u2014"}
+                                                    </td>
+                                                    <td className="text-right tabular-nums text-[9px] align-top" style={{ ...cellStyle, whiteSpace: "nowrap" }}>
+                                                        {isFinite(maxPower) && maxPower > 0 ? formatNumberWithCommas(Math.round(maxPower)) + " W" : "\u2014"}
+                                                    </td>
+                                                </>
+                                            );
+                                        })()}
                                         <td className="text-right tabular-nums text-[9px] align-top" style={cellStyle}>
                                             {isFinite(qty) ? qty : "\u2014"}
                                         </td>
@@ -225,7 +259,7 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
                             })
                         ) : (
                             <tr>
-                                <td colSpan={isCondensed ? 3 : (hasAnyBrightness ? 6 : 5)} className="px-3 py-6 text-center text-gray-400 italic">
+                                <td colSpan={isCondensed ? 3 : (5 + (hasAnyBrightness ? 1 : 0) + (hasAnyExhibitG ? 2 : 0))} className="px-3 py-6 text-center text-gray-400 italic">
                                     No screens configured.
                                 </td>
                             </tr>

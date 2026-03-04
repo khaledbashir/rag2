@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import UploadZone, { type PipelineEvent } from "./_components/UploadZone";
 import PipelineCheckpoint from "./_components/PipelineCheckpoint";
@@ -99,6 +100,8 @@ interface AnalysisResult {
     relevance: number;
     isDrawing: boolean;
   }>;
+  hasMarginAnalysis?: boolean;
+  hasLedCostSheet?: boolean;
 }
 
 interface PricingPreview {
@@ -229,10 +232,13 @@ function detectSpecMismatches(
 // ==========================================================================
 
 export default function RfpAnalyzerClient() {
+  const router = useRouter();
   const { data: session } = useSession();
   const [phase, setPhase] = useState<Phase>("upload");
   const [events, setEvents] = useState<PipelineEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const lastExcelFileRef = useRef<File | null>(null);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
   const [fileInfo, setFileInfo] = useState<{ filename: string; pageCount: number; sizeMb: string } | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -735,6 +741,7 @@ export default function RfpAnalyzerClient() {
   // ========================================================================
 
   const handleExcelUpload = useCallback(async (file: File) => {
+    lastExcelFileRef.current = file;
     setPhase("processing");
     setError(null);
     setEvents([
@@ -781,6 +788,90 @@ export default function RfpAnalyzerClient() {
       setPhase("upload");
     }
   }, []);
+
+  // ========================================================================
+  // Generate Instant PDF — route Excel through Mirror Mode pipeline
+  // ========================================================================
+
+  const handleGenerateMirrorPdf = useCallback(async () => {
+    const file = lastExcelFileRef.current;
+    if (!file || !session?.user?.email) return;
+
+    setGeneratingPdf(true);
+    setError(null);
+
+    try {
+      // Step 1: Parse through the Mirror Mode pipeline
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const parseRes = await fetch("/api/proposals/import-excel", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!parseRes.ok) {
+        const body = await parseRes.json().catch(() => ({ error: `Parse failed (${parseRes.status})` }));
+        throw new Error(body.error || `Failed to parse Excel for Mirror Mode (${parseRes.status})`);
+      }
+
+      const parseData = await parseRes.json();
+      const details = parseData.formData?.details;
+      const internalAudit = parseData.internalAudit;
+
+      if (!details?.pricingDocument) {
+        throw new Error("Excel parsed but no pricing tables found. Margin Analysis tab may be missing or malformed.");
+      }
+
+      // Step 2: Create workspace + proposal with Mirror Mode data
+      const projectName = result?.project?.projectName
+        || result?.project?.clientName
+        || file.name.replace(/\.(xlsx|xls)$/i, "");
+
+      const createRes = await fetch("/api/workspaces/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: projectName,
+          userEmail: session.user.email,
+          createInitialProposal: true,
+          calculationMode: "MIRROR",
+          excelData: {
+            screens: details.screens || [],
+            receiverName: details.receiver?.name || parseData.formData?.receiver?.name,
+            proposalName: details.proposalName || projectName,
+            internalAudit: internalAudit || undefined,
+            pricingDocument: details.pricingDocument,
+            marginAnalysis: details.marginAnalysis || undefined,
+            pricingMode: "MIRROR",
+            parserValidationReport: details.parserValidationReport || undefined,
+            sourceWorkbookHash: details.sourceWorkbookHash || undefined,
+            parserStrictVersion: details.parserStrictVersion || undefined,
+            clientSummary: details.clientSummary || undefined,
+          },
+        }),
+      });
+
+      if (!createRes.ok) {
+        const body = await createRes.json().catch(() => ({ error: `Create failed (${createRes.status})` }));
+        throw new Error(body.error || `Failed to create proposal (${createRes.status})`);
+      }
+
+      const createData = await createRes.json();
+      const proposalId = createData.proposal?.id;
+
+      if (!proposalId) {
+        throw new Error("Proposal created but no ID returned");
+      }
+
+      // Step 3: Redirect to the proposal page
+      router.push(`/projects/${proposalId}`);
+    } catch (err: any) {
+      console.error("Generate Mirror PDF error:", err);
+      setError(err.message || "Failed to generate proposal");
+      setGeneratingPdf(false);
+    }
+  }, [session, result, router]);
 
   const handleResumeAnalysis = useCallback(async () => {
     if (!lastSessionData.current) return;
@@ -1731,6 +1822,30 @@ export default function RfpAnalyzerClient() {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* ============ GENERATE INSTANT PDF (Mirror Mode bridge) ============ */}
+            {result.hasMarginAnalysis && result.hasLedCostSheet && lastExcelFileRef.current && session?.user?.email && (
+              <div className="p-4 border border-[#0A52EF]/30 bg-[#0A52EF]/5 rounded-xl flex items-center gap-3">
+                <FileSpreadsheet className="w-5 h-5 text-[#0A52EF] shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-[#002C73]">Standard ANC Workbook Detected</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    This Excel has both Margin Analysis and LED Cost Sheet tabs. Generate an instant Mirror Mode proposal with full PDF export.
+                  </p>
+                </div>
+                <button
+                  onClick={handleGenerateMirrorPdf}
+                  disabled={generatingPdf}
+                  className="px-4 py-2 bg-[#0A52EF] text-white rounded-lg text-sm font-medium hover:bg-[#0941c3] transition-colors inline-flex items-center gap-2 whitespace-nowrap disabled:opacity-50"
+                >
+                  {generatingPdf ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Creating Proposal...</>
+                  ) : (
+                    <><Zap className="w-4 h-4" /> Generate Instant PDF</>
+                  )}
+                </button>
               </div>
             )}
 
