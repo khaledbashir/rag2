@@ -123,6 +123,8 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
   // ─── Per-section layout (when pricingDocument with line items is available) ───
   if (pricingTables.length > 0 && pricingTables.some((t: any) => t.items?.length > 0)) {
     let r = 5; // current row cursor
+    let docCostSum = 0;
+    let docSellSum = 0;
 
     for (const table of pricingTables) {
       const items: any[] = table.items || [];
@@ -157,6 +159,8 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
       // Subtotal row — expand to show Cost | Selling | Margin $ | Margin %
       const sectionSubtotal = toNumber(table.subtotal) || sectionSellSum;
       const sectionMargin = sectionCostSum > 0 ? sectionSubtotal - sectionCostSum : null;
+      docCostSum += sectionCostSum;
+      docSellSum += sectionSubtotal;
       marginSheet.getCell(`A${r}`).value = "SUBTOTAL";
       if (sectionCostSum > 0) {
         marginSheet.getCell(`B${r}`).value = sectionCostSum;
@@ -227,20 +231,18 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
       r++;
     }
 
-    // Document total at the end
-    const docTotal = toNumber(args.pricingDocument?.documentTotal) || toNumber(totals.finalClientTotal || totals.sellPrice);
-    if (docTotal > 0) {
+    // Document total at the end — sum actual rendered section values
+    if (docSellSum > 0) {
       marginSheet.getCell(`A${r}`).value = "DOCUMENT TOTAL";
-      marginSheet.getCell(`C${r}`).value = docTotal;
+      marginSheet.getCell(`C${r}`).value = docSellSum;
       marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
-      const totalCostAll = toNumber(totals.totalCost);
-      if (totalCostAll > 0) {
-        marginSheet.getCell(`B${r}`).value = totalCostAll;
+      if (docCostSum > 0) {
+        marginSheet.getCell(`B${r}`).value = docCostSum;
         marginSheet.getCell(`B${r}`).numFmt = moneyFmt;
-        const totalMargin = docTotal - totalCostAll;
+        const totalMargin = docSellSum - docCostSum;
         marginSheet.getCell(`D${r}`).value = totalMargin;
         marginSheet.getCell(`D${r}`).numFmt = moneyFmt;
-        marginSheet.getCell(`E${r}`).value = docTotal > 0 ? totalMargin / docTotal : 0;
+        marginSheet.getCell(`E${r}`).value = docSellSum > 0 ? totalMargin / docSellSum : 0;
         marginSheet.getCell(`E${r}`).numFmt = percentFmt;
       }
       marginSheet.getRow(r).font = { bold: true, size: 12 };
