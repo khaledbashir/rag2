@@ -86,6 +86,9 @@ export interface PricingTable {
 
   /** Ending row in Excel (for debugging) */
   sourceEndRow?: number;
+
+  /** True when this table represents a standalone alternates section */
+  isAlternateSection?: boolean;
 }
 
 export interface PricingDocument {

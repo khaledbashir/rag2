@@ -187,6 +187,7 @@ export function extractTable(
     alternates,
     sourceStartRow: boundary.startRow,
     sourceEndRow: boundary.endRow,
+    isAlternateSection: boundary.isAlternateSection || false,
   };
 }
 

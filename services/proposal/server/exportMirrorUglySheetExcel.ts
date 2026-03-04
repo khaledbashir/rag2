@@ -159,8 +159,13 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
       // Subtotal row — expand to show Cost | Selling | Margin $ | Margin %
       const sectionSubtotal = toNumber(table.subtotal) || sectionSellSum;
       const sectionMargin = sectionCostSum > 0 ? sectionSubtotal - sectionCostSum : null;
-      docCostSum += sectionCostSum;
-      docSellSum += sectionSubtotal;
+      // Alternates are optional add-ons — exclude from document total
+      const isAlternateSection = table.isAlternateSection === true
+        || /\balternate/i.test(table.name || "");
+      if (!isAlternateSection) {
+        docCostSum += sectionCostSum;
+        docSellSum += sectionSubtotal;
+      }
       marginSheet.getCell(`A${r}`).value = "SUBTOTAL";
       if (sectionCostSum > 0) {
         marginSheet.getCell(`B${r}`).value = sectionCostSum;
