@@ -35,6 +35,7 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
   screens: Array<{ name: string; pixelPitch: number; width: number; height: number }>;
   internalAudit: InternalAuditLike | null;
   currency?: string;
+  pricingDocument?: any;
 }): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ANC Studio";
@@ -97,7 +98,6 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
 
   marginSheet.getCell("A4").value = `${args.projectName || args.clientName || "Project"} Margin Analysis`;
 
-  setHeaderRow(marginSheet, 5, ["Item Name / Category", "Cost", "Selling Price", "Margin $", "Margin %"]);
   marginSheet.getColumn(1).width = 55;
   marginSheet.getColumn(2).width = 16;
   marginSheet.getColumn(3).width = 16;
@@ -108,64 +108,209 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
   const percentFmt = "0.00%";
 
   const totals = args.internalAudit?.totals || {};
+  const pricingTables: any[] = args.pricingDocument?.tables || [];
 
-  args.screens.forEach((screen, idx) => {
-    const audit = perScreen?.[idx] || null;
-    const b = audit?.breakdown || {};
+  // ─── Per-section layout (when pricingDocument with line items is available) ───
+  if (pricingTables.length > 0 && pricingTables.some((t: any) => t.items?.length > 0)) {
+    let r = 5; // current row cursor
 
-    const cost = toNumber(b.totalCost);
-    const sell = toNumber(b.sellPrice || b.finalClientTotal);
-    const margin = toNumber(b.ancMargin || b.marginAmount);
-    const marginPct = sell > 0 ? margin / sell : 0;
+    for (const table of pricingTables) {
+      const items: any[] = table.items || [];
+      if (items.length === 0) continue;
 
-    const r = 6 + idx;
-    marginSheet.getCell(`A${r}`).value = screen.name || "Unnamed Screen";
-    marginSheet.getCell(`B${r}`).value = cost || 0;
-    marginSheet.getCell(`C${r}`).value = sell || 0;
-    marginSheet.getCell(`D${r}`).value = margin || 0;
-    marginSheet.getCell(`E${r}`).value = marginPct || 0;
+      // Section header row (dark background, white text — matches ANC format)
+      const headerRow = marginSheet.getRow(r);
+      marginSheet.getCell(`A${r}`).value = table.name || "Section";
+      marginSheet.getCell(`B${r}`).value = "Cost";
+      marginSheet.getCell(`C${r}`).value = "Selling Price";
+      marginSheet.getCell(`D${r}`).value = "Margin $";
+      marginSheet.getCell(`E${r}`).value = "Margin %";
+      headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F2937" } };
+      headerRow.alignment = { vertical: "middle", horizontal: "center" };
+      marginSheet.getCell(`A${r}`).alignment = { vertical: "middle", horizontal: "left" };
+      r++;
 
-    marginSheet.getCell(`B${r}`).numFmt = moneyFmt;
-    marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
-    marginSheet.getCell(`D${r}`).numFmt = moneyFmt;
-    marginSheet.getCell(`E${r}`).numFmt = percentFmt;
-  });
+      // Line items
+      let sectionCostSum = 0;
+      let sectionSellSum = 0;
+      for (const item of items) {
+        if (item.isHidden) continue;
+        const sell = toNumber(item.sellingPrice);
+        const cost = item.cost != null ? toNumber(item.cost) : null;
+        const margin = cost != null ? sell - cost : null;
+        const marginPct = margin != null && sell > 0 ? margin / sell : null;
 
-  const endRow = 6 + args.screens.length;
-  marginSheet.getCell(`A${endRow}`).value = "";
-  marginSheet.getCell(`B${endRow}`).value = toNumber(totals.totalCost);
-  marginSheet.getCell(`C${endRow}`).value = toNumber(totals.sellPrice || totals.finalClientTotal);
-  marginSheet.getCell(`D${endRow}`).value = toNumber(totals.ancMargin || totals.margin);
-  marginSheet.getCell(`E${endRow}`).value = toNumber(totals.sellPrice || totals.finalClientTotal) > 0
-    ? toNumber(totals.ancMargin || totals.margin) / toNumber(totals.sellPrice || totals.finalClientTotal)
-    : 0;
-  marginSheet.getRow(endRow).font = { bold: true };
-  ["B", "C", "D"].forEach((col) => {
-    marginSheet.getCell(`${col}${endRow}`).numFmt = moneyFmt;
-  });
-  marginSheet.getCell(`E${endRow}`).numFmt = percentFmt;
+        marginSheet.getCell(`A${r}`).value = item.description || "";
+        if (cost != null) {
+          marginSheet.getCell(`B${r}`).value = cost;
+          marginSheet.getCell(`B${r}`).numFmt = moneyFmt;
+          sectionCostSum += cost;
+        }
+        marginSheet.getCell(`C${r}`).value = sell;
+        marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
+        if (margin != null) {
+          marginSheet.getCell(`D${r}`).value = margin;
+          marginSheet.getCell(`D${r}`).numFmt = moneyFmt;
+        }
+        if (marginPct != null) {
+          marginSheet.getCell(`E${r}`).value = marginPct;
+          marginSheet.getCell(`E${r}`).numFmt = percentFmt;
+        }
+        sectionSellSum += sell;
+        r++;
+      }
 
-  const taxRow = endRow + 1;
-  marginSheet.getCell(`A${taxRow}`).value = "TAX";
-  marginSheet.getCell(`B${taxRow}`).value = 0;
-  marginSheet.getCell(`C${taxRow}`).value = 0;
+      // Subtotal row (blank label, bold)
+      const sectionSubtotal = toNumber(table.subtotal) || sectionSellSum;
+      marginSheet.getCell(`A${r}`).value = "";
+      if (sectionCostSum > 0) {
+        marginSheet.getCell(`B${r}`).value = sectionCostSum;
+        marginSheet.getCell(`B${r}`).numFmt = moneyFmt;
+      }
+      marginSheet.getCell(`C${r}`).value = sectionSubtotal;
+      marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
+      const sectionMargin = sectionCostSum > 0 ? sectionSubtotal - sectionCostSum : null;
+      if (sectionMargin != null) {
+        marginSheet.getCell(`D${r}`).value = sectionMargin;
+        marginSheet.getCell(`D${r}`).numFmt = moneyFmt;
+        marginSheet.getCell(`E${r}`).value = sectionSubtotal > 0 ? sectionMargin / sectionSubtotal : 0;
+        marginSheet.getCell(`E${r}`).numFmt = percentFmt;
+      }
+      marginSheet.getRow(r).font = { bold: true };
+      r++;
 
-  const bondRow = endRow + 2;
-  marginSheet.getCell(`A${bondRow}`).value = "BOND";
-  marginSheet.getCell(`B${bondRow}`).value = 0;
-  marginSheet.getCell(`C${bondRow}`).value = 0;
+      // Tax row
+      const taxAmount = toNumber(table.tax?.amount);
+      marginSheet.getCell(`A${r}`).value = table.tax?.label || "TAX";
+      marginSheet.getCell(`C${r}`).value = taxAmount;
+      marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
+      r++;
 
-  const subtotalRow = endRow + 3;
-  marginSheet.getCell(`A${subtotalRow}`).value = "SUB TOTAL (BID FORM)";
-  marginSheet.getCell(`C${subtotalRow}`).value = toNumber(totals.finalClientTotal || totals.sellPrice);
-  marginSheet.getCell(`D${subtotalRow}`).value = toNumber(totals.ancMargin || totals.margin);
-  marginSheet.getCell(`E${subtotalRow}`).value = toNumber(totals.sellPrice || totals.finalClientTotal) > 0
-    ? toNumber(totals.ancMargin || totals.margin) / toNumber(totals.sellPrice || totals.finalClientTotal)
-    : 0;
-  marginSheet.getCell(`C${subtotalRow}`).numFmt = moneyFmt;
-  marginSheet.getCell(`D${subtotalRow}`).numFmt = moneyFmt;
-  marginSheet.getCell(`E${subtotalRow}`).numFmt = percentFmt;
-  marginSheet.getRow(subtotalRow).font = { bold: true };
+      // Bond row
+      const bondAmount = toNumber(table.bond);
+      marginSheet.getCell(`A${r}`).value = "BOND";
+      marginSheet.getCell(`C${r}`).value = bondAmount;
+      marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
+      r++;
+
+      // Grand Total row
+      const sectionGrandTotal = toNumber(table.grandTotal) || (sectionSubtotal + taxAmount + bondAmount);
+      marginSheet.getCell(`A${r}`).value = "SUB TOTAL (BID FORM)";
+      marginSheet.getCell(`C${r}`).value = sectionGrandTotal;
+      marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
+      if (sectionMargin != null) {
+        marginSheet.getCell(`D${r}`).value = sectionMargin;
+        marginSheet.getCell(`D${r}`).numFmt = moneyFmt;
+        marginSheet.getCell(`E${r}`).value = sectionGrandTotal > 0 ? sectionMargin / sectionGrandTotal : 0;
+        marginSheet.getCell(`E${r}`).numFmt = percentFmt;
+      }
+      marginSheet.getRow(r).font = { bold: true };
+      r++;
+
+      // Alternates (if any)
+      const alternates: any[] = table.alternates || [];
+      if (alternates.length > 0) {
+        marginSheet.getCell(`A${r}`).value = "Alternates - Add to Cost Above";
+        marginSheet.getCell(`B${r}`).value = "Cost";
+        marginSheet.getCell(`C${r}`).value = "Selling Price";
+        const altHeaderRow = marginSheet.getRow(r);
+        altHeaderRow.font = { bold: true, italic: true };
+        altHeaderRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDEE2E6" } };
+        r++;
+
+        for (const alt of alternates) {
+          marginSheet.getCell(`A${r}`).value = alt.description || "";
+          marginSheet.getCell(`C${r}`).value = toNumber(alt.priceDifference);
+          marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
+          r++;
+        }
+      }
+
+      // Blank separator row between sections
+      r++;
+    }
+
+    // Document total at the end
+    const docTotal = toNumber(args.pricingDocument?.documentTotal) || toNumber(totals.finalClientTotal || totals.sellPrice);
+    if (docTotal > 0) {
+      marginSheet.getCell(`A${r}`).value = "DOCUMENT TOTAL";
+      marginSheet.getCell(`C${r}`).value = docTotal;
+      marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
+      const totalCostAll = toNumber(totals.totalCost);
+      if (totalCostAll > 0) {
+        marginSheet.getCell(`B${r}`).value = totalCostAll;
+        marginSheet.getCell(`B${r}`).numFmt = moneyFmt;
+        const totalMargin = docTotal - totalCostAll;
+        marginSheet.getCell(`D${r}`).value = totalMargin;
+        marginSheet.getCell(`D${r}`).numFmt = moneyFmt;
+        marginSheet.getCell(`E${r}`).value = docTotal > 0 ? totalMargin / docTotal : 0;
+        marginSheet.getCell(`E${r}`).numFmt = percentFmt;
+      }
+      marginSheet.getRow(r).font = { bold: true, size: 12 };
+    }
+  } else {
+    // ─── Fallback: flat layout (no pricingDocument) ───
+    setHeaderRow(marginSheet, 5, ["Item Name / Category", "Cost", "Selling Price", "Margin $", "Margin %"]);
+
+    args.screens.forEach((screen, idx) => {
+      const audit = perScreen?.[idx] || null;
+      const b = audit?.breakdown || {};
+
+      const cost = toNumber(b.totalCost);
+      const sell = toNumber(b.sellPrice || b.finalClientTotal);
+      const margin = toNumber(b.ancMargin || b.marginAmount);
+      const marginPct = sell > 0 ? margin / sell : 0;
+
+      const row = 6 + idx;
+      marginSheet.getCell(`A${row}`).value = screen.name || "Unnamed Screen";
+      marginSheet.getCell(`B${row}`).value = cost || 0;
+      marginSheet.getCell(`C${row}`).value = sell || 0;
+      marginSheet.getCell(`D${row}`).value = margin || 0;
+      marginSheet.getCell(`E${row}`).value = marginPct || 0;
+
+      marginSheet.getCell(`B${row}`).numFmt = moneyFmt;
+      marginSheet.getCell(`C${row}`).numFmt = moneyFmt;
+      marginSheet.getCell(`D${row}`).numFmt = moneyFmt;
+      marginSheet.getCell(`E${row}`).numFmt = percentFmt;
+    });
+
+    const endRow = 6 + args.screens.length;
+    marginSheet.getCell(`A${endRow}`).value = "";
+    marginSheet.getCell(`B${endRow}`).value = toNumber(totals.totalCost);
+    marginSheet.getCell(`C${endRow}`).value = toNumber(totals.sellPrice || totals.finalClientTotal);
+    marginSheet.getCell(`D${endRow}`).value = toNumber(totals.ancMargin || totals.margin);
+    marginSheet.getCell(`E${endRow}`).value = toNumber(totals.sellPrice || totals.finalClientTotal) > 0
+      ? toNumber(totals.ancMargin || totals.margin) / toNumber(totals.sellPrice || totals.finalClientTotal)
+      : 0;
+    marginSheet.getRow(endRow).font = { bold: true };
+    ["B", "C", "D"].forEach((col) => {
+      marginSheet.getCell(`${col}${endRow}`).numFmt = moneyFmt;
+    });
+    marginSheet.getCell(`E${endRow}`).numFmt = percentFmt;
+
+    const taxRow = endRow + 1;
+    marginSheet.getCell(`A${taxRow}`).value = "TAX";
+    marginSheet.getCell(`B${taxRow}`).value = 0;
+    marginSheet.getCell(`C${taxRow}`).value = 0;
+
+    const bondRow = endRow + 2;
+    marginSheet.getCell(`A${bondRow}`).value = "BOND";
+    marginSheet.getCell(`B${bondRow}`).value = 0;
+    marginSheet.getCell(`C${bondRow}`).value = 0;
+
+    const subtotalRow = endRow + 3;
+    marginSheet.getCell(`A${subtotalRow}`).value = "SUB TOTAL (BID FORM)";
+    marginSheet.getCell(`C${subtotalRow}`).value = toNumber(totals.finalClientTotal || totals.sellPrice);
+    marginSheet.getCell(`D${subtotalRow}`).value = toNumber(totals.ancMargin || totals.margin);
+    marginSheet.getCell(`E${subtotalRow}`).value = toNumber(totals.sellPrice || totals.finalClientTotal) > 0
+      ? toNumber(totals.ancMargin || totals.margin) / toNumber(totals.sellPrice || totals.finalClientTotal)
+      : 0;
+    marginSheet.getCell(`C${subtotalRow}`).numFmt = moneyFmt;
+    marginSheet.getCell(`D${subtotalRow}`).numFmt = moneyFmt;
+    marginSheet.getCell(`E${subtotalRow}`).numFmt = percentFmt;
+    marginSheet.getRow(subtotalRow).font = { bold: true };
+  }
 
   // Tech Specs Only — no pricing, for installers/subs
   const techSheet = workbook.addWorksheet("Tech Specs (Installers)");

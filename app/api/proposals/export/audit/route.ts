@@ -72,6 +72,10 @@ export async function POST(req: NextRequest) {
       internalAudit: internalAudit?.perScreen?.[idx] ?? null,
     }));
 
+    // Extract pricingDocument for Mirror Mode per-section Margin Analysis export
+    const proposalDetails = !isPreview && proposal ? (proposal as any).details : null;
+    const pricingDocument = proposalDetails?.pricingDocument || body.pricingDocument || null;
+
     const effectiveMode = (bodyMode === "MIRROR" || bodyMode === "INTELLIGENCE")
       ? bodyMode
       : bodyMirrorMode === true
@@ -91,6 +95,7 @@ export async function POST(req: NextRequest) {
         screens: effectiveScreens,
         internalAudit,
         currency,
+        pricingDocument,
       })
       : await generateAuditExcelBuffer(screensWithAudit, {
         proposalName,

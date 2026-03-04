@@ -9,8 +9,11 @@ export interface PricingLineItem {
   /** Line item description (e.g., "LG Product Cost: Ceiling LED Video Displays") */
   description: string;
 
-  /** Selling price to client (Cost and Margin are NEVER exposed) */
+  /** Selling price to client (Cost and Margin are NEVER exposed in client PDF) */
   sellingPrice: number;
+
+  /** Internal cost from Excel — used only in internal Margin Analysis export, never in client PDF */
+  cost?: number;
 
   /** If true, show "INCLUDED" badge instead of $0.00 */
   isIncluded: boolean;

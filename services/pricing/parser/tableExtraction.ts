@@ -86,6 +86,7 @@ export function extractTable(
         items.push({
           description: row.label,
           sellingPrice: effectiveSell,
+          cost: Number.isFinite(row.cost) ? row.cost : undefined,
           isIncluded: false,
           sourceRow: row.rowIndex,
           isHidden: row.isHidden || undefined,
@@ -117,6 +118,7 @@ export function extractTable(
       items.push({
         description: row.label,
         sellingPrice: effectiveSell,
+        cost: Number.isFinite(row.cost) ? row.cost : undefined,
         isIncluded,
         isExcluded,
         textValue,
@@ -128,6 +130,7 @@ export function extractTable(
       items.push({
         description: row.label,
         sellingPrice: 0,
+        cost: Number.isFinite(row.cost) ? row.cost : undefined,
         isIncluded: true,
         sourceRow: row.rowIndex,
         isHidden: row.isHidden || undefined,
