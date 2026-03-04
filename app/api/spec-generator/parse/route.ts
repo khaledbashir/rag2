@@ -147,7 +147,8 @@ interface ParseResponse {
 // Similar to LABEL_MAP in formSheetParser but oriented for Product Data Forms.
 const FIELD_KEY_PATTERNS: [RegExp, string][] = [
   [/respondent/i, "respondent"],
-  [/display\s*name|location.*display/i, "displayName"],
+  [/display\s*name/i, "displayName"],
+  [/display\s*location|location.*display/i, "displayLocation"],
   [/^manufactur/i, "manufacturer"],
   [/^model\b/i, "model"],
   [/base\s*or\s*alternate|bid\s*type|base\s*proposal/i, "bidType"],
@@ -215,9 +216,68 @@ const FIELD_KEY_PATTERNS: [RegExp, string][] = [
   [/service\s*access|front.*rear.*service/i, "serviceAccess"],
 ];
 
+/**
+ * Sub-label patterns for multi-row fields (column F labels in AJP/WJHW templates).
+ * These appear on rows where column A is empty — the label is in col F instead.
+ */
+const SUB_LABEL_PATTERNS: [RegExp, string][] = [
+  // Display size sub-rows
+  [/^vertical\s*:?\s*$/i, "specHeightFt"],
+  [/^horizontal\s*:?\s*$/i, "specWidthFt"],
+  // Pixel spacing sub-rows
+  [/vertical\s*to\s*vertical/i, "pixelPitchV"],
+  [/horizontal\s*to\s*horizontal/i, "pixelPitchH"],
+  // Viewing angle sub-rows
+  [/vertical\s*\(?\s*up\s*\)?/i, "viewingAngleUp"],
+  [/vertical\s*\(?\s*down\s*\)?/i, "viewingAngleDown"],
+  // Color space sub-rows
+  [/rec\s*709|of\s*rec\s*709/i, "colorSpaceRec709"],
+  [/dci.?p3|of\s*dci/i, "colorSpaceDciP3"],
+  [/rec\s*2020|of\s*rec\s*2020/i, "colorSpaceRec2020"],
+  // Power sub-rows
+  [/at\s*0\s*%|black\s*screen/i, "powerAt0"],
+  [/avg|typ.*content/i, "powerAvg"],
+  [/at\s*100\s*%|white\s*screen/i, "powerAt100"],
+];
+
+/**
+ * Detect the value column for a row using merge information.
+ * In multi-column templates (AJP/WJHW), labels merge A:E and values go in F:J.
+ */
+function detectValueCol(
+  rowIndex: number,
+  row: any[],
+  merges: any[],
+): number {
+  // Check if column A is part of a wide merge (A:E pattern)
+  const rowMerge = merges.find(
+    (m: any) => m.s.r === rowIndex && m.s.c === 0 && m.e.c >= 3
+  );
+  if (rowMerge) {
+    // Label spans A:E (or wider), value starts after the merge
+    const valueStart = rowMerge.e.c + 1;
+    // Find first empty cell from valueStart onward
+    for (let c = valueStart; c < Math.max(row.length, valueStart + 3); c++) {
+      const cellVal = String(row[c] || "").trim();
+      if (!cellVal || /^(enter|n\/a|tbd|—|-)$/i.test(cellVal)) {
+        return c;
+      }
+    }
+    return valueStart;
+  }
+
+  // Simple 2-column layout: scan from col B for first empty cell
+  for (let c = 1; c < Math.max(row.length, 5); c++) {
+    const cellVal = String(row[c] || "").trim();
+    if (!cellVal || /^(enter|n\/a|tbd|—|-)$/i.test(cellVal)) {
+      return c;
+    }
+  }
+  return 1;
+}
+
 function parseTemplate(buffer: Buffer): { fields: TemplateField[]; sheetName: string } {
   const workbook = xlsx.read(buffer, { type: "buffer" });
-  // Use the first sheet (the template should only have one)
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   const data: any[][] = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false });
@@ -225,43 +285,85 @@ function parseTemplate(buffer: Buffer): { fields: TemplateField[]; sheetName: st
   const fields: TemplateField[] = [];
   const merges = sheet["!merges"] || [];
 
+  // Detect if this is a multi-column template (AJP/WJHW style: merges spanning A:E)
+  const hasWideLabels = merges.some(
+    (m: any) => m.s.c === 0 && m.e.c >= 3 && m.e.r === m.s.r
+  );
+
   for (let i = 0; i < data.length; i++) {
     const row = data[i] || [];
     const cellA = String(row[0] || "").trim();
 
+    // ── Sub-row detection: col A empty but col F (or B-F) has a sub-label ──
     if (!cellA) {
+      // In multi-column templates, check cols 1-6 for sub-labels
+      let subLabel = "";
+      let subCol = -1;
+      for (let c = 1; c <= 6 && c < row.length; c++) {
+        const v = String(row[c] || "").trim();
+        if (v && v.length >= 3 && !/^[A-Z]{1,2}$/.test(v) && !/^(FT|PX|MM|DEG|KW|BTU|NITS|%)$/i.test(v)) {
+          subLabel = v;
+          subCol = c;
+          break;
+        }
+      }
+
+      if (subLabel) {
+        // Try to match sub-label to a field key
+        let fieldKey: string | null = null;
+        for (const [pattern, key] of SUB_LABEL_PATTERNS) {
+          if (pattern.test(subLabel)) {
+            fieldKey = key;
+            break;
+          }
+        }
+        if (!fieldKey) {
+          // Also try main patterns
+          for (const [pattern, key] of FIELD_KEY_PATTERNS) {
+            if (pattern.test(subLabel)) {
+              fieldKey = key;
+              break;
+            }
+          }
+        }
+
+        if (fieldKey) {
+          // Find value column: first empty/placeholder cell after the sub-label
+          let valueCol = subCol + 1;
+          for (let c = subCol + 1; c < Math.max(row.length, subCol + 5); c++) {
+            const v = String(row[c] || "").trim();
+            if (!v || /^(enter|n\/a|tbd|—|-)$/i.test(v)) {
+              valueCol = c;
+              break;
+            }
+          }
+          fields.push({ type: "field", label: subLabel, fieldKey, rowIndex: i, valueCol });
+          continue;
+        }
+      }
+
       fields.push({ type: "separator", label: "", fieldKey: null, rowIndex: i, valueCol: 1 });
       continue;
     }
 
-    // Check if this row is a section header (merged cell or all-caps label)
-    // BUT: first check if the label matches a known field pattern — if so, it's a field, not a section
-    const isMerged = merges.some(
-      (m: any) => m.s.r === i && m.e.c > m.s.c + 1
+    // ── Section header detection ──
+    const isFullRowMerge = merges.some(
+      (m: any) => m.s.r === i && m.s.c === 0 && m.e.c >= 8
     );
     const isAllCaps = cellA === cellA.toUpperCase() && cellA.length > 3 && /^[A-Z\s\-&\/()]+$/.test(cellA);
 
-    if (isMerged || isAllCaps) {
-      // Before classifying as section, check if it matches a field pattern
+    if (isFullRowMerge || isAllCaps) {
       const matchesField = FIELD_KEY_PATTERNS.some(([pattern]) => pattern.test(cellA));
       if (!matchesField) {
         fields.push({ type: "section", label: cellA, fieldKey: null, rowIndex: i, valueCol: 1 });
         continue;
       }
-      // Falls through to field matching below
     }
 
-    // Auto-detect value column: scan cols B onward for the first empty/placeholder cell
-    let valueCol = 1; // default = column B (0-based index 1)
-    for (let c = 1; c < Math.max(row.length, 5); c++) {
-      const cellVal = String(row[c] || "").trim();
-      if (!cellVal || /^(enter|n\/a|tbd|\—|-)$/i.test(cellVal)) {
-        valueCol = c;
-        break;
-      }
-    }
+    // ── Main field row ──
+    const valueCol = detectValueCol(i, row, merges);
 
-    // Try to match this label to a field key
+    // Match label to field key
     let fieldKey: string | null = null;
     for (const [pattern, key] of FIELD_KEY_PATTERNS) {
       if (pattern.test(cellA)) {
@@ -271,6 +373,41 @@ function parseTemplate(buffer: Buffer): { fields: TemplateField[]; sheetName: st
     }
 
     fields.push({ type: "field", label: cellA, fieldKey, rowIndex: i, valueCol });
+
+    // ── Dual-field rows: check if col F also has a label (e.g., "MODEL:", "DISPLAY LOCATION:") ──
+    if (hasWideLabels) {
+      const colF = String(row[5] || "").trim();
+      if (colF && colF.length >= 3 && /[a-zA-Z]/.test(colF)) {
+        let subFieldKey: string | null = null;
+        for (const [pattern, key] of FIELD_KEY_PATTERNS) {
+          if (pattern.test(colF) && key !== fieldKey) {
+            subFieldKey = key;
+            break;
+          }
+        }
+        // Also check sub-label patterns
+        if (!subFieldKey) {
+          for (const [pattern, key] of SUB_LABEL_PATTERNS) {
+            if (pattern.test(colF)) {
+              subFieldKey = key;
+              break;
+            }
+          }
+        }
+        if (subFieldKey) {
+          // Value for the dual field is in col G onward
+          let dualValueCol = 6;
+          for (let c = 6; c < Math.max(row.length, 10); c++) {
+            const v = String(row[c] || "").trim();
+            if (!v || /^(enter|n\/a|tbd|—|-)$/i.test(v)) {
+              dualValueCol = c;
+              break;
+            }
+          }
+          fields.push({ type: "field", label: colF, fieldKey: subFieldKey, rowIndex: i, valueCol: dualValueCol });
+        }
+      }
+    }
   }
 
   return { fields, sheetName };
@@ -742,6 +879,11 @@ async function fillDisplay(
     contrastRatio: resolve("contrastRatio", ext.contrastRatio, lgSpecs?.contrastRatio as string | undefined),
     ipRating: resolve("ipRating", ext.ipRating, lgSpecs?.ipRating as string | undefined),
     serviceAccess: resolve("serviceAccess", ext.serviceAccess, lgSpecs?.serviceAccess as string | undefined),
+
+    // Sub-row fields for multi-column templates (AJP/WJHW)
+    displayLocation: display.location || "—",
+    pixelPitchV: correctedPitch || "—",
+    pixelPitchH: correctedPitch || "—",
   };
 
   const matchStatus: FilledDisplay["matchStatus"] =
