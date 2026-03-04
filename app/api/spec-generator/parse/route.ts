@@ -45,6 +45,8 @@ export interface TemplateField {
   label: string;
   fieldKey: string | null;
   rowIndex: number;
+  /** 0-based column index where values should be written (auto-detected) */
+  valueCol: number;
 }
 
 export interface FilledDisplay {
@@ -92,6 +94,8 @@ interface ParseResponse {
     warnings: string[];
   };
   projectName: string;
+  /** Name of the first sheet in the template (used for cloning) */
+  sheetName: string;
 }
 
 // ─── Template parser ────────────────────────────────────────────────────────
@@ -149,7 +153,7 @@ const FIELD_KEY_PATTERNS: [RegExp, string][] = [
   [/ventilation|cooling/i, "ventilationRequirements"],
 ];
 
-function parseTemplate(buffer: Buffer): TemplateField[] {
+function parseTemplate(buffer: Buffer): { fields: TemplateField[]; sheetName: string } {
   const workbook = xlsx.read(buffer, { type: "buffer" });
   // Use the first sheet (the template should only have one)
   const sheetName = workbook.SheetNames[0];
@@ -164,7 +168,7 @@ function parseTemplate(buffer: Buffer): TemplateField[] {
     const cellA = String(row[0] || "").trim();
 
     if (!cellA) {
-      fields.push({ type: "separator", label: "", fieldKey: null, rowIndex: i });
+      fields.push({ type: "separator", label: "", fieldKey: null, rowIndex: i, valueCol: 1 });
       continue;
     }
 
@@ -175,8 +179,18 @@ function parseTemplate(buffer: Buffer): TemplateField[] {
     const isAllCaps = cellA === cellA.toUpperCase() && cellA.length > 3 && /^[A-Z\s\-&\/()]+$/.test(cellA);
 
     if (isMerged || isAllCaps) {
-      fields.push({ type: "section", label: cellA, fieldKey: null, rowIndex: i });
+      fields.push({ type: "section", label: cellA, fieldKey: null, rowIndex: i, valueCol: 1 });
       continue;
+    }
+
+    // Auto-detect value column: scan cols B onward for the first empty/placeholder cell
+    let valueCol = 1; // default = column B (0-based index 1)
+    for (let c = 1; c < Math.max(row.length, 5); c++) {
+      const cellVal = String(row[c] || "").trim();
+      if (!cellVal || /^(enter|n\/a|tbd|\—|-)$/i.test(cellVal)) {
+        valueCol = c;
+        break;
+      }
     }
 
     // Try to match this label to a field key
@@ -188,10 +202,10 @@ function parseTemplate(buffer: Buffer): TemplateField[] {
       }
     }
 
-    fields.push({ type: "field", label: cellA, fieldKey, rowIndex: i });
+    fields.push({ type: "field", label: cellA, fieldKey, rowIndex: i, valueCol });
   }
 
-  return fields;
+  return { fields, sheetName };
 }
 
 // ─── Product matching from DB ───────────────────────────────────────────────
@@ -296,7 +310,7 @@ function getDefaults(isOutdoor: boolean, vendor: string) {
   const isLG = /\blg\b/i.test(vendor);
   return {
     oemLedModuleMfr: vendor || "—",
-    oemProcessorMfr: isLG ? "LG Embedded (Sigma SoC)" : "—",
+    oemProcessorMfr: isLG ? "Novastar" : "—",
     factory: isLG ? "LG Electronics, South Korea" : `${vendor || "Unknown"}, China`,
     ledLampType: isOutdoor
       ? "SMD (Surface-Mount Device) — IP65 Rated Package"
@@ -323,7 +337,7 @@ function getDefaults(isOutdoor: boolean, vendor: string) {
 
 const LG_SPECS: Record<string, Record<string, string | number>> = {
   LSCC012: {
-    oemProcessorMfr: "LG Embedded (Sigma SoC)",
+    oemProcessorMfr: "Novastar",
     factory: "LG Electronics, South Korea",
     ledLampType: "SMD (Surface-Mount Device) — Single SMD Package",
     viewingAngleH: "160", viewingAngleUp: "80", viewingAngleDown: "80",
@@ -331,7 +345,7 @@ const LG_SPECS: Record<string, Record<string, string | number>> = {
     colorTemperatureK: "6500",
   },
   LSCC018: {
-    oemProcessorMfr: "LG Embedded (Sigma SoC)",
+    oemProcessorMfr: "Novastar",
     factory: "LG Electronics, South Korea",
     ledLampType: "SMD (Surface-Mount Device) — Single SMD Package",
     viewingAngleH: "160", viewingAngleUp: "80", viewingAngleDown: "80",
@@ -339,7 +353,7 @@ const LG_SPECS: Record<string, Record<string, string | number>> = {
     colorTemperatureK: "6500",
   },
   LSCC025: {
-    oemProcessorMfr: "LG Embedded (Sigma SoC)",
+    oemProcessorMfr: "Novastar",
     factory: "LG Electronics, South Korea",
     ledLampType: "SMD (Surface-Mount Device) — Single SMD Package",
     viewingAngleH: "160", viewingAngleUp: "80", viewingAngleDown: "80",
@@ -347,7 +361,7 @@ const LG_SPECS: Record<string, Record<string, string | number>> = {
     colorTemperatureK: "6500",
   },
   GSQA039: {
-    oemProcessorMfr: "LG Embedded (Sigma SoC)",
+    oemProcessorMfr: "Novastar",
     factory: "LG Electronics, South Korea",
     ledLampType: "SMD (Surface-Mount Device) — IP30 Rated Package",
     viewingAngleH: "160", viewingAngleUp: "80", viewingAngleDown: "80",
@@ -355,7 +369,7 @@ const LG_SPECS: Record<string, Record<string, string | number>> = {
     colorTemperatureK: "6500",
   },
   GSQA083: {
-    oemProcessorMfr: "LG Embedded (Sigma SoC)",
+    oemProcessorMfr: "Novastar",
     factory: "LG Electronics, South Korea",
     ledLampType: "SMD (Surface-Mount Device) — IP65 Rated Package",
     viewingAngleH: "140", viewingAngleUp: "70", viewingAngleDown: "70",
@@ -440,8 +454,8 @@ async function fillDisplay(
     ? Math.round((display.pixelsH * display.pixelsW) / display.sqFt)
     : 0;
 
-  // Border allowance
-  const borderAllowance = display.isOutdoor ? 0.5 : 0.33;
+  // Border allowance — per Natalia/Jeremy: physical size with borders = active size (no extra border)
+  const borderAllowance = 0;
 
   // Get defaults
   const defaults = getDefaults(display.isOutdoor, display.vendor);
@@ -578,7 +592,7 @@ export async function POST(request: NextRequest) {
     const costBuffer = Buffer.from(await costAnalysisFile.arrayBuffer());
 
     // Step 1: Parse template layout
-    const templateFields = parseTemplate(templateBuffer);
+    const { fields: templateFields, sheetName: templateSheetName } = parseTemplate(templateBuffer);
 
     // Step 2: Parse cost analysis
     const { displays: costDisplays, projectName, warnings } = parseCostAnalysis(costBuffer);
@@ -589,6 +603,7 @@ export async function POST(request: NextRequest) {
         templateFields,
         stats: { total: 0, matched: 0, defaults: 0, warnings },
         projectName: projectName || costAnalysisFile.name.replace(/\.(xlsx?|csv)$/i, ""),
+        sheetName: templateSheetName,
       });
     }
 
@@ -610,6 +625,7 @@ export async function POST(request: NextRequest) {
         warnings,
       },
       projectName: projectName || costAnalysisFile.name.replace(/\.(xlsx?|csv)$/i, ""),
+      sheetName: templateSheetName,
     };
 
     return NextResponse.json(response);

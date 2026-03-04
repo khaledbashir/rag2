@@ -131,14 +131,21 @@ export default function SpecGeneratorClient() {
     setExporting(true);
 
     try {
+      const formData = new FormData();
+      // Attach the original template file for clone-and-fill
+      if (templateFile) {
+        formData.append("template", templateFile);
+      }
+      // Attach display data as JSON blob
+      formData.append("data", JSON.stringify({
+        displays: parsedData.displays,
+        templateFields: parsedData.templateFields,
+        projectName: parsedData.projectName,
+      }));
+
       const response = await fetch("/api/spec-generator/download", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          displays: parsedData.displays,
-          templateFields: parsedData.templateFields,
-          projectName: parsedData.projectName,
-        }),
+        body: formData,
       });
 
       if (!response.ok) throw new Error("Download failed");
@@ -155,7 +162,7 @@ export default function SpecGeneratorClient() {
     } finally {
       setExporting(false);
     }
-  }, [parsedData]);
+  }, [parsedData, templateFile]);
 
   // ─── Reset ──────────────────────────────────────────────────────────────
 

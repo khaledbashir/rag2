@@ -328,6 +328,59 @@ export function parseCostAnalysis(buffer: Buffer): CostAnalysisResult {
     warnings.push("No LED- display rows found in '" + sheetName + "'. Make sure display names start with 'LED-'.");
   }
 
+  // ─── Vendor/Model Inference ──────────────────────────────────────────────
+  // Fill in missing vendor/model from sibling displays
+  if (displays.length > 1) {
+    // Vendor inference: majority vote
+    const vendorCounts: Record<string, number> = {};
+    for (const d of displays) {
+      if (d.vendor) {
+        const v = d.vendor.toLowerCase();
+        vendorCounts[v] = (vendorCounts[v] || 0) + 1;
+      }
+    }
+    const displaysWithVendor = Object.values(vendorCounts).reduce((a, b) => a + b, 0);
+    let majorityVendorOriginal = "";
+    if (displaysWithVendor > 0) {
+      const sorted = Object.entries(vendorCounts).sort((a, b) => b[1] - a[1]);
+      const [topVendor, topCount] = sorted[0];
+      if (topCount / displays.length > 0.5) {
+        // Find original casing from a display that has this vendor
+        majorityVendorOriginal = displays.find(
+          (d) => d.vendor.toLowerCase() === topVendor
+        )?.vendor || topVendor;
+      }
+    }
+
+    for (const d of displays) {
+      if (!d.vendor && majorityVendorOriginal) {
+        d.vendor = majorityVendorOriginal;
+        warnings.push(`${d.shortId}: Vendor inferred from project majority (${majorityVendorOriginal})`);
+      }
+    }
+
+    // Model inference: match by same vendor + closest pixel pitch
+    const displaysWithModel = displays.filter((d) => d.vendor && d.model);
+    for (const d of displays) {
+      if (d.vendor && !d.model && d.pixelPitch > 0) {
+        // Find sibling with same vendor and closest pitch that has a model
+        const candidates = displaysWithModel.filter(
+          (s) => s.vendor.toLowerCase() === d.vendor.toLowerCase()
+        );
+        if (candidates.length > 0) {
+          const byPitch = candidates.sort(
+            (a, b) => Math.abs(a.pixelPitch - d.pixelPitch) - Math.abs(b.pixelPitch - d.pixelPitch)
+          );
+          const best = byPitch[0];
+          if (Math.abs(best.pixelPitch - d.pixelPitch) <= 0.5) {
+            d.model = best.model;
+            warnings.push(`${d.shortId}: Model inferred from similar display ${best.shortId} (${best.model})`);
+          }
+        }
+      }
+    }
+  }
+
   console.log(`[COST PARSER] Found ${displays.length} displays in "${sheetName}"`);
 
   return { displays, projectName, warnings };

@@ -2,14 +2,22 @@
  * POST /api/spec-generator/download
  *
  * Generates a formatted .xlsx file from the spec generator data.
- * Each display gets its own worksheet, matching the template layout.
+ *
+ * Clone-and-fill mode (preferred):
+ *   Accepts the original template file via FormData, clones the template sheet
+ *   per display using ExcelJS, and fills values into the correct cells.
+ *   This preserves all original formatting (fonts, colors, merged cells, borders).
+ *
+ * Fallback mode:
+ *   When no template buffer is provided, builds sheets from scratch with
+ *   hardcoded ANC styling (original behavior).
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import type { FilledDisplay, TemplateField } from "@/app/api/spec-generator/parse/route";
 
-// ─── Styles ─────────────────────────────────────────────────────────────────
+// ─── Styles (used by fallback addDisplaySheet + Summary) ─────────────────────
 
 const HEADER_FILL: ExcelJS.Fill = {
   type: "pattern",
@@ -26,13 +34,13 @@ const SECTION_FILL: ExcelJS.Fill = {
 const HIGHLIGHT_FILL: ExcelJS.Fill = {
   type: "pattern",
   pattern: "solid",
-  fgColor: { argb: "FFFFF3CD" }, // Light amber
+  fgColor: { argb: "FFFFF3CD" },
 };
 
 const LABEL_FILL: ExcelJS.Fill = {
   type: "pattern",
   pattern: "solid",
-  fgColor: { argb: "FFF7FAFC" }, // Light gray
+  fgColor: { argb: "FFF7FAFC" },
 };
 
 const BORDER: Partial<ExcelJS.Borders> = {
@@ -69,7 +77,93 @@ const VALUE_FONT: Partial<ExcelJS.Font> = {
   color: { argb: "FF111827" },
 };
 
-// ─── Build worksheet per display ────────────────────────────────────────────
+// ─── Clone-and-fill helpers ──────────────────────────────────────────────────
+
+/**
+ * Clone a worksheet from a source workbook into a target workbook.
+ * Copies column widths, row heights, merged cells, and all cell values + styles.
+ */
+function cloneWorksheet(
+  sourceWs: ExcelJS.Worksheet,
+  targetWb: ExcelJS.Workbook,
+  newName: string,
+): ExcelJS.Worksheet {
+  const ws = targetWb.addWorksheet(newName);
+
+  // Copy column widths
+  sourceWs.columns.forEach((col, i) => {
+    const targetCol = ws.getColumn(i + 1);
+    if (col.width) targetCol.width = col.width;
+    if (col.hidden) targetCol.hidden = col.hidden;
+  });
+
+  // Copy merged cells
+  // ExcelJS exposes merges via worksheet model
+  const srcModel = sourceWs.model as any;
+  if (srcModel?.merges) {
+    for (const merge of srcModel.merges) {
+      try {
+        ws.mergeCells(merge);
+      } catch {
+        // skip if merge range is invalid
+      }
+    }
+  }
+
+  // Copy rows: height + cells (value + style)
+  sourceWs.eachRow({ includeEmpty: true }, (srcRow, rowNumber) => {
+    const targetRow = ws.getRow(rowNumber);
+    targetRow.height = srcRow.height;
+
+    srcRow.eachCell({ includeEmpty: true }, (srcCell, colNumber) => {
+      const targetCell = targetRow.getCell(colNumber);
+
+      // Copy value (skip formulas — we'll overwrite value cells anyway)
+      if (srcCell.type === ExcelJS.ValueType.Formula) {
+        // Keep formula as-is
+        targetCell.value = srcCell.value;
+      } else {
+        targetCell.value = srcCell.value;
+      }
+
+      // Copy style (font, fill, border, alignment, numFmt)
+      if (srcCell.style) {
+        targetCell.style = { ...srcCell.style };
+      }
+    });
+  });
+
+  return ws;
+}
+
+/**
+ * Fill a cloned worksheet with display spec values.
+ * Uses templateFields to know which row/col to write each value.
+ */
+function fillClonedSheet(
+  ws: ExcelJS.Worksheet,
+  display: FilledDisplay,
+  templateFields: TemplateField[],
+) {
+  for (const field of templateFields) {
+    if (field.type !== "field" || !field.fieldKey) continue;
+
+    const value = display.specs[field.fieldKey];
+    if (value == null) continue;
+
+    const rowNum = field.rowIndex + 1; // ExcelJS is 1-based
+    const colNum = (field.valueCol ?? 1) + 1; // ExcelJS is 1-based
+
+    const cell = ws.getRow(rowNum).getCell(colNum);
+
+    // Don't overwrite formula cells
+    if (cell.type === ExcelJS.ValueType.Formula) continue;
+
+    cell.value = value;
+  }
+}
+
+// ─── Fallback: build worksheet from scratch (original behavior) ──────────────
 
 function addDisplaySheet(
   workbook: ExcelJS.Workbook,
@@ -82,9 +176,8 @@ function addDisplaySheet(
     },
   });
 
-  // Column widths
-  ws.getColumn(1).width = 40; // Label
-  ws.getColumn(2).width = 35; // Value
+  ws.getColumn(1).width = 40;
+  ws.getColumn(2).width = 35;
 
   let rowNum = 1;
 
@@ -117,7 +210,6 @@ function addDisplaySheet(
 
   rowNum++; // Blank row
 
-  // Use template fields if available, else use default layout
   if (templateFields.length > 0) {
     for (const field of templateFields) {
       if (field.type === "separator") {
@@ -139,7 +231,6 @@ function addDisplaySheet(
         continue;
       }
 
-      // Field row
       const value = field.fieldKey ? display.specs[field.fieldKey] : "";
       const isDefault = display.matchStatus === "defaults" && field.fieldKey &&
         !["respondent", "displayName", "manufacturer", "model", "bidType", "indoorOutdoor",
@@ -161,7 +252,6 @@ function addDisplaySheet(
       }
     }
   } else {
-    // Default layout
     const addSection = (label: string) => {
       const row = ws.getRow(rowNum++);
       ws.mergeCells(row.number, 1, row.number, 2);
@@ -324,24 +414,50 @@ function addSummarySheet(workbook: ExcelJS.Workbook, displays: FilledDisplay[]) 
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { displays, templateFields, projectName, editedCells } = body as {
-      displays: FilledDisplay[];
-      templateFields: TemplateField[];
-      projectName: string;
-      editedCells?: Record<string, string>;
-    };
+    // Accept FormData (new) or JSON (legacy fallback)
+    const contentType = request.headers.get("content-type") || "";
+
+    let displays: FilledDisplay[];
+    let templateFields: TemplateField[];
+    let projectName: string;
+    let editedCells: Record<string, string> | undefined;
+    let templateBuffer: Buffer | null = null;
+
+    if (contentType.includes("multipart/form-data")) {
+      // New FormData format: template file + JSON data blob
+      const formData = await request.formData();
+      const templateFile = formData.get("template") as File | null;
+      const dataStr = formData.get("data") as string;
+
+      if (!dataStr) {
+        return NextResponse.json({ error: "Missing data field" }, { status: 400 });
+      }
+
+      const body = JSON.parse(dataStr);
+      displays = body.displays;
+      templateFields = body.templateFields;
+      projectName = body.projectName;
+      editedCells = body.editedCells;
+
+      if (templateFile) {
+        templateBuffer = Buffer.from(await templateFile.arrayBuffer());
+      }
+    } else {
+      // Legacy JSON format (backward compat)
+      const body = await request.json();
+      displays = body.displays;
+      templateFields = body.templateFields;
+      projectName = body.projectName;
+      editedCells = body.editedCells;
+    }
 
     if (!displays || displays.length === 0) {
       return NextResponse.json({ error: "No displays provided" }, { status: 400 });
     }
 
     // Apply user edits to display specs
-    // editedCells format: { "displayIdx:fieldKey": "new value" }
-    // OR legacy format: { "sheetIdx-rowIdx-colIdx": "value" } with templateFields lookup
     if (editedCells) {
       for (const [key, value] of Object.entries(editedCells)) {
-        // New format: "displayIdx:fieldKey"
         if (key.includes(":")) {
           const [idxStr, fieldKey] = key.split(":");
           const idx = parseInt(idxStr);
@@ -350,14 +466,12 @@ export async function POST(request: NextRequest) {
           }
           continue;
         }
-        // Legacy format: "sheetIdx-rowIdx-colIdx"
         const parts = key.split("-");
         if (parts.length >= 2) {
           const sheetIdx = parseInt(parts[0]);
           const rowIdx = parseInt(parts[1]);
-          const displayIdx = sheetIdx - 1; // 0 = summary, 1+ = displays
+          const displayIdx = sheetIdx - 1;
           if (displayIdx >= 0 && displayIdx < displays.length && templateFields?.length > 0) {
-            // Find the field key from templateFields at this row position
             const field = templateFields[rowIdx];
             if (field?.fieldKey) {
               displays[displayIdx].specs[field.fieldKey] = value;
@@ -367,20 +481,50 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate workbook
+    // ─── Clone-and-fill mode ───────────────────────────────────────────────
+    if (templateBuffer && templateFields?.length > 0) {
+      const sourceWb = new ExcelJS.Workbook();
+      await sourceWb.xlsx.load(templateBuffer);
+      const sourceWs = sourceWb.worksheets[0];
+
+      if (sourceWs) {
+        const outputWb = new ExcelJS.Workbook();
+        outputWb.creator = "ANC Spec Generator";
+        outputWb.created = new Date();
+
+        // Summary first
+        addSummarySheet(outputWb, displays);
+
+        // Clone template sheet per display, then fill values
+        for (const display of displays) {
+          const cloned = cloneWorksheet(sourceWs, outputWb, display.shortId);
+          fillClonedSheet(cloned, display, templateFields);
+        }
+
+        const buffer = await outputWb.xlsx.writeBuffer();
+        const fileName = `${projectName || "ANC"}_Product_Data_Forms.xlsx`;
+
+        return new NextResponse(buffer, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Content-Disposition": `attachment; filename="${fileName}"`,
+          },
+        });
+      }
+    }
+
+    // ─── Fallback: build from scratch ──────────────────────────────────────
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "ANC Spec Generator";
     workbook.created = new Date();
 
-    // Summary first
     addSummarySheet(workbook, displays);
 
-    // One sheet per display
     for (const display of displays) {
       addDisplaySheet(workbook, display, templateFields);
     }
 
-    // Write to buffer
     const buffer = await workbook.xlsx.writeBuffer();
     const fileName = `${projectName || "ANC"}_Product_Data_Forms.xlsx`;
 
