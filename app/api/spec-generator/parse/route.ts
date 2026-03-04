@@ -148,16 +148,21 @@ interface ParseResponse {
 const FIELD_KEY_PATTERNS: [RegExp, string][] = [
   [/respondent/i, "respondent"],
   [/display\s*name|location.*display/i, "displayName"],
-  [/^manufacturer/i, "manufacturer"],
+  [/^manufactur/i, "manufacturer"],
   [/^model\b/i, "model"],
-  [/base\s*or\s*alternate|bid\s*type/i, "bidType"],
-  [/physical\s*pixel\s*pitch/i, "pixelPitch"],
-  [/virtual\s*pixel\s*pitch/i, "virtualPixelPitch"],
+  [/base\s*or\s*alternate|bid\s*type|base\s*proposal/i, "bidType"],
+  [/spec\.\s*led\s*type|led\s*type/i, "ledType"],
+  [/physical\s*pixel\s*(pitch|spacing)/i, "pixelPitch"],
+  [/virtual.*pixel\s*pitch|claimed.*pixel/i, "virtualPixelPitch"],
   [/indoor.*outdoor|outdoor.*indoor/i, "indoorOutdoor"],
   [/panel\s*res.*w/i, "panelResolutionW"],
   [/panel\s*res.*h/i, "panelResolutionH"],
+  // Active display size (AJP/WJHW: "OVERALL ACTIVE DISPLAY SIZE...NOT INCLUDING BORDERS")
+  [/active\s*display\s*size|not\s*including\s*borders/i, "activeDisplaySize"],
   [/spec.*width|display\s*width|width.*ft/i, "specWidthFt"],
   [/spec.*height|display\s*height|height.*ft/i, "specHeightFt"],
+  // Physical size with borders (AJP/WJHW: "PHYSICAL DISPLAY SIZE (INCLUDING BORDERS AND/OR SHROUDING)")
+  [/physical.*display.*size.*(?:incl|border|shroud)/i, "physicalSizeWithBorders"],
   [/physical.*size.*width.*border/i, "physicalWidthWithBorder"],
   [/physical.*size.*height.*border/i, "physicalHeightWithBorder"],
   [/actual.*width/i, "actualWidthFt"],
@@ -167,36 +172,47 @@ const FIELD_KEY_PATTERNS: [RegExp, string][] = [
   [/area\s*per\s*screen|sq.*ft/i, "areaSqFt"],
   [/number\s*of\s*screen|qty|quantity/i, "numberOfScreens"],
   [/pixel\s*density/i, "pixelDensity"],
+  // Viewing angle — generic catch for AJP/WJHW "VIEWING ANGLE (AT 50% BRIGHTNESS...)"
   [/horizontal\s*view|viewing.*horiz/i, "viewingAngleH"],
   [/vertical\s*up|viewing.*up/i, "viewingAngleUp"],
   [/vertical\s*down|viewing.*down/i, "viewingAngleDown"],
+  [/viewing\s*angle/i, "viewingAngleH"],
   [/pixel\s*fill\s*factor/i, "pixelFillFactor"],
+  [/%\s*open\s*area|transparent\s*display/i, "openArea"],
   [/oem\s*led\s*module\s*mfr|led\s*module\s*manu/i, "oemLedModuleMfr"],
   [/oem\s*processor\s*mfr|processor\s*manu/i, "oemProcessorMfr"],
-  [/(?:led\s*)?factory|country.*origin|place.*manu/i, "factory"],
-  [/led\s*lamp\s*type|lamp\s*type/i, "ledLampType"],
+  [/factory\s*produc|(?:led\s*)?factory|country.*origin|place.*manu/i, "factory"],
+  [/led\s*lamp\s*type|lamp\s*type|die.*package/i, "ledLampType"],
   [/max.*brightness|brightness.*nit/i, "maxBrightness"],
   [/post.*calibrat.*brightness|uniform.*brightness/i, "postCalibrationBrightness"],
   [/brightness.*level.*adj|brightness.*adj/i, "brightnessAdjustment"],
   [/native\s*color\s*temp/i, "nativeColorTemperature"],
   [/color\s*temp.*k|color\s*temp.*kelvin/i, "colorTemperatureK"],
   [/color\s*temp.*adj/i, "colorTempAdjustability"],
+  // Color space — AJP/WJHW uses "INCLUSION RATIO (%) OF COLOR SPACE REPRODUCIBLE..."
+  [/inclusion\s*ratio.*color\s*space|color\s*space.*reproducib/i, "colorSpaceRec709"],
   [/rec\s*709|color\s*space.*709/i, "colorSpaceRec709"],
   [/dci.*p3|color\s*space.*p3/i, "colorSpaceDciP3"],
   [/rec\s*2020|color\s*space.*2020/i, "colorSpaceRec2020"],
+  // Power — AJP/WJHW uses "POWER CONSUMPTION AND ANTICIPATED HEAT LOAD...FULL WHITE IMAGE"
+  [/power.*consumption.*heat\s*load|anticipated\s*heat/i, "powerAt100"],
   [/power.*0\s*%|power.*black|power.*idle/i, "powerAt0"],
   [/power.*avg|power.*average|power.*typical/i, "powerAvg"],
   [/power.*100\s*%|power.*full|power.*max|power.*white/i, "powerAt100"],
   [/btu.*0\s*%|btu.*black|btu.*idle/i, "btuAt0"],
   [/btu.*avg|btu.*average|btu.*typical/i, "btuAvg"],
   [/btu.*100\s*%|btu.*full|btu.*max|btu.*white/i, "btuAt100"],
-  [/power\s*req|voltage|electrical\s*req/i, "powerRequirements"],
+  [/power\s*req|voltage.*phase|electrical\s*req/i, "powerRequirements"],
   [/total\s*display\s*assembly\s*weight/i, "totalWeight"],
   [/total\s*(?:display\s*)?weight|weight.*total|weight.*lbs/i, "totalWeight"],
   [/smd\s*led\s*model|led\s*model/i, "smdLedModel"],
   [/gradation\s*method/i, "gradationMethod"],
   [/tonal\s*gradation/i, "tonalGradation"],
   [/ventilation|cooling/i, "ventilationRequirements"],
+  [/refresh\s*rate/i, "refreshRate"],
+  [/contrast\s*ratio/i, "contrastRatio"],
+  [/ip\s*rat|ingress\s*protect/i, "ipRating"],
+  [/service\s*access|front.*rear.*service/i, "serviceAccess"],
 ];
 
 function parseTemplate(buffer: Buffer): { fields: TemplateField[]; sheetName: string } {
@@ -219,14 +235,20 @@ function parseTemplate(buffer: Buffer): { fields: TemplateField[]; sheetName: st
     }
 
     // Check if this row is a section header (merged cell or all-caps label)
+    // BUT: first check if the label matches a known field pattern — if so, it's a field, not a section
     const isMerged = merges.some(
       (m: any) => m.s.r === i && m.e.c > m.s.c + 1
     );
     const isAllCaps = cellA === cellA.toUpperCase() && cellA.length > 3 && /^[A-Z\s\-&\/()]+$/.test(cellA);
 
     if (isMerged || isAllCaps) {
-      fields.push({ type: "section", label: cellA, fieldKey: null, rowIndex: i, valueCol: 1 });
-      continue;
+      // Before classifying as section, check if it matches a field pattern
+      const matchesField = FIELD_KEY_PATTERNS.some(([pattern]) => pattern.test(cellA));
+      if (!matchesField) {
+        fields.push({ type: "section", label: cellA, fieldKey: null, rowIndex: i, valueCol: 1 });
+        continue;
+      }
+      // Falls through to field matching below
     }
 
     // Auto-detect value column: scan cols B onward for the first empty/placeholder cell
@@ -706,6 +728,20 @@ async function fillDisplay(
     ventilationRequirements: resolve("ventilationRequirements", ext.ventilationRequirements, defaults.ventilationRequirements),
     smdLedModel: resolve("smdLedModel", ext.smdLedModel, defaults.smdLedModel),
     serviceType: display.serviceType || dbMatch?.serviceType || "—",
+
+    // AJP/WJHW extended fields — composite values for their template format
+    ledType: display.isOutdoor ? "Outdoor LED" : "Indoor LED",
+    activeDisplaySize: display.widthFt && display.heightFt
+      ? `${display.heightFt}' H x ${display.widthFt}' W`
+      : "—",
+    physicalSizeWithBorders: display.widthFt && display.heightFt
+      ? `${+(display.heightFt + borderAllowance).toFixed(2)}' H x ${+(display.widthFt + borderAllowance).toFixed(2)}' W`
+      : "—",
+    openArea: "N/A",
+    refreshRate: resolve("refreshRate", ext.refreshRate, lgSpecs?.refreshRate as string | undefined),
+    contrastRatio: resolve("contrastRatio", ext.contrastRatio, lgSpecs?.contrastRatio as string | undefined),
+    ipRating: resolve("ipRating", ext.ipRating, lgSpecs?.ipRating as string | undefined),
+    serviceAccess: resolve("serviceAccess", ext.serviceAccess, lgSpecs?.serviceAccess as string | undefined),
   };
 
   const matchStatus: FilledDisplay["matchStatus"] =
