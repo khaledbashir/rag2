@@ -37,8 +37,8 @@ const MANUAL_FIELD_META: ManualFieldMeta[] = [
     // Optical & electrical
     { key: "brightnessNits",          label: "Brightness (nits)",          placeholder: "e.g. 6000" },
     { key: "colorTemperatureK",       label: "Color Temperature",          placeholder: "e.g. 6500" },
-    { key: "colorTempAdjustability",  label: "Color Temp Adjustability",   placeholder: "e.g. Adjustable 3200K-9300K" },
-    { key: "brightnessAdjustment",    label: "Brightness Adjustment",      placeholder: "e.g. Adjustable 0–100%" },
+    { key: "colorTempAdjustability",  label: "Color Temp Adjustability",   placeholder: "e.g. 3,200K–9,300K" },
+    { key: "brightnessAdjustment",    label: "Brightness Adjustment",      placeholder: "e.g. 0–100%" },
     { key: "gradationMethod",         label: "Gradation Method",           placeholder: "e.g. 16-bit" },
     { key: "tonalGradation",          label: "Tonal Gradation",            placeholder: "e.g. 281 trillion colors" },
     { key: "typicalPowerW",           label: "Power — Avg (Watts)",        placeholder: "e.g. 3500" },

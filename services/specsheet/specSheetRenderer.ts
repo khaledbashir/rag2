@@ -75,9 +75,9 @@ function buildSpecFields(d: DisplaySpec): SpecField[] {
   fields.push({ label: "OPTICAL", value: "", section: true });
 
   fields.push({ label: "Brightness (after calibration)", value: d.brightnessNits != null ? fmtInt(d.brightnessNits) : "—", unit: "nits" });
-  fields.push({ label: "Brightness Level Adjustment", value: fmtStr(d.brightnessAdjustment) || "Adjustable 0-100%" });
+  fields.push({ label: "Brightness Level Adjustment", value: fmtStr(d.brightnessAdjustment) || "0–100%" });
   fields.push({ label: "Color Temperature", value: fmtStr(d.colorTemperatureK), unit: d.colorTemperatureK ? "°K" : "" });
-  fields.push({ label: "Color Temperature Adjustability", value: fmtStr(d.colorTempAdjustability) || "Adjustable" });
+  fields.push({ label: "Color Temperature Adjustability", value: fmtStr(d.colorTempAdjustability) || "3,200K–9,300K" });
   fields.push({ label: "Gradation Method", value: fmtStr(d.gradationMethod) });
   fields.push({ label: "Tonal Gradation", value: fmtStr(d.tonalGradation) });
 
