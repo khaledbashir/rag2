@@ -389,13 +389,15 @@ const Step4Export = () => {
 
     const mirrorBlockingIssues = useMemo(() => {
         const issues: Array<{ id: string; label: string }> = [];
-        if (!excelPreview) issues.push({ id: "no-excel", label: "No Excel imported" });
-        if (excelPreview && !excelSourceData) issues.push({ id: "no-excel-source", label: "Excel source data missing" });
+        // pricingDocument stored in DB means data was already parsed — skip session-only checks
+        const hasPricingDoc = (pricingDocument as any)?.tables?.length > 0;
+        if (!excelPreview && !hasPricingDoc) issues.push({ id: "no-excel", label: "No Excel imported" });
+        if (excelPreview && !excelSourceData && !hasPricingDoc) issues.push({ id: "no-excel-source", label: "Excel source data missing" });
         if (excelPreview && !allScreensValid) issues.push({ id: "invalid-screens", label: "Screens have missing dimensions" });
         if (hasOptionPlaceholder) issues.push({ id: "option-row", label: "OPTION placeholder row detected" });
-        if (!internalAudit) issues.push({ id: "no-audit", label: "Internal audit not computed" });
+        if (!internalAudit && !hasPricingDoc) issues.push({ id: "no-audit", label: "Internal audit not computed" });
         const rec = reconciliation;
-        if (!rec) issues.push({ id: "no-reconciliation", label: "Verification not run" });
+        if (!rec && !hasPricingDoc) issues.push({ id: "no-reconciliation", label: "Verification not run" });
         if (rec && rec.isMatch === false) issues.push({ id: "variance", label: "Totals do not match Excel" });
         if (effectiveExceptions.length > 0) {
             const criticalExceptions = effectiveExceptions.filter((ex: any) =>
@@ -409,7 +411,7 @@ const Step4Export = () => {
             issues.push({ id: "gatekeeper", label: `Unverified AI Data (${unverifiedAiFields.length})` });
         }
         return issues;
-    }, [allScreensValid, effectiveExceptions, excelPreview, excelSourceData, hasOptionPlaceholder, internalAudit, reconciliation, isGatekeeperLocked, unverifiedAiFields]);
+    }, [allScreensValid, effectiveExceptions, excelPreview, excelSourceData, hasOptionPlaceholder, internalAudit, pricingDocument, reconciliation, isGatekeeperLocked, unverifiedAiFields]);
 
     const isMirrorReadyToExport = mirrorBlockingIssues.length === 0;
     // Mirror PDF only needs pricing tables — screen dimensions are for audit workbook, not the PDF
