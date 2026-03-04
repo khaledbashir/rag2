@@ -133,7 +133,9 @@ const FIELD_KEY_PATTERNS: [RegExp, string][] = [
   [/(?:led\s*)?factory|country.*origin|place.*manu/i, "factory"],
   [/led\s*lamp\s*type|lamp\s*type/i, "ledLampType"],
   [/max.*brightness|brightness.*nit/i, "maxBrightness"],
+  [/post.*calibrat.*brightness|uniform.*brightness/i, "postCalibrationBrightness"],
   [/brightness.*level.*adj|brightness.*adj/i, "brightnessAdjustment"],
+  [/native\s*color\s*temp/i, "nativeColorTemperature"],
   [/color\s*temp.*k|color\s*temp.*kelvin/i, "colorTemperatureK"],
   [/color\s*temp.*adj/i, "colorTempAdjustability"],
   [/rec\s*709|color\s*space.*709/i, "colorSpaceRec709"],
@@ -146,6 +148,7 @@ const FIELD_KEY_PATTERNS: [RegExp, string][] = [
   [/btu.*avg|btu.*average|btu.*typical/i, "btuAvg"],
   [/btu.*100\s*%|btu.*full|btu.*max|btu.*white/i, "btuAt100"],
   [/power\s*req|voltage|electrical\s*req/i, "powerRequirements"],
+  [/total\s*display\s*assembly\s*weight/i, "totalWeight"],
   [/total\s*(?:display\s*)?weight|weight.*total|weight.*lbs/i, "totalWeight"],
   [/smd\s*led\s*model|led\s*model/i, "smdLedModel"],
   [/gradation\s*method/i, "gradationMethod"],
@@ -319,12 +322,12 @@ function getDefaults(isOutdoor: boolean, vendor: string) {
     viewingAngleUp: isOutdoor ? "70" : "80",
     viewingAngleDown: isOutdoor ? "70" : "80",
     brightnessAdjustment: "Adjustable 0–100% (256 steps)",
-    colorTemperatureK: "6500",
-    colorTempAdjustability: "Adjustable 3,200K–9,300K",
+    colorTemperatureK: "3,200K–9,300K",
+    colorTempAdjustability: "3,200K–9,300K",
     pixelFillFactor: "90%",
-    colorSpaceRec709: isLG ? "120%" : "110%",
-    colorSpaceDciP3: isLG ? "95%" : "90%",
-    colorSpaceRec2020: isLG ? "75%" : "70%",
+    colorSpaceRec709: "90 (+/- 9%)",
+    colorSpaceDciP3: "90 (+/- 9%)",
+    colorSpaceRec2020: "77 (+/- 9%)",
     powerRequirements: "AC 100–240V, 50/60Hz, Single Phase",
     gradationMethod: "16-bit",
     tonalGradation: "281 trillion colors",
@@ -447,7 +450,8 @@ async function fillDisplay(
   const btuAt0 = Math.round(powerAt0_KW * 3412);
   const btuAvg = Math.round(powerAvg_KW * 3412);
   const btuAt100 = Math.round(powerAt100_KW * 3412);
-  const totalWeightLbs = Math.round(kgPerCab * 2.205 * cabinetCount);
+  // Weight × 1.25 per Natalia/Jeremy — includes internal structure, cabling, electronics
+  const totalWeightLbs = Math.round(kgPerCab * 2.205 * cabinetCount * 1.25);
 
   // Pixel density
   const pixelDensity = display.sqFt > 0
@@ -503,6 +507,7 @@ async function fillDisplay(
     viewingAngleDown: resolve("viewingAngleDown", ext.viewingAngleDown, lgSpecs?.viewingAngleDown as string | undefined, defaults.viewingAngleDown),
     pixelFillFactor: resolve("pixelFillFactor", ext.pixelFillFactor, defaults.pixelFillFactor),
     maxBrightness: resolve("maxBrightness", dbMatch?.maxNits, lgSpecs?.maxBrightness as number | undefined, display.nitRequirement || undefined),
+    postCalibrationBrightness: display.nitRequirement || resolve("postCalibrationBrightness", ext.postCalibrationBrightness),
 
     // OEM info — fixed: use correct field keys for lookups
     oemLedModuleMfr: resolve("oemLedModuleMfr", ext.oemLedModuleMfr, display.vendor || undefined, defaults.oemLedModuleMfr),
@@ -512,6 +517,7 @@ async function fillDisplay(
 
     // Color specs
     brightnessAdjustment: resolve("brightnessAdjustment", ext.brightnessAdjustment, defaults.brightnessAdjustment),
+    nativeColorTemperature: resolve("nativeColorTemperature", ext.nativeColorTemperature, defaults.colorTemperatureK),
     colorTemperatureK: resolve("colorTemperatureK", ext.colorTemperatureK, lgSpecs?.colorTemperatureK as string | undefined, defaults.colorTemperatureK),
     colorTempAdjustability: resolve("colorTempAdjustability", ext.colorTempAdjustability, defaults.colorTempAdjustability),
     colorSpaceRec709: resolve("colorSpaceRec709", ext.colorSpaceRec709, defaults.colorSpaceRec709),
