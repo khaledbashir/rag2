@@ -23,7 +23,7 @@ function tryParseMatrix(value: any): { h: number; w: number } | null {
 
 function setHeaderRow(sheet: ExcelJS.Worksheet, rowNumber: number, labels: string[]) {
   const row = sheet.getRow(rowNumber);
-  row.values = [null, ...labels];
+  row.values = labels;
   row.font = { bold: true, color: { argb: "FFFFFFFF" } };
   row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F2937" } };
   row.alignment = { vertical: "middle", horizontal: "center" };
@@ -249,6 +249,10 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     // ─── Fallback: flat layout (no pricingDocument) ───
     setHeaderRow(marginSheet, 5, ["Item Name / Category", "Cost", "Selling Price", "Margin $", "Margin %"]);
 
+    let sumCost = 0;
+    let sumSell = 0;
+    let sumMargin = 0;
+
     args.screens.forEach((screen, idx) => {
       const audit = perScreen?.[idx] || null;
       const b = audit?.breakdown || {};
@@ -257,6 +261,10 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
       const sell = toNumber(b.sellPrice || b.finalClientTotal);
       const margin = toNumber(b.ancMargin || b.marginAmount);
       const marginPct = sell > 0 ? margin / sell : 0;
+
+      sumCost += cost;
+      sumSell += sell;
+      sumMargin += margin;
 
       const row = 6 + idx;
       marginSheet.getCell(`A${row}`).value = screen.name || "Unnamed Screen";
@@ -273,12 +281,10 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
 
     const endRow = 6 + args.screens.length;
     marginSheet.getCell(`A${endRow}`).value = "";
-    marginSheet.getCell(`B${endRow}`).value = toNumber(totals.totalCost);
-    marginSheet.getCell(`C${endRow}`).value = toNumber(totals.sellPrice || totals.finalClientTotal);
-    marginSheet.getCell(`D${endRow}`).value = toNumber(totals.ancMargin || totals.margin);
-    marginSheet.getCell(`E${endRow}`).value = toNumber(totals.sellPrice || totals.finalClientTotal) > 0
-      ? toNumber(totals.ancMargin || totals.margin) / toNumber(totals.sellPrice || totals.finalClientTotal)
-      : 0;
+    marginSheet.getCell(`B${endRow}`).value = sumCost;
+    marginSheet.getCell(`C${endRow}`).value = sumSell;
+    marginSheet.getCell(`D${endRow}`).value = sumMargin;
+    marginSheet.getCell(`E${endRow}`).value = sumSell > 0 ? sumMargin / sumSell : 0;
     marginSheet.getRow(endRow).font = { bold: true };
     ["B", "C", "D"].forEach((col) => {
       marginSheet.getCell(`${col}${endRow}`).numFmt = moneyFmt;
@@ -297,11 +303,9 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
 
     const subtotalRow = endRow + 3;
     marginSheet.getCell(`A${subtotalRow}`).value = "SUB TOTAL (BID FORM)";
-    marginSheet.getCell(`C${subtotalRow}`).value = toNumber(totals.finalClientTotal || totals.sellPrice);
-    marginSheet.getCell(`D${subtotalRow}`).value = toNumber(totals.ancMargin || totals.margin);
-    marginSheet.getCell(`E${subtotalRow}`).value = toNumber(totals.sellPrice || totals.finalClientTotal) > 0
-      ? toNumber(totals.ancMargin || totals.margin) / toNumber(totals.sellPrice || totals.finalClientTotal)
-      : 0;
+    marginSheet.getCell(`C${subtotalRow}`).value = sumSell;
+    marginSheet.getCell(`D${subtotalRow}`).value = sumMargin;
+    marginSheet.getCell(`E${subtotalRow}`).value = sumSell > 0 ? sumMargin / sumSell : 0;
     marginSheet.getCell(`C${subtotalRow}`).numFmt = moneyFmt;
     marginSheet.getCell(`D${subtotalRow}`).numFmt = moneyFmt;
     marginSheet.getCell(`E${subtotalRow}`).numFmt = percentFmt;
