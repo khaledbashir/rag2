@@ -143,10 +143,19 @@ function buildDisplayTab(
           "pixelPitch", "specWidthFt", "specHeightFt", "totalResolutionW", "totalResolutionH",
           "areaSqFt", "numberOfScreens", "serviceType"].includes(field.fieldKey);
 
+      // Flag unknown fields (value is "—" or in unknownFields list)
+      const isUnknown = field.fieldKey && (
+        value === "—" ||
+        (display.unknownFields && display.unknownFields.includes(field.fieldKey))
+      );
+
       rows.push({
         cells: [
           c(field.label, { bold: true }),
-          c(value ?? "—", { highlight: !!isDefault }),
+          c(isUnknown ? "? —" : (value ?? "—"), {
+            highlight: !!isDefault,
+            className: isUnknown ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium" : undefined,
+          }),
         ],
       });
     }

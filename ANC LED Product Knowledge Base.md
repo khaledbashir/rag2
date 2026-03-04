@@ -47,15 +47,15 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **IP Rating** | IP30 (front) |
 | **Service Type** | Front service |
 | **OEM LED Module Manufacturer** | LG Electronics |
-| **OEM Processor Manufacturer** | LG Embedded (Sigma SoC) |
+| **OEM Processor Manufacturer** | Novastar |
 | **Factory** | LG Electronics, South Korea |
 | **LED Lamp Type** | SMD (Surface-Mount Device) — Single SMD Package |
 | **Cabinet Size** | 600mm × 337.5mm |
 | **Cabinet Weight** | 5.5 kg (12.1 lbs) |
 | **Max Brightness** | 800 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 160° |
 | **Viewing Angle — Vertical Up** | 80° |
 | **Viewing Angle — Vertical Down** | 80° |
@@ -85,15 +85,15 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **IP Rating** | IP30 (front) |
 | **Service Type** | Front service |
 | **OEM LED Module Manufacturer** | LG Electronics |
-| **OEM Processor Manufacturer** | LG Embedded (Sigma SoC) |
+| **OEM Processor Manufacturer** | Novastar |
 | **Factory** | LG Electronics, South Korea |
 | **LED Lamp Type** | SMD (Surface-Mount Device) — Single SMD Package |
 | **Cabinet Size** | 600mm × 337.5mm |
 | **Cabinet Weight** | 5.5 kg (12.1 lbs) |
 | **Max Brightness** | 800 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 160° |
 | **Viewing Angle — Vertical Up** | 80° |
 | **Viewing Angle — Vertical Down** | 80° |
@@ -123,15 +123,15 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **IP Rating** | IP30 (front) |
 | **Service Type** | Front service |
 | **OEM LED Module Manufacturer** | LG Electronics |
-| **OEM Processor Manufacturer** | LG Embedded (Sigma SoC) |
+| **OEM Processor Manufacturer** | Novastar |
 | **Factory** | LG Electronics, South Korea |
 | **LED Lamp Type** | SMD (Surface-Mount Device) — Single SMD Package |
 | **Cabinet Size** | 600mm × 337.5mm |
 | **Cabinet Weight** | 5.3 kg (11.7 lbs) |
 | **Max Brightness** | 800 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 160° |
 | **Viewing Angle — Vertical Up** | 80° |
 | **Viewing Angle — Vertical Down** | 80° |
@@ -163,15 +163,15 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **IP Rating** | IP30 |
 | **Service Type** | Front and Rear service |
 | **OEM LED Module Manufacturer** | LG Electronics |
-| **OEM Processor Manufacturer** | LG Embedded (Sigma SoC) |
+| **OEM Processor Manufacturer** | Novastar |
 | **Factory** | LG Electronics, South Korea |
 | **LED Lamp Type** | SMD (Surface-Mount Device) — IP30 Rated Package |
 | **Cabinet Size** | 250mm × 250mm |
 | **Cabinet Weight** | 2.04 kg (4.5 lbs) |
 | **Max Brightness** | 7500 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 160° |
 | **Viewing Angle — Vertical Up** | 80° |
 | **Viewing Angle — Vertical Down** | 80° |
@@ -201,15 +201,15 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **IP Rating** | IP30 |
 | **Service Type** | Front service |
 | **OEM LED Module Manufacturer** | LG Electronics |
-| **OEM Processor Manufacturer** | LG Embedded (Sigma SoC) |
+| **OEM Processor Manufacturer** | Novastar |
 | **Factory** | LG Electronics, South Korea |
 | **LED Lamp Type** | SMD (Surface-Mount Device) — Single SMD Package |
 | **Cabinet Size** | 250mm × 250mm |
 | **Cabinet Weight** | 1.91 kg (4.2 lbs) |
 | **Max Brightness** | 1200 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 160° |
 | **Viewing Angle — Vertical Up** | 80° |
 | **Viewing Angle — Vertical Down** | 80° |
@@ -239,15 +239,15 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **IP Rating** | IP30 |
 | **Service Type** | Front service |
 | **OEM LED Module Manufacturer** | LG Electronics |
-| **OEM Processor Manufacturer** | LG Embedded (Sigma SoC) |
+| **OEM Processor Manufacturer** | Novastar |
 | **Factory** | LG Electronics, South Korea |
 | **LED Lamp Type** | SMD (Surface-Mount Device) — Single SMD Package |
 | **Cabinet Size** | 250mm × 250mm |
 | **Cabinet Weight** | 1.81 kg (4.0 lbs) |
 | **Max Brightness** | 800 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 160° |
 | **Viewing Angle — Vertical Up** | 80° |
 | **Viewing Angle — Vertical Down** | 80° |
@@ -279,15 +279,15 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **IP Rating** | IP65 (front), IP54 (rear) |
 | **Service Type** | Rear service |
 | **OEM LED Module Manufacturer** | LG Electronics |
-| **OEM Processor Manufacturer** | LG Embedded (Sigma SoC) |
+| **OEM Processor Manufacturer** | Novastar |
 | **Factory** | LG Electronics, South Korea |
 | **LED Lamp Type** | SMD (Surface-Mount Device) — IP65 Rated Package |
 | **Cabinet Size** | 960mm × 960mm |
 | **Cabinet Weight** | 38 kg (83.8 lbs) |
 | **Max Brightness** | 8000 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 140° |
 | **Viewing Angle — Vertical Up** | 70° |
 | **Viewing Angle — Vertical Down** | 70° |
@@ -319,15 +319,15 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **IP Rating** | IP65 (front), IP54 (rear) |
 | **Service Type** | Rear service |
 | **OEM LED Module Manufacturer** | LG Electronics |
-| **OEM Processor Manufacturer** | LG Embedded (Sigma SoC) |
+| **OEM Processor Manufacturer** | Novastar |
 | **Factory** | LG Electronics, South Korea |
 | **LED Lamp Type** | SMD (Surface-Mount Device) — IP65 Rated Package |
 | **Cabinet Size** | 500mm × 500mm |
 | **Cabinet Weight** | 9.98 kg (22 lbs) |
 | **Max Brightness** | 8000 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 140° |
 | **Viewing Angle — Vertical Up** | 70° |
 | **Viewing Angle — Vertical Down** | 70° |
@@ -357,15 +357,15 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **IP Rating** | IP65 (front), IP54 (rear) |
 | **Service Type** | Rear service |
 | **OEM LED Module Manufacturer** | LG Electronics |
-| **OEM Processor Manufacturer** | LG Embedded (Sigma SoC) |
+| **OEM Processor Manufacturer** | Novastar |
 | **Factory** | LG Electronics, South Korea |
 | **LED Lamp Type** | SMD (Surface-Mount Device) — IP65 Rated Package |
 | **Cabinet Size** | 500mm × 500mm |
 | **Cabinet Weight** | 9.07 kg (20 lbs) |
 | **Max Brightness** | 7000 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 140° |
 | **Viewing Angle — Vertical Up** | 70° |
 | **Viewing Angle — Vertical Down** | 70° |
@@ -403,9 +403,9 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **Cabinet Size** | 320mm × 320mm |
 | **Cabinet Weight** | 4.54 kg (10 lbs) |
 | **Max Brightness** | 1500 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 160° |
 | **Viewing Angle — Vertical Up** | 80° |
 | **Viewing Angle — Vertical Down** | 80° |
@@ -441,9 +441,9 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **Cabinet Size** | 320mm × 320mm |
 | **Cabinet Weight** | 4.99 kg (11 lbs) |
 | **Max Brightness** | 3000 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 160° |
 | **Viewing Angle — Vertical Up** | 80° |
 | **Viewing Angle — Vertical Down** | 80° |
@@ -479,9 +479,9 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **Cabinet Size** | 320mm × 320mm |
 | **Cabinet Weight** | 5.44 kg (12 lbs) |
 | **Max Brightness** | 5000 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 140° |
 | **Viewing Angle — Vertical Up** | 70° |
 | **Viewing Angle — Vertical Down** | 70° |
@@ -519,9 +519,9 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **Cabinet Size** | 500mm × 500mm |
 | **Cabinet Weight** | 10.43 kg (23 lbs) |
 | **Max Brightness** | 8000 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 140° |
 | **Viewing Angle — Vertical Up** | 70° |
 | **Viewing Angle — Vertical Down** | 70° |
@@ -557,9 +557,9 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **Cabinet Size** | 500mm × 500mm |
 | **Cabinet Weight** | 11.34 kg (25 lbs) |
 | **Max Brightness** | 10000 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 140° |
 | **Viewing Angle — Vertical Up** | 70° |
 | **Viewing Angle — Vertical Down** | 70° |
@@ -597,9 +597,9 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **Cabinet Size** | 300mm × 300mm |
 | **Cabinet Weight** | 2.72 kg (6 lbs) |
 | **Max Brightness** | 1000 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 160° |
 | **Viewing Angle — Vertical Up** | 80° |
 | **Viewing Angle — Vertical Down** | 80° |
@@ -635,9 +635,9 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **Cabinet Size** | 300mm × 300mm |
 | **Cabinet Weight** | 2.95 kg (6.5 lbs) |
 | **Max Brightness** | 1500 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 160° |
 | **Viewing Angle — Vertical Up** | 80° |
 | **Viewing Angle — Vertical Down** | 80° |
@@ -675,9 +675,9 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **Cabinet Size** | 250mm × 250mm |
 | **Cabinet Weight** | 1.81 kg (4 lbs) |
 | **Max Brightness** | 600 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 160° |
 | **Viewing Angle — Vertical Up** | 80° |
 | **Viewing Angle — Vertical Down** | 80° |
@@ -713,9 +713,9 @@ Total Weight = Weight per cabinet (lbs) × cabinet count
 | **Cabinet Size** | 250mm × 250mm |
 | **Cabinet Weight** | 1.91 kg (4.2 lbs) |
 | **Max Brightness** | 1000 nits |
-| **Brightness Adjustment** | Adjustable 0–100% (256 steps) |
+| **Brightness Adjustment** | 0–100% (256 steps) |
 | **Native Color Temperature** | 6500K |
-| **Color Temp Adjustability** | Adjustable 3,200K–9,300K |
+| **Color Temp Adjustability** | 3,200K–9,300K |
 | **Viewing Angle — Horizontal** | 160° |
 | **Viewing Angle — Vertical Up** | 80° |
 | **Viewing Angle — Vertical Down** | 80° |
@@ -755,8 +755,8 @@ When a model is not found in this knowledge base, use these defaults based on th
 | Color Space — DCI-P3 | 90% |
 | Color Space — Rec 2020 | 70% |
 | Color Temperature | 6500K |
-| Color Temp Adjustability | Adjustable 3,200K–9,300K |
-| Brightness Adjustment | Adjustable 0–100% (256 steps) |
+| Color Temp Adjustability | 3,200K–9,300K |
+| Brightness Adjustment | 0–100% (256 steps) |
 | Power Requirements | AC 100–240V, 50/60Hz, Single Phase |
 | Border Allowance | +0.17 ft (2 inches) per side |
 | % Open Area | N/A |
@@ -778,8 +778,8 @@ When a model is not found in this knowledge base, use these defaults based on th
 | Color Space — DCI-P3 | 90% |
 | Color Space — Rec 2020 | 70% |
 | Color Temperature | 6500K |
-| Color Temp Adjustability | Adjustable 3,200K–9,300K |
-| Brightness Adjustment | Adjustable 0–100% (256 steps) |
+| Color Temp Adjustability | 3,200K–9,300K |
+| Brightness Adjustment | 0–100% (256 steps) |
 | Power Requirements | AC 100–240V, 50/60Hz, Single Phase |
 | Border Allowance | +0.25 ft (3 inches) per side |
 | % Open Area | N/A |

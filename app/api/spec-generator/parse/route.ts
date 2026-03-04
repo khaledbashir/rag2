@@ -13,6 +13,41 @@ import { parseCostAnalysis, type CostAnalysisDisplay } from "@/services/specshee
 
 const prisma = new PrismaClient();
 
+// ─── Vendor PDF specs mapping ───────────────────────────────────────────────
+
+/** Vendor specs keyed by fieldKey, extracted from vendor PDF */
+export type VendorSpecsMap = Record<string, string | number>;
+
+/**
+ * Map VendorExtractedSpec (from /api/vendor/parse) to our spec fieldKeys.
+ */
+function mapVendorSpecs(raw: any): VendorSpecsMap {
+  const mapped: VendorSpecsMap = {};
+  if (!raw) return mapped;
+
+  if (raw.maxNits) mapped.maxBrightness = raw.maxNits;
+  if (raw.refreshRate) mapped.refreshRate = String(raw.refreshRate);
+  if (raw.ipRating) mapped.ipRating = raw.ipRating;
+  if (raw.resolutionW) mapped.vendorResolutionW = raw.resolutionW;
+  if (raw.resolutionH) mapped.vendorResolutionH = raw.resolutionH;
+
+  // Weight — convert to per-cabinet if available
+  if (raw.weightKgPerCabinet) mapped.vendorWeightKgPerCab = raw.weightKgPerCabinet;
+
+  // Power
+  if (raw.maxPowerWPerCabinet) mapped.vendorMaxPowerWPerCab = raw.maxPowerWPerCabinet;
+  if (raw.typicalPowerWPerCabinet) mapped.vendorTypPowerWPerCab = raw.typicalPowerWPerCabinet;
+
+  // Cabinet dimensions
+  if (raw.cabinetWidthMm) mapped.vendorCabWidthMm = raw.cabinetWidthMm;
+  if (raw.cabinetHeightMm) mapped.vendorCabHeightMm = raw.cabinetHeightMm;
+
+  // Environment
+  if (raw.environment) mapped.vendorEnvironment = raw.environment;
+
+  return mapped;
+}
+
 // ─── SpecFieldMemory recall helper ──────────────────────────────────────────
 
 async function recallSpecMemory(
@@ -71,6 +106,9 @@ export interface FilledDisplay {
 
   // All spec fields (fieldKey → value)
   specs: Record<string, string | number>;
+
+  // Fields that couldn't be filled (still "—")
+  unknownFields: string[];
 
   // Calculated values
   cabinetCount: number;
@@ -319,9 +357,9 @@ function getDefaults(isOutdoor: boolean, vendor: string) {
       ? "SMD (Surface-Mount Device) — IP65 Rated Package"
       : "SMD (Surface-Mount Device) — Single SMD Package",
     viewingAngleH: isOutdoor ? "140" : "160",
-    viewingAngleUp: isOutdoor ? "70" : "80",
-    viewingAngleDown: isOutdoor ? "70" : "80",
-    brightnessAdjustment: "Adjustable 0–100% (256 steps)",
+    viewingAngleUp: isOutdoor ? "70" : "160",
+    viewingAngleDown: isOutdoor ? "70" : "160",
+    brightnessAdjustment: "0–100% (256 steps)",
     colorTemperatureK: "3,200K–9,300K",
     colorTempAdjustability: "3,200K–9,300K",
     pixelFillFactor: "90%",
@@ -438,6 +476,7 @@ async function fillDisplay(
   display: CostAnalysisDisplay,
   templateFields: TemplateField[],
   warnings: string[],
+  vendorSpecs?: VendorSpecsMap | null,
 ): Promise<FilledDisplay> {
   // Match product from database
   const dbMatch = await matchProductFromDB(
@@ -466,12 +505,15 @@ async function fillDisplay(
   if (!display.widthFt || !display.heightFt) warnings.push(`${display.shortId}: Missing display dimensions`);
   if (!display.pixelPitch) warnings.push(`${display.shortId}: No pixel pitch detected`);
 
-  // Get cabinet specs for calculations
-  const cabWidthMm = dbMatch?.cabinetWidthMm ?? (display.isOutdoor ? 960 : 500);
-  const cabHeightMm = dbMatch?.cabinetHeightMm ?? (display.isOutdoor ? 960 : 500);
-  const maxWPerCab = dbMatch?.maxPowerWattsPerCab ?? (display.isOutdoor ? 650 : 200);
-  const avgWPerCab = dbMatch?.typicalPowerWattsPerCab ?? maxWPerCab * 0.33;
-  const kgPerCab = dbMatch?.weightKgPerCabinet ?? (display.isOutdoor ? 30 : 10);
+  // Mapped vendor PDF specs (for cabinet fallback)
+  const vpsMapped = vendorSpecs || {};
+
+  // Get cabinet specs for calculations — DB > vendor PDF > env defaults
+  const cabWidthMm = dbMatch?.cabinetWidthMm ?? (vpsMapped.vendorCabWidthMm as number | undefined) ?? (display.isOutdoor ? 960 : 500);
+  const cabHeightMm = dbMatch?.cabinetHeightMm ?? (vpsMapped.vendorCabHeightMm as number | undefined) ?? (display.isOutdoor ? 960 : 500);
+  const maxWPerCab = dbMatch?.maxPowerWattsPerCab ?? (vpsMapped.vendorMaxPowerWPerCab as number | undefined) ?? (display.isOutdoor ? 650 : 200);
+  const avgWPerCab = dbMatch?.typicalPowerWattsPerCab ?? (vpsMapped.vendorTypPowerWPerCab as number | undefined) ?? maxWPerCab * 0.33;
+  const kgPerCab = dbMatch?.weightKgPerCabinet ?? (vpsMapped.vendorWeightKgPerCab as number | undefined) ?? (display.isOutdoor ? 30 : 10);
 
   if (!dbMatch) {
     warnings.push(`${display.shortId}: No product match in catalog — using estimated cabinet defaults for power/weight`);
@@ -508,7 +550,10 @@ async function fillDisplay(
   const defaults = getDefaults(display.isOutdoor, display.vendor);
   const ext = dbMatch?.extendedSpecs as Record<string, any> || {};
 
-  // Priority chain: memory > extendedSpecs > LG KB > defaults
+  // Mapped vendor PDF specs (if provided)
+  const vps = vendorSpecs || {};
+
+  // Priority chain: memory > extendedSpecs > LG KB > vendorPdfSpecs > defaults
   // Helper to resolve a spec value through the priority chain
   const resolve = (fieldKey: string, ...sources: (string | number | undefined | null)[]): string | number => {
     // Memory first (user-verified from previous projects)
@@ -517,6 +562,9 @@ async function fillDisplay(
     for (const src of sources) {
       if (src != null && src !== "" && src !== "—") return src;
     }
+    // Vendor PDF specs as second-to-last fallback
+    const vpVal = vps[fieldKey];
+    if (vpVal != null && vpVal !== "" && vpVal !== "—") return vpVal;
     return "—";
   };
 
@@ -549,7 +597,7 @@ async function fillDisplay(
     viewingAngleUp: resolve("viewingAngleUp", ext.viewingAngleUp, lgSpecs?.viewingAngleUp as string | undefined, defaults.viewingAngleUp),
     viewingAngleDown: resolve("viewingAngleDown", ext.viewingAngleDown, lgSpecs?.viewingAngleDown as string | undefined, defaults.viewingAngleDown),
     pixelFillFactor: resolve("pixelFillFactor", ext.pixelFillFactor, defaults.pixelFillFactor),
-    maxBrightness: resolve("maxBrightness", dbMatch?.maxNits, lgSpecs?.maxBrightness as number | undefined, display.nitRequirement || undefined),
+    maxBrightness: resolve("maxBrightness", dbMatch?.maxNits, lgSpecs?.maxBrightness as number | undefined, vps.maxBrightness, display.nitRequirement || undefined),
     postCalibrationBrightness: display.nitRequirement || resolve("postCalibrationBrightness", ext.postCalibrationBrightness),
 
     // OEM info — fixed: use correct field keys for lookups
@@ -589,6 +637,11 @@ async function fillDisplay(
     dbMatch?.matchType === "exact" ? "exact" :
     dbMatch?.matchType === "close" ? "close" : "defaults";
 
+  // Detect unknown fields — specs that are still "—"
+  const unknownFields = templateFields
+    .filter(f => f.type === "field" && f.fieldKey && specs[f.fieldKey] === "—")
+    .map(f => f.fieldKey!);
+
   return {
     shortId: display.shortId,
     fullName: display.fullName,
@@ -609,6 +662,7 @@ async function fillDisplay(
     matchStatus,
     matchedProductName: dbMatch?.displayName ?? null,
     specs,
+    unknownFields,
     cabinetCount,
     powerAt0_KW,
     powerAvg_KW,
@@ -636,6 +690,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Read vendor specs if provided (from /api/vendor/parse)
+    const vendorSpecsJson = formData.get("vendorSpecs") as string | null;
+    let vendorSpecs: VendorSpecsMap | null = null;
+    if (vendorSpecsJson) {
+      try {
+        const raw = JSON.parse(vendorSpecsJson);
+        vendorSpecs = mapVendorSpecs(raw);
+      } catch {
+        // Ignore invalid vendor specs — not critical
+      }
+    }
+
     // Read files into buffers
     const templateBuffer = Buffer.from(await templateFile.arrayBuffer());
     const costBuffer = Buffer.from(await costAnalysisFile.arrayBuffer());
@@ -658,7 +724,7 @@ export async function POST(request: NextRequest) {
 
     // Step 3-5: Match products and fill specs
     const filledDisplays = await Promise.all(
-      costDisplays.map((d) => fillDisplay(d, templateFields, warnings))
+      costDisplays.map((d) => fillDisplay(d, templateFields, warnings, vendorSpecs))
     );
 
     const matched = filledDisplays.filter((d) => d.matchStatus !== "defaults").length;

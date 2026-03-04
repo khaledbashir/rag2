@@ -15,6 +15,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
+import { prisma } from "@/lib/prisma";
 import type { FilledDisplay, TemplateField } from "@/app/api/spec-generator/parse/route";
 
 // ─── Styles (used by fallback addDisplaySheet + Summary) ─────────────────────
@@ -478,6 +479,70 @@ export async function POST(request: NextRequest) {
             }
           }
         }
+      }
+    }
+
+    // ─── Save edited values to SpecFieldMemory (fire-and-forget) ──────────
+    if (editedCells && Object.keys(editedCells).length > 0) {
+      const memoryEntries = new Map<string, Record<string, string>>();
+      for (const [key, value] of Object.entries(editedCells)) {
+        let idx = -1;
+        let fieldKey = "";
+        if (key.includes(":")) {
+          const [idxStr, fk] = key.split(":");
+          idx = parseInt(idxStr);
+          fieldKey = fk;
+        }
+        if (idx >= 0 && idx < displays.length && fieldKey && value) {
+          const d = displays[idx];
+          const modelKey = `${(d.vendor || "").toLowerCase()}|${(d.model || "").toLowerCase()}`;
+          if (!memoryEntries.has(modelKey)) memoryEntries.set(modelKey, {});
+          memoryEntries.get(modelKey)![fieldKey] = String(value);
+        }
+      }
+
+      // Fire-and-forget save to DB
+      if (memoryEntries.size > 0) {
+        const entries = [...memoryEntries.entries()].map(([key, fields]) => {
+          const [mfr, model] = key.split("|");
+          return { manufacturer: mfr, model, pitchMm: 0, fields };
+        });
+
+        // Don't await — fire-and-forget
+        (async () => {
+          try {
+            for (const entry of entries) {
+              for (const [fieldKey, fieldValue] of Object.entries(entry.fields)) {
+                const val = fieldValue.trim();
+                if (!val) continue;
+                await prisma.specFieldMemory.upsert({
+                  where: {
+                    manufacturer_model_pitchMm_fieldKey: {
+                      manufacturer: entry.manufacturer,
+                      model: entry.model,
+                      pitchMm: entry.pitchMm,
+                      fieldKey,
+                    },
+                  },
+                  create: {
+                    manufacturer: entry.manufacturer,
+                    model: entry.model,
+                    pitchMm: entry.pitchMm,
+                    fieldKey,
+                    fieldValue: val,
+                    source: "user",
+                  },
+                  update: {
+                    fieldValue: val,
+                    source: "user",
+                  },
+                });
+              }
+            }
+          } catch (e) {
+            console.error("[SPEC GEN] Memory save error:", e);
+          }
+        })();
       }
     }
 

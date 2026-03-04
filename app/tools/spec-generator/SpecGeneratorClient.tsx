@@ -12,6 +12,8 @@ import {
   ArrowLeft,
   X,
   RefreshCw,
+  FileText,
+  HelpCircle,
 } from "lucide-react";
 import WorkbookShell from "@/app/components/reusables/WorkbookShell";
 import { buildSpecWorkbook } from "@/services/specsheet/specFormBuilder";
@@ -47,31 +49,38 @@ export default function SpecGeneratorClient() {
   const [phase, setPhase] = useState<Phase>("upload");
   const [templateFile, setTemplateFile] = useState<File | null>(null);
   const [costFile, setCostFile] = useState<File | null>(null);
+  const [vendorFile, setVendorFile] = useState<File | null>(null);
+  const [vendorSpecs, setVendorSpecs] = useState<any>(null);
   const [parsedData, setParsedData] = useState<ParsedData | null>(null);
   const [workbookData, setWorkbookData] = useState<WorkbookData | null>(null);
+  const [editedCells, setEditedCells] = useState<Record<string, string>>({});
   const [activeStage, setActiveStage] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const templateInputRef = useRef<HTMLInputElement>(null);
   const costInputRef = useRef<HTMLInputElement>(null);
+  const vendorInputRef = useRef<HTMLInputElement>(null);
 
   // ─── Upload handlers ────────────────────────────────────────────────────
 
   const handleFileSelect = useCallback(
-    (type: "template" | "cost", file: File) => {
+    (type: "template" | "cost" | "vendor", file: File) => {
       if (type === "template") setTemplateFile(file);
-      else setCostFile(file);
+      else if (type === "cost") setCostFile(file);
+      else { setVendorFile(file); setVendorSpecs(null); }
       setError(null);
     },
     []
   );
 
   const handleDrop = useCallback(
-    (type: "template" | "cost") => (e: React.DragEvent) => {
+    (type: "template" | "cost" | "vendor") => (e: React.DragEvent) => {
       e.preventDefault();
       const file = e.dataTransfer.files[0];
-      if (file && /\.(xlsx?|csv)$/i.test(file.name)) {
+      if (type === "vendor" && file && /\.pdf$/i.test(file.name)) {
+        handleFileSelect(type, file);
+      } else if (file && /\.(xlsx?|csv)$/i.test(file.name)) {
         handleFileSelect(type, file);
       }
     },
@@ -86,8 +95,25 @@ export default function SpecGeneratorClient() {
     setPhase("processing");
     setActiveStage(0);
     setError(null);
+    setEditedCells({});
 
     try {
+      // Step 1: If vendor PDF provided, parse it first
+      let parsedVendorSpecs: any = null;
+      if (vendorFile) {
+        const vendorFormData = new FormData();
+        vendorFormData.append("file", vendorFile);
+        const vendorRes = await fetch("/api/vendor/parse", {
+          method: "POST",
+          body: vendorFormData,
+        });
+        if (vendorRes.ok) {
+          const vendorData = await vendorRes.json();
+          parsedVendorSpecs = vendorData.specs || vendorData;
+          setVendorSpecs(parsedVendorSpecs);
+        }
+      }
+
       // Simulate stage progression while waiting for API
       const stageInterval = setInterval(() => {
         setActiveStage((prev) => Math.min(prev + 1, STAGES.length - 2));
@@ -96,6 +122,9 @@ export default function SpecGeneratorClient() {
       const formData = new FormData();
       formData.append("template", templateFile);
       formData.append("costAnalysis", costFile);
+      if (parsedVendorSpecs) {
+        formData.append("vendorSpecs", JSON.stringify(parsedVendorSpecs));
+      }
 
       const response = await fetch("/api/spec-generator/parse", {
         method: "POST",
@@ -122,7 +151,7 @@ export default function SpecGeneratorClient() {
       setError(err.message || "An error occurred");
       setPhase("upload");
     }
-  }, [templateFile, costFile]);
+  }, [templateFile, costFile, vendorFile]);
 
   // ─── Download ───────────────────────────────────────────────────────────
 
@@ -136,11 +165,12 @@ export default function SpecGeneratorClient() {
       if (templateFile) {
         formData.append("template", templateFile);
       }
-      // Attach display data as JSON blob
+      // Attach display data as JSON blob (include editedCells for memory save)
       formData.append("data", JSON.stringify({
         displays: parsedData.displays,
         templateFields: parsedData.templateFields,
         projectName: parsedData.projectName,
+        editedCells: Object.keys(editedCells).length > 0 ? editedCells : undefined,
       }));
 
       const response = await fetch("/api/spec-generator/download", {
@@ -162,7 +192,7 @@ export default function SpecGeneratorClient() {
     } finally {
       setExporting(false);
     }
-  }, [parsedData, templateFile]);
+  }, [parsedData, templateFile, editedCells]);
 
   // ─── Reset ──────────────────────────────────────────────────────────────
 
@@ -170,8 +200,11 @@ export default function SpecGeneratorClient() {
     setPhase("upload");
     setTemplateFile(null);
     setCostFile(null);
+    setVendorFile(null);
+    setVendorSpecs(null);
     setParsedData(null);
     setWorkbookData(null);
+    setEditedCells({});
     setActiveStage(0);
     setError(null);
   }, []);
@@ -238,11 +271,11 @@ export default function SpecGeneratorClient() {
           <div className="text-center mb-12">
             <h2 className="text-2xl font-bold mb-2">Upload Your Files</h2>
             <p className="text-muted-foreground">
-              Upload the blank Product Data Form template and the Cost Analysis workbook
+              Upload the blank template + cost analysis, and optionally a vendor spec PDF
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             {/* Template Upload */}
             <div
               onDragOver={(e) => e.preventDefault()}
@@ -344,6 +377,57 @@ export default function SpecGeneratorClient() {
                 </>
               )}
             </div>
+
+            {/* Vendor PDF Upload (Optional) */}
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleDrop("vendor")}
+              onClick={() => vendorInputRef.current?.click()}
+              className={`
+                relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all
+                ${vendorFile
+                  ? "border-emerald-500/50 bg-emerald-500/5 dark:bg-emerald-950/20"
+                  : "border-border hover:border-primary/50 hover:bg-muted/30"
+                }
+              `}
+            >
+              <input
+                ref={vendorInputRef}
+                type="file"
+                accept=".pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFileSelect("vendor", file);
+                }}
+              />
+              {vendorFile ? (
+                <>
+                  <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
+                  <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">{vendorFile.name}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {(vendorFile.size / 1024).toFixed(0)} KB
+                  </p>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setVendorFile(null); setVendorSpecs(null); }}
+                    className="absolute top-3 right-3 p-1 rounded-full hover:bg-muted"
+                  >
+                    <X className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <FileText className="w-10 h-10 text-violet-500 mx-auto mb-3" />
+                  <p className="text-sm font-medium mb-1">Vendor Spec PDF</p>
+                  <p className="text-xs text-muted-foreground">
+                    Optional — LG brochure, spec sheet, etc.
+                  </p>
+                  <p className="text-xs text-muted-foreground/60 mt-3">
+                    Drag & drop or click to browse
+                  </p>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Generate button */}
@@ -434,6 +518,18 @@ export default function SpecGeneratorClient() {
                 color="amber"
               />
             )}
+            {(() => {
+              const unknownCount = parsedData.displays.reduce(
+                (sum, d) => sum + (d.unknownFields?.length || 0), 0
+              );
+              return unknownCount > 0 ? (
+                <StatBadge
+                  label="Unknown Fields"
+                  value={unknownCount}
+                  color="amber"
+                />
+              ) : null;
+            })()}
             {parsedData.stats.warnings.length > 0 && (
               <StatBadge
                 label="Warnings"

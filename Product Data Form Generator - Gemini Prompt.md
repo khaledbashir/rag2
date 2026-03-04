@@ -56,7 +56,7 @@ For each display, match the Vendor + Product Model to the spec database below. I
 #### LG Indoor LED Models
 
 **LSCC012 (1.25mm pitch, Indoor)**
-- OEM Processor Manufacturer: LG Embedded (Sigma SoC)
+- OEM Processor Manufacturer: Novastar
 - Factory: LG Electronics, South Korea
 - LED Lamp Type: SMD (Surface-Mount Device) — Single SMD Package
 - Viewing Angle: Horizontal 160°, Vertical Up 80°, Vertical Down 80°
@@ -67,7 +67,7 @@ For each display, match the Vendor + Product Model to the spec database below. I
 - Power Requirements: AC 100-240V, 50/60Hz, Single Phase
 
 **LSCC018 (1.875mm pitch, Indoor)**
-- OEM Processor Manufacturer: LG Embedded (Sigma SoC)
+- OEM Processor Manufacturer: Novastar
 - Factory: LG Electronics, South Korea
 - LED Lamp Type: SMD (Surface-Mount Device) — Single SMD Package
 - Viewing Angle: Horizontal 160°, Vertical Up 80°, Vertical Down 80°
@@ -79,7 +79,7 @@ For each display, match the Vendor + Product Model to the spec database below. I
 - NOTE: Cost analysis may list this as "1.9mm" — actual LG spec is 1.875mm. Use 1.875mm.
 
 **LSCC025 (2.5mm pitch, Indoor)**
-- OEM Processor Manufacturer: LG Embedded (Sigma SoC)
+- OEM Processor Manufacturer: Novastar
 - Factory: LG Electronics, South Korea
 - LED Lamp Type: SMD (Surface-Mount Device) — Single SMD Package
 - Viewing Angle: Horizontal 160°, Vertical Up 80°, Vertical Down 80°
@@ -90,7 +90,7 @@ For each display, match the Vendor + Product Model to the spec database below. I
 - Power Requirements: AC 100-240V, 50/60Hz, Single Phase
 
 **GSQA039 (3.9mm pitch, Indoor/Behind Glass)**
-- OEM Processor Manufacturer: LG Embedded (Sigma SoC)
+- OEM Processor Manufacturer: Novastar
 - Factory: LG Electronics, South Korea
 - LED Lamp Type: SMD (Surface-Mount Device) — IP30 Rated Package
 - Viewing Angle: Horizontal 160°, Vertical Up 80°, Vertical Down 80°
@@ -101,7 +101,7 @@ For each display, match the Vendor + Product Model to the spec database below. I
 - Power Requirements: AC 100-240V, 50/60Hz, Single Phase
 
 **GSQA083 (8.33mm pitch, Outdoor)**
-- OEM Processor Manufacturer: LG Embedded (Sigma SoC)
+- OEM Processor Manufacturer: Novastar
 - Factory: LG Electronics, South Korea
 - LED Lamp Type: SMD (Surface-Mount Device) — IP65 Rated Package
 - Viewing Angle: Horizontal 140°, Vertical Up 70°, Vertical Down 70°
@@ -132,9 +132,9 @@ Search for the specific model's datasheet online and fill in what you find. If y
 - LG: Rec 709 = 120%, DCI-P3 = 95%, Rec 2020 = 75%
 - Yaham/Other: Rec 709 = 110%, DCI-P3 = 90%, Rec 2020 = 70%
 
-**Brightness Level Adjustment:** "Adjustable 0-100% (256 steps)"
+**Brightness Level Adjustment:** "0-100% (256 steps)"
 
-**Color Temperature Adjustability:** "Adjustable 3,200K-9,300K"
+**Color Temperature Adjustability:** "3,200K-9,300K"
 
 ### Step 5: Calculate Power and Weight
 

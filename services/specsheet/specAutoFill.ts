@@ -47,8 +47,8 @@ export interface GroupAutoFill {
 
 const INDOOR_DEFAULTS: Partial<Record<keyof DisplaySpec, string>> = {
     colorTemperatureK: "6500",
-    colorTempAdjustability: "Adjustable 3200K–9300K",
-    brightnessAdjustment: "Adjustable 0–100%",
+    colorTempAdjustability: "3,200K–9,300K",
+    brightnessAdjustment: "0–100%",
     gradationMethod: "16-bit",
     tonalGradation: "281 trillion colors",
     voltageService: "AC 100–240V / 50–60Hz / Single Phase",
@@ -57,8 +57,8 @@ const INDOOR_DEFAULTS: Partial<Record<keyof DisplaySpec, string>> = {
 
 const OUTDOOR_DEFAULTS: Partial<Record<keyof DisplaySpec, string>> = {
     colorTemperatureK: "6500",
-    colorTempAdjustability: "Adjustable 3200K–9300K",
-    brightnessAdjustment: "Adjustable 0–100%",
+    colorTempAdjustability: "3,200K–9,300K",
+    brightnessAdjustment: "0–100%",
     gradationMethod: "16-bit",
     tonalGradation: "281 trillion colors",
     voltageService: "AC 100–240V / 50–60Hz / Single Phase",
@@ -130,15 +130,15 @@ function mapProductToSpecFields(
 ): Partial<Record<keyof DisplaySpec, string>> {
     const colorRange =
         product.colorTempK.min && product.colorTempK.max
-            ? `Adjustable ${product.colorTempK.min}K–${product.colorTempK.max}K`
-            : "Adjustable";
+            ? `${product.colorTempK.min.toLocaleString()}K–${product.colorTempK.max.toLocaleString()}K`
+            : "3,200K–9,300K";
 
     const isOutdoor = env === "Outdoor";
 
     return {
         colorTemperatureK: String(product.colorTempK.nominal),
         colorTempAdjustability: colorRange,
-        brightnessAdjustment: "Adjustable 0–100%",
+        brightnessAdjustment: "0–100%",
         gradationMethod: "16-bit",
         tonalGradation: "281 trillion colors",
         voltageService: "AC 100–240V / 50–60Hz / Single Phase",
