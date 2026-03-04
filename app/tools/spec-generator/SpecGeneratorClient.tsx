@@ -292,7 +292,7 @@ export default function SpecGeneratorClient() {
               <input
                 ref={templateInputRef}
                 type="file"
-                accept=".xlsx,.xls"
+                accept=".xlsx,.xls,.pdf,.docx,.doc"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -318,7 +318,7 @@ export default function SpecGeneratorClient() {
                   <FileSpreadsheet className="w-10 h-10 text-primary mx-auto mb-3" />
                   <p className="text-sm font-medium mb-1">Blank Product Data Form</p>
                   <p className="text-xs text-muted-foreground">
-                    The empty form template with your layout
+                    Excel, PDF, or Word template with your layout
                   </p>
                   <p className="text-xs text-muted-foreground/60 mt-3">
                     Drag & drop or click to browse

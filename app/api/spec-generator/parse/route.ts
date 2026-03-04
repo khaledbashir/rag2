@@ -12,6 +12,7 @@ import { PrismaClient } from "@prisma/client";
 import { parseCostAnalysis, type CostAnalysisDisplay } from "@/services/specsheet/costAnalysisParser";
 import { generateFingerprint } from "@/services/import/excelNormalizer";
 import { preloadRateCard, getRateSync } from "@/services/rfp/rateCardLoader";
+import { extractText } from "@/services/kreuzberg/kreuzbergClient";
 
 const prisma = new PrismaClient();
 
@@ -251,6 +252,53 @@ function parseTemplate(buffer: Buffer): { fields: TemplateField[]; sheetName: st
   }
 
   return { fields, sheetName };
+}
+
+/**
+ * Parse a template from extracted text (PDF or Word).
+ * Splits text into lines and matches against the same FIELD_KEY_PATTERNS.
+ * Since there's no Excel structure, valueCol is always 1 (col B in generated output).
+ */
+function parseTemplateFromText(text: string): { fields: TemplateField[]; sheetName: string } {
+  const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+  const fields: TemplateField[] = [];
+  const seenKeys = new Set<string>();
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Skip very short lines or lines that are just numbers/punctuation
+    if (line.length < 3) continue;
+    if (/^[\d\s.,;:$%\-—]+$/.test(line)) continue;
+
+    // Check if this is a section header (all caps, no colon/value separator)
+    const isAllCaps = line === line.toUpperCase() && line.length > 5 && /^[A-Z\s\-&\/()]+$/.test(line);
+    if (isAllCaps) {
+      fields.push({ type: "section", label: line, fieldKey: null, rowIndex: i, valueCol: 1 });
+      continue;
+    }
+
+    // Strip trailing colon/dash for matching
+    const labelPart = line.replace(/[:;\-—]\s*$/, "").trim();
+    if (!labelPart || labelPart.length < 3) continue;
+
+    // Try to match to a field key
+    let fieldKey: string | null = null;
+    for (const [pattern, key] of FIELD_KEY_PATTERNS) {
+      if (pattern.test(labelPart) && !seenKeys.has(key)) {
+        fieldKey = key;
+        seenKeys.add(key);
+        break;
+      }
+    }
+
+    // Only add if it looks like a form label (matched a key, or has certain characteristics)
+    if (fieldKey || /[:?]\s*$/.test(line) || /\b(display|pixel|power|weight|brightness|color|resolution|manufacturer|model)\b/i.test(line)) {
+      fields.push({ type: "field", label: labelPart, fieldKey, rowIndex: i, valueCol: 1 });
+    }
+  }
+
+  return { fields, sheetName: "Product Data Form" };
 }
 
 // ─── Product matching from DB ───────────────────────────────────────────────
@@ -736,40 +784,58 @@ export async function POST(request: NextRequest) {
     const templateBuffer = Buffer.from(await templateFile.arrayBuffer());
     const costBuffer = Buffer.from(await costAnalysisFile.arrayBuffer());
 
-    // Step 1: Parse template layout
-    const { fields: templateFields, sheetName: templateSheetName } = parseTemplate(templateBuffer);
+    // Step 1: Parse template layout (Excel, PDF, or Word)
+    const templateName = templateFile.name.toLowerCase();
+    const isExcelTemplate = /\.(xlsx?|xls)$/i.test(templateName);
+    let templateFields: TemplateField[];
+    let templateSheetName: string;
+
+    if (isExcelTemplate) {
+      const parsed = parseTemplate(templateBuffer);
+      templateFields = parsed.fields;
+      templateSheetName = parsed.sheetName;
+    } else {
+      // PDF or Word — extract text via Kreuzberg, then parse from text
+      const extracted = await extractText(templateBuffer, templateFile.name);
+      const parsed = parseTemplateFromText(extracted.text);
+      templateFields = parsed.fields;
+      templateSheetName = parsed.sheetName;
+    }
 
     // Step 1b: Template recognition via ImportProfile fingerprinting
-    const templateWorkbook = xlsx.read(templateBuffer, { type: "buffer" });
-    const fingerprint = generateFingerprint(templateWorkbook);
     let templateProfile: ParseResponse["templateProfile"] = null;
 
-    try {
-      const existingProfile = await prisma.importProfile.findUnique({
-        where: { fingerprint },
-      });
+    if (isExcelTemplate) {
+      try {
+        const templateWorkbook = xlsx.read(templateBuffer, { type: "buffer" });
+        const fingerprint = generateFingerprint(templateWorkbook);
 
-      if (existingProfile) {
-        // Apply saved column mapping — override valueCol for known fields
-        const savedMapping = existingProfile.columnMapping as Record<string, number>;
-        for (const field of templateFields) {
-          if (field.fieldKey && savedMapping[field.fieldKey] !== undefined) {
-            field.valueCol = savedMapping[field.fieldKey];
-          }
-        }
-        // Bump usage count
-        await prisma.importProfile.update({
-          where: { id: existingProfile.id },
-          data: { usageCount: { increment: 1 }, lastUsedAt: new Date() },
+        const existingProfile = await prisma.importProfile.findUnique({
+          where: { fingerprint },
         });
-        templateProfile = {
-          id: existingProfile.id,
-          name: existingProfile.name,
-          usageCount: existingProfile.usageCount + 1,
-        };
+
+        if (existingProfile) {
+          // Apply saved column mapping — override valueCol for known fields
+          const savedMapping = existingProfile.columnMapping as Record<string, number>;
+          for (const field of templateFields) {
+            if (field.fieldKey && savedMapping[field.fieldKey] !== undefined) {
+              field.valueCol = savedMapping[field.fieldKey];
+            }
+          }
+          // Bump usage count
+          await prisma.importProfile.update({
+            where: { id: existingProfile.id },
+            data: { usageCount: { increment: 1 }, lastUsedAt: new Date() },
+          });
+          templateProfile = {
+            id: existingProfile.id,
+            name: existingProfile.name,
+            usageCount: existingProfile.usageCount + 1,
+          };
+        }
+      } catch {
+        // Fingerprinting is best-effort — don't block the parse
       }
-    } catch {
-      // Fingerprinting is best-effort — don't block the parse
     }
 
     // Step 2: Parse cost analysis
@@ -793,9 +859,11 @@ export async function POST(request: NextRequest) {
     const matched = filledDisplays.filter((d) => d.matchStatus !== "defaults").length;
     const defaults = filledDisplays.filter((d) => d.matchStatus === "defaults").length;
 
-    // Save new template profile if this is a new template format
-    if (!templateProfile && templateFields.length > 0) {
+    // Save new template profile if this is a new Excel template format
+    if (isExcelTemplate && !templateProfile && templateFields.length > 0) {
       try {
+        const templateWorkbook = xlsx.read(templateBuffer, { type: "buffer" });
+        const fp = generateFingerprint(templateWorkbook);
         const columnMapping: Record<string, number> = {};
         for (const f of templateFields) {
           if (f.fieldKey) columnMapping[f.fieldKey] = f.valueCol;
@@ -803,7 +871,7 @@ export async function POST(request: NextRequest) {
         const created = await prisma.importProfile.create({
           data: {
             name: `SpecGen-${templateFile.name.replace(/\.(xlsx?|csv)$/i, "")}`,
-            fingerprint,
+            fingerprint: fp,
             targetSheet: templateSheetName,
             headerRowIndex: 0,
             dataStartRowIndex: 0,

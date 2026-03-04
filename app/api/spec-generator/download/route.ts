@@ -440,7 +440,8 @@ export async function POST(request: NextRequest) {
       projectName = body.projectName;
       editedCells = body.editedCells;
 
-      if (templateFile) {
+      // Only use clone-and-fill for Excel templates; PDF/Word templates use fallback mode
+      if (templateFile && /\.(xlsx?|xls)$/i.test(templateFile.name)) {
         templateBuffer = Buffer.from(await templateFile.arrayBuffer());
       }
     } else {
