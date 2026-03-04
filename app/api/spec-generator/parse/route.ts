@@ -13,6 +13,7 @@ import { parseCostAnalysis, type CostAnalysisDisplay } from "@/services/specshee
 import { generateFingerprint } from "@/services/import/excelNormalizer";
 import { preloadRateCard, getRateSync } from "@/services/rfp/rateCardLoader";
 import { extractText } from "@/services/kreuzberg/kreuzbergClient";
+import { analyzeTemplateWithAI, mergeWithRegexFallback, type AIFieldMapping } from "@/services/specsheet/aiTemplateAnalyzer";
 
 const prisma = new PrismaClient();
 
@@ -276,14 +277,45 @@ function detectValueCol(
   return 1;
 }
 
-function parseTemplate(buffer: Buffer): { fields: TemplateField[]; sheetName: string } {
+async function parseTemplate(buffer: Buffer): Promise<{ fields: TemplateField[]; sheetName: string }> {
   const workbook = xlsx.read(buffer, { type: "buffer" });
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   const data: any[][] = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false });
 
-  const fields: TemplateField[] = [];
   const merges = sheet["!merges"] || [];
+
+  // ── Try AI analysis first ──
+  try {
+    const aiResult = await analyzeTemplateWithAI(data, merges);
+    if (aiResult && aiResult.confidence >= 0.4) {
+      // Run regex as backup, then merge
+      const regexFields = parseTemplateWithRegex(data, merges);
+      const merged = mergeWithRegexFallback(aiResult.fields, regexFields);
+      const fields: TemplateField[] = merged.map(f => ({
+        type: f.type,
+        label: f.label,
+        fieldKey: f.fieldKey,
+        rowIndex: f.rowIndex,
+        valueCol: f.valueCol,
+      }));
+      console.log(`[SPEC GEN] AI template analysis: ${aiResult.templateType}, ${fields.length} fields, ${(aiResult.confidence * 100).toFixed(0)}% confidence`);
+      return { fields, sheetName };
+    }
+  } catch (err: any) {
+    console.warn(`[SPEC GEN] AI template analysis failed, using regex: ${err.message}`);
+  }
+
+  // ── Fallback: regex-based parsing ──
+  const fields: TemplateField[] = parseTemplateWithRegex(data, merges);
+  return { fields, sheetName };
+}
+
+/**
+ * Regex-based template parser (original logic, used as fallback when AI is unavailable).
+ */
+function parseTemplateWithRegex(data: any[][], merges: any[]): TemplateField[] {
+  const fields: TemplateField[] = [];
 
   // Detect if this is a multi-column template (AJP/WJHW style: merges spanning A:E)
   const hasWideLabels = merges.some(
@@ -410,7 +442,7 @@ function parseTemplate(buffer: Buffer): { fields: TemplateField[]; sheetName: st
     }
   }
 
-  return { fields, sheetName };
+  return fields;
 }
 
 /**
@@ -965,27 +997,16 @@ export async function POST(request: NextRequest) {
     // Step 1: Parse template layout (Excel, PDF, or Word)
     const templateName = templateFile.name.toLowerCase();
     const isExcelTemplate = /\.(xlsx?|xls)$/i.test(templateName);
-    let templateFields: TemplateField[];
-    let templateSheetName: string;
-
-    if (isExcelTemplate) {
-      const parsed = parseTemplate(templateBuffer);
-      templateFields = parsed.fields;
-      templateSheetName = parsed.sheetName;
-    } else {
-      // PDF or Word — extract text via Kreuzberg, then parse from text
-      const extracted = await extractText(templateBuffer, templateFile.name);
-      const parsed = parseTemplateFromText(extracted.text);
-      templateFields = parsed.fields;
-      templateSheetName = parsed.sheetName;
-    }
-
-    // Step 1b: Template recognition via ImportProfile fingerprinting
+    let templateFields: TemplateField[] = [];
+    let templateSheetName: string = "Sheet1";
     let templateProfile: ParseResponse["templateProfile"] = null;
 
+    // Step 1a: Check ImportProfile cache FIRST (skip AI + regex if cached)
+    let usedCachedProfile = false;
     if (isExcelTemplate) {
       try {
         const templateWorkbook = xlsx.read(templateBuffer, { type: "buffer" });
+        templateSheetName = templateWorkbook.SheetNames[0];
         const fingerprint = generateFingerprint(templateWorkbook);
 
         const existingProfile = await prisma.importProfile.findUnique({
@@ -993,13 +1014,15 @@ export async function POST(request: NextRequest) {
         });
 
         if (existingProfile) {
-          // Apply saved column mapping — override valueCol for known fields
-          const savedMapping = existingProfile.columnMapping as Record<string, number>;
-          for (const field of templateFields) {
-            if (field.fieldKey && savedMapping[field.fieldKey] !== undefined) {
-              field.valueCol = savedMapping[field.fieldKey];
-            }
+          const savedMapping = existingProfile.columnMapping as Record<string, any>;
+
+          // Check for cached AI field list (full replay — skips both AI and regex)
+          if (savedMapping._aiFieldCache && Array.isArray(savedMapping._aiFieldCache)) {
+            templateFields = savedMapping._aiFieldCache as TemplateField[];
+            usedCachedProfile = true;
+            console.log(`[SPEC GEN] Using cached AI field mapping from profile "${existingProfile.name}" (${templateFields.length} fields)`);
           }
+
           // Bump usage count
           await prisma.importProfile.update({
             where: { id: existingProfile.id },
@@ -1013,6 +1036,22 @@ export async function POST(request: NextRequest) {
         }
       } catch {
         // Fingerprinting is best-effort — don't block the parse
+      }
+    }
+
+    // Step 1b: Parse template if not cached (AI + regex for Excel, Kreuzberg for PDF/Word)
+    if (!usedCachedProfile) {
+      if (isExcelTemplate) {
+        const parsed = await parseTemplate(templateBuffer);
+        templateFields = parsed.fields;
+        templateSheetName = parsed.sheetName;
+
+      } else {
+        // PDF or Word — extract text via Kreuzberg, then parse from text
+        const extracted = await extractText(templateBuffer, templateFile.name);
+        const parsed = parseTemplateFromText(extracted.text);
+        templateFields = parsed.fields;
+        templateSheetName = parsed.sheetName;
       }
     }
 
@@ -1038,13 +1077,17 @@ export async function POST(request: NextRequest) {
     const defaults = filledDisplays.filter((d) => d.matchStatus === "defaults").length;
 
     // Save new template profile if this is a new Excel template format
+    // Stores both columnMapping (for quick lookup) and full AI field mapping (for cached replay)
     if (isExcelTemplate && !templateProfile && templateFields.length > 0) {
       try {
         const templateWorkbook = xlsx.read(templateBuffer, { type: "buffer" });
         const fp = generateFingerprint(templateWorkbook);
         const columnMapping: Record<string, number> = {};
+        // Also save the full field list as JSON for cached replay
+        const aiFieldCache: TemplateField[] = [];
         for (const f of templateFields) {
           if (f.fieldKey) columnMapping[f.fieldKey] = f.valueCol;
+          aiFieldCache.push(f);
         }
         const created = await prisma.importProfile.create({
           data: {
@@ -1053,7 +1096,7 @@ export async function POST(request: NextRequest) {
             targetSheet: templateSheetName,
             headerRowIndex: 0,
             dataStartRowIndex: 0,
-            columnMapping,
+            columnMapping: { ...columnMapping, _aiFieldCache: aiFieldCache } as any,
             dataEndStrategy: "blank_row",
           },
         });
