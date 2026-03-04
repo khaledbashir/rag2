@@ -298,6 +298,59 @@ function parsePerDisplaySheets(workbook: xlsx.WorkBook, ledSheets: string[]): Co
       }
     }
 
+    // ── Fallback: scan header/title rows for embedded display data ──────
+    // Some sheets have rich text in first few rows like:
+    // "LED-GPL2-01 - LED Display (2026) - 9' H x 16' W - 1.2mm (Indoor)"
+    // or "LG GSQA 3.91mm Ultra Fine" in a merged header
+    if (!extracted.pixelPitch || !extracted.heightFt || !extracted.vendor) {
+      for (let r = 0; r < Math.min(data.length, 8); r++) {
+        const row = data[r] || [];
+        for (let c = 0; c < Math.min(row.length, 6); c++) {
+          const text = toStr(row[c]);
+          if (!text || text.length < 5) continue;
+
+          // Extract pixel pitch: "1.2mm", "3.91 mm", etc.
+          if (!extracted.pixelPitch) {
+            const pitchMatch = text.match(/(\d+\.?\d*)\s*mm\b/i);
+            if (pitchMatch) extracted.pixelPitch = pitchMatch[1];
+          }
+
+          // Extract dimensions: "9' H x 16' W", "9'H x 16'W"
+          if (!extracted.heightFt || !extracted.widthFt) {
+            const dimMatch = text.match(/(\d+\.?\d*)\s*['′]\s*H\s*x\s*(\d+\.?\d*)\s*['′]\s*W/i);
+            if (dimMatch) {
+              extracted.heightFt = dimMatch[1];
+              extracted.widthFt = dimMatch[2];
+            }
+          }
+
+          // Extract vendor: known names in the text
+          if (!extracted.vendor) {
+            const vendorMatch = text.match(/\b(LG|Yaham|Samsung|Absen|Daktronics|SNA|Unilumin|ROE|Planar|Leyard|Barco|NovaStar|Cree)\b/i);
+            if (vendorMatch) extracted.vendor = vendorMatch[1];
+          }
+
+          // Extract model: common patterns like "LSCC018", "GSQA083", "VF series"
+          if (!extracted.model) {
+            const modelMatch = text.match(/\b([A-Z]{2,6}[- ]?\d{2,4}[A-Z]?)\b/);
+            if (modelMatch && !/^LED-/i.test(modelMatch[1])) extracted.model = modelMatch[1];
+          }
+
+          // Indoor/outdoor
+          if (!extracted.indoorOutdoor) {
+            if (/\boutdoor\b/i.test(text)) extracted.indoorOutdoor = "Outdoor";
+            else if (/\bindoor\b/i.test(text)) extracted.indoorOutdoor = "Indoor";
+          }
+
+          // Nits/brightness: "800 nits", "7500 NITs"
+          if (!extracted.nitRequirement) {
+            const nitMatch = text.match(/(\d{3,5})\s*nits?\b/i);
+            if (nitMatch) extracted.nitRequirement = nitMatch[1];
+          }
+        }
+      }
+    }
+
     // Build display from extracted data
     const { shortId, quantity: rangeQty } = parseSheetNameRange(sheetName.trim());
 
