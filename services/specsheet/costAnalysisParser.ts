@@ -200,36 +200,65 @@ function parsePitchFromName(fullName: string): number {
  * Regex patterns to extract spec values from vertical label-value sheets.
  * Each entry: [CostAnalysisDisplay field, label regex, value type].
  */
-const VERTICAL_LABEL_PATTERNS: [keyof CostAnalysisDisplay, RegExp][] = [
-  ["vendor",       /manufacturer|vendor|mfg|brand/i],
-  ["model",        /model|product\s*(?:name|model|#)|sku/i],
-  ["pixelPitch",   /pixel\s*pitch|pitch/i],
-  ["heightFt",     /(?:active\s*)?(?:display\s*)?height|overall.*height/i],
-  ["widthFt",      /(?:active\s*)?(?:display\s*)?width|overall.*width/i],
-  ["pixelsH",      /pixel.*(?:height|vertical|v\b)|vertical.*(?:pixel|resolution)|resolution.*(?:h|height|vertical)/i],
-  ["pixelsW",      /pixel.*(?:width|horizontal|h\b)|horizontal.*(?:pixel|resolution)|resolution.*(?:w|width|horizontal)/i],
-  ["sqFt",         /(?:sq|square)\s*(?:ft|feet)|total.*(?:display\s*)?area|active.*area/i],
-  ["nitRequirement", /nit|brightness|luminance/i],
-  ["serviceType",  /service\s*(?:type|access)|front.*rear|access/i],
-  ["location",     /location|area|zone|room/i],
+/** Extended field keys that map to CostAnalysisDisplay fields or intermediate values */
+type ExtractableField = keyof CostAnalysisDisplay | "indoorOutdoor";
+
+const VERTICAL_LABEL_PATTERNS: [ExtractableField, RegExp][] = [
+  ["vendor",         /^manufacturer\b|^vendor\b|^mfg\b|^brand\b/i],
+  ["model",          /^model\b|product\s*(?:name|model|#)|^sku\b/i],
+  ["pixelPitch",     /physical\s*pixel\s*pitch|^pixel\s*pitch|^pitch\b/i],
+  ["heightFt",       /spec.*height|display.*height|height.*ft|overall.*vertical/i],
+  ["widthFt",        /spec.*width|display.*width|width.*ft|overall.*horiz/i],
+  ["pixelsH",        /total\s*res.*h|pixel.*height|vertical.*pixel|vertical.*res|res.*vertical/i],
+  ["pixelsW",        /total\s*res.*w|pixel.*width|pixel.*length|horizontal.*pixel|horiz.*res|res.*horiz/i],
+  ["sqFt",           /area\s*per\s*screen|(?:sq|square)\s*(?:ft|feet)|total.*(?:display\s*)?area/i],
+  ["nitRequirement", /max.*brightness|brightness.*nit|^nit|^brightness|luminance/i],
+  ["serviceType",    /service\s*(?:type|access)|front.*rear|^access\b/i],
+  ["location",       /display\s*name|^location\b|^area\b|^zone\b/i],
+  ["indoorOutdoor",  /indoor.*outdoor|outdoor.*indoor|^environment\b/i],
+  ["quantity",       /number\s*of\s*screen|^qty\b|^quantity\b/i],
 ];
 
 /**
  * Parse workbooks where each sheet is a per-display vertical spec form.
  * Extracts basic display info from label-value pairs on each LED-* tab.
  */
+/**
+ * Parse quantity from range-style sheet names like "LED-VB-01-LED-VB-06".
+ */
+function parseSheetNameRange(sheetName: string): { shortId: string; quantity: number } {
+  const rangeMatch = sheetName.match(/^(LED-[\w.]+-)(\d+)-(LED-[\w.]+-)(\d+)$/i);
+  if (rangeMatch) {
+    const start = parseInt(rangeMatch[2], 10);
+    const end = parseInt(rangeMatch[4], 10);
+    if (end > start) return { shortId: sheetName, quantity: end - start + 1 };
+  }
+  return { shortId: sheetName, quantity: 1 };
+}
+
+/**
+ * Parse workbooks where each sheet is a per-display vertical spec form.
+ * Handles Product Data Forms (col A = labels, col B+ = values) and blank templates.
+ */
 function parsePerDisplaySheets(workbook: xlsx.WorkBook, ledSheets: string[]): CostAnalysisResult {
   const warnings: string[] = [];
   const displays: CostAnalysisDisplay[] = [];
 
-  warnings.push(`No single LED Cost Sheet found — parsing ${ledSheets.length} per-display tabs`);
+  // Try to extract project name from non-LED sheet names
+  const nonLedSheets = workbook.SheetNames.filter((n) => !/^LED-/i.test(n.trim()));
+  const projectName = nonLedSheets.find((n) =>
+    /arena|stadium|center|field|park|capital|university|college/i.test(n)
+  ) || "";
+
+  warnings.push(`Detected ${ledSheets.length} per-display sheet tabs (no single LED Cost Sheet)`);
 
   for (const sheetName of ledSheets) {
     const sheet = workbook.Sheets[sheetName];
+    if (!sheet) continue;
     const data: any[][] = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: true });
 
     // Build a label→value map by scanning all rows
-    const extracted: Partial<Record<keyof CostAnalysisDisplay, string>> = {};
+    const extracted: Partial<Record<ExtractableField, string>> = {};
 
     for (let r = 0; r < data.length; r++) {
       const row = data[r] || [];
@@ -242,13 +271,12 @@ function parsePerDisplaySheets(workbook: xlsx.WorkBook, ledSheets: string[]): Co
           if (extracted[field]) continue; // already found
           if (!pattern.test(cellText)) continue;
 
-          // Look for value in adjacent cells (same row, right of label) or next row
+          // Look for value in adjacent cells (same row, right of label)
           let value = "";
-
-          // Check cells to the right on same row
           for (let vc = c + 1; vc < Math.min(row.length, c + 5); vc++) {
             const v = toStr(row[vc]);
-            if (v && v !== cellText && !/^[\s\-—:]+$/.test(v)) {
+            // Skip placeholder text
+            if (v && v !== cellText && !/^[\s\-—:]+$/.test(v) && !/^(enter|n\/a|tbd)$/i.test(v)) {
               value = v;
               break;
             }
@@ -257,7 +285,7 @@ function parsePerDisplaySheets(workbook: xlsx.WorkBook, ledSheets: string[]): Co
           // If nothing found, check the cell directly below the label
           if (!value && r + 1 < data.length) {
             const below = toStr(data[r + 1]?.[c]);
-            if (below && below.length < 100 && !/^[\s\-—:]+$/.test(below)) {
+            if (below && below.length < 100 && !/^[\s\-—:]+$/.test(below) && !/^(enter|n\/a|tbd)$/i.test(below)) {
               value = below;
             }
           }
@@ -271,7 +299,8 @@ function parsePerDisplaySheets(workbook: xlsx.WorkBook, ledSheets: string[]): Co
     }
 
     // Build display from extracted data
-    const shortId = sheetName.trim();
+    const { shortId, quantity: rangeQty } = parseSheetNameRange(sheetName.trim());
+
     let pixelPitch = toNum(extracted.pixelPitch);
     if (!pixelPitch) pixelPitch = parsePitchFromName(shortId);
 
@@ -283,15 +312,29 @@ function parsePerDisplaySheets(workbook: xlsx.WorkBook, ledSheets: string[]): Co
     const nitRequirement = toNum(extracted.nitRequirement);
     const vendor = extracted.vendor || "";
     const model = extracted.model || "";
+    const location = extracted.location || "";
+    const quantity = toNum(extracted.quantity) || rangeQty;
 
-    if (!vendor && !model && !pixelPitch) {
-      warnings.push(`${shortId}: Could not extract vendor, model, or pitch from spec sheet`);
+    // Indoor/outdoor: use extracted value, then sheet name inference, then nits
+    const envText = extracted.indoorOutdoor || "";
+    const isOutdoor = /outdoor/i.test(envText) || inferOutdoor(shortId, nitRequirement);
+
+    // Build a richer fullName from available data
+    const parts = [shortId];
+    if (location) parts.push(location);
+    if (pixelPitch) parts.push(`${pixelPitch}mm`);
+    if (isOutdoor) parts.push("(Outdoor)");
+    else parts.push("(Indoor)");
+
+    const isBlank = !vendor && !model && !pixelPitch && !heightFt && !widthFt;
+    if (isBlank) {
+      warnings.push(`${shortId}: Sheet appears blank — will use DB product defaults if matched`);
     }
 
     displays.push({
       shortId,
-      fullName: shortId,
-      location: extracted.location || "",
+      fullName: parts.join(" - "),
+      location,
       vendor,
       model,
       pixelPitch,
@@ -302,9 +345,9 @@ function parsePerDisplaySheets(workbook: xlsx.WorkBook, ledSheets: string[]): Co
       sqFt,
       nitRequirement,
       serviceType: extracted.serviceType || "",
-      isOutdoor: inferOutdoor(shortId, nitRequirement),
+      isOutdoor,
       isAlternate: inferAlternate(shortId),
-      quantity: 1,
+      quantity,
     });
   }
 
@@ -317,11 +360,12 @@ function parsePerDisplaySheets(workbook: xlsx.WorkBook, ledSheets: string[]): Co
         vendorCounts[v] = (vendorCounts[v] || 0) + 1;
       }
     }
-    const displaysWithVendor = Object.values(vendorCounts).reduce((a, b) => a + b, 0);
+    const totalWithVendor = Object.values(vendorCounts).reduce((a, b) => a + b, 0);
     let majorityVendor = "";
-    if (displaysWithVendor > 0) {
+    if (totalWithVendor > 0) {
       const sorted = Object.entries(vendorCounts).sort((a, b) => b[1] - a[1]);
-      if (sorted[0][1] / displays.length > 0.5) {
+      // Use 30% threshold (more lenient than 50% since many sheets may be blank)
+      if (sorted[0][1] / displays.length > 0.3) {
         majorityVendor = displays.find(d => d.vendor.toLowerCase() === sorted[0][0])?.vendor || sorted[0][0];
       }
     }
@@ -331,10 +375,29 @@ function parsePerDisplaySheets(workbook: xlsx.WorkBook, ledSheets: string[]): Co
         warnings.push(`${d.shortId}: Vendor inferred from project majority (${majorityVendor})`);
       }
     }
+
+    // Model inference: same vendor + closest pitch
+    const withModel = displays.filter((d) => d.vendor && d.model);
+    for (const d of displays) {
+      if (d.vendor && !d.model && d.pixelPitch > 0) {
+        const candidates = withModel.filter(
+          (s) => s.vendor.toLowerCase() === d.vendor.toLowerCase()
+        );
+        if (candidates.length > 0) {
+          const best = candidates.sort(
+            (a, b) => Math.abs(a.pixelPitch - d.pixelPitch) - Math.abs(b.pixelPitch - d.pixelPitch)
+          )[0];
+          if (Math.abs(best.pixelPitch - d.pixelPitch) <= 0.5) {
+            d.model = best.model;
+            warnings.push(`${d.shortId}: Model inferred from ${best.shortId} (${best.model})`);
+          }
+        }
+      }
+    }
   }
 
   console.log(`[COST PARSER] Parsed ${displays.length} per-display spec sheets`);
-  return { displays, projectName: "", warnings };
+  return { displays, projectName, warnings };
 }
 
 // ─── Main Parser ────────────────────────────────────────────────────────────
