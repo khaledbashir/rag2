@@ -194,6 +194,149 @@ function parsePitchFromName(fullName: string): number {
   return match ? parseFloat(match[1]) : 0;
 }
 
+// ─── Per-Display Sheet Parser (fallback) ────────────────────────────────────
+
+/**
+ * Regex patterns to extract spec values from vertical label-value sheets.
+ * Each entry: [CostAnalysisDisplay field, label regex, value type].
+ */
+const VERTICAL_LABEL_PATTERNS: [keyof CostAnalysisDisplay, RegExp][] = [
+  ["vendor",       /manufacturer|vendor|mfg|brand/i],
+  ["model",        /model|product\s*(?:name|model|#)|sku/i],
+  ["pixelPitch",   /pixel\s*pitch|pitch/i],
+  ["heightFt",     /(?:active\s*)?(?:display\s*)?height|overall.*height/i],
+  ["widthFt",      /(?:active\s*)?(?:display\s*)?width|overall.*width/i],
+  ["pixelsH",      /pixel.*(?:height|vertical|v\b)|vertical.*(?:pixel|resolution)|resolution.*(?:h|height|vertical)/i],
+  ["pixelsW",      /pixel.*(?:width|horizontal|h\b)|horizontal.*(?:pixel|resolution)|resolution.*(?:w|width|horizontal)/i],
+  ["sqFt",         /(?:sq|square)\s*(?:ft|feet)|total.*(?:display\s*)?area|active.*area/i],
+  ["nitRequirement", /nit|brightness|luminance/i],
+  ["serviceType",  /service\s*(?:type|access)|front.*rear|access/i],
+  ["location",     /location|area|zone|room/i],
+];
+
+/**
+ * Parse workbooks where each sheet is a per-display vertical spec form.
+ * Extracts basic display info from label-value pairs on each LED-* tab.
+ */
+function parsePerDisplaySheets(workbook: xlsx.WorkBook, ledSheets: string[]): CostAnalysisResult {
+  const warnings: string[] = [];
+  const displays: CostAnalysisDisplay[] = [];
+
+  warnings.push(`No single LED Cost Sheet found — parsing ${ledSheets.length} per-display tabs`);
+
+  for (const sheetName of ledSheets) {
+    const sheet = workbook.Sheets[sheetName];
+    const data: any[][] = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: true });
+
+    // Build a label→value map by scanning all rows
+    const extracted: Partial<Record<keyof CostAnalysisDisplay, string>> = {};
+
+    for (let r = 0; r < data.length; r++) {
+      const row = data[r] || [];
+      // Try each cell as a potential label
+      for (let c = 0; c < Math.min(row.length, 6); c++) {
+        const cellText = toStr(row[c]);
+        if (!cellText || cellText.length < 3 || cellText.length > 150) continue;
+
+        for (const [field, pattern] of VERTICAL_LABEL_PATTERNS) {
+          if (extracted[field]) continue; // already found
+          if (!pattern.test(cellText)) continue;
+
+          // Look for value in adjacent cells (same row, right of label) or next row
+          let value = "";
+
+          // Check cells to the right on same row
+          for (let vc = c + 1; vc < Math.min(row.length, c + 5); vc++) {
+            const v = toStr(row[vc]);
+            if (v && v !== cellText && !/^[\s\-—:]+$/.test(v)) {
+              value = v;
+              break;
+            }
+          }
+
+          // If nothing found, check the cell directly below the label
+          if (!value && r + 1 < data.length) {
+            const below = toStr(data[r + 1]?.[c]);
+            if (below && below.length < 100 && !/^[\s\-—:]+$/.test(below)) {
+              value = below;
+            }
+          }
+
+          if (value) {
+            extracted[field] = value;
+          }
+          break;
+        }
+      }
+    }
+
+    // Build display from extracted data
+    const shortId = sheetName.trim();
+    let pixelPitch = toNum(extracted.pixelPitch);
+    if (!pixelPitch) pixelPitch = parsePitchFromName(shortId);
+
+    const heightFt = toNum(extracted.heightFt);
+    const widthFt = toNum(extracted.widthFt);
+    let sqFt = toNum(extracted.sqFt);
+    if (!sqFt && heightFt && widthFt) sqFt = heightFt * widthFt;
+
+    const nitRequirement = toNum(extracted.nitRequirement);
+    const vendor = extracted.vendor || "";
+    const model = extracted.model || "";
+
+    if (!vendor && !model && !pixelPitch) {
+      warnings.push(`${shortId}: Could not extract vendor, model, or pitch from spec sheet`);
+    }
+
+    displays.push({
+      shortId,
+      fullName: shortId,
+      location: extracted.location || "",
+      vendor,
+      model,
+      pixelPitch,
+      heightFt,
+      widthFt,
+      pixelsH: toNum(extracted.pixelsH),
+      pixelsW: toNum(extracted.pixelsW),
+      sqFt,
+      nitRequirement,
+      serviceType: extracted.serviceType || "",
+      isOutdoor: inferOutdoor(shortId, nitRequirement),
+      isAlternate: inferAlternate(shortId),
+      quantity: 1,
+    });
+  }
+
+  // Vendor/model inference from siblings (same logic as main parser)
+  if (displays.length > 1) {
+    const vendorCounts: Record<string, number> = {};
+    for (const d of displays) {
+      if (d.vendor) {
+        const v = d.vendor.toLowerCase();
+        vendorCounts[v] = (vendorCounts[v] || 0) + 1;
+      }
+    }
+    const displaysWithVendor = Object.values(vendorCounts).reduce((a, b) => a + b, 0);
+    let majorityVendor = "";
+    if (displaysWithVendor > 0) {
+      const sorted = Object.entries(vendorCounts).sort((a, b) => b[1] - a[1]);
+      if (sorted[0][1] / displays.length > 0.5) {
+        majorityVendor = displays.find(d => d.vendor.toLowerCase() === sorted[0][0])?.vendor || sorted[0][0];
+      }
+    }
+    for (const d of displays) {
+      if (!d.vendor && majorityVendor) {
+        d.vendor = majorityVendor;
+        warnings.push(`${d.shortId}: Vendor inferred from project majority (${majorityVendor})`);
+      }
+    }
+  }
+
+  console.log(`[COST PARSER] Parsed ${displays.length} per-display spec sheets`);
+  return { displays, projectName: "", warnings };
+}
+
 // ─── Main Parser ────────────────────────────────────────────────────────────
 
 export function parseCostAnalysis(buffer: Buffer): CostAnalysisResult {
@@ -203,6 +346,11 @@ export function parseCostAnalysis(buffer: Buffer): CostAnalysisResult {
   // Find LED Cost Sheet
   const sheetName = findLedCostSheet(workbook);
   if (!sheetName) {
+    // Fallback: check if sheets are per-display spec tabs (e.g., "LED-GPL2-01", "LED-C1-02")
+    const ledSheets = workbook.SheetNames.filter((n) => /^LED-/i.test(n.trim()));
+    if (ledSheets.length > 0) {
+      return parsePerDisplaySheets(workbook, ledSheets);
+    }
     return {
       displays: [],
       projectName: "",
