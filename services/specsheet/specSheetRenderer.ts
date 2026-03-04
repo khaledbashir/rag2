@@ -9,6 +9,7 @@
  */
 
 import type { FormSheetResult, DisplaySpec } from "./formSheetParser";
+import { getRateSync } from "@/services/rfp/rateCardLoader";
 
 const ANC_BLUE = "#0A52EF";
 const ANC_DARK = "#002C73";
@@ -77,7 +78,9 @@ function buildSpecFields(d: DisplaySpec): SpecField[] {
   fields.push({ label: "Brightness (after calibration)", value: d.brightnessNits != null ? fmtInt(d.brightnessNits) : "—", unit: "nits" });
   fields.push({ label: "Brightness Level Adjustment", value: fmtStr(d.brightnessAdjustment) || "0–100%" });
   fields.push({ label: "Color Temperature", value: fmtStr(d.colorTemperatureK), unit: d.colorTemperatureK ? "°K" : "" });
-  fields.push({ label: "Color Temperature Adjustability", value: fmtStr(d.colorTempAdjustability) || "3,200K–9,300K" });
+  const tMin = getRateSync("spec.color_temp.min");
+  const tMax = getRateSync("spec.color_temp.max");
+  fields.push({ label: "Color Temperature Adjustability", value: fmtStr(d.colorTempAdjustability) || `${tMin.toLocaleString()}K–${tMax.toLocaleString()}K` });
   fields.push({ label: "Gradation Method", value: fmtStr(d.gradationMethod) });
   fields.push({ label: "Tonal Gradation", value: fmtStr(d.tonalGradation) });
 
@@ -92,7 +95,7 @@ function buildSpecFields(d: DisplaySpec): SpecField[] {
   fields.push({ label: "Power Consumption — Max (entire display)", value: d.maxPowerW != null ? fmtInt(d.maxPowerW) : "—", unit: "W" });
   fields.push({ label: "Normal Power Requirements", value: fmtStr(d.voltageService) });
   fields.push({ label: "Ventilation Requirements", value: fmtStr(d.ventilationRequirements) });
-  fields.push({ label: "Display Assembly Weight", value: d.panelWeightLbs != null ? fmtInt(Math.round(d.panelWeightLbs * 1.25)) : "—", unit: "lbs" });
+  fields.push({ label: "Display Assembly Weight", value: d.panelWeightLbs != null ? fmtInt(Math.round(d.panelWeightLbs * getRateSync("spec.weight_multiplier"))) : "—", unit: "lbs" });
 
   return fields;
 }

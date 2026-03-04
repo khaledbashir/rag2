@@ -11,6 +11,7 @@
  */
 
 import type { FormSheetResult, DisplaySpec } from "./formSheetParser";
+import { getRateSync } from "@/services/rfp/rateCardLoader";
 
 // ---------------------------------------------------------------------------
 // Project metadata — passed from the proposal context
@@ -258,7 +259,7 @@ function renderDisplayForm(
     <tr>
       <td class="lbl" colspan="2">Entire Display Assembly (ie; total center hung) Weight</td>
       <td class="val num" colspan="2">
-        ${d.panelWeightLbs != null ? esc(fI(Math.round(d.panelWeightLbs * 1.25))) : (d.totalWeightLbs != null ? esc(fI(Math.round(d.totalWeightLbs * 1.25))) : "")}
+        ${d.panelWeightLbs != null ? esc(fI(Math.round(d.panelWeightLbs * getRateSync("spec.weight_multiplier")))) : (d.totalWeightLbs != null ? esc(fI(Math.round(d.totalWeightLbs * getRateSync("spec.weight_multiplier")))) : "")}
         ${(d.panelWeightLbs != null || d.totalWeightLbs != null) ? '<span class="u">lbs</span>' : ""}
       </td>
     </tr>

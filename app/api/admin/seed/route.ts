@@ -80,6 +80,45 @@ const RATE_CARD_SEED = [
     { category: "other", key: "other.eng_base_fee", label: "Engineering Base Fee (zone-multiplied)", value: 4705.88, unit: "fixed", provenance: "estlogic.md + productCatalog.ts", confidence: "extracted" },
     { category: "other", key: "other.complex_modifier", label: "Complex Zone Modifier", value: 1.2, unit: "multiplier", provenance: "productCatalog.ts", confidence: "extracted" },
     { category: "other", key: "other.alt1_upgrade_ratio", label: "Alt-1 Upgrade Ratio", value: 0.07, unit: "pct", provenance: "productCatalog.ts", confidence: "extracted" },
+
+    // --- SPEC DEFAULTS (Natalia/Jeremy rules 2026-03) ---
+    // Viewing Angles
+    { category: "spec_default", key: "spec.viewing_angle.indoor_h", label: "Indoor Horizontal Viewing Angle", value: 160, unit: "degrees", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+    { category: "spec_default", key: "spec.viewing_angle.indoor_v", label: "Indoor Vertical Viewing Angle", value: 160, unit: "degrees", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+    { category: "spec_default", key: "spec.viewing_angle.outdoor_h", label: "Outdoor Horizontal Viewing Angle", value: 140, unit: "degrees", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+    { category: "spec_default", key: "spec.viewing_angle.outdoor_v_up", label: "Outdoor Vertical Up Viewing Angle", value: 70, unit: "degrees", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+    { category: "spec_default", key: "spec.viewing_angle.outdoor_v_down", label: "Outdoor Vertical Down Viewing Angle", value: 70, unit: "degrees", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+
+    // Color Space
+    { category: "spec_default", key: "spec.color_space.rec709", label: "Color Space — Rec. 709", value: 90, unit: "pct", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+    { category: "spec_default", key: "spec.color_space.dci_p3", label: "Color Space — DCI-P3", value: 90, unit: "pct", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+    { category: "spec_default", key: "spec.color_space.rec2020", label: "Color Space — Rec. 2020", value: 77, unit: "pct", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+    { category: "spec_default", key: "spec.color_space.tolerance", label: "Color Space Tolerance", value: 9, unit: "pct", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+
+    // Color Temperature
+    { category: "spec_default", key: "spec.color_temp.min", label: "Color Temperature — Min", value: 3200, unit: "kelvin", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+    { category: "spec_default", key: "spec.color_temp.max", label: "Color Temperature — Max", value: 9300, unit: "kelvin", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+    { category: "spec_default", key: "spec.color_temp.nominal", label: "Color Temperature — Nominal", value: 6500, unit: "kelvin", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+
+    // Weight
+    { category: "spec_default", key: "spec.weight_multiplier", label: "Total Weight Multiplier (structure/cabling/electronics)", value: 1.25, unit: "multiplier", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+
+    // Pixel Fill Factor
+    { category: "spec_default", key: "spec.pixel_fill_factor", label: "Pixel Fill Factor", value: 90, unit: "pct", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+
+    // Power Ratios
+    { category: "spec_default", key: "spec.power_idle_ratio", label: "Power Idle Ratio (0% white)", value: 0.15, unit: "multiplier", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+    { category: "spec_default", key: "spec.power_avg_ratio", label: "Power Average Ratio (typical)", value: 0.33, unit: "multiplier", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+
+    // Cabinet Defaults
+    { category: "cabinet_default", key: "spec.cabinet.indoor_width_mm", label: "Indoor Cabinet Width Fallback", value: 500, unit: "mm", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+    { category: "cabinet_default", key: "spec.cabinet.indoor_height_mm", label: "Indoor Cabinet Height Fallback", value: 500, unit: "mm", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+    { category: "cabinet_default", key: "spec.cabinet.outdoor_width_mm", label: "Outdoor Cabinet Width Fallback", value: 960, unit: "mm", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+    { category: "cabinet_default", key: "spec.cabinet.outdoor_height_mm", label: "Outdoor Cabinet Height Fallback", value: 960, unit: "mm", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+    { category: "cabinet_default", key: "spec.cabinet.indoor_max_power_w", label: "Indoor Cabinet Max Power Fallback", value: 200, unit: "watts", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+    { category: "cabinet_default", key: "spec.cabinet.outdoor_max_power_w", label: "Outdoor Cabinet Max Power Fallback", value: 650, unit: "watts", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+    { category: "cabinet_default", key: "spec.cabinet.indoor_weight_kg", label: "Indoor Cabinet Weight Fallback", value: 10, unit: "kg", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
+    { category: "cabinet_default", key: "spec.cabinet.outdoor_weight_kg", label: "Outdoor Cabinet Weight Fallback", value: 30, unit: "kg", provenance: "Natalia/Jeremy spec rules 2026-03", confidence: "validated" },
 ];
 
 // ============================================================================

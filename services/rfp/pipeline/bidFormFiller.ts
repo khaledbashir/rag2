@@ -11,6 +11,7 @@
 
 import ExcelJS from "exceljs";
 import type { ExtractedLEDSpec } from "@/services/rfp/unified/types";
+import { preloadRateCard, getRateSync } from "@/services/rfp/rateCardLoader";
 
 // ============================================================================
 // TYPES
@@ -106,6 +107,9 @@ export async function fillBidForm(
   screens: ExtractedLEDSpec[],
   pricing?: PricingData[]
 ): Promise<BidFormFillResult> {
+  // Pre-warm rate card cache for viewing angle lookups
+  await preloadRateCard();
+
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(bidFormBuffer);
 
@@ -677,13 +681,19 @@ function fillBlockCells(
     setCell(block.cells.powerDraw, C, screen.maxPowerW, "Power Draw");
   }
 
-  // Viewing angles — use Natalia/Jeremy rules: Indoor 160°, Outdoor 140°H/70°V
+  // Viewing angles — from rate card (Natalia/Jeremy rules)
   const isOutdoor = screen.environment === "outdoor";
   if (block.cells.viewAngleH) {
-    setCell(block.cells.viewAngleH, C, isOutdoor ? 140 : 160, "Viewing Angle H");
+    const viewH = isOutdoor
+      ? getRateSync("spec.viewing_angle.outdoor_h")
+      : getRateSync("spec.viewing_angle.indoor_h");
+    setCell(block.cells.viewAngleH, C, viewH, "Viewing Angle H");
   }
   if (block.cells.viewAngleV) {
-    setCell(block.cells.viewAngleV, C, isOutdoor ? 70 : 160, "Viewing Angle V");
+    const viewV = isOutdoor
+      ? getRateSync("spec.viewing_angle.outdoor_v_up")
+      : getRateSync("spec.viewing_angle.indoor_v");
+    setCell(block.cells.viewAngleV, C, viewV, "Viewing Angle V");
   }
 
   // Pricing fields — only fill if pricing data is available

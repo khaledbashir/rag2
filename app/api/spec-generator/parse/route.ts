@@ -11,6 +11,7 @@ import * as xlsx from "xlsx";
 import { PrismaClient } from "@prisma/client";
 import { parseCostAnalysis, type CostAnalysisDisplay } from "@/services/specsheet/costAnalysisParser";
 import { generateFingerprint } from "@/services/import/excelNormalizer";
+import { preloadRateCard, getRateSync } from "@/services/rfp/rateCardLoader";
 
 const prisma = new PrismaClient();
 
@@ -352,6 +353,29 @@ async function matchProductFromDB(
 
 function getDefaults(isOutdoor: boolean, vendor: string) {
   const isLG = /\blg\b/i.test(vendor);
+
+  // Viewing angles from rate card
+  const viewH = isOutdoor
+    ? String(getRateSync("spec.viewing_angle.outdoor_h"))
+    : String(getRateSync("spec.viewing_angle.indoor_h"));
+  const viewUp = isOutdoor
+    ? String(getRateSync("spec.viewing_angle.outdoor_v_up"))
+    : String(getRateSync("spec.viewing_angle.indoor_v"));
+  const viewDown = isOutdoor
+    ? String(getRateSync("spec.viewing_angle.outdoor_v_down"))
+    : String(getRateSync("spec.viewing_angle.indoor_v"));
+
+  // Color space from rate card
+  const tol = getRateSync("spec.color_space.tolerance");
+  const rec709 = getRateSync("spec.color_space.rec709");
+  const dciP3 = getRateSync("spec.color_space.dci_p3");
+  const rec2020 = getRateSync("spec.color_space.rec2020");
+
+  // Color temp from rate card
+  const tMin = getRateSync("spec.color_temp.min");
+  const tMax = getRateSync("spec.color_temp.max");
+  const colorTempRange = `${tMin.toLocaleString()}K–${tMax.toLocaleString()}K`;
+
   return {
     oemLedModuleMfr: vendor || "—",
     oemProcessorMfr: isLG ? "Novastar" : "—",
@@ -359,16 +383,16 @@ function getDefaults(isOutdoor: boolean, vendor: string) {
     ledLampType: isOutdoor
       ? "SMD (Surface-Mount Device) — IP65 Rated Package"
       : "SMD (Surface-Mount Device) — Single SMD Package",
-    viewingAngleH: isOutdoor ? "140" : "160",
-    viewingAngleUp: isOutdoor ? "70" : "160",
-    viewingAngleDown: isOutdoor ? "70" : "160",
+    viewingAngleH: viewH,
+    viewingAngleUp: viewUp,
+    viewingAngleDown: viewDown,
     brightnessAdjustment: "0–100% (256 steps)",
-    colorTemperatureK: "3,200K–9,300K",
-    colorTempAdjustability: "3,200K–9,300K",
-    pixelFillFactor: "90%",
-    colorSpaceRec709: "90 (+/- 9%)",
-    colorSpaceDciP3: "90 (+/- 9%)",
-    colorSpaceRec2020: "77 (+/- 9%)",
+    colorTemperatureK: colorTempRange,
+    colorTempAdjustability: colorTempRange,
+    pixelFillFactor: `${getRateSync("spec.pixel_fill_factor")}%`,
+    colorSpaceRec709: `${rec709} (+/- ${tol}%)`,
+    colorSpaceDciP3: `${dciP3} (+/- ${tol}%)`,
+    colorSpaceRec2020: `${rec2020} (+/- ${tol}%)`,
     powerRequirements: "AC 100–240V, 50/60Hz, Single Phase",
     gradationMethod: "16-bit",
     tonalGradation: "281 trillion colors",
@@ -511,12 +535,12 @@ async function fillDisplay(
   // Mapped vendor PDF specs (for cabinet fallback)
   const vpsMapped = vendorSpecs || {};
 
-  // Get cabinet specs for calculations — DB > vendor PDF > env defaults
-  const cabWidthMm = dbMatch?.cabinetWidthMm ?? (vpsMapped.vendorCabWidthMm as number | undefined) ?? (display.isOutdoor ? 960 : 500);
-  const cabHeightMm = dbMatch?.cabinetHeightMm ?? (vpsMapped.vendorCabHeightMm as number | undefined) ?? (display.isOutdoor ? 960 : 500);
-  const maxWPerCab = dbMatch?.maxPowerWattsPerCab ?? (vpsMapped.vendorMaxPowerWPerCab as number | undefined) ?? (display.isOutdoor ? 650 : 200);
-  const avgWPerCab = dbMatch?.typicalPowerWattsPerCab ?? (vpsMapped.vendorTypPowerWPerCab as number | undefined) ?? maxWPerCab * 0.33;
-  const kgPerCab = dbMatch?.weightKgPerCabinet ?? (vpsMapped.vendorWeightKgPerCab as number | undefined) ?? (display.isOutdoor ? 30 : 10);
+  // Get cabinet specs for calculations — DB > vendor PDF > rate card defaults
+  const cabWidthMm = dbMatch?.cabinetWidthMm ?? (vpsMapped.vendorCabWidthMm as number | undefined) ?? (display.isOutdoor ? getRateSync("spec.cabinet.outdoor_width_mm") : getRateSync("spec.cabinet.indoor_width_mm"));
+  const cabHeightMm = dbMatch?.cabinetHeightMm ?? (vpsMapped.vendorCabHeightMm as number | undefined) ?? (display.isOutdoor ? getRateSync("spec.cabinet.outdoor_height_mm") : getRateSync("spec.cabinet.indoor_height_mm"));
+  const maxWPerCab = dbMatch?.maxPowerWattsPerCab ?? (vpsMapped.vendorMaxPowerWPerCab as number | undefined) ?? (display.isOutdoor ? getRateSync("spec.cabinet.outdoor_max_power_w") : getRateSync("spec.cabinet.indoor_max_power_w"));
+  const avgWPerCab = dbMatch?.typicalPowerWattsPerCab ?? (vpsMapped.vendorTypPowerWPerCab as number | undefined) ?? maxWPerCab * getRateSync("spec.power_avg_ratio");
+  const kgPerCab = dbMatch?.weightKgPerCabinet ?? (vpsMapped.vendorWeightKgPerCab as number | undefined) ?? (display.isOutdoor ? getRateSync("spec.cabinet.outdoor_weight_kg") : getRateSync("spec.cabinet.indoor_weight_kg"));
 
   if (!dbMatch) {
     warnings.push(`${display.shortId}: No product match in catalog — using estimated cabinet defaults for power/weight`);
@@ -534,12 +558,12 @@ async function fillDisplay(
   // Power calculations
   const powerAt100_KW = (maxWPerCab * cabinetCount) / 1000;
   const powerAvg_KW = (avgWPerCab * cabinetCount) / 1000;
-  const powerAt0_KW = powerAt100_KW * 0.15;
+  const powerAt0_KW = powerAt100_KW * getRateSync("spec.power_idle_ratio");
   const btuAt0 = Math.round(powerAt0_KW * 3412);
   const btuAvg = Math.round(powerAvg_KW * 3412);
   const btuAt100 = Math.round(powerAt100_KW * 3412);
-  // Weight × 1.25 per Natalia/Jeremy — includes internal structure, cabling, electronics
-  const totalWeightLbs = Math.round(kgPerCab * 2.205 * cabinetCount * 1.25);
+  // Weight × multiplier per Natalia/Jeremy — includes internal structure, cabling, electronics
+  const totalWeightLbs = Math.round(kgPerCab * 2.205 * cabinetCount * getRateSync("spec.weight_multiplier"));
 
   // Pixel density
   const pixelDensity = display.sqFt > 0
@@ -682,6 +706,9 @@ async function fillDisplay(
 
 export async function POST(request: NextRequest) {
   try {
+    // Pre-warm rate card cache so getRateSync() works throughout
+    await preloadRateCard();
+
     const formData = await request.formData();
     const templateFile = formData.get("template") as File | null;
     const costAnalysisFile = formData.get("costAnalysis") as File | null;

@@ -82,6 +82,46 @@ const HARDCODED_DEFAULTS: Record<string, number> = {
     "other.pm_base_fee": PM_BASE_FEE,
     "other.eng_base_fee": ENG_BASE_FEE,
     "other.complex_modifier": COMPLEX_MODIFIER,
+
+    // ─── Spec Defaults (Natalia/Jeremy rules) ────────────────────────────
+
+    // Viewing Angles (degrees)
+    "spec.viewing_angle.indoor_h": 160,
+    "spec.viewing_angle.indoor_v": 160,
+    "spec.viewing_angle.outdoor_h": 140,
+    "spec.viewing_angle.outdoor_v_up": 70,
+    "spec.viewing_angle.outdoor_v_down": 70,
+
+    // Color Space (pct)
+    "spec.color_space.rec709": 90,
+    "spec.color_space.dci_p3": 90,
+    "spec.color_space.rec2020": 77,
+    "spec.color_space.tolerance": 9,
+
+    // Color Temperature (kelvin)
+    "spec.color_temp.min": 3200,
+    "spec.color_temp.max": 9300,
+    "spec.color_temp.nominal": 6500,
+
+    // Weight (multiplier)
+    "spec.weight_multiplier": 1.25,
+
+    // Pixel Fill Factor (pct)
+    "spec.pixel_fill_factor": 90,
+
+    // Power Ratios (multiplier)
+    "spec.power_idle_ratio": 0.15,
+    "spec.power_avg_ratio": 0.33,
+
+    // Cabinet Defaults — fallback when no DB product match (mm / watts / kg)
+    "spec.cabinet.indoor_width_mm": 500,
+    "spec.cabinet.indoor_height_mm": 500,
+    "spec.cabinet.outdoor_width_mm": 960,
+    "spec.cabinet.outdoor_height_mm": 960,
+    "spec.cabinet.indoor_max_power_w": 200,
+    "spec.cabinet.outdoor_max_power_w": 650,
+    "spec.cabinet.indoor_weight_kg": 10,
+    "spec.cabinet.outdoor_weight_kg": 30,
 };
 
 // ============================================================================

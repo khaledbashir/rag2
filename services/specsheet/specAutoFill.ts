@@ -20,6 +20,7 @@ import { getAllProducts, type ProductType } from "@/services/rfp/productCatalog"
 import type { DisplaySpec } from "@/services/specsheet/formSheetParser";
 import { MANUAL_ONLY_FIELDS, getModelKey } from "@/services/specsheet/formSheetParser";
 import { prisma } from "@/lib/prisma";
+import { preloadRateCard, getRateSync } from "@/services/rfp/rateCardLoader";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -47,25 +48,19 @@ export interface GroupAutoFill {
 
 // ─── Environment defaults ───────────────────────────────────────────────────
 
-const INDOOR_DEFAULTS: Partial<Record<keyof DisplaySpec, string>> = {
-    colorTemperatureK: "6500",
-    colorTempAdjustability: "3,200K–9,300K",
-    brightnessAdjustment: "0–100%",
-    gradationMethod: "16-bit",
-    tonalGradation: "281 trillion colors",
-    voltageService: "AC 100–240V / 50–60Hz / Single Phase",
-    ventilationRequirements: "Fanless convection cooling",
-};
-
-const OUTDOOR_DEFAULTS: Partial<Record<keyof DisplaySpec, string>> = {
-    colorTemperatureK: "6500",
-    colorTempAdjustability: "3,200K–9,300K",
-    brightnessAdjustment: "0–100%",
-    gradationMethod: "16-bit",
-    tonalGradation: "281 trillion colors",
-    voltageService: "AC 100–240V / 50–60Hz / Single Phase",
-    ventilationRequirements: "Forced air cooling (IP66 rated)",
-};
+function getEnvironmentDefaults(env: "Indoor" | "Outdoor"): Partial<Record<keyof DisplaySpec, string>> {
+    const tMin = getRateSync("spec.color_temp.min");
+    const tMax = getRateSync("spec.color_temp.max");
+    return {
+        colorTemperatureK: String(getRateSync("spec.color_temp.nominal")),
+        colorTempAdjustability: `${tMin.toLocaleString()}K–${tMax.toLocaleString()}K`,
+        brightnessAdjustment: "0–100%",
+        gradationMethod: "16-bit",
+        tonalGradation: "281 trillion colors",
+        voltageService: "AC 100–240V / 50–60Hz / Single Phase",
+        ventilationRequirements: env === "Outdoor" ? "Forced air cooling (IP66 rated)" : "Fanless convection cooling",
+    };
+}
 
 // ─── Matching ───────────────────────────────────────────────────────────────
 
@@ -263,11 +258,14 @@ export async function autoFillForDisplay(
         ? "Outdoor" as const
         : "Indoor" as const;
 
+    // Pre-warm rate card cache for getRateSync() calls
+    await preloadRateCard();
+
     const match = await matchProduct(display);
     const catalogMapped = match
         ? mapProductToSpecFields(match.product, env)
         : null;
-    const defaults = env === "Outdoor" ? OUTDOOR_DEFAULTS : INDOOR_DEFAULTS;
+    const defaults = getEnvironmentDefaults(env);
 
     const fields: AutoFillResult = {};
     let filledCount = 0;
