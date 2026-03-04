@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as xlsx from "xlsx";
 import { PrismaClient } from "@prisma/client";
 import { parseCostAnalysis, type CostAnalysisDisplay } from "@/services/specsheet/costAnalysisParser";
+import { generateFingerprint } from "@/services/import/excelNormalizer";
 
 const prisma = new PrismaClient();
 
@@ -134,6 +135,8 @@ interface ParseResponse {
   projectName: string;
   /** Name of the first sheet in the template (used for cloning) */
   sheetName: string;
+  /** Template profile info if fingerprint was recognized */
+  templateProfile?: { id: string; name: string; usageCount: number } | null;
 }
 
 // ─── Template parser ────────────────────────────────────────────────────────
@@ -709,6 +712,39 @@ export async function POST(request: NextRequest) {
     // Step 1: Parse template layout
     const { fields: templateFields, sheetName: templateSheetName } = parseTemplate(templateBuffer);
 
+    // Step 1b: Template recognition via ImportProfile fingerprinting
+    const templateWorkbook = xlsx.read(templateBuffer, { type: "buffer" });
+    const fingerprint = generateFingerprint(templateWorkbook);
+    let templateProfile: ParseResponse["templateProfile"] = null;
+
+    try {
+      const existingProfile = await prisma.importProfile.findUnique({
+        where: { fingerprint },
+      });
+
+      if (existingProfile) {
+        // Apply saved column mapping — override valueCol for known fields
+        const savedMapping = existingProfile.columnMapping as Record<string, number>;
+        for (const field of templateFields) {
+          if (field.fieldKey && savedMapping[field.fieldKey] !== undefined) {
+            field.valueCol = savedMapping[field.fieldKey];
+          }
+        }
+        // Bump usage count
+        await prisma.importProfile.update({
+          where: { id: existingProfile.id },
+          data: { usageCount: { increment: 1 }, lastUsedAt: new Date() },
+        });
+        templateProfile = {
+          id: existingProfile.id,
+          name: existingProfile.name,
+          usageCount: existingProfile.usageCount + 1,
+        };
+      }
+    } catch {
+      // Fingerprinting is best-effort — don't block the parse
+    }
+
     // Step 2: Parse cost analysis
     const { displays: costDisplays, projectName, warnings } = parseCostAnalysis(costBuffer);
 
@@ -730,6 +766,33 @@ export async function POST(request: NextRequest) {
     const matched = filledDisplays.filter((d) => d.matchStatus !== "defaults").length;
     const defaults = filledDisplays.filter((d) => d.matchStatus === "defaults").length;
 
+    // Save new template profile if this is a new template format
+    if (!templateProfile && templateFields.length > 0) {
+      try {
+        const columnMapping: Record<string, number> = {};
+        for (const f of templateFields) {
+          if (f.fieldKey) columnMapping[f.fieldKey] = f.valueCol;
+        }
+        const created = await prisma.importProfile.create({
+          data: {
+            name: `SpecGen-${templateFile.name.replace(/\.(xlsx?|csv)$/i, "")}`,
+            fingerprint,
+            targetSheet: templateSheetName,
+            headerRowIndex: 0,
+            dataStartRowIndex: 0,
+            columnMapping,
+            dataEndStrategy: "blank_row",
+          },
+        });
+        templateProfile = { id: created.id, name: created.name, usageCount: 1 };
+      } catch (e: any) {
+        // Ignore duplicate fingerprint race condition
+        if (!e.message?.includes("Unique constraint")) {
+          console.warn("[SPEC GEN] Failed to save template profile:", e.message);
+        }
+      }
+    }
+
     const response: ParseResponse = {
       displays: filledDisplays,
       templateFields,
@@ -741,6 +804,7 @@ export async function POST(request: NextRequest) {
       },
       projectName: projectName || costAnalysisFile.name.replace(/\.(xlsx?|csv)$/i, ""),
       sheetName: templateSheetName,
+      templateProfile,
     };
 
     return NextResponse.json(response);

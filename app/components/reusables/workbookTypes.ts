@@ -43,6 +43,8 @@ export interface SheetTab {
   placeholderMessage?: string;
   /** Column index that is editable (-1 = none, undefined = all if editable) */
   editableColumns?: number[];
+  /** Small badge count shown on tab (e.g., number of edited fields) */
+  badge?: number;
 }
 
 export interface WorkbookData {

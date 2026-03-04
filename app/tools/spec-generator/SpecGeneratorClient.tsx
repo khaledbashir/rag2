@@ -537,6 +537,13 @@ export default function SpecGeneratorClient() {
                 color="red"
               />
             )}
+            {Object.keys(editedCells).length > 0 && (
+              <StatBadge
+                label="Edited"
+                value={Object.keys(editedCells).length}
+                color="blue"
+              />
+            )}
           </div>
 
           {/* Warnings */}
@@ -556,7 +563,31 @@ export default function SpecGeneratorClient() {
 
           {/* WorkbookShell */}
           <div className="bg-card border border-border rounded-xl overflow-hidden">
-            <WorkbookShell data={workbookData} />
+            <WorkbookShell
+              data={workbookData}
+              editable={true}
+              onCellEdit={(sheetIdx, rowIdx, colIdx, newValue) => {
+                const cellKey = `${sheetIdx}:${rowIdx}:${colIdx}`;
+                setEditedCells(prev => ({ ...prev, [cellKey]: newValue }));
+                // Update workbook data with visual indicator + tab badge
+                setWorkbookData(prev => {
+                  if (!prev) return prev;
+                  const updated = structuredClone(prev);
+                  const cell = updated.sheets[sheetIdx]?.rows[rowIdx]?.cells[colIdx];
+                  if (cell) {
+                    cell.value = newValue;
+                    cell.className = "ring-1 ring-blue-400 bg-blue-50 dark:bg-blue-900/20";
+                  }
+                  // Count edits per sheet for tab badges
+                  const allEdited = { ...editedCells, [cellKey]: newValue };
+                  for (let s = 0; s < updated.sheets.length; s++) {
+                    const count = Object.keys(allEdited).filter(k => k.startsWith(`${s}:`)).length;
+                    updated.sheets[s].badge = count > 0 ? count : undefined;
+                  }
+                  return updated;
+                });
+              }}
+            />
           </div>
         </div>
       )}

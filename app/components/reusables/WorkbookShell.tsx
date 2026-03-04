@@ -189,6 +189,11 @@ export default function WorkbookShell({
               style={{ backgroundColor: sheet.color }}
             />
             {sheet.name}
+            {sheet.badge != null && sheet.badge > 0 && (
+              <span className="ml-1 px-1 py-0.5 text-[8px] font-bold bg-blue-500 text-white rounded-full leading-none">
+                {sheet.badge}
+              </span>
+            )}
           </button>
         ))}
         {onAddSheet && (

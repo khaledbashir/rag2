@@ -19,7 +19,7 @@
 import { getAllProducts, type ProductType } from "@/services/rfp/productCatalog";
 import type { DisplaySpec } from "@/services/specsheet/formSheetParser";
 import { MANUAL_ONLY_FIELDS, getModelKey } from "@/services/specsheet/formSheetParser";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -164,7 +164,7 @@ async function matchProduct(
             orderBy: { pixelPitch: "asc" },
         });
         if (candidates.length > 0) {
-            const nearest = candidates.reduce((best, c) =>
+            const nearest = candidates.reduce((best: typeof candidates[0], c: typeof candidates[0]) =>
                 Math.abs(c.pixelPitch - pitch) < Math.abs(best.pixelPitch - pitch) ? c : best,
             );
             const conf = Math.abs(nearest.pixelPitch - pitch) < 0.5 ? "exact" as const : "pitch" as const;
