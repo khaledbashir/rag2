@@ -61,6 +61,9 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     "",
     "",
     "Brightness",
+    "Weight (lbs)",
+    "Total Power (W)",
+    "BTU/hr",
   ]);
 
   ledSheet.getColumn(1).width = 45;
@@ -71,6 +74,9 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
   ledSheet.getColumn(8).width = 18;
   ledSheet.getColumn(10).width = 18;
   ledSheet.getColumn(13).width = 12;
+  ledSheet.getColumn(14).width = 14;
+  ledSheet.getColumn(15).width = 16;
+  ledSheet.getColumn(16).width = 12;
 
   const perScreen = Array.isArray(args.internalAudit?.perScreen) ? args.internalAudit?.perScreen : [];
 
@@ -89,7 +95,11 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     ledSheet.getCell(`G${r}`).value = toNumber(screen.width) || null;
     ledSheet.getCell(`H${r}`).value = resH;
     ledSheet.getCell(`J${r}`).value = resW;
-    ledSheet.getCell(`M${r}`).value = null;
+    ledSheet.getCell(`M${r}`).value = audit?.brightnessNits ?? null;
+    ledSheet.getCell(`N${r}`).value = audit?.estimatedWeightLbs ?? null;
+    ledSheet.getCell(`O${r}`).value = audit?.totalMaxPowerW ?? null;
+    const powerW = toNumber(audit?.totalMaxPowerW);
+    ledSheet.getCell(`P${r}`).value = powerW > 0 ? Math.round(powerW * 3.412) : null;
   });
 
   marginSheet.getCell("A1").value = `Project Name: ${args.projectName || args.clientName || ""}`.trim();
@@ -118,59 +128,42 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
       const items: any[] = table.items || [];
       if (items.length === 0) continue;
 
-      // Section header row (dark background, white text — matches ANC format)
+      // Section header row — only section name + "Selling Price" (clean, client-facing)
       const headerRow = marginSheet.getRow(r);
       marginSheet.getCell(`A${r}`).value = table.name || "Section";
-      marginSheet.getCell(`B${r}`).value = "Cost";
-      marginSheet.getCell(`C${r}`).value = "Selling Price";
-      marginSheet.getCell(`D${r}`).value = "Margin $";
-      marginSheet.getCell(`E${r}`).value = "Margin %";
+      marginSheet.getCell(`B${r}`).value = "Selling Price";
       headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
       headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F2937" } };
       headerRow.alignment = { vertical: "middle", horizontal: "center" };
       marginSheet.getCell(`A${r}`).alignment = { vertical: "middle", horizontal: "left" };
       r++;
 
-      // Line items
+      // Line items — description + selling price only (no cost/margin per item)
       let sectionCostSum = 0;
       let sectionSellSum = 0;
       for (const item of items) {
         if (item.isHidden) continue;
         const sell = toNumber(item.sellingPrice);
         const cost = item.cost != null ? toNumber(item.cost) : null;
-        const margin = cost != null ? sell - cost : null;
-        const marginPct = margin != null && sell > 0 ? margin / sell : null;
+        if (cost != null) sectionCostSum += cost;
 
         marginSheet.getCell(`A${r}`).value = item.description || "";
-        if (cost != null) {
-          marginSheet.getCell(`B${r}`).value = cost;
-          marginSheet.getCell(`B${r}`).numFmt = moneyFmt;
-          sectionCostSum += cost;
-        }
-        marginSheet.getCell(`C${r}`).value = sell;
-        marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
-        if (margin != null) {
-          marginSheet.getCell(`D${r}`).value = margin;
-          marginSheet.getCell(`D${r}`).numFmt = moneyFmt;
-        }
-        if (marginPct != null) {
-          marginSheet.getCell(`E${r}`).value = marginPct;
-          marginSheet.getCell(`E${r}`).numFmt = percentFmt;
-        }
+        marginSheet.getCell(`B${r}`).value = sell;
+        marginSheet.getCell(`B${r}`).numFmt = moneyFmt;
         sectionSellSum += sell;
         r++;
       }
 
-      // Subtotal row (blank label, bold)
+      // Subtotal row — expand to show Cost | Selling | Margin $ | Margin %
       const sectionSubtotal = toNumber(table.subtotal) || sectionSellSum;
-      marginSheet.getCell(`A${r}`).value = "";
+      const sectionMargin = sectionCostSum > 0 ? sectionSubtotal - sectionCostSum : null;
+      marginSheet.getCell(`A${r}`).value = "SUBTOTAL";
       if (sectionCostSum > 0) {
         marginSheet.getCell(`B${r}`).value = sectionCostSum;
         marginSheet.getCell(`B${r}`).numFmt = moneyFmt;
       }
       marginSheet.getCell(`C${r}`).value = sectionSubtotal;
       marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
-      const sectionMargin = sectionCostSum > 0 ? sectionSubtotal - sectionCostSum : null;
       if (sectionMargin != null) {
         marginSheet.getCell(`D${r}`).value = sectionMargin;
         marginSheet.getCell(`D${r}`).numFmt = moneyFmt;
@@ -194,9 +187,13 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
       marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
       r++;
 
-      // Grand Total row
+      // Grand Total row — full cost/margin summary
       const sectionGrandTotal = toNumber(table.grandTotal) || (sectionSubtotal + taxAmount + bondAmount);
       marginSheet.getCell(`A${r}`).value = "SUB TOTAL (BID FORM)";
+      if (sectionCostSum > 0) {
+        marginSheet.getCell(`B${r}`).value = sectionCostSum;
+        marginSheet.getCell(`B${r}`).numFmt = moneyFmt;
+      }
       marginSheet.getCell(`C${r}`).value = sectionGrandTotal;
       marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
       if (sectionMargin != null) {
@@ -212,8 +209,7 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
       const alternates: any[] = table.alternates || [];
       if (alternates.length > 0) {
         marginSheet.getCell(`A${r}`).value = "Alternates - Add to Cost Above";
-        marginSheet.getCell(`B${r}`).value = "Cost";
-        marginSheet.getCell(`C${r}`).value = "Selling Price";
+        marginSheet.getCell(`B${r}`).value = "Selling Price";
         const altHeaderRow = marginSheet.getRow(r);
         altHeaderRow.font = { bold: true, italic: true };
         altHeaderRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDEE2E6" } };
@@ -221,8 +217,8 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
 
         for (const alt of alternates) {
           marginSheet.getCell(`A${r}`).value = alt.description || "";
-          marginSheet.getCell(`C${r}`).value = toNumber(alt.priceDifference);
-          marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
+          marginSheet.getCell(`B${r}`).value = toNumber(alt.priceDifference);
+          marginSheet.getCell(`B${r}`).numFmt = moneyFmt;
           r++;
         }
       }
@@ -322,6 +318,7 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
   setHeaderRow(techSheet, 4, [
     "Display Name", "Qty", "Pixel Pitch (mm)", "Height (ft)", "Width (ft)",
     "Pixels H", "Pixels W", "Sq Ft", "Brightness (nits)", "Service", "Environment",
+    "Weight (lbs)", "Total Power (W)", "BTU/hr",
   ]);
 
   args.screens.forEach((screen, idx) => {
@@ -344,9 +341,13 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     techSheet.getCell(`F${r}`).value = pixelsH;
     techSheet.getCell(`G${r}`).value = pixelsW;
     techSheet.getCell(`H${r}`).value = sqFt > 0 ? Math.round(sqFt * 100) / 100 : null;
-    techSheet.getCell(`I${r}`).value = null; // Brightness not always available in mirror
+    techSheet.getCell(`I${r}`).value = audit?.brightnessNits ?? null;
     techSheet.getCell(`J${r}`).value = null;
     techSheet.getCell(`K${r}`).value = null;
+    techSheet.getCell(`L${r}`).value = audit?.estimatedWeightLbs ?? null;
+    techSheet.getCell(`M${r}`).value = audit?.totalMaxPowerW ?? null;
+    const techPowerW = toNumber(audit?.totalMaxPowerW);
+    techSheet.getCell(`N${r}`).value = techPowerW > 0 ? Math.round(techPowerW * 3.412) : null;
   });
 
   techSheet.getColumn(1).width = 45;
@@ -360,6 +361,9 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
   techSheet.getColumn(9).width = 16;
   techSheet.getColumn(10).width = 14;
   techSheet.getColumn(11).width = 12;
+  techSheet.getColumn(12).width = 14;
+  techSheet.getColumn(13).width = 16;
+  techSheet.getColumn(14).width = 12;
 
   const buffer = await workbook.xlsx.writeBuffer();
   return buffer as unknown as Buffer;

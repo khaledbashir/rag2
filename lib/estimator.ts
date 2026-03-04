@@ -179,6 +179,9 @@ export type ScreenAudit = {
   pixelResolution: number;
   pixelMatrix?: string; // e.g., "1920 x 1080 @ 4mm"
   serviceType?: string; // "Top" or "Front/Rear"
+  estimatedWeightLbs?: number;
+  totalMaxPowerW?: number;
+  brightnessNits?: number;
   breakdown: {
     hardware: number; // Display cost / LED
     structure: number;
@@ -498,6 +501,9 @@ export function calculatePerScreenAudit(
     pixelResolution,
     pixelMatrix,
     serviceType,
+    estimatedWeightLbs: Math.round(estimatedWeightLbs),
+    totalMaxPowerW: matchedProduct ? Math.round(areaM2 * matchedProduct.powerDensityWm2) : undefined,
+    brightnessNits: matchedProduct?.brightnessNits ?? undefined,
     breakdown: {
       hardware: hardware.toNumber(),
       structure: structure.toNumber(),
