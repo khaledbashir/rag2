@@ -111,7 +111,64 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // 7. Create proposal (without screens first — add them after)
+    // 7. Build pricingDocument from estimator output so Excel export gets per-section layout
+    const pricingDocTables = audit.internalAudit.perScreen.map((sa: any, idx: number) => {
+      const b = sa.breakdown || {};
+      const desiredMargin = screenInputs[idx]?.desiredMargin ?? 0.25;
+      const categories = [
+        { label: "Hardware", cost: b.hardware },
+        { label: "Structure", cost: b.structure },
+        { label: "Install", cost: b.install },
+        { label: "Power", cost: b.power },
+        { label: "Shipping", cost: b.shipping },
+        { label: "Labor", cost: b.labor },
+        { label: "PM", cost: b.pm },
+        { label: "General Conditions", cost: b.generalConditions },
+        { label: "Travel", cost: b.travel },
+        { label: "Submittals", cost: b.submittals },
+        { label: "Engineering", cost: b.engineering },
+        { label: "Permits", cost: b.permits },
+        { label: "CMS", cost: b.cms },
+      ].filter((c) => Number(c.cost) > 0);
+
+      const items = categories.map((c) => {
+        const cost = Number(c.cost) || 0;
+        const sell = round(cost / (1 - desiredMargin));
+        return { description: c.label, sellingPrice: sell, cost, isIncluded: false };
+      });
+
+      const subtotal = items.reduce((sum, i) => sum + i.sellingPrice, 0);
+      const bondCost = Number(b.bondCost) || 0;
+      return {
+        id: `table-${idx}-${(sa.name || "screen").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30)}`,
+        name: sa.name || `Display ${idx + 1}`,
+        currency: "USD",
+        items,
+        subtotal,
+        tax: null,
+        bond: bondCost,
+        grandTotal: subtotal + bondCost,
+        alternates: [],
+      };
+    });
+
+    const docTotal = pricingDocTables.reduce((sum: number, t: any) => sum + (t.grandTotal || 0), 0);
+    const builtPricingDocument = {
+      tables: pricingDocTables,
+      mode: "CALCULATED",
+      sourceSheet: "RFP Estimator",
+      currency: "USD",
+      documentTotal: docTotal,
+      metadata: {
+        importedAt: new Date().toISOString(),
+        fileName: analysis.filename || "rfp-analysis",
+        tablesCount: pricingDocTables.length,
+        itemsCount: pricingDocTables.reduce((sum: number, t: any) => sum + (t.items?.length || 0), 0),
+        alternatesCount: 0,
+      },
+    };
+
+    // 8. Create proposal (without screens first — add them after)
     console.log("[create-proposal] Creating proposal...");
     const proposal = await prisma.proposal.create({
       data: {
@@ -128,10 +185,11 @@ export async function POST(request: NextRequest) {
         aiWorkspaceSlug: analysis.aiWorkspaceSlug,
         internalAudit: JSON.stringify(audit.internalAudit),
         clientSummary: JSON.stringify(audit.clientSummary),
+        pricingDocument: builtPricingDocument,
       },
     });
 
-    // 8. Create screens with line items in batches
+    // 9. Create screens with line items in batches
     console.log(`[create-proposal] Creating ${audit.internalAudit.perScreen.length} screens...`);
     for (let idx = 0; idx < audit.internalAudit.perScreen.length; idx++) {
       const screenAudit = audit.internalAudit.perScreen[idx];

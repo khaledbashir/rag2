@@ -2823,6 +2823,7 @@ export const ProposalContextProvider = ({
                     clientName: formValues?.receiver?.name ?? "",
                     projectName: formValues?.details?.proposalName ?? "",
                     currency: formValues?.details?.currency ?? "USD",
+                    pricingDocument: formValues?.details?.pricingDocument ?? null,
                 }),
             });
 
