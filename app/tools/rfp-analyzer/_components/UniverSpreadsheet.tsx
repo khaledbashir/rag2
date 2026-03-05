@@ -461,7 +461,14 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
           handleValueChanged(params, propsRef);
         });
 
+        // Give Univer's DI container time to fully resolve before marking ready.
+        // Without this delay, accessing getActiveWorkbook() in subsequent effects
+        // triggers cyclic dependency errors in redi.
+        await new Promise((r) => setTimeout(r, 500));
+        if (disposed) { univerAPI.dispose(); return; }
+
         setReady(true);
+        console.log("[UniverSpreadsheet] ready = true");
       } catch (err: any) {
         console.error("[UniverSpreadsheet] init error:", err);
         setError(err?.message || "Failed to initialize spreadsheet");
@@ -480,55 +487,42 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Update cell values when props change (without re-creating the workbook)
+  // NOTE: We intentionally do NOT push prop changes back into Univer cells.
+  // Univer formulas handle internal recalculation (edit H → SqFt updates, etc.).
+  // The parent callbacks (onSpecEdit, onPricingEdit, onMarginAnalysisEdit) track
+  // state for export/persistence. Pushing props back would create a circular loop
+  // (edit → parent state → push back → edit) and calling getActiveWorkbook()
+  // immediately after init triggers cyclic dependency errors in Univer's DI (redi).
+  //
+  // For external changes (e.g., product selection from parent UI), we rebuild the
+  // workbook entirely by tracking a version key.
+  const prevPropsKeyRef = useRef("");
   useEffect(() => {
     if (!ready || !apiRef.current) return;
-    const api = apiRef.current;
-    const wb = api.getActiveWorkbook?.();
-    if (!wb) return;
-
-    const newData = buildWorkbookData(props);
-
-    // Update LED Cost Sheet
-    const ledSheet = wb.getSheetByName("LED Cost Sheet");
-    if (ledSheet && props.screens.length > 0) {
-      const ledCellData = newData.sheets["led-cost-sheet"]?.cellData;
-      if (ledCellData) {
-        for (let si = 0; si < props.screens.length; si++) {
-          const rowData = ledCellData[si + 1];
-          if (!rowData) continue;
-          for (const [colStr, cellObj] of Object.entries(rowData)) {
-            const col = parseInt(colStr, 10);
-            if (cellObj && cellObj.v !== undefined && !cellObj.f) {
-              try {
-                const range = ledSheet.getRange(si + 1, col, si + 1, col);
-                range?.setValue(cellObj.v);
-              } catch { /* cell may be formula */ }
-            }
-          }
-        }
-      }
+    // Build a lightweight key from things that change externally (not from Univer edits)
+    const key = props.pricingDisplays.map(d =>
+      `${d.name}:${d.matchedProduct?.model ?? ""}:${d.matchedProduct?.pitch ?? ""}`
+    ).join("|");
+    if (prevPropsKeyRef.current === "" || key === prevPropsKeyRef.current) {
+      prevPropsKeyRef.current = key;
+      return;
     }
+    prevPropsKeyRef.current = key;
 
-    // Update Margin Analysis
-    const maSheet = wb.getSheetByName("Margin Analysis");
-    if (maSheet) {
-      const maCellData = newData.sheets["margin-analysis"]?.cellData;
-      if (maCellData) {
-        for (const [rowStr, rowData] of Object.entries(maCellData)) {
-          const row = parseInt(rowStr, 10);
-          if (row === 0) continue; // skip header
-          for (const [colStr, cellObj] of Object.entries(rowData as Record<string, any>)) {
-            const col = parseInt(colStr, 10);
-            if (cellObj && cellObj.v !== undefined && !cellObj.f) {
-              try {
-                const range = maSheet.getRange(row, col, row, col);
-                range?.setValue(cellObj.v);
-              } catch { /* ignore */ }
-            }
-          }
-        }
+    // Product selection changed — rebuild the workbook
+    const api = apiRef.current;
+    try {
+      const newData = buildWorkbookData(props);
+      workbookDataRef.current = newData;
+      // Dispose old and create new workbook
+      const oldWb = api.getActiveWorkbook?.();
+      if (oldWb) {
+        try { oldWb.dispose?.(); } catch { /* ignore */ }
       }
+      api.createWorkbook(newData);
+      console.log("[UniverSpreadsheet] workbook rebuilt after product change");
+    } catch (err) {
+      console.warn("[UniverSpreadsheet] rebuild failed:", err);
     }
   }, [ready, props.screens, props.pricingDisplays, props.pricingSummary]);
 
@@ -544,7 +538,7 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
     <div
       ref={containerRef}
       className={props.className}
-      style={{ width: "100%", height: "100%", position: "relative" }}
+      style={{ width: "100%", height: "100%", minWidth: 800, minHeight: 300, position: "relative" }}
     />
   );
 }
