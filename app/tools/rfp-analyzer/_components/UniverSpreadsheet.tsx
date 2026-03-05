@@ -387,10 +387,17 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         const cost = item.cost ?? null;
         if (cost != null) { sectionCostSum += cost; hasCostData = true; }
 
+        // Back-calculate margin so formula =Cost/(1-Margin) reproduces the known selling price
+        const marginPct = (sell > 0 && cost != null && cost > 0) ? (1 - cost / sell) : 0;
+        const r = maRow + 1; // 1-based row for formulas
+
         maCellData[maRow] = {
           0: { v: item.description || "" },
-          1: { v: sell, s: "currency" },
+          1: cost != null
+            ? { f: `=IF(G${r}>=1,F${r},F${r}/(1-G${r}))`, s: "currency" }
+            : { v: sell, s: "currency" },
           5: cost != null ? { v: cost, s: "currency" } : undefined,
+          6: cost != null ? { v: marginPct } : undefined,
         };
         sectionSellSum += sell;
         maRow++;
@@ -498,14 +505,15 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     for (const d of pricingDisplays) {
       const cost = d.hardwareCost + (d.installCost ?? 0) + (d.pmCost ?? 0) + (d.engCost ?? 0);
       const sell = d.totalSellingPrice || 0;
-      const margin = sell - cost;
+      const marginPct = (sell > 0 && cost > 0) ? (1 - cost / sell) : (d.blendedMarginPct ?? 0.30);
+      const r = maRow + 1; // 1-based row for formulas
 
       maCellData[maRow] = {
         0: { v: d.name, s: "bold" },
         1: { v: cost, s: "currency" },
-        2: { v: sell, s: "currency" },
-        3: { f: `=C${maRow + 1}-B${maRow + 1}`, s: "currency" },
-        4: { f: `=IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: getMarginStyle(sell > 0 ? margin / sell : 0) },
+        2: { f: `=IF(E${r}>=1,B${r},B${r}/(1-E${r}))`, s: "currency" },
+        3: { f: `=C${r}-B${r}`, s: "currency" },
+        4: { v: marginPct, s: getMarginStyle(marginPct) },
       };
       maRow++;
     }
