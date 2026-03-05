@@ -453,6 +453,28 @@ const PRODUCTS: Record<string, ProductType> = {
         environment: "Outdoor",
     },
 
+    // --- MESH PRODUCTS (Capital One March 2026) ---
+
+    "mesh-p10-039": {
+        id: "mesh-p10-039",
+        name: "Mesh P10 FM1921 3.9mm Indoor",
+        manufacturer: "LG/Yaham",
+        pitchMm: 3.9,
+        powerDensityWm2: 600,
+        weightDensityLbm2: 33.07, // 15 kg/m² = 33.07 lbs/m²
+        avgMaxRatio: 0.33,
+        brightnessNits: 6000,
+        pixelDensityPPF: 6107,
+        colorTempK: { nominal: 6500, min: 3200, max: 9300 },
+        diode: "NationStar FM1921",
+        processing: "Novastar",
+        hardware: "Mesh P10 LED Panel",
+        lifespanHours: 100_000,
+        defaultCabinet: { widthMm: 1000, heightMm: 500, depthMm: 91, weightKg: 7.5, maxPowerW: 300 },
+        smallCabinet: null,
+        environment: "Indoor",
+    },
+
     "yaham-ho6t": {
         id: "yaham-ho6t",
         name: "Yaham Halo HO6T Fascia Outdoor",

@@ -72,6 +72,28 @@ const LG_SPECS = {
     maxBtuPerM2: 2900,
     viewingAngleH: 160, viewingAngleV: 160,
   },
+  // 3.9mm Mesh (Mesh P10 FM1921) — from Eric Gruner's spec sheet (3/5/2026)
+  // Physical specs from "Mesh P10 FM1921 - Product Specification - R1.pdf"
+  // Eric: "Use all the spec in the attached for the mesh screens, its just 3.9mm"
+  "MESH_P10": {
+    pitch: 3.9, model: "Mesh P10 FM1921", cabType: "Mesh Panel",
+    moduleRes: [256, 128], // 1000mm/3.9mm × 500mm/3.9mm
+    panelWidthMm: 1000, panelHeightMm: 500,
+    weightPerSqFt: 3.07, // 16.5 lbs / 5.38 sqft per panel
+    weightPerSqM: 15.0, // 7.5 kg / 0.5 sqm per panel
+    pixelDensity_m2: 65746, // (1000/3.9)^2
+    brightness: 6000, // Mesh P10 spec: 6,000 nits
+    maxPowerDensity_Wm2: 600, // Mesh P10 spec: 600 W/sqm
+    maxBtuPerM2: 2047, // 600 × 3.412
+    viewingAngleH: 140, // ±70° per spec
+    viewingAngleVUp: 65, // +65° per spec
+    viewingAngleVDown: 70, // -70° per spec
+    transparency: 65, // 65% open area
+    isMesh: true,
+    lampType: "NationStar FM1921", // from spec PDF
+    manufacturer: "LG/Yaham",
+    colorTemp: "6,500K",
+  },
 };
 
 // Map pitch to closest LSCC model
@@ -86,6 +108,7 @@ function findSpec(pitchMm, model) {
   if (Math.abs(pitchMm - 1.56) < 0.1) return LG_SPECS.LSCC015;
   if (Math.abs(pitchMm - 1.875) < 0.15 || Math.abs(pitchMm - 1.88) < 0.1) return LG_SPECS.LSCC018;
   if (Math.abs(pitchMm - 2.5) < 0.2) return LG_SPECS.LSCC025;
+  if (Math.abs(pitchMm - 3.9) < 0.2 || Math.abs(pitchMm - 4.0) < 0.2) return LG_SPECS.MESH_P10;
   if (Math.abs(pitchMm - 8.0) < 1.0) return LG_SPECS.GSQA083;
   return null;
 }
@@ -264,7 +287,7 @@ async function main() {
 
     const isOutdoor = d.environment.toLowerCase().includes("outdoor");
     const brightnessVal = spec ? spec.brightness : (isOutdoor ? 7000 : 800);
-    const modelName = d.vendor !== "—" ? `${d.vendor} ${d.model}` : d.model;
+    const modelName = (spec && spec.isMesh) ? `LG ${spec.model}` : (d.vendor !== "—" ? `${d.vendor} ${d.model}` : d.model);
 
     // ── Row 1: RESPONDENT'S NAME ──
     ws.mergeCells("A1:E1");
@@ -312,7 +335,8 @@ async function main() {
     ws.mergeCells("A7:E7");
     ws.getCell("A7").value = "OEM LED MODULE MANUFACTURER:";
     ws.mergeCells("F7:J7");
-    ws.getCell("F7").value = d.vendor !== "—" ? `${d.vendor} Electronics` : "—";
+    const isMesh = spec && spec.isMesh;
+    ws.getCell("F7").value = isMesh ? spec.manufacturer : (d.vendor !== "—" ? `${d.vendor} Electronics` : "—");
 
     // ── Row 8: OEM PROCESSOR MANUFACTURER ──
     ws.mergeCells("A8:E8");
@@ -333,7 +357,7 @@ async function main() {
     ws.mergeCells("A10:E10");
     ws.getCell("A10").value = "LED LAMP TYPE AND DIE/PACKAGE MAKE AND MODEL:";
     ws.mergeCells("F10:J10");
-    ws.getCell("F10").value = JEREMY_RULES.lampTypeByPitch(pitchMm);
+    ws.getCell("F10").value = isMesh ? spec.lampType : JEREMY_RULES.lampTypeByPitch(pitchMm);
 
     // ── Row 11: PHYSICAL CHARACTERISTICS (section header) ──
     ws.mergeCells("A11:J11");
@@ -401,26 +425,26 @@ async function main() {
     ws.getCell("A20").alignment = { wrapText: true, vertical: "middle" };
     ws.mergeCells("F20:H20");
     ws.getCell("F20").value = "HORIZONTAL:";
-    ws.getCell("I20").value = 160;
+    ws.getCell("I20").value = isMesh ? spec.viewingAngleH : 160;
     ws.getCell("J20").value = "DEG";
     ws.mergeCells("F21:H21");
     ws.getCell("F21").value = "VERTICAL (UP):";
-    ws.getCell("I21").value = 80;
+    ws.getCell("I21").value = isMesh ? spec.viewingAngleVUp : 80;
     ws.getCell("J21").value = "DEG";
     ws.mergeCells("F22:H22");
     ws.getCell("F22").value = "VERTICAL (DOWN):";
-    ws.getCell("I22").value = 80;
+    ws.getCell("I22").value = isMesh ? spec.viewingAngleVDown : 80;
     ws.getCell("J22").value = "DEG";
 
     // ── Row 23: PIXEL FILL FACTOR ──
     ws.mergeCells("A23:E23");
     ws.getCell("A23").value = "PIXEL FILL FACTOR (PIXEL AREA / PITCH AREA):";
-    ws.getCell("I23").value = "N/A (SMD)";
+    ws.getCell("I23").value = isMesh ? "SMD 3 in 1" : "N/A (SMD)";
 
     // ── Row 24: % OPEN AREA ──
     ws.mergeCells("A24:E24");
     ws.getCell("A24").value = "% OPEN AREA (TRANSPARENT DISPLAYS ONLY):";
-    ws.getCell("I24").value = "N/A";
+    ws.getCell("I24").value = isMesh ? `${spec.transparency}%` : "N/A";
 
     // ── Row 25: DISPLAY AND ELECTRICAL (section header) ──
     ws.mergeCells("A25:J25");

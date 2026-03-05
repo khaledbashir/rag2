@@ -266,6 +266,104 @@ export const LED_MODULES: Catalog = {
         weightLbs: 4.2,
         maxPowerWatts: 70,
         supportsHalfModule: true
+    },
+
+    // ============================================
+    // LG/YAHAM CAPITAL ONE PRODUCTS (March 2026)
+    // ============================================
+
+    // Mesh P10 FM1921 — from Eric Gruner's spec sheet
+    "LG-MESH-P10-039": {
+        id: "lg-mesh-p10-039",
+        manufacturer: "LG/Yaham",
+        name: "Mesh P10 FM1921 3.9mm",
+        widthMm: 1000,
+        heightMm: 500,
+        widthInches: 39.37,
+        heightInches: 19.69,
+        pitch: 3.9,
+        nits: 6000,
+        weightLbs: 16.5,
+        maxPowerWatts: 300, // 600 W/sqm × 0.5 sqm per panel
+        supportsHalfModule: false
+    },
+
+    // GSQA083 — 8mm Outdoor (Capital One exterior)
+    "LG-GSQA-083": {
+        id: "lg-gsqa-083",
+        manufacturer: "LG",
+        name: "GSQA 8mm Outdoor",
+        widthMm: 500,
+        heightMm: 500,
+        widthInches: 19.685,
+        heightInches: 19.685,
+        pitch: 8,
+        nits: 10000,
+        weightLbs: 45.7, // 8.5 lbs/sqft × 5.38 sqft
+        maxPowerWatts: 425, // 850 W/sqm × 0.5 sqm
+        supportsHalfModule: false
+    },
+
+    // GSCF026 — 2.6mm Outdoor
+    "LG-GSCF-026": {
+        id: "lg-gscf-026",
+        manufacturer: "LG",
+        name: "GSCF 2.6mm Outdoor",
+        widthMm: 500,
+        heightMm: 500,
+        widthInches: 19.685,
+        heightInches: 19.685,
+        pitch: 2.6,
+        nits: 5500,
+        weightLbs: 22,
+        maxPowerWatts: 200,
+        supportsHalfModule: false
+    },
+
+    // LG LSCC Series — Capital One Indoor (from LGE-466 spec)
+    "LG-LSCC-012": {
+        id: "lg-lscc-012",
+        manufacturer: "LG",
+        name: "LSCC 1.2mm Indoor",
+        widthMm: 600,
+        heightMm: 337.5,
+        widthInches: 23.62,
+        heightInches: 13.29,
+        pitch: 1.2,
+        nits: 900,
+        weightLbs: 11,
+        maxPowerWatts: 112,
+        supportsHalfModule: false
+    },
+
+    "LG-LSCC-018": {
+        id: "lg-lscc-018",
+        manufacturer: "LG",
+        name: "LSCC 1.8mm Indoor",
+        widthMm: 600,
+        heightMm: 337.5,
+        widthInches: 23.62,
+        heightInches: 13.29,
+        pitch: 1.875,
+        nits: 900,
+        weightLbs: 11,
+        maxPowerWatts: 96,
+        supportsHalfModule: false
+    },
+
+    "LG-LSCC-025": {
+        id: "lg-lscc-025",
+        manufacturer: "LG",
+        name: "LSCC 2.5mm Indoor",
+        widthMm: 600,
+        heightMm: 337.5,
+        widthInches: 23.62,
+        heightInches: 13.29,
+        pitch: 2.5,
+        nits: 900,
+        weightLbs: 11,
+        maxPowerWatts: 84,
+        supportsHalfModule: false
     }
 };
 
