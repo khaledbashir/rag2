@@ -453,6 +453,50 @@ const PRODUCTS: Record<string, ProductType> = {
         environment: "Outdoor",
     },
 
+    // --- LG/YAHAM MIP ALTERNATES (Capital One March 2026) ---
+    // Higher brightness (2,000 NITS) alternatives with Nationstar MIP-A1010WN
+    // 5G Fiber Novastar Receiver Cards, COEX Series Controller
+
+    "lg-c12-mip": {
+        id: "lg-c12-mip",
+        name: "C1.2-MIP 1.2mm Indoor (Alt)",
+        manufacturer: "LG/Yaham",
+        pitchMm: 1.2,
+        powerDensityWm2: 590,
+        weightDensityLbm2: 55.0,
+        avgMaxRatio: 0.33,
+        brightnessNits: 2000,
+        pixelDensityPPF: 64516,
+        colorTempK: { nominal: 6500, min: 3200, max: 9300 },
+        diode: "Nationstar MIP-A1010WN",
+        processing: "Novastar 5G Fiber",
+        hardware: "COEX Series Controller",
+        lifespanHours: 100_000,
+        defaultCabinet: { widthMm: 600, heightMm: 337.5, depthMm: 50, weightKg: 5, maxPowerW: 120 },
+        smallCabinet: null,
+        environment: "Indoor",
+    },
+
+    "lg-c18-mip": {
+        id: "lg-c18-mip",
+        name: "C1.8-MIP 1.8mm Indoor/VisiBowl (Alt)",
+        manufacturer: "LG/Yaham",
+        pitchMm: 1.8,
+        powerDensityWm2: 540,
+        weightDensityLbm2: 55.0,
+        avgMaxRatio: 0.33,
+        brightnessNits: 2000,
+        pixelDensityPPF: 28700,
+        colorTempK: { nominal: 6500, min: 3200, max: 9300 },
+        diode: "Nationstar MIP-A1010WN",
+        processing: "Novastar 5G Fiber",
+        hardware: "COEX Series Controller",
+        lifespanHours: 100_000,
+        defaultCabinet: { widthMm: 600, heightMm: 337.5, depthMm: 50, weightKg: 5, maxPowerW: 110 },
+        smallCabinet: null,
+        environment: "Indoor",
+    },
+
     // --- MESH PRODUCTS (Capital One March 2026) ---
 
     "mesh-p10-039": {

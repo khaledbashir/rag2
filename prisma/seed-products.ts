@@ -248,6 +248,12 @@ const SEED_PRODUCTS = [
         environment: "indoor",
         serviceType: "front",
         supportsHalfModule: false,
+        extendedSpecs: {
+            diode: "NationStar FM1921",
+            receiverCard: "1G Novastar",
+            controller: "COEX Series",
+            transparency: 65,
+        },
     },
     {
         manufacturer: "LG",
@@ -263,6 +269,11 @@ const SEED_PRODUCTS = [
         environment: "outdoor",
         serviceType: "rear",
         supportsHalfModule: false,
+        extendedSpecs: {
+            diode: "Nationstar RS2727",
+            receiverCard: "1G Novastar",
+            controller: "COEX Series",
+        },
     },
     {
         manufacturer: "LG",
@@ -278,6 +289,11 @@ const SEED_PRODUCTS = [
         environment: "outdoor",
         serviceType: "rear",
         supportsHalfModule: false,
+        extendedSpecs: {
+            diode: "Nationstar RS1921",
+            receiverCard: "1G Novastar",
+            controller: "COEX Series",
+        },
     },
     {
         manufacturer: "LG",
@@ -293,6 +309,11 @@ const SEED_PRODUCTS = [
         environment: "indoor",
         serviceType: "front",
         supportsHalfModule: false,
+        extendedSpecs: {
+            diode: "Kinglight 1010",
+            receiverCard: "5G Fiber Novastar",
+            controller: "COEX Series",
+        },
     },
     {
         manufacturer: "LG",
@@ -308,6 +329,11 @@ const SEED_PRODUCTS = [
         environment: "indoor",
         serviceType: "front",
         supportsHalfModule: false,
+        extendedSpecs: {
+            diode: "Kinglight 1212",
+            receiverCard: "5G Fiber Novastar",
+            controller: "COEX Series",
+        },
     },
     {
         manufacturer: "LG",
@@ -323,6 +349,79 @@ const SEED_PRODUCTS = [
         environment: "indoor",
         serviceType: "front",
         supportsHalfModule: false,
+        extendedSpecs: {
+            diode: "Kinglight 1515",
+            receiverCard: "5G Fiber Novastar",
+            controller: "COEX Series",
+        },
+    },
+
+    // ===================== LG/YAHAM MIP ALTERNATES (Capital One 2026) =====================
+    // Higher brightness (2,000 NITS) alternatives with Nationstar MIP-A1010WN diode
+    // 5G Fiber Novastar Receiver Cards, COEX Series Controller
+    {
+        manufacturer: "LG/Yaham",
+        productFamily: "C-MIP",
+        modelNumber: "LG-C12-MIP",
+        displayName: "C1.2-MIP 1.2mm Indoor (Alt)",
+        pixelPitch: 1.2,
+        cabinetWidthMm: 600,
+        cabinetHeightMm: 337.5,
+        weightKgPerCabinet: 5,
+        maxNits: 2000,
+        maxPowerWattsPerCab: 120,
+        environment: "indoor",
+        serviceType: "front",
+        supportsHalfModule: false,
+        extendedSpecs: {
+            diode: "Nationstar MIP-A1010WN",
+            receiverCard: "5G Fiber Novastar",
+            controller: "COEX Series",
+            isAlternate: true,
+        },
+    },
+    {
+        manufacturer: "LG/Yaham",
+        productFamily: "C-MIP",
+        modelNumber: "LG-C18-MIP",
+        displayName: "C1.8-MIP 1.8mm Indoor/VisiBowl (Alt)",
+        pixelPitch: 1.8,
+        cabinetWidthMm: 600,
+        cabinetHeightMm: 337.5,
+        weightKgPerCabinet: 5,
+        maxNits: 2000,
+        maxPowerWattsPerCab: 110,
+        environment: "indoor",
+        serviceType: "front",
+        supportsHalfModule: false,
+        extendedSpecs: {
+            diode: "Nationstar MIP-A1010WN",
+            receiverCard: "5G Fiber Novastar",
+            controller: "COEX Series",
+            isAlternate: true,
+            visiBowl: true,
+        },
+    },
+    {
+        manufacturer: "LG/Yaham",
+        productFamily: "C-MIP",
+        modelNumber: "LG-C25-MIP",
+        displayName: "C2.5-MIP 2.5mm Indoor (Alt)",
+        pixelPitch: 2.5,
+        cabinetWidthMm: 600,
+        cabinetHeightMm: 337.5,
+        weightKgPerCabinet: 5,
+        maxNits: 2000,
+        maxPowerWattsPerCab: 100,
+        environment: "indoor",
+        serviceType: "front",
+        supportsHalfModule: false,
+        extendedSpecs: {
+            diode: "Nationstar MIP-A1010WN",
+            receiverCard: "5G Fiber Novastar",
+            controller: "COEX Series",
+            isAlternate: true,
+        },
     },
 ];
 

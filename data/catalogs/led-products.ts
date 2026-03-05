@@ -364,6 +364,57 @@ export const LED_MODULES: Catalog = {
         weightLbs: 11,
         maxPowerWatts: 84,
         supportsHalfModule: false
+    },
+
+    // ============================================
+    // LG/YAHAM MIP ALTERNATES (Capital One 2026)
+    // Higher brightness (2,000 NITS) alternatives
+    // Nationstar MIP-A1010WN diode, 5G Fiber Novastar
+    // ============================================
+
+    "LG-C12-MIP": {
+        id: "lg-c12-mip",
+        manufacturer: "LG/Yaham",
+        name: "C1.2-MIP 1.2mm Indoor (Alt)",
+        widthMm: 600,
+        heightMm: 337.5,
+        widthInches: 23.62,
+        heightInches: 13.29,
+        pitch: 1.2,
+        nits: 2000,
+        weightLbs: 11,
+        maxPowerWatts: 120,
+        supportsHalfModule: false
+    },
+
+    "LG-C18-MIP": {
+        id: "lg-c18-mip",
+        manufacturer: "LG/Yaham",
+        name: "C1.8-MIP 1.8mm Indoor/VisiBowl (Alt)",
+        widthMm: 600,
+        heightMm: 337.5,
+        widthInches: 23.62,
+        heightInches: 13.29,
+        pitch: 1.8,
+        nits: 2000,
+        weightLbs: 11,
+        maxPowerWatts: 110,
+        supportsHalfModule: false
+    },
+
+    "LG-C25-MIP": {
+        id: "lg-c25-mip",
+        manufacturer: "LG/Yaham",
+        name: "C2.5-MIP 2.5mm Indoor (Alt)",
+        widthMm: 600,
+        heightMm: 337.5,
+        widthInches: 23.62,
+        heightInches: 13.29,
+        pitch: 2.5,
+        nits: 2000,
+        weightLbs: 11,
+        maxPowerWatts: 100,
+        supportsHalfModule: false
     }
 };
 
