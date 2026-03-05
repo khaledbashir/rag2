@@ -255,9 +255,12 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     const weight = audit?.estimatedWeightLbs ?? mp?.totalWeightLbs ?? 0;
     const power = audit?.totalMaxPowerW ?? mp?.totalMaxPowerW ?? 0;
     
-    // Use pricingDocument selling price if available (Mirror Mode), otherwise calculate
+    // Back-calculate margin from known selling price so formula =Cost/(1-Margin) is accurate
     const sellingPrice = docPricing?.sellingPrice ?? pd?.totalSellingPrice ?? 0;
-    const marginPct = pd?.blendedMarginPct ?? 0.30;
+    const totalCostKnown = (pd?.hardwareCost ?? 0) + (pd?.processorCost ?? 0) + (pd?.shippingCost ?? 0);
+    const marginPct = (sellingPrice > 0 && totalCostKnown > 0)
+      ? 1 - totalCostKnown / sellingPrice
+      : (pd?.blendedMarginPct ?? 0.30);
     
     // Debug: log Mirror Mode pricing resolution
     if (si === 0) {
@@ -294,9 +297,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       16: { v: pd?.shippingCost ?? 0, s: "currency" },
       17: { f: `=O${row + 1}+P${row + 1}+Q${row + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } },
       18: { v: marginPct, s: getMarginStyle(marginPct) },
-      19: sellingPrice > 0 
-        ? { v: sellingPrice, s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } }
-        : { f: `=IF(S${row + 1}>0,R${row + 1}/(1-S${row + 1}),R${row + 1})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } },
+      19: { f: `=IF(S${row + 1}>0,R${row + 1}/(1-S${row + 1}),R${row + 1})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } },
       20: { v: weight, s: "number" },
       21: { v: power, s: "number" },
       22: { f: power > 0 ? `=V${row + 1}*3.412` : "", s: "number" },
@@ -396,45 +397,57 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       }
       const lastItemRow = maRow - 1;
 
-      // Subtotal row
+      // Subtotal row — track explicit indices for formula references
       const isAlternateSection = table.isAlternateSection === true || /\balternate/i.test(table.name || "");
+      const subtotalIdx = maRow;
       if (!isAlternateSection) {
-        if (hasCostData) subtotalCostRows.push(maRow);
-        grandTotalSellRows.push(maRow + 2); // grand total is 2 rows after subtotal
+        if (hasCostData) subtotalCostRows.push(subtotalIdx);
+        grandTotalSellRows.push(subtotalIdx + 3); // grand total is 3 rows after subtotal (sub, tax, bond, gt)
       }
 
-      maCellData[maRow] = {
+      maCellData[subtotalIdx] = {
         0: { v: "SUBTOTAL", s: "bold" },
         1: hasCostData ? { f: `SUM(F${firstItemRow + 1}:F${lastItemRow + 1})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
         2: { f: `SUM(B${firstItemRow + 1}:B${lastItemRow + 1})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
-        3: hasCostData ? { f: `C${maRow + 1}-B${maRow + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
-        4: hasCostData ? { f: `IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
+        3: hasCostData ? { f: `C${subtotalIdx + 1}-B${subtotalIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
+        4: hasCostData ? { f: `IF(C${subtotalIdx + 1}=0,0,D${subtotalIdx + 1}/C${subtotalIdx + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
       };
       maRow++;
 
-      // Tax row
+      // Tax row — live formula: =SUBTOTAL_SELL * TaxRate (rate stored in hidden col F)
       const taxAmount = table.tax?.amount || 0;
-      maCellData[maRow] = {
+      const taxIdx = maRow;
+      const taxRate = (sectionSellSum > 0 && taxAmount > 0) ? taxAmount / sectionSellSum : 0;
+      maCellData[taxIdx] = {
         0: { v: table.tax?.label || "TAX" },
-        2: { v: taxAmount, s: "currency" },
+        2: taxRate > 0
+          ? { f: `C${subtotalIdx + 1}*F${taxIdx + 1}`, s: "currency" }
+          : { v: taxAmount, s: "currency" },
+        5: taxRate > 0 ? { v: taxRate } : undefined,
       };
       maRow++;
 
-      // Bond row
+      // Bond row — live formula: =SUBTOTAL_SELL * BondRate (rate stored in hidden col F)
       const bondAmount = table.bond || 0;
-      maCellData[maRow] = {
+      const bondIdx = maRow;
+      const bondRate = (sectionSellSum > 0 && bondAmount > 0) ? bondAmount / sectionSellSum : 0;
+      maCellData[bondIdx] = {
         0: { v: "BOND" },
-        2: { v: bondAmount, s: "currency" },
+        2: bondRate > 0
+          ? { f: `C${subtotalIdx + 1}*F${bondIdx + 1}`, s: "currency" }
+          : { v: bondAmount, s: "currency" },
+        5: bondRate > 0 ? { v: bondRate } : undefined,
       };
       maRow++;
 
-      // Grand Total row
-      maCellData[maRow] = {
+      // Grand Total row — =SUBTOTAL+TAX+BOND with live cascading
+      const grandTotalIdx = maRow;
+      maCellData[grandTotalIdx] = {
         0: { v: "SUB TOTAL (BID FORM)", s: "bold" },
-        1: hasCostData ? { f: `B${maRow - 2}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
-        2: { f: `C${maRow - 2}+C${maRow - 1}+C${maRow}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
-        3: hasCostData ? { f: `C${maRow + 1}-B${maRow + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
-        4: hasCostData ? { f: `IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
+        1: hasCostData ? { f: `B${subtotalIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
+        2: { f: `C${subtotalIdx + 1}+C${taxIdx + 1}+C${bondIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+        3: hasCostData ? { f: `C${grandTotalIdx + 1}-B${grandTotalIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
+        4: hasCostData ? { f: `IF(C${grandTotalIdx + 1}=0,0,D${grandTotalIdx + 1}/C${grandTotalIdx + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
       };
       maRow++;
 
@@ -491,7 +504,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         0: { v: d.name, s: "bold" },
         1: { v: cost, s: "currency" },
         2: { v: sell, s: "currency" },
-        3: { v: margin, s: "currency" },
+        3: { f: `C${maRow + 1}-B${maRow + 1}`, s: "currency" },
         4: { f: `IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: getMarginStyle(sell > 0 ? margin / sell : 0) },
       };
       maRow++;
@@ -507,17 +520,18 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     };
     maRow++;
 
-    // Tax, Bond, Subtotal
-    maCellData[maRow] = { 0: { v: "TAX" }, 1: { v: 0 }, 2: { v: 0 } };
+    // Tax, Bond, Subtotal — use explicit indices for correct formula references
+    const fbTotalsIdx = maRow - 1; // 0-indexed totals row (SUM row just written above)
+    maCellData[maRow] = { 0: { v: "TAX" }, 2: { v: 0, s: "currency" } };
     maRow++;
-    maCellData[maRow] = { 0: { v: "BOND" }, 1: { v: 0 }, 2: { v: 0 } };
+    maCellData[maRow] = { 0: { v: "BOND" }, 2: { v: 0, s: "currency" } };
     maRow++;
 
     marginDocTotalRow = maRow;
     maCellData[maRow] = {
       0: { v: "SUB TOTAL (BID FORM)", s: "bold" },
-      2: { f: `C${maRow - 2}+C${maRow - 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
-      3: { f: `D${maRow - 3}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+      2: { f: `C${fbTotalsIdx + 1}+C${fbTotalsIdx + 2}+C${fbTotalsIdx + 3}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+      3: { f: `D${fbTotalsIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
       4: { f: `IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } },
     };
   }
