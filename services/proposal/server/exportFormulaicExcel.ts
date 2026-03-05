@@ -64,6 +64,7 @@ function formatAsInputCell(cell: ExcelJS.Cell): void {
 
 /**
  * Generate Formulaic Audit Excel Workbook
+ * Reordered: Project Summary first (placeholder), then MA (tracks doc total row), then backfill Project Summary
  */
 export async function generateAuditExcel(
     screens: any[],
@@ -75,23 +76,21 @@ export async function generateAuditExcel(
     workbook.creator = 'ANC Natalia Intelligence Core';
     workbook.created = new Date();
 
-    // 0. Project Summary (first tab)
+    // 0. Project Summary (first tab) — placeholder, will backfill document total after MA
     const summarySheet = workbook.addWorksheet('Project Summary');
-    const docTotal = screens.reduce((sum, s) => {
-        const b = s.internalAudit?.breakdown || {};
-        return sum + (Number(b.sellPrice || b.finalClientTotal) || 0);
-    }, 0);
     buildProjectSummary(summarySheet, options?.summaryInfo || {
         projectName: options?.proposalName,
         clientName: options?.clientName,
         displayCount: screens.length,
-    }, options?.currency, docTotal > 0 ? docTotal : undefined);
+    }, options?.currency);
 
-    // 1. Margin Analysis (The Master Truth)
+    // 1. Margin Analysis (The Master Truth) — returns row number of DOCUMENT TOTAL
     const marginSheet = workbook.addWorksheet('Margin Analysis', {
         properties: { tabColor: { argb: 'FF0A52EF' } } // ANC French Blue
     });
-    buildMarginAnalysis(marginSheet, screens, options);
+    const marginResult = buildMarginAnalysis(marginSheet, screens, options);
+    const marginDocTotalRow = marginResult?.docTotalRow || 0;
+    const equipmentItems = marginResult?.equipmentItems || [];
 
     // 2. LED Cost Sheet
     const ledSheet = workbook.addWorksheet('LED Cost Sheet', {
@@ -99,65 +98,80 @@ export async function generateAuditExcel(
     });
     buildLEDCostSheet(ledSheet, screens);
 
-    // 3. Install (Installation)
+    // 3. Bundle Equipment (new sheet for Processor & Equipment breakdown)
+    const bundleSheet = workbook.addWorksheet('Bundle Equipment', {
+        properties: { tabColor: { argb: 'FF17A2B8' } } // Cyan
+    });
+    const bundleTotalRow = buildBundleEquipmentSheet(bundleSheet, equipmentItems, options);
+
+    // 4. Install (Installation)
     const installSheet = workbook.addWorksheet('Install', {
         properties: { tabColor: { argb: 'FF28A745' } } // Green
     });
     buildInstallSheet(installSheet, screens);
 
-    // 4. Project Management
+    // 5. Project Management
     const pmSheet = workbook.addWorksheet('Project Management', {
         properties: { tabColor: { argb: 'FF17A2B8' } } // Cyan
     });
     buildPMSheet(pmSheet, screens);
 
-    // 5. Electrical and Data
+    // 6. Electrical and Data
     const elecSheet = workbook.addWorksheet('Electrical and Data', {
         properties: { tabColor: { argb: 'FFFFC107' } } // Amber
     });
     buildElectricalSheet(elecSheet, screens);
 
-    // 6. Professional Services
+    // 7. Professional Services
     const proSheet = workbook.addWorksheet('Professional Services', {
         properties: { tabColor: { argb: 'FF6C757D' } } // Grey
     });
     buildProfessionalServicesSheet(proSheet, screens);
 
-    // 7. Control System/CMS
+    // 8. Control System/CMS
     const cmsSheet = workbook.addWorksheet('Control System CMS', {
         properties: { tabColor: { argb: 'FF6610F2' } } // Purple
     });
     buildControlSystemSheet(cmsSheet, screens);
 
-    // 8. Shipping
+    // 9. Shipping
     const shippingSheet = workbook.addWorksheet('Shipping', {
         properties: { tabColor: { argb: 'FFFD7E14' } } // Orange
     });
     buildShippingSheet(shippingSheet, screens);
 
-    // 9. Alternates (Placeholder)
+    // 10. Alternates (Placeholder)
     const altSheet = workbook.addWorksheet('Alternates', {
         properties: { tabColor: { argb: 'FFDC3545' } } // Red
     });
     buildPlaceholderSheet(altSheet, "Alternates (Optional)", "Add alternate screen options here.");
 
-    // 10. Content Creation (Placeholder)
+    // 11. Content Creation (Placeholder)
     const contentSheet = workbook.addWorksheet('Content Creation', {
         properties: { tabColor: { argb: 'FFD63384' } } // Pink
     });
     buildPlaceholderSheet(contentSheet, "Content Creation", "Add content creation hours and rates here.");
 
-    // 11. AI-Generated SOW (Statement of Work)
+    // 12. AI-Generated SOW (Statement of Work)
     const sowSheet = workbook.addWorksheet('AI SOW', {
         properties: { tabColor: { argb: 'FF0A52EF' } } // ANC Blue
     });
     buildSOWSheet(sowSheet, options);
 
-    // 12. Tech Specs Only (no pricing — for installers/subs)
+    // 13. Tech Specs Only (no pricing — for installers/subs) — with cross-sheet formulas
     const techSpecsSheet = workbook.addWorksheet('Tech Specs (Installers)', {
         properties: { tabColor: { argb: 'FF6C757D' } } // Grey
     });
     buildTechSpecsOnlySheet(techSpecsSheet, screens, options);
+
+    // Backfill Project Summary with cross-sheet formula to Margin Analysis DOCUMENT TOTAL
+    if (marginDocTotalRow > 0) {
+        summarySheet.getCell('A12').value = 'Document Total';
+        summarySheet.getCell('A12').font = { bold: true, size: 12 };
+        summarySheet.getCell('B12').value = { formula: `'Margin Analysis'!G${marginDocTotalRow}` };
+        summarySheet.getCell('B12').numFmt = CFMT;
+        summarySheet.getCell('B12').font = { bold: true, size: 12 };
+    }
 
     return workbook;
 }
@@ -170,33 +184,67 @@ export async function generateAuditExcelBuffer(screens: any[], options?: AuditEx
 
 // --- Sheet Builders ---
 
-function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?: AuditExcelOptions) {
+interface MarginResult {
+    docTotalRow: number;
+    equipmentItems: EquipmentItem[];
+}
+
+interface EquipmentItem {
+    description: string;
+    cost: number;
+    sellingPrice: number;
+}
+
+// Equipment patterns for grouping into "Processor & Equipment"
+const EQUIPMENT_PATTERNS = [
+    /\bsending\s+card\b/i,
+    /\bsignal\s+cable\s+kit\b/i,
+    /\bbackup\s+video\s+processor\b/i,
+    /\bweatherproof\s+enclosure\b/i,
+    /\bvideo\s+processor\b/i,
+    /\bmedia\s+player\b/i,
+    /\breceiver\b/i,
+    /\bpower\s+supply\b/i,
+    /\bmount\b/i,
+    /\bcable\b/i,
+];
+
+// Spare parts pattern — rolled into LED Hardware, NOT Processor & Equipment
+const SPARE_PARTS_PATTERN = /\bspare\s+parts\b/i;
+
+function isEquipmentItem(desc: string): boolean {
+    return EQUIPMENT_PATTERNS.some((re) => re.test(desc));
+}
+
+function isSpareParts(desc: string): boolean {
+    return SPARE_PARTS_PATTERN.test(desc);
+}
+
+function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?: AuditExcelOptions): MarginResult {
+    const result: MarginResult = { docTotalRow: 0, equipmentItems: [] };
+    
     // Header
-    sheet.mergeCells('A1:I1');
+    sheet.mergeCells('A1:G1');
     const titleCell = sheet.getCell('A1');
-    titleCell.value = `ANC MARGIN ANALYSIS (MASTER TRUTH) - ${options?.proposalName || 'PROPOSAL'}`;
+    titleCell.value = `ANC MARGIN ANALYSIS - ${options?.proposalName || 'PROPOSAL'}`;
     titleCell.font = { size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
     titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0A52EF' } };
     titleCell.alignment = { horizontal: 'center' };
 
-    sheet.mergeCells('A2:I2');
-    sheet.getCell('A2').value = `Client: ${options?.clientName || 'N/A'} | Date: ${options?.proposalDate || new Date().toLocaleDateString()}`;
+    sheet.getCell('A2').value = `Client: ${options?.clientName || 'N/A'}`;
     sheet.getCell('A2').font = { italic: true };
+    sheet.getCell('D2').value = `Date: ${options?.proposalDate || new Date().toLocaleDateString()}`;
 
+    // Column Headers — matching Budget export structure
     const HEADER_ROW = 4;
-    let currentRow = 5;
-
-    // Column Headers
     const headers = [
-        { col: 'A', label: 'Screen / Section', width: 35 },
-        { col: 'B', label: 'Metric', width: 25 },
-        { col: 'C', label: 'Input Value', width: 15 },
-        { col: 'D', label: 'Formula / Logic', width: 40 },
-        { col: 'E', label: 'Total Cost', width: 18 },
-        { col: 'F', label: 'Margin %', width: 12 },
-        { col: 'G', label: 'Sell Price (Divisor)', width: 20 },
-        { col: 'H', label: 'Tax/Bond Rate', width: 15 },
-        { col: 'I', label: 'Final Item Total', width: 20 },
+        { col: 'A', label: 'Description', width: 45 },
+        { col: 'B', label: 'Cost', width: 16 },
+        { col: 'C', label: 'Selling Price', width: 16 },
+        { col: 'D', label: 'Margin $', width: 14 },
+        { col: 'E', label: 'Margin %', width: 12 },
+        { col: 'F', label: 'Tax Rate', width: 10 },
+        { col: 'G', label: 'Bond Rate', width: 10 },
     ];
 
     headers.forEach(h => {
@@ -208,254 +256,262 @@ function buildMarginAnalysis(sheet: ExcelJS.Worksheet, screens: any[], options?:
         sheet.getColumn(h.col).width = h.width;
     });
 
-    const sellPriceRows: number[] = [];
+    let currentRow = 5;
+    const grandTotalSellRows: number[] = []; // Track GRAND TOTAL rows for base screens only
+    const taxRate = options?.taxRateOverride ?? 0.08875;
+    const bondRate = options?.bondRateOverride ?? 0.015;
 
-    screens.forEach(screen => {
+    screens.forEach((screen, screenIdx) => {
         const audit = screen.internalAudit || screen._internalAudit || screen.audit;
         const b = audit?.breakdown || {};
-        const globalMargin = screen.desiredMargin || 0.25;
+        const isAlternate = screen.isAlternate === true;
         const catMargins = screen.categoryMargins as { led?: number; services?: number; cms?: number } | undefined;
-        const usePerCategory = catMargins && (catMargins.led != null || catMargins.services != null || catMargins.cms != null);
+        const ledMargin = catMargins?.led ?? 0.30;
+        const svcMargin = catMargins?.services ?? 0.20;
+        const cmsMargin = catMargins?.cms ?? 0.35;
 
-        // Screen Header
+        // Section header
+        const sectionStartRow = currentRow;
         sheet.getCell(`A${currentRow}`).value = screen.name || "Unnamed Screen";
-        sheet.getCell(`A${currentRow}`).font = { bold: true };
+        sheet.getCell(`A${currentRow}`).font = { bold: true, size: 11 };
         sheet.getCell(`A${currentRow}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDEE2E6' } };
+        sheet.mergeCells(`A${currentRow}:E${currentRow}`);
         currentRow++;
 
-        // 1. HARDWARE (LED bucket)
-        const hwRow = currentRow;
-        sheet.getCell(`A${currentRow}`).value = 'Display Hardware';
-        sheet.getCell(`B${currentRow}`).value = 'Area (SqFt)';
-        const area = (audit?.areaSqFt || 0);
-        sheet.getCell(`C${currentRow}`).value = area;
-        sheet.getCell(`B${currentRow+1}`).value = 'Cost/SqFt';
-        sheet.getCell(`C${currentRow+1}`).value = screen.costPerSqFt || 120;
-        formatAsInputCell(sheet.getCell(`C${currentRow+1}`));
+        // Line items for this screen
+        const lineItemRows: number[] = [];
+        let sparePartsCost = 0;
 
-        sheet.getCell(`B${currentRow+2}`).value = 'Spare Parts (5%)';
-        sheet.getCell(`C${currentRow+2}`).value = screen.includeSpareParts ? 'YES' : 'NO';
-        formatAsInputCell(sheet.getCell(`C${currentRow+2}`));
+        // 1. LED Hardware
+        const hwCost = b.hardware || audit?.hardwareCost || 0;
+        const hwSell = hwCost > 0 ? hwCost / (1 - ledMargin) : 0;
+        sheet.getCell(`A${currentRow}`).value = 'LED Hardware';
+        sheet.getCell(`B${currentRow}`).value = hwCost;
+        sheet.getCell(`B${currentRow}`).numFmt = CFMT;
+        formatAsInputCell(sheet.getCell(`B${currentRow}`));
+        sheet.getCell(`C${currentRow}`).value = { formula: `IF(B${currentRow}=0,0,B${currentRow}/(1-${ledMargin}))` };
+        sheet.getCell(`C${currentRow}`).numFmt = CFMT;
+        sheet.getCell(`D${currentRow}`).value = { formula: `C${currentRow}-B${currentRow}` };
+        sheet.getCell(`D${currentRow}`).numFmt = CFMT;
+        sheet.getCell(`E${currentRow}`).value = ledMargin;
+        sheet.getCell(`E${currentRow}`).numFmt = '0.0%';
+        formatAsInputCell(sheet.getCell(`E${currentRow}`));
+        lineItemRows.push(currentRow);
+        currentRow++;
 
-        const costCell = sheet.getCell(`E${hwRow}`);
-        costCell.value = {
-            formula: `C${hwRow}*C${hwRow + 1}*(IF(C${hwRow + 2}="YES", 1.05, 1))`
-        };
-        costCell.numFmt = CFMT;
-        costCell.font = { bold: true };
-
-        currentRow += 3;
-
-        if (usePerCategory) {
-            // Per-category margin mode: separate rows for LED, Services, CMS
-
-            // 2a. SERVICES bucket
-            const svcCostTotal = (b.install || 0) + (b.labor || 0) + (b.structure || 0) + (b.power || 0) + (b.pm || 0) + (b.engineering || 0);
-            const svcRow = currentRow;
-            sheet.getCell(`A${svcRow}`).value = 'Services & Install';
-            sheet.getCell(`B${svcRow}`).value = 'Combined Estimate';
-            sheet.getCell(`C${svcRow}`).value = svcCostTotal;
-            formatAsInputCell(sheet.getCell(`C${svcRow}`));
-            sheet.getCell(`E${svcRow}`).value = { formula: `C${svcRow}` };
-            sheet.getCell(`E${svcRow}`).numFmt = CFMT;
-            currentRow++;
-
-            // 2b. CMS bucket
-            const cmsCostTotal = b.cms || 0;
-            const cmsRow = currentRow;
-            sheet.getCell(`A${cmsRow}`).value = 'CMS / Software';
-            sheet.getCell(`B${cmsRow}`).value = 'CMS Cost';
-            sheet.getCell(`C${cmsRow}`).value = cmsCostTotal;
-            formatAsInputCell(sheet.getCell(`C${cmsRow}`));
-            sheet.getCell(`E${cmsRow}`).value = { formula: `C${cmsRow}` };
-            sheet.getCell(`E${cmsRow}`).numFmt = CFMT;
-            currentRow++;
-
-            // 2c. Shipping (LED bucket with hardware)
-            const shippingRow = currentRow;
-            sheet.getCell(`A${shippingRow}`).value = 'Shipping';
-            sheet.getCell(`B${shippingRow}`).value = 'Shipping Cost';
-            sheet.getCell(`C${shippingRow}`).value = b.shipping || 0;
-            formatAsInputCell(sheet.getCell(`C${shippingRow}`));
-            sheet.getCell(`E${shippingRow}`).value = { formula: `C${shippingRow}` };
-            sheet.getCell(`E${shippingRow}`).numFmt = CFMT;
-            currentRow++;
-
-            // 3. Per-category margin & sell
-            const ledMargin = catMargins.led ?? 0.30;
-            const svcMargin = catMargins.services ?? 0.20;
-            const cmsMargin = catMargins.cms ?? 0.35;
-
-            // LED sell (hardware + shipping)
-            const ledSellRow = currentRow;
-            sheet.getCell(`A${currentRow}`).value = 'LED Hardware Sell';
-            sheet.getCell(`D${currentRow}`).value = 'LED: (HW + Shipping) / (1 - Margin)';
-            sheet.getCell(`F${currentRow}`).value = ledMargin;
-            sheet.getCell(`F${currentRow}`).numFmt = '0.0%';
-            formatAsInputCell(sheet.getCell(`F${currentRow}`));
-            sheet.getCell(`G${currentRow}`).value = { formula: `IF(F${currentRow}>=1,E${hwRow}+E${shippingRow},(E${hwRow}+E${shippingRow})/(1-F${currentRow}))` };
-            sheet.getCell(`G${currentRow}`).numFmt = CFMT;
-            currentRow++;
-
-            // Services sell
-            const svcSellRow = currentRow;
-            sheet.getCell(`A${currentRow}`).value = 'Services Sell';
-            sheet.getCell(`D${currentRow}`).value = 'Services / (1 - Margin)';
-            sheet.getCell(`F${currentRow}`).value = svcMargin;
-            sheet.getCell(`F${currentRow}`).numFmt = '0.0%';
-            formatAsInputCell(sheet.getCell(`F${currentRow}`));
-            sheet.getCell(`G${currentRow}`).value = { formula: `IF(F${currentRow}>=1,E${svcRow},E${svcRow}/(1-F${currentRow}))` };
-            sheet.getCell(`G${currentRow}`).numFmt = CFMT;
-            currentRow++;
-
-            // CMS sell
-            const cmsSellRow = currentRow;
-            sheet.getCell(`A${currentRow}`).value = 'CMS Sell';
-            sheet.getCell(`D${currentRow}`).value = 'CMS / (1 - Margin)';
-            sheet.getCell(`F${currentRow}`).value = cmsMargin;
-            sheet.getCell(`F${currentRow}`).numFmt = '0.0%';
-            formatAsInputCell(sheet.getCell(`F${currentRow}`));
-            sheet.getCell(`G${currentRow}`).value = { formula: `IF(F${currentRow}>=1,E${cmsRow},E${cmsRow}/(1-F${currentRow}))` };
-            sheet.getCell(`G${currentRow}`).numFmt = CFMT;
-            currentRow++;
-
-            // Total sell = LED + Services + CMS
-            const sellRow = currentRow;
-            sheet.getCell(`A${currentRow}`).value = 'TOTAL SELL PRICE';
-            sheet.getCell(`A${currentRow}`).font = { bold: true };
-            sheet.getCell(`D${currentRow}`).value = 'Per-category: LED + Services + CMS';
-            sheet.getCell(`G${currentRow}`).value = { formula: `G${ledSellRow}+G${svcSellRow}+G${cmsSellRow}` };
-            sheet.getCell(`G${currentRow}`).numFmt = CFMT;
-            sheet.getCell(`G${currentRow}`).font = { bold: true };
-            sellPriceRows.push(sellRow);
-
-            currentRow += 2;
-        } else {
-            // Global (single) margin mode — original behavior
-            const softCostTotal = (b.install || 0) + (b.labor || 0) + (b.structure || 0) + (b.power || 0) + (b.shipping || 0) + (b.pm || 0) + (b.engineering || 0);
-            sheet.getCell(`A${currentRow+2}`).value = 'Services & Install';
-            sheet.getCell(`B${currentRow}`).value = 'Combined Estimate';
-            sheet.getCell(`C${currentRow}`).value = softCostTotal;
-            formatAsInputCell(sheet.getCell(`C${currentRow}`));
-            sheet.getCell(`E${currentRow}`).value = { formula: `C${currentRow}` };
-            sheet.getCell(`E${currentRow}`).numFmt = CFMT;
-            const softRow = currentRow;
-            currentRow++;
-
-            const sellRow = currentRow;
-            sheet.getCell(`A${currentRow}`).value = 'TOTAL SELL PRICE';
-            sheet.getCell(`D${currentRow}`).value = '(Hardware + Services) / (1 - Margin)';
-
-            const totalCostRef = `(E${hwRow}+E${softRow})`;
-
-            sheet.getCell(`F${currentRow}`).value = globalMargin;
-            sheet.getCell(`F${currentRow}`).numFmt = '0.0%';
-            formatAsInputCell(sheet.getCell(`F${currentRow}`));
-
-            sheet.getCell(`G${currentRow}`).value = { formula: `IF(F${currentRow}>=1,${totalCostRef},${totalCostRef}/(1-F${currentRow}))` };
-            sheet.getCell(`G${currentRow}`).numFmt = CFMT;
-            sheet.getCell(`G${currentRow}`).font = { bold: true };
-            sellPriceRows.push(sellRow);
-
-            currentRow += 2;
+        // 2. Spare Parts — rolled into LED Hardware (not separate line, but tracked for cost)
+        if (screen.includeSpareParts || b.spareParts) {
+            sparePartsCost = b.spareParts || (hwCost * 0.05);
+            // Add to LED Hardware cost via formula adjustment (already included in hwCost if present)
         }
+
+        // 3. Services & Install
+        const svcCost = (b.install || 0) + (b.labor || 0) + (b.structure || 0) + (b.power || 0) + (b.pm || 0) + (b.engineering || 0);
+        if (svcCost > 0) {
+            sheet.getCell(`A${currentRow}`).value = 'Services & Install';
+            sheet.getCell(`B${currentRow}`).value = svcCost;
+            sheet.getCell(`B${currentRow}`).numFmt = CFMT;
+            formatAsInputCell(sheet.getCell(`B${currentRow}`));
+            sheet.getCell(`C${currentRow}`).value = { formula: `IF(B${currentRow}=0,0,B${currentRow}/(1-${svcMargin}))` };
+            sheet.getCell(`C${currentRow}`).numFmt = CFMT;
+            sheet.getCell(`D${currentRow}`).value = { formula: `C${currentRow}-B${currentRow}` };
+            sheet.getCell(`D${currentRow}`).numFmt = CFMT;
+            sheet.getCell(`E${currentRow}`).value = svcMargin;
+            sheet.getCell(`E${currentRow}`).numFmt = '0.0%';
+            formatAsInputCell(sheet.getCell(`E${currentRow}`));
+            lineItemRows.push(currentRow);
+            currentRow++;
+        }
+
+        // 4. CMS / Software
+        const cmsCost = b.cms || 0;
+        if (cmsCost > 0) {
+            sheet.getCell(`A${currentRow}`).value = 'CMS / Software';
+            sheet.getCell(`B${currentRow}`).value = cmsCost;
+            sheet.getCell(`B${currentRow}`).numFmt = CFMT;
+            formatAsInputCell(sheet.getCell(`B${currentRow}`));
+            sheet.getCell(`C${currentRow}`).value = { formula: `IF(B${currentRow}=0,0,B${currentRow}/(1-${cmsMargin}))` };
+            sheet.getCell(`C${currentRow}`).numFmt = CFMT;
+            sheet.getCell(`D${currentRow}`).value = { formula: `C${currentRow}-B${currentRow}` };
+            sheet.getCell(`D${currentRow}`).numFmt = CFMT;
+            sheet.getCell(`E${currentRow}`).value = cmsMargin;
+            sheet.getCell(`E${currentRow}`).numFmt = '0.0%';
+            formatAsInputCell(sheet.getCell(`E${currentRow}`));
+            lineItemRows.push(currentRow);
+            currentRow++;
+        }
+
+        // 5. Shipping
+        const shipCost = b.shipping || 0;
+        if (shipCost > 0) {
+            sheet.getCell(`A${currentRow}`).value = 'Shipping';
+            sheet.getCell(`B${currentRow}`).value = shipCost;
+            sheet.getCell(`B${currentRow}`).numFmt = CFMT;
+            formatAsInputCell(sheet.getCell(`B${currentRow}`));
+            sheet.getCell(`C${currentRow}`).value = { formula: `IF(B${currentRow}=0,0,B${currentRow}/(1-${ledMargin}))` };
+            sheet.getCell(`C${currentRow}`).numFmt = CFMT;
+            sheet.getCell(`D${currentRow}`).value = { formula: `C${currentRow}-B${currentRow}` };
+            sheet.getCell(`D${currentRow}`).numFmt = CFMT;
+            sheet.getCell(`E${currentRow}`).value = ledMargin;
+            sheet.getCell(`E${currentRow}`).numFmt = '0.0%';
+            lineItemRows.push(currentRow);
+            currentRow++;
+        }
+
+        // 6. Processor & Equipment (grouped) — reference to Bundle Equipment sheet
+        // For now, placeholder that will be updated after Bundle Equipment sheet is built
+        const equipCost = b.equipment || b.processor || 0;
+        if (equipCost > 0) {
+            sheet.getCell(`A${currentRow}`).value = 'Processor & Equipment';
+            sheet.getCell(`B${currentRow}`).value = equipCost;
+            sheet.getCell(`B${currentRow}`).numFmt = CFMT;
+            sheet.getCell(`C${currentRow}`).value = { formula: `IF(B${currentRow}=0,0,B${currentRow}/(1-${ledMargin}))` };
+            sheet.getCell(`C${currentRow}`).numFmt = CFMT;
+            sheet.getCell(`D${currentRow}`).value = { formula: `C${currentRow}-B${currentRow}` };
+            sheet.getCell(`D${currentRow}`).numFmt = CFMT;
+            sheet.getCell(`E${currentRow}`).value = ledMargin;
+            sheet.getCell(`E${currentRow}`).numFmt = '0.0%';
+            lineItemRows.push(currentRow);
+            // Track for Bundle Equipment sheet
+            result.equipmentItems.push({ description: 'Processor & Equipment', cost: equipCost, sellingPrice: equipCost / (1 - ledMargin) });
+            currentRow++;
+        }
+
+        // === SECTION SUMMARY: SUBTOTAL, Tax, Bond, GRAND TOTAL ===
+        const lastItemRow = currentRow - 1;
+        const firstItemRow = lineItemRows[0] || currentRow;
+
+        // SUBTOTAL (Selling)
+        const subtotalRow = currentRow;
+        sheet.getCell(`A${currentRow}`).value = 'SUBTOTAL';
+        sheet.getCell(`A${currentRow}`).font = { bold: true };
+        const costSumFormula = lineItemRows.length > 0 ? lineItemRows.map(r => `B${r}`).join('+') : '0';
+        const sellSumFormula = lineItemRows.length > 0 ? lineItemRows.map(r => `C${r}`).join('+') : '0';
+        sheet.getCell(`B${currentRow}`).value = { formula: costSumFormula };
+        sheet.getCell(`B${currentRow}`).numFmt = CFMT;
+        sheet.getCell(`C${currentRow}`).value = { formula: sellSumFormula };
+        sheet.getCell(`C${currentRow}`).numFmt = CFMT;
+        sheet.getCell(`C${currentRow}`).font = { bold: true };
+        sheet.getCell(`D${currentRow}`).value = { formula: `C${currentRow}-B${currentRow}` };
+        sheet.getCell(`D${currentRow}`).numFmt = CFMT;
+        currentRow++;
+
+        // Tax
+        const taxRow = currentRow;
+        sheet.getCell(`A${currentRow}`).value = 'Sales Tax';
+        sheet.getCell(`F${currentRow}`).value = taxRate;
+        sheet.getCell(`F${currentRow}`).numFmt = '0.00%';
+        formatAsInputCell(sheet.getCell(`F${currentRow}`));
+        sheet.getCell(`C${currentRow}`).value = { formula: `C${subtotalRow}*F${currentRow}` };
+        sheet.getCell(`C${currentRow}`).numFmt = CFMT;
+        currentRow++;
+
+        // Bond
+        const bondRow = currentRow;
+        sheet.getCell(`A${currentRow}`).value = 'Performance Bond';
+        sheet.getCell(`G${currentRow}`).value = bondRate;
+        sheet.getCell(`G${currentRow}`).numFmt = '0.00%';
+        formatAsInputCell(sheet.getCell(`G${currentRow}`));
+        sheet.getCell(`C${currentRow}`).value = { formula: `C${subtotalRow}*G${currentRow}` };
+        sheet.getCell(`C${currentRow}`).numFmt = CFMT;
+        currentRow++;
+
+        // GRAND TOTAL
+        const grandTotalRow = currentRow;
+        sheet.getCell(`A${currentRow}`).value = 'GRAND TOTAL';
+        sheet.getCell(`A${currentRow}`).font = { bold: true, size: 11 };
+        sheet.getCell(`C${currentRow}`).value = { formula: `C${subtotalRow}+C${taxRow}+C${bondRow}` };
+        sheet.getCell(`C${currentRow}`).numFmt = CFMT;
+        sheet.getCell(`C${currentRow}`).font = { bold: true };
+        sheet.getCell(`C${currentRow}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD4EDDA' } };
+        
+        // Track GRAND TOTAL for document total (base screens only, not alternates)
+        if (!isAlternate) {
+            grandTotalSellRows.push(grandTotalRow);
+        }
+        currentRow += 2; // Blank row between sections
     });
 
-    // TOTALS SECTION
-    const totalStartRow = currentRow;
-    sheet.getCell(`A${currentRow}`).value = 'PROJECT TOTALS';
+    // === DOCUMENT TOTAL (sum of base screen GRAND TOTALs only) ===
+    sheet.getCell(`A${currentRow}`).value = 'DOCUMENT TOTAL';
     sheet.getCell(`A${currentRow}`).font = { bold: true, size: 12 };
     sheet.getCell(`A${currentRow}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0A52EF' } };
     sheet.getCell(`A${currentRow}`).font = { color: { argb: 'FFFFFFFF' }, bold: true };
-    currentRow++;
+    
+    const docTotalFormula = grandTotalSellRows.length > 0 ? grandTotalSellRows.map(r => `C${r}`).join('+') : '0';
+    sheet.getCell(`C${currentRow}`).value = { formula: docTotalFormula };
+    sheet.getCell(`C${currentRow}`).numFmt = CFMT;
+    sheet.getCell(`C${currentRow}`).font = { bold: true, size: 12 };
+    result.docTotalRow = currentRow;
 
-    // Sum of Sell Prices
-    const sellPriceRow = currentRow;
-    sheet.getCell(`A${currentRow}`).value = 'TOTAL SELL PRICE';
-    const sellSumFormula = sellPriceRows.length > 0 ? sellPriceRows.map(r => `G${r}`).join('+') : '0';
-    sheet.getCell(`G${currentRow}`).value = { formula: sellSumFormula };
-    sheet.getCell(`G${currentRow}`).numFmt = CFMT;
-    sheet.getCell(`G${currentRow}`).font = { bold: true };
-    currentRow++;
-
-    // BOND
-    const bondRow = currentRow;
-    sheet.getCell(`A${currentRow}`).value = 'PERFORMANCE BOND (1.5%)';
-    sheet.getCell(`H${currentRow}`).value = options?.bondRateOverride ?? 0.015;
-    sheet.getCell(`H${currentRow}`).numFmt = '0.0%';
-    formatAsInputCell(sheet.getCell(`H${currentRow}`));
-    sheet.getCell(`I${currentRow}`).value = { formula: `G${sellPriceRow}*H${currentRow}` };
-    sheet.getCell(`I${currentRow}`).numFmt = CFMT;
-    currentRow++;
-
-    // B&O TAX (Morgantown/WVU only) - conditional row creation
-    let boTaxRow: number | undefined = undefined;
-    if (options?.boTaxApplies) {
-        boTaxRow = currentRow;
-        sheet.getCell(`A${currentRow}`).value = 'CITY B&O TAX (2%) - MORGANTOWN/WVU';
-        sheet.getCell(`H${currentRow}`).value = 0.02;
-        sheet.getCell(`H${currentRow}`).numFmt = '0.0%';
-        formatAsInputCell(sheet.getCell(`H${currentRow}`));
-        sheet.getCell(`I${currentRow}`).value = { formula: `(G${sellPriceRow}+I${bondRow})*H${boTaxRow}` };
-        sheet.getCell(`I${currentRow}`).numFmt = CFMT;
-        currentRow++;
-    }
-
-    // SALES TAX
-    const taxRow = currentRow;
-    const effectiveTaxRate = options?.taxRateOverride ?? 0.095;
-    sheet.getCell(`A${currentRow}`).value = `SALES TAX (${(effectiveTaxRate * 100).toFixed(1)}%)`;
-    sheet.getCell(`H${currentRow}`).value = effectiveTaxRate;
-    sheet.getCell(`H${currentRow}`).numFmt = '0.0%';
-    formatAsInputCell(sheet.getCell(`H${currentRow}`));
-
-    // Only include B&O Tax in Sales Tax formula if it applies
-    if (options?.boTaxApplies) {
-        sheet.getCell(`I${currentRow}`).value = { formula: `(G${sellPriceRow}+I${bondRow}+I${boTaxRow})*H${taxRow}` };
-    } else {
-        sheet.getCell(`I${currentRow}`).value = { formula: `(G${sellPriceRow}+I${bondRow})*H${taxRow}` };
-    }
-    sheet.getCell(`I${currentRow}`).numFmt = CFMT;
-    currentRow++;
-
-    // GRAND TOTAL
-    if (options?.boTaxApplies && boTaxRow) {
-        sheet.getCell(`A${currentRow}`).value = 'FINAL CLIENT TOTAL';
-        sheet.getCell(`I${currentRow}`).value = { formula: `G${sellPriceRow}+I${bondRow}+I${boTaxRow}+I${taxRow}` };
-    } else {
-        sheet.getCell(`A${currentRow}`).value = 'FINAL CLIENT TOTAL';
-        sheet.getCell(`I${currentRow}`).value = { formula: `G${sellPriceRow}+I${bondRow}+I${taxRow}` };
-    }
-    sheet.getCell(`I${currentRow}`).font = { bold: true, size: 14 };
-    sheet.getCell(`I${currentRow}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD4EDDA' } };
-    sheet.getCell(`I${currentRow}`).numFmt = CFMT;
+    return result;
 }
 
 function buildLEDCostSheet(sheet: ExcelJS.Worksheet, screens: any[]) {
     setupSheetHeader(sheet, 'LED TECHNICAL SPECIFICATIONS');
-    const headers = ['Display Name', 'Pixel Pitch (mm)', 'Width (ft)', 'Height (ft)', 'Pixels W', 'Pixels H', 'Brightness (nits)', 'Est. Hardware Cost'];
+    // Full column set matching exportMirrorUglySheetExcel.ts and UniverSpreadsheet
+    const headers = [
+        'Display Name', '', 'Quantity', '', 'MM Pitch',
+        'Active Height (ft.)', 'Active Width (ft.)', 'Pixel Resolution (H)', '', 'Pixel Resolution (W)',
+        '', '', 'Brightness', 'Weight (lbs)', 'Total Power (W)', 'BTU/hr'
+    ];
     setupTableHeaders(sheet, 3, headers);
 
     let currentRow = 4;
-    screens.forEach(s => {
+    screens.forEach((s, idx) => {
         const audit = s.internalAudit || s._internalAudit || s.audit;
+        const perScreen = audit?.perScreen?.[idx] || audit;
         const b = audit?.breakdown || {};
         
+        // Parse pixel resolution
+        let resH: number | null = null;
+        let resW: number | null = null;
+        const resStr = perScreen?.pixelResolution || perScreen?.pixelMatrix || '';
+        const match = resStr.match(/(\d+)\s*[xX×]\s*(\d+)/);
+        if (match) {
+            resH = parseInt(match[1], 10);
+            resW = parseInt(match[2], 10);
+        }
+        
+        const qty = perScreen?.quantity || s.quantity || 1;
+        const pitch = s.pixelPitch || s.pitchMm || 0;
+        const height = s.heightFt || s.height || 0;
+        const width = s.widthFt || s.width || 0;
+        const brightness = perScreen?.brightnessNits || s.brightness || 0;
+        const weight = perScreen?.estimatedWeightLbs || 0;
+        const power = perScreen?.totalMaxPowerW || 0;
+        
         sheet.getCell(`A${currentRow}`).value = s.name;
-        sheet.getCell(`B${currentRow}`).value = s.pixelPitch || s.pitchMm;
-        sheet.getCell(`C${currentRow}`).value = s.widthFt || s.width;
-        sheet.getCell(`D${currentRow}`).value = s.heightFt || s.height;
-        sheet.getCell(`E${currentRow}`).value = audit?.pixelResolution || 0; // Simplified
-        sheet.getCell(`F${currentRow}`).value = 0; // Need calculation if missing
-        sheet.getCell(`G${currentRow}`).value = s.brightness || 0;
-        sheet.getCell(`H${currentRow}`).value = b.hardware || 0;
-        sheet.getCell(`H${currentRow}`).numFmt = CFMT;
+        sheet.getCell(`C${currentRow}`).value = qty;
+        sheet.getCell(`E${currentRow}`).value = pitch || null;
+        sheet.getCell(`F${currentRow}`).value = height || null;
+        sheet.getCell(`G${currentRow}`).value = width || null;
+        sheet.getCell(`H${currentRow}`).value = resH;
+        sheet.getCell(`J${currentRow}`).value = resW;
+        sheet.getCell(`M${currentRow}`).value = brightness || null;
+        sheet.getCell(`N${currentRow}`).value = weight || null;
+        sheet.getCell(`O${currentRow}`).value = power || null;
+        
+        // BTU formula: Power (W) × 3.412
+        if (power > 0) {
+            sheet.getCell(`P${currentRow}`).value = { formula: `O${currentRow}*3.412`, result: Math.round(power * 3.412) };
+        }
+        
         currentRow++;
     });
     
-    // Auto-width
-    sheet.columns.forEach(col => { col.width = 15; });
-    sheet.getColumn(1).width = 30;
+    // Column widths matching exportMirrorUglySheetExcel.ts
+    sheet.getColumn(1).width = 45;
+    sheet.getColumn(3).width = 10;
+    sheet.getColumn(5).width = 10;
+    sheet.getColumn(6).width = 16;
+    sheet.getColumn(7).width = 16;
+    sheet.getColumn(8).width = 18;
+    sheet.getColumn(10).width = 18;
+    sheet.getColumn(13).width = 12;
+    sheet.getColumn(14).width = 14;
+    sheet.getColumn(15).width = 16;
+    sheet.getColumn(16).width = 12;
 }
 
 function buildInstallSheet(sheet: ExcelJS.Worksheet, screens: any[]) {
@@ -735,55 +791,121 @@ function setupTableHeaders(sheet: ExcelJS.Worksheet, row: number, headers: strin
 }
 
 /**
+ * Bundle Equipment Sheet — Individual components for Processor & Equipment line.
+ * EDITABLE sheet (not protected) for estimators to adjust component costs.
+ * Cross-sheet formula on MA references this sheet's total.
+ */
+function buildBundleEquipmentSheet(
+    sheet: ExcelJS.Worksheet,
+    equipmentItems: EquipmentItem[],
+    options?: AuditExcelOptions
+): number {
+    sheet.mergeCells('A1:D1');
+    const titleCell = sheet.getCell('A1');
+    titleCell.value = `${options?.proposalName || 'Project'} — Processor & Equipment Bundle`;
+    titleCell.font = { size: 14, bold: true, color: { argb: 'FF0A52EF' } };
+    titleCell.alignment = { horizontal: 'left', vertical: 'middle' };
+
+    sheet.getCell('A2').value = 'Individual components for Processor & Equipment line on Margin Analysis. Edit costs below.';
+    sheet.getCell('A2').font = { italic: true, size: 10, color: { argb: 'FF6C757D' } };
+
+    const headers = ['Component', 'Qty', 'Unit Cost', 'Total Cost'];
+    setupTableHeaders(sheet, 4, headers);
+
+    let currentRow = 5;
+    
+    // Default equipment items if none provided
+    const items = equipmentItems.length > 0 ? equipmentItems : [
+        { description: 'Video Processor', cost: 2500, sellingPrice: 3571 },
+        { description: 'Sending Card', cost: 800, sellingPrice: 1143 },
+        { description: 'Media Player', cost: 1500, sellingPrice: 2143 },
+        { description: 'Signal Cable Kit', cost: 350, sellingPrice: 500 },
+        { description: 'Power Supply Unit', cost: 600, sellingPrice: 857 },
+    ];
+
+    items.forEach((item, idx) => {
+        sheet.getCell(`A${currentRow}`).value = item.description;
+        sheet.getCell(`B${currentRow}`).value = 1;
+        formatAsInputCell(sheet.getCell(`B${currentRow}`));
+        sheet.getCell(`C${currentRow}`).value = item.cost;
+        sheet.getCell(`C${currentRow}`).numFmt = CFMT;
+        formatAsInputCell(sheet.getCell(`C${currentRow}`));
+        sheet.getCell(`D${currentRow}`).value = { formula: `B${currentRow}*C${currentRow}` };
+        sheet.getCell(`D${currentRow}`).numFmt = CFMT;
+        currentRow++;
+    });
+
+    // Total row
+    const totalRow = currentRow;
+    sheet.getCell(`A${totalRow}`).value = 'TOTAL';
+    sheet.getCell(`A${totalRow}`).font = { bold: true };
+    const firstDataRow = 5;
+    const lastDataRow = totalRow - 1;
+    sheet.getCell(`D${totalRow}`).value = { formula: `SUM(D${firstDataRow}:D${lastDataRow})` };
+    sheet.getCell(`D${totalRow}`).numFmt = CFMT;
+    sheet.getCell(`D${totalRow}`).font = { bold: true };
+    sheet.getCell(`D${totalRow}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD4EDDA' } };
+
+    sheet.getColumn(1).width = 35;
+    sheet.getColumn(2).width = 8;
+    sheet.getColumn(3).width = 14;
+    sheet.getColumn(4).width = 14;
+
+    return totalRow;
+}
+
+/**
  * Tech Specs Only sheet — LED Cost Sheet replica without pricing columns.
- * For sharing with installers and subcontractors (Jeremy/Matt can extract and send).
+ * Uses CROSS-SHEET FORMULAS to reference LED Cost Sheet for all values.
+ * For sharing with installers and subcontractors (no pricing exposed).
  */
 function buildTechSpecsOnlySheet(sheet: ExcelJS.Worksheet, screens: any[], options?: AuditExcelOptions) {
-    sheet.mergeCells('A1:H1');
+    sheet.mergeCells('A1:K1');
     const titleCell = sheet.getCell('A1');
     titleCell.value = `${options?.proposalName || options?.clientName || 'Project'} — LED Technical Specifications (No Pricing)`;
     titleCell.font = { size: 13, bold: true, color: { argb: 'FF002C73' } };
     titleCell.alignment = { horizontal: 'left', vertical: 'middle' };
 
-    sheet.getCell('A2').value = `Generated: ${new Date().toLocaleDateString()}`;
+    sheet.getCell('A2').value = `Generated: ${new Date().toLocaleDateString()} — All values are cross-sheet formulas to LED Cost Sheet`;
     sheet.getCell('A2').font = { size: 9, color: { argb: 'FF6C757D' } };
 
-    const headers = ['Display Name', 'Qty', 'Pixel Pitch (mm)', 'Height (ft)', 'Width (ft)', 'Pixels H', 'Pixels W', 'Sq Ft', 'Brightness (nits)', 'Service Type', 'Environment'];
+    const headers = ['Display Name', 'Qty', 'Pixel Pitch (mm)', 'Height (ft)', 'Width (ft)', 'Pixels H', 'Pixels W', 'Sq Ft', 'Brightness (nits)', 'Weight (lbs)', 'Power (W)', 'BTU/hr'];
     setupTableHeaders(sheet, 4, headers);
 
     let currentRow = 5;
-    screens.forEach(s => {
-        const audit = s.internalAudit || s._internalAudit || s.audit;
-        const heightFt = Number(s.heightFt || s.height || 0);
-        const widthFt = Number(s.widthFt || s.width || 0);
-        const pitch = Number(s.pixelPitch || s.pitchMm || 0);
-        const sqFt = heightFt * widthFt;
-        const pixelsH = pitch > 0 ? Math.round((heightFt * 304.8) / pitch) : 0;
-        const pixelsW = pitch > 0 ? Math.round((widthFt * 304.8) / pitch) : 0;
+    screens.forEach((s, idx) => {
+        const ledRow = idx + 4; // LED Cost Sheet data starts at row 4
 
-        sheet.getCell(`A${currentRow}`).value = s.name || s.externalName || 'Unnamed Display';
-        sheet.getCell(`B${currentRow}`).value = Number(s.quantity || audit?.quantity || 1);
-        sheet.getCell(`C${currentRow}`).value = pitch || null;
-        sheet.getCell(`D${currentRow}`).value = heightFt || null;
-        sheet.getCell(`E${currentRow}`).value = widthFt || null;
-        sheet.getCell(`F${currentRow}`).value = pixelsH || null;
-        sheet.getCell(`G${currentRow}`).value = pixelsW || null;
-        sheet.getCell(`H${currentRow}`).value = sqFt > 0 ? Math.round(sqFt * 100) / 100 : null;
-        sheet.getCell(`I${currentRow}`).value = Number(s.brightness || s.brightnessNits || 0) || null;
-        sheet.getCell(`J${currentRow}`).value = s.serviceType || (s.isOutdoor ? 'Rear' : 'Front') || null;
-        sheet.getCell(`K${currentRow}`).value = s.isOutdoor ? 'Outdoor' : 'Indoor';
+        // All values via cross-sheet formulas to LED Cost Sheet
+        sheet.getCell(`A${currentRow}`).value = { formula: `'LED Cost Sheet'!A${ledRow}` };
+        sheet.getCell(`B${currentRow}`).value = { formula: `'LED Cost Sheet'!C${ledRow}` };
+        sheet.getCell(`C${currentRow}`).value = { formula: `'LED Cost Sheet'!E${ledRow}` };
+        sheet.getCell(`D${currentRow}`).value = { formula: `'LED Cost Sheet'!F${ledRow}` };
+        sheet.getCell(`E${currentRow}`).value = { formula: `'LED Cost Sheet'!G${ledRow}` };
+        sheet.getCell(`F${currentRow}`).value = { formula: `'LED Cost Sheet'!H${ledRow}` };
+        sheet.getCell(`G${currentRow}`).value = { formula: `'LED Cost Sheet'!J${ledRow}` };
+        // Sq Ft: =D*E
+        sheet.getCell(`H${currentRow}`).value = { formula: `D${currentRow}*E${currentRow}` };
+        sheet.getCell(`H${currentRow}`).numFmt = '0.00';
+        sheet.getCell(`I${currentRow}`).value = { formula: `'LED Cost Sheet'!M${ledRow}` };
+        sheet.getCell(`J${currentRow}`).value = { formula: `'LED Cost Sheet'!N${ledRow}` };
+        sheet.getCell(`K${currentRow}`).value = { formula: `'LED Cost Sheet'!O${ledRow}` };
+        // BTU: =K*3.412
+        sheet.getCell(`L${currentRow}`).value = { formula: `K${currentRow}*3.412` };
+        sheet.getCell(`L${currentRow}`).numFmt = '#,##0';
         currentRow++;
     });
 
     sheet.getColumn(1).width = 40;
     sheet.getColumn(2).width = 8;
-    sheet.getColumn(3).width = 16;
+    sheet.getColumn(3).width = 14;
     sheet.getColumn(4).width = 12;
     sheet.getColumn(5).width = 12;
     sheet.getColumn(6).width = 12;
     sheet.getColumn(7).width = 12;
     sheet.getColumn(8).width = 10;
-    sheet.getColumn(9).width = 16;
-    sheet.getColumn(10).width = 14;
+    sheet.getColumn(9).width = 14;
+    sheet.getColumn(10).width = 12;
     sheet.getColumn(11).width = 12;
+    sheet.getColumn(12).width = 12;
 }

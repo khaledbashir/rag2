@@ -23,6 +23,7 @@ export interface PricingDisplay {
   shippingCost?: number;
   installCost?: number;
   structuralCost?: number;
+  electricalCost?: number;
   pmCost?: number;
   engCost?: number;
   totalCost: number;

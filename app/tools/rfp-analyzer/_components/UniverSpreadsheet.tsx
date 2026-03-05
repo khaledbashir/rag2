@@ -7,7 +7,7 @@
  * formula recalculation, proper formatting, and full spreadsheet UX.
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import type { ExtractedLEDSpec } from "@/services/rfp/unified/types";
 import type { PricingDisplay, PricingSummary } from "./rfpWorkbookBuilder";
 
@@ -24,6 +24,48 @@ export interface UniverSpreadsheetProps {
   screens: ExtractedLEDSpec[];
   pricingDisplays: PricingDisplay[];
   pricingSummary: PricingSummary | null;
+  // Mirror Mode pricing data from Excel uploads
+  pricingDocument?: {
+    tables: Array<{
+      name: string;
+      items: Array<{
+        description: string;
+        cost: number | null;
+        sellingPrice: number;
+        isHidden?: boolean;
+      }>;
+      subtotal?: number;
+      tax?: { label: string; amount: number };
+      bond?: number;
+      grandTotal?: number;
+      isAlternateSection?: boolean;
+      alternates?: Array<{ description: string; priceDifference: number }>;
+    }>;
+    documentTotal?: number;
+    projectName?: string;
+  };
+  // Project info for Project Summary sheet
+  projectInfo?: {
+    projectName?: string;
+    clientName?: string;
+    venue?: string;
+    location?: string;
+    documentMode?: string;
+    createdAt?: string;
+    updatedAt?: string;
+  };
+  // Internal audit data for Tech Specs
+  internalAudit?: {
+    perScreen?: Array<{
+      quantity?: number;
+      pixelMatrix?: string;
+      pixelResolution?: string;
+      brightnessNits?: number;
+      estimatedWeightLbs?: number;
+      totalMaxPowerW?: number;
+    }>;
+    totals?: any;
+  };
   availableProducts?: Array<{ id: string; label: string; pitch: number; name: string }>;
   onSpecEdit?: (screenIdx: number, field: string, value: number) => void;
   onPricingEdit?: (displayIdx: number, field: string, value: number) => void;
@@ -64,11 +106,11 @@ const NUMBER_FMT = { n: { pattern: '#,##0' } };
 const NUMBER_FMT_2 = { n: { pattern: '#,##0.00' } };
 
 // ---------------------------------------------------------------------------
-// Build IWorkbookData from props
+// Build IWorkbookData from props — matches exportMirrorUglySheetExcel.ts layout
 // ---------------------------------------------------------------------------
 
 function buildWorkbookData(props: UniverSpreadsheetProps) {
-  const { screens, pricingDisplays, pricingSummary } = props;
+  const { screens, pricingDisplays, pricingSummary, pricingDocument, projectInfo, internalAudit } = props;
   const styles: Record<string, any> = {
     header: HEADER_STYLE,
     bold: BOLD_STYLE,
@@ -87,53 +129,117 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     marginGreen: { ...PERCENT_FMT, ht: 2, cl: { rgb: GREEN } },
     marginAmber: { ...PERCENT_FMT, ht: 2, cl: { rgb: AMBER } },
     marginRed: { ...PERCENT_FMT, ht: 2, cl: { rgb: RED } },
+    sectionHeader: { bg: { rgb: NAVY }, cl: { rgb: WHITE }, bl: 1, ht: 2 },
+    italic: { it: 1, cl: { rgb: "#6C757D" } },
   };
 
-  // === SHEET 0: LED Cost Sheet ===
+  const freeze = { xSplit: 0, ySplit: 1, startRow: 1, startColumn: 0 };
+  const sheets: Record<string, any> = {};
+  const sheetOrder: string[] = [];
+
+  // === SHEET 0: Project Summary ===
+  sheetOrder.push("project-summary");
+  const psCellData: Record<number, Record<number, any>> = {};
+  const projectName = projectInfo?.projectName || projectInfo?.clientName || "Untitled Project";
+  
+  psCellData[0] = { 0: { v: projectName, s: { bl: 1, fs: 16 } } };
+  psCellData[1] = { 0: { v: "ANC LED Display Proposal", s: { it: 1, cl: { rgb: "#6C757D" } } } };
+  
+  const summaryFields: [string, any][] = [
+    ["Project Name", projectName],
+    ["Client", projectInfo?.clientName || "—"],
+    ["Venue", projectInfo?.venue || "—"],
+    ["Location", projectInfo?.location || "—"],
+    ["Document Type", (projectInfo?.documentMode || "BUDGET").replace(/_/g, " ")],
+    ["Number of Displays", screens.length],
+    ["Created", projectInfo?.createdAt || new Date().toLocaleDateString()],
+    ["Revision Date", projectInfo?.updatedAt || new Date().toLocaleDateString()],
+    ["Revised By", "ANC Studio"],
+  ];
+  
+  let psRow = 3;
+  for (const [label, value] of summaryFields) {
+    psCellData[psRow] = {
+      0: { v: label, s: { bl: 1, cl: { rgb: "#374151" } } },
+      1: { v: value },
+    };
+    psRow++;
+  }
+  
+  // Document Total with cross-sheet formula
+  psRow++;
+  psCellData[psRow] = {
+    0: { v: "Document Total", s: { bl: 1, fs: 12 } },
+    1: { f: "='Margin Analysis'!C" + (getMarginAnalysisTotalRow(pricingDocument, pricingDisplays) + 1), s: { bl: 1, fs: 12, ...CURRENCY_FMT } },
+  };
+  
+  const psColWidths: Record<number, { w: number }> = {
+    0: { w: 140 }, 1: { w: 200 }, 2: { w: 100 }, 3: { w: 100 },
+  };
+
+  sheets["project-summary"] = {
+    id: "project-summary",
+    name: "Project Summary",
+    tabColor: "#217346",
+    rowCount: 20,
+    columnCount: 4,
+    defaultColumnWidth: 140,
+    defaultRowHeight: 28,
+    cellData: psCellData,
+    columnData: psColWidths,
+    mergeData: [],
+    showGridlines: 1,
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
+  };
+
+  // === SHEET 1: LED Cost Sheet — full 20 columns ===
+  sheetOrder.push("led-cost-sheet");
   const ledCols = [
     "Display", "Vendor", "Product", "Pitch (mm)",
     "H (ft)", "W (ft)", "H (px)", "W (px)",
     "SqFt/Screen", "Qty", "Total SqFt",
-    "NITs", "Service",
-    "$/SqFt", "Display Cost", "Processor", "Shipping", "Total Cost",
-    "Margin %", "Selling Price",
+    "NITs", "Service", "$/SqFt", "Display Cost", "Processor", "Shipping", "Total Cost",
+    "Margin %", "Selling Price", "Weight (lbs)", "Power (W)", "BTU/hr",
   ];
 
   const ledColWidths: Record<number, { w: number }> = {
-    0: { w: 140 }, // Display
-    1: { w: 80 },  // Vendor
-    2: { w: 130 }, // Product
-    3: { w: 70 },  // Pitch
-    4: { w: 60 },  // H(ft)
-    5: { w: 60 },  // W(ft)
-    6: { w: 60 },  // H(px)
-    7: { w: 60 },  // W(px)
-    8: { w: 85 },  // SqFt/Screen
-    9: { w: 45 },  // Qty
-    10: { w: 80 }, // Total SqFt
-    11: { w: 55 }, // NITs
-    12: { w: 70 }, // Service
-    13: { w: 75 }, // $/SqFt
-    14: { w: 100 }, // Display Cost
-    15: { w: 85 },  // Processor
-    16: { w: 80 },  // Shipping
-    17: { w: 100 }, // Total Cost
-    18: { w: 75 },  // Margin %
-    19: { w: 100 }, // Selling Price
+    0: { w: 140 }, 1: { w: 80 }, 2: { w: 130 }, 3: { w: 70 },
+    4: { w: 60 }, 5: { w: 60 }, 6: { w: 60 }, 7: { w: 60 },
+    8: { w: 85 }, 9: { w: 45 }, 10: { w: 80 }, 11: { w: 55 },
+    12: { w: 70 }, 13: { w: 75 }, 14: { w: 100 }, 15: { w: 85 },
+    16: { w: 80 }, 17: { w: 100 }, 18: { w: 75 }, 19: { w: 100 },
+    20: { w: 90 }, 21: { w: 90 }, 22: { w: 80 },
   };
 
-  // Header row (row 0)
   const ledCellData: Record<number, Record<number, any>> = {};
   ledCellData[0] = {};
   ledCols.forEach((label, ci) => {
     ledCellData[0][ci] = { v: label, s: "header" };
   });
 
-  // Data rows (row 1..N)
+  // Build lookup from pricingDocument for Mirror Mode (when pricingDisplays is empty)
+  const pricingDocLookup: Record<string, { sellingPrice: number; cost: number | null }> = {};
+  if (pricingDocument?.tables) {
+    for (const table of pricingDocument.tables) {
+      for (const item of (table.items || [])) {
+        if (item.description && !item.isHidden) {
+          pricingDocLookup[item.description.toLowerCase()] = {
+            sellingPrice: item.sellingPrice || 0,
+            cost: item.cost ?? null,
+          };
+        }
+      }
+    }
+  }
+
   screens.forEach((spec, si) => {
     const row = si + 1;
     const pd = pricingDisplays.find((d) => d.name === spec.name);
     const mp = pd?.matchedProduct;
+    const audit = internalAudit?.perScreen?.[si];
+    
+    // For Mirror Mode: look up pricing from pricingDocument
+    const docPricing = pricingDocLookup[spec.name?.toLowerCase() || ""];
 
     const hasOverride = mp?.activeWidthFt && mp?.activeHeightFt;
     const h = hasOverride ? mp.activeHeightFt! : (spec.heightFt ?? 0);
@@ -141,65 +247,72 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     const pitch = (hasOverride && mp.pitch) ? mp.pitch : (spec.pixelPitchMm ?? 0);
     const hPx = hasOverride && mp.resolutionY ? mp.resolutionY : (spec.heightPx ?? (pitch > 0 ? Math.round(h * 304.8 / pitch) : 0));
     const wPx = hasOverride && mp.resolutionX ? mp.resolutionX : (spec.widthPx ?? (pitch > 0 ? Math.round(w * 304.8 / pitch) : 0));
-    const qty = spec.quantity || 1;
+    const qty = audit?.quantity || spec.quantity || 1;
 
-    // sqft formula references
+    const pricingSqFt = pd?.areaSqFt ?? (h * w);
+    const pricingTotalSqFt = pricingSqFt * qty;
+    const ratePerSqFt = pricingTotalSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingTotalSqFt : 0;
+    const weight = audit?.estimatedWeightLbs ?? mp?.totalWeightLbs ?? 0;
+    const power = audit?.totalMaxPowerW ?? mp?.totalMaxPowerW ?? 0;
+    
+    // Use pricingDocument selling price if available (Mirror Mode), otherwise calculate
+    const sellingPrice = docPricing?.sellingPrice ?? pd?.totalSellingPrice ?? 0;
+    const marginPct = pd?.blendedMarginPct ?? 0.30;
+    
+    // Debug: log Mirror Mode pricing resolution
+    if (si === 0) {
+      console.log("[UniverSpreadsheet] LED Cost Sheet row 0 pricing:", {
+        specName: spec.name,
+        docPricing,
+        pdTotalSellingPrice: pd?.totalSellingPrice,
+        resolvedSellingPrice: sellingPrice,
+        marginPct,
+      });
+    }
+
     const hCell = `E${row + 1}`;
     const wCell = `F${row + 1}`;
     const qtyCell = `J${row + 1}`;
 
-    const pricingSqFt = pd?.areaSqFt ?? 0;
-    const pricingTotalSqFt = pricingSqFt * qty;
-    const ratePerSqFt = pricingTotalSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingTotalSqFt : 0;
-
-    const vendor = mp?.manufacturer ?? "";
-    const productLabel = mp?.model ?? "";
-    const nits = mp?.nits ?? spec.brightnessNits ?? null;
-
     ledCellData[row] = {
-      0: { v: spec.name, s: "bold" },                                   // Display
-      1: { v: vendor },                                                  // Vendor
-      2: { v: productLabel || "" },                                      // Product
-      3: { v: pitch > 0 ? pitch : "", s: "number2" },                   // Pitch
-      4: { v: h > 0 ? Math.round(h * 100) / 100 : "", s: "number2" },  // H(ft) — EDITABLE
-      5: { v: w > 0 ? Math.round(w * 100) / 100 : "", s: "number2" },  // W(ft) — EDITABLE
-      6: { v: hPx > 0 ? hPx : "" },                                     // H(px)
-      7: { v: wPx > 0 ? wPx : "" },                                     // W(px)
-      8: { f: `=${hCell}*${wCell}`, s: "number2" },                      // SqFt/Screen = H * W
-      9: { v: qty },                                                     // Qty — EDITABLE
-      10: { f: `=I${row + 1}*${qtyCell}`, s: "number2" },               // Total SqFt = SqFt * Qty
-      11: { v: nits ?? "" },                                             // NITs
-      12: { v: spec.serviceType ?? "" },                                 // Service
-      13: { v: ratePerSqFt > 0 ? ratePerSqFt : 0, s: "currency2" },    // $/SqFt
-      14: { f: `=N${row + 1}*K${row + 1}`, s: "currency" },            // Display Cost = $/SqFt * TotalSqFt — EDITABLE
-      15: { v: pd?.processorCost ?? 0, s: "currency" },                 // Processor — EDITABLE
-      16: { v: pd?.shippingCost ?? 0, s: "currency" },                  // Shipping — EDITABLE
-      17: { f: `=O${row + 1}+P${row + 1}+Q${row + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } }, // Total Cost
-      18: { v: pd?.blendedMarginPct ?? 0, s: getMarginStyle(pd?.blendedMarginPct ?? 0) }, // Margin % — EDITABLE
-      19: { f: `=IF(S${row + 1}>0,R${row + 1}/(1-S${row + 1}),R${row + 1})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } }, // Selling Price
+      0: { v: spec.name, s: "bold" },
+      1: { v: mp?.manufacturer ?? "" },
+      2: { v: mp?.model ?? "" },
+      3: { v: pitch > 0 ? pitch : "", s: "number2" },
+      4: { v: h > 0 ? Math.round(h * 100) / 100 : "", s: "number2" },
+      5: { v: w > 0 ? Math.round(w * 100) / 100 : "", s: "number2" },
+      6: { v: hPx > 0 ? hPx : "" },
+      7: { v: wPx > 0 ? wPx : "" },
+      8: { f: `=${hCell}*${wCell}`, s: "number2" },
+      9: { v: qty },
+      10: { f: `=I${row + 1}*${qtyCell}`, s: "number2" },
+      11: { v: mp?.nits ?? spec.brightnessNits ?? "" },
+      12: { v: spec.serviceType ?? "" },
+      13: { v: ratePerSqFt > 0 ? ratePerSqFt : 0, s: "currency2" },
+      14: { f: `=N${row + 1}*K${row + 1}`, s: "currency" },
+      15: { v: pd?.processorCost ?? 0, s: "currency" },
+      16: { v: pd?.shippingCost ?? 0, s: "currency" },
+      17: { f: `=O${row + 1}+P${row + 1}+Q${row + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } },
+      18: { v: marginPct, s: getMarginStyle(marginPct) },
+      19: sellingPrice > 0 
+        ? { v: sellingPrice, s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } }
+        : { f: `=IF(S${row + 1}>0,R${row + 1}/(1-S${row + 1}),R${row + 1})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } },
+      20: { v: weight, s: "number" },
+      21: { v: power, s: "number" },
+      22: { f: power > 0 ? `=V${row + 1}*3.412` : "", s: "number" },
     };
   });
 
-  // Total row
   const totalRowIdx = screens.length + 1;
-  const dataRange = screens.length > 0 ? `${2}:${screens.length + 1}` : "2:2";
   const firstDataRow = 2;
   const lastDataRow = screens.length + 1;
 
   ledCellData[totalRowIdx] = {
     0: { v: `TOTAL (${screens.length} displays)`, s: "total" },
-    1: { v: "", s: "total" },
-    2: { v: "", s: "total" },
-    3: { v: "", s: "total" },
-    4: { v: "", s: "total" },
-    5: { v: "", s: "total" },
-    6: { v: "", s: "total" },
-    7: { v: "", s: "total" },
-    8: { v: "", s: "total" },
-    9: { v: "", s: "total" },
-    10: { f: screens.length > 0 ? `=SUM(K${firstDataRow}:K${lastDataRow})` : "=0", s: "totalNumber" },
-    11: { v: "", s: "total" },
-    12: { v: "", s: "total" },
+    1: { v: "", s: "total" }, 2: { v: "", s: "total" }, 3: { v: "", s: "total" },
+    4: { v: "", s: "total" }, 5: { v: "", s: "total" }, 6: { v: "", s: "total" }, 7: { v: "", s: "total" },
+    8: { v: "", s: "total" }, 9: { v: "", s: "total" }, 10: { f: screens.length > 0 ? `=SUM(K${firstDataRow}:K${lastDataRow})` : "=0", s: "totalNumber" },
+    11: { v: "", s: "total" }, 12: { v: "", s: "total" },
     13: { v: "", s: "total" },
     14: { f: screens.length > 0 ? `=SUM(O${firstDataRow}:O${lastDataRow})` : "=0", s: "totalCurrency" },
     15: { f: screens.length > 0 ? `=SUM(P${firstDataRow}:P${lastDataRow})` : "=0", s: "totalCurrency" },
@@ -207,120 +320,1086 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     17: { f: screens.length > 0 ? `=SUM(R${firstDataRow}:R${lastDataRow})` : "=0", s: "totalCurrency" },
     18: { f: screens.length > 0 ? `=IF(T${totalRowIdx + 1}>0,(T${totalRowIdx + 1}-R${totalRowIdx + 1})/T${totalRowIdx + 1},0)` : "=0", s: "totalPercent" },
     19: { f: screens.length > 0 ? `=SUM(T${firstDataRow}:T${lastDataRow})` : "=0", s: "totalCurrency" },
+    20: { f: screens.length > 0 ? `=SUM(U${firstDataRow}:U${lastDataRow})` : "=0", s: "totalNumber" },
+    21: { f: screens.length > 0 ? `=SUM(V${firstDataRow}:V${lastDataRow})` : "=0", s: "totalNumber" },
+    22: { f: screens.length > 0 ? `=SUM(W${firstDataRow}:W${lastDataRow})` : "=0", s: "totalNumber" },
   };
 
-  // === SHEET 1: Margin Analysis ===
-  const maCols = ["Line Item", "Cost", "Selling Price", "Margin $", "Margin %"];
-  const maColWidths: Record<number, { w: number }> = {
-    0: { w: 200 },
-    1: { w: 120 },
-    2: { w: 120 },
-    3: { w: 120 },
-    4: { w: 100 },
+  sheets["led-cost-sheet"] = {
+    id: "led-cost-sheet",
+    name: "LED Cost Sheet",
+    tabColor: "#0A52EF",
+    rowCount: Math.max(totalRowIdx + 5, 50),
+    columnCount: 23,
+    defaultColumnWidth: 80,
+    defaultRowHeight: 28,
+    freeze,
+    cellData: ledCellData,
+    columnData: ledColWidths,
+    mergeData: [],
+    showGridlines: 1,
   };
 
+  // === SHEET 2: Margin Analysis — per-section layout matching exportMirrorUglySheetExcel.ts ===
+  sheetOrder.push("margin-analysis");
   const maCellData: Record<number, Record<number, any>> = {};
-  // Header
-  maCellData[0] = {};
-  maCols.forEach((label, ci) => {
-    maCellData[0][ci] = { v: label, s: "header" };
+  const maColWidths: Record<number, { w: number }> = {
+    0: { w: 200 }, 1: { w: 100 }, 2: { w: 100 }, 3: { w: 100 }, 4: { w: 80 }, 5: { w: 100 },
+  };
+
+  let maRow = 0;
+  // Title rows
+  maCellData[maRow++] = { 0: { v: `Project Name: ${projectName}`, s: { bl: 1 } } };
+  maCellData[maRow++] = { 0: { v: `Revision Date: ${new Date().toLocaleDateString()}` } };
+  maCellData[maRow++] = { 0: { v: "Revised By: ANC Studio" } };
+  maCellData[maRow++] = { 0: { v: `${projectName} Margin Analysis`, s: { bl: 1, fs: 12 } } };
+  maRow++; // blank row
+
+  // Use pricingDocument if available (Mirror Mode), otherwise build from pricingDisplays
+  const pricingTables = pricingDocument?.tables || [];
+  const hasPricingTables = pricingTables.length > 0 && pricingTables.some((t: any) => t.items?.length > 0);
+
+  let marginDocTotalRow = 0;
+  const subtotalCostRows: number[] = [];
+  const grandTotalSellRows: number[] = [];
+
+  if (hasPricingTables) {
+    // Per-section layout from pricingDocument
+    for (const table of pricingTables) {
+      const items = (table.items || []).filter((item: any) => !item.isHidden);
+      if (items.length === 0) continue;
+
+      // Section header
+      maCellData[maRow] = {
+        0: { v: table.name || "Section", s: "sectionHeader" },
+        1: { v: "Selling Price", s: "sectionHeader" },
+      };
+      maRow++;
+
+      const firstItemRow = maRow;
+      let sectionCostSum = 0;
+      let sectionSellSum = 0;
+      let hasCostData = false;
+
+      for (const item of items) {
+        const sell = item.sellingPrice || 0;
+        const cost = item.cost ?? null;
+        if (cost != null) { sectionCostSum += cost; hasCostData = true; }
+
+        maCellData[maRow] = {
+          0: { v: item.description || "" },
+          1: { v: sell, s: "currency" },
+          5: cost != null ? { v: cost, s: "currency" } : undefined,
+        };
+        sectionSellSum += sell;
+        maRow++;
+      }
+      const lastItemRow = maRow - 1;
+
+      // Subtotal row
+      const isAlternateSection = table.isAlternateSection === true || /\balternate/i.test(table.name || "");
+      if (!isAlternateSection) {
+        if (hasCostData) subtotalCostRows.push(maRow);
+        grandTotalSellRows.push(maRow + 2); // grand total is 2 rows after subtotal
+      }
+
+      maCellData[maRow] = {
+        0: { v: "SUBTOTAL", s: "bold" },
+        1: hasCostData ? { f: `SUM(F${firstItemRow + 1}:F${lastItemRow + 1})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
+        2: { f: `SUM(B${firstItemRow + 1}:B${lastItemRow + 1})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+        3: hasCostData ? { f: `C${maRow + 1}-B${maRow + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
+        4: hasCostData ? { f: `IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
+      };
+      maRow++;
+
+      // Tax row
+      const taxAmount = table.tax?.amount || 0;
+      maCellData[maRow] = {
+        0: { v: table.tax?.label || "TAX" },
+        2: { v: taxAmount, s: "currency" },
+      };
+      maRow++;
+
+      // Bond row
+      const bondAmount = table.bond || 0;
+      maCellData[maRow] = {
+        0: { v: "BOND" },
+        2: { v: bondAmount, s: "currency" },
+      };
+      maRow++;
+
+      // Grand Total row
+      maCellData[maRow] = {
+        0: { v: "SUB TOTAL (BID FORM)", s: "bold" },
+        1: hasCostData ? { f: `B${maRow - 2}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
+        2: { f: `C${maRow - 2}+C${maRow - 1}+C${maRow}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+        3: hasCostData ? { f: `C${maRow + 1}-B${maRow + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
+        4: hasCostData ? { f: `IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
+      };
+      maRow++;
+
+      // Alternates
+      const alternates = table.alternates || [];
+      if (alternates.length > 0) {
+        maCellData[maRow] = {
+          0: { v: "Alternates - Add to Cost Above", s: { bl: 1, it: 1 } },
+          1: { v: "Selling Price", s: { bl: 1, it: 1 } },
+        };
+        maRow++;
+        for (const alt of alternates) {
+          maCellData[maRow] = {
+            0: { v: alt.description || "" },
+            1: { v: alt.priceDifference || 0, s: "currency" },
+          };
+          maRow++;
+        }
+      }
+
+      maRow++; // blank separator
+    }
+
+    // Document Total
+    marginDocTotalRow = maRow;
+    if (grandTotalSellRows.length > 0) {
+      const sellFormula = grandTotalSellRows.map(r => `C${r + 1}`).join("+");
+      maCellData[maRow] = {
+        0: { v: "DOCUMENT TOTAL", s: { bl: 1, fs: 12 } },
+        1: subtotalCostRows.length > 0 ? { f: subtotalCostRows.map(r => `B${r + 1}`).join("+"), s: { bl: 1, ...CURRENCY_FMT } } : undefined,
+        2: { f: sellFormula, s: { bl: 1, ...CURRENCY_FMT } },
+        3: { f: `C${maRow + 1}-B${maRow + 1}`, s: { bl: 1, ...CURRENCY_FMT } },
+        4: { f: `IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: { bl: 1, ...PERCENT_FMT } },
+      };
+    }
+  } else {
+    // Fallback: flat layout from pricingDisplays
+    maCellData[maRow] = {
+      0: { v: "Item Name / Category", s: "header" },
+      1: { v: "Cost", s: "header" },
+      2: { v: "Selling Price", s: "header" },
+      3: { v: "Margin $", s: "header" },
+      4: { v: "Margin %", s: "header" },
+    };
+    maRow++;
+
+    const displayStartRow = maRow;
+    for (const d of pricingDisplays) {
+      const cost = d.hardwareCost + (d.installCost ?? 0) + (d.pmCost ?? 0) + (d.engCost ?? 0);
+      const sell = d.totalSellingPrice || 0;
+      const margin = sell - cost;
+
+      maCellData[maRow] = {
+        0: { v: d.name, s: "bold" },
+        1: { v: cost, s: "currency" },
+        2: { v: sell, s: "currency" },
+        3: { v: margin, s: "currency" },
+        4: { f: `IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: getMarginStyle(sell > 0 ? margin / sell : 0) },
+      };
+      maRow++;
+    }
+
+    const lastDataRow = maRow - 1;
+    maCellData[maRow] = {
+      0: { v: "", s: "total" },
+      1: { f: `SUM(B${displayStartRow + 1}:B${lastDataRow + 1})`, s: "totalCurrency" },
+      2: { f: `SUM(C${displayStartRow + 1}:C${lastDataRow + 1})`, s: "totalCurrency" },
+      3: { f: `SUM(D${displayStartRow + 1}:D${lastDataRow + 1})`, s: "totalCurrency" },
+      4: { f: `IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: "totalPercent" },
+    };
+    maRow++;
+
+    // Tax, Bond, Subtotal
+    maCellData[maRow] = { 0: { v: "TAX" }, 1: { v: 0 }, 2: { v: 0 } };
+    maRow++;
+    maCellData[maRow] = { 0: { v: "BOND" }, 1: { v: 0 }, 2: { v: 0 } };
+    maRow++;
+
+    marginDocTotalRow = maRow;
+    maCellData[maRow] = {
+      0: { v: "SUB TOTAL (BID FORM)", s: "bold" },
+      2: { f: `C${maRow - 2}+C${maRow - 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+      3: { f: `D${maRow - 3}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+      4: { f: `IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } },
+    };
+  }
+
+  sheets["margin-analysis"] = {
+    id: "margin-analysis",
+    name: "Margin Analysis",
+    tabColor: "#217346",
+    rowCount: Math.max(maRow + 5, 50),
+    columnCount: 6,
+    defaultColumnWidth: 100,
+    defaultRowHeight: 28,
+    freeze,
+    cellData: maCellData,
+    columnData: maColWidths,
+    mergeData: [],
+    showGridlines: 1,
+  };
+
+  // === SHEET 3: Tech Specs (Installers) — no pricing ===
+  sheetOrder.push("tech-specs");
+  const tsCols = [
+    "Display Name", "Qty", "Pixel Pitch (mm)", "Height (ft)", "Width (ft)",
+    "Pixels H", "Pixels W", "Sq Ft", "Brightness (nits)", "Service", "Environment",
+    "Weight (lbs)", "Total Power (W)", "BTU/hr",
+  ];
+  const tsColWidths: Record<number, { w: number }> = {
+    0: { w: 140 }, 1: { w: 50 }, 2: { w: 100 }, 3: { w: 80 }, 4: { w: 80 },
+    5: { w: 80 }, 6: { w: 80 }, 7: { w: 70 }, 8: { w: 100 }, 9: { w: 80 }, 10: { w: 80 },
+    11: { w: 90 }, 12: { w: 100 }, 13: { w: 80 },
+  };
+
+  const tsCellData: Record<number, Record<number, any>> = {};
+  tsCellData[0] = {};
+  tsCols.forEach((label, ci) => {
+    tsCellData[0][ci] = { v: label, s: "header" };
   });
 
-  let maRow = 1;
-  const nonCustomDisplays = pricingDisplays.filter((d) => !d.isCustom);
-  const customDisplays = pricingDisplays.filter((d) => d.isCustom);
+  screens.forEach((spec, si) => {
+    const row = si + 1;
+    const audit = internalAudit?.perScreen?.[si];
+    const pd = pricingDisplays.find((d) => d.name === spec.name);
+    const mp = pd?.matchedProduct;
 
-  // LED displays
-  const maDisplayStartRow = maRow;
-  for (const d of nonCustomDisplays) {
-    const r = maRow;
-    const ledTotal = d.hardwareCost + (d.processorCost ?? 0) + (d.shippingCost ?? 0);
+    const h = spec.heightFt ?? 0;
+    const w = spec.widthFt ?? 0;
+    const pitch = spec.pixelPitchMm ?? 0;
+    const qty = audit?.quantity || spec.quantity || 1;
+    const hPx = spec.heightPx ?? (pitch > 0 ? Math.round(h * 304.8 / pitch) : 0);
+    const wPx = spec.widthPx ?? (pitch > 0 ? Math.round(w * 304.8 / pitch) : 0);
+    const weight = audit?.estimatedWeightLbs ?? mp?.totalWeightLbs ?? 0;
+    const power = audit?.totalMaxPowerW ?? mp?.totalMaxPowerW ?? 0;
 
-    // Cost cell references the LED Cost Sheet
-    // Cross-sheet: ='LED Cost Sheet'!R{row} where row = display index + 2
-    const ledSheetRow = screens.findIndex((s) => s.name === d.name) + 2;
-    const costRef = ledSheetRow > 1 ? `='LED Cost Sheet'!R${ledSheetRow}` : "";
-
-    maCellData[r] = {
-      0: { v: d.name, s: "bold" },
-      1: { v: ledTotal, s: "currency" },                                   // Cost — EDITABLE
-      2: { f: `=IF(E${r + 1}>0,B${r + 1}/(1-E${r + 1}),B${r + 1})`, s: "currency" }, // Selling = Cost/(1-Margin)
-      3: { f: `=C${r + 1}-B${r + 1}`, s: "currency" },                    // Margin$ = Selling - Cost
-      4: { v: d.blendedMarginPct, s: getMarginStyle(d.blendedMarginPct) }, // Margin % — EDITABLE
+    tsCellData[row] = {
+      0: { v: spec.name, s: "bold" },
+      1: { v: qty },
+      2: { v: pitch > 0 ? pitch : "", s: "number2" },
+      3: { v: h > 0 ? h : "", s: "number2" },
+      4: { v: w > 0 ? w : "", s: "number2" },
+      5: { v: hPx > 0 ? hPx : "" },
+      6: { v: wPx > 0 ? wPx : "" },
+      7: { f: `=D${row + 1}*E${row + 1}`, s: "number2" },
+      8: { v: mp?.nits ?? spec.brightnessNits ?? "" },
+      9: { v: spec.serviceType ?? "" },
+      10: { v: spec.environment ?? "" },
+      11: { v: weight, s: "number" },
+      12: { v: power, s: "number" },
+      13: { f: power > 0 ? `=M${row + 1}*3.412` : "", s: "number" },
     };
-    maRow++;
-  }
+  });
 
-  // Service categories
-  const serviceCategories = [
-    { label: "Structural Materials", field: "structuralCost" },
-    { label: "Installation Labor", field: "installCost" },
-    { label: "PM / Gen. Conditions", field: "pmCost" },
-    { label: "Engineering / Permits", field: "engCost" },
+  sheets["tech-specs"] = {
+    id: "tech-specs",
+    name: "Tech Specs (Installers)",
+    tabColor: "#6C757D",
+    rowCount: Math.max(screens.length + 5, 30),
+    columnCount: 14,
+    defaultColumnWidth: 80,
+    defaultRowHeight: 28,
+    freeze,
+    cellData: tsCellData,
+    columnData: tsColWidths,
+    mergeData: [],
+    showGridlines: 1,
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
+  };
+
+  // === SHEET 4: Install (Base) — per-zone structural/labor/electrical ===
+  sheetOrder.push("install-base");
+  const installCellData: Record<number, Record<number, any>> = {};
+  const installColWidths: Record<number, { w: number }> = {
+    0: { w: 4 }, 1: { w: 200 }, 2: { w: 80 }, 3: { w: 80 }, 4: { w: 80 },
+    5: { w: 80 }, 6: { w: 80 }, 7: { w: 80 }, 8: { w: 80 }, 9: { w: 80 }, 10: { w: 100 },
+  };
+
+  let installRow = 0;
+  // Title
+  installCellData[installRow++] = { 1: { v: `${projectName} — Install (Base)`, s: { bl: 1, fs: 14 } } };
+  installRow++; // blank
+
+  // Per-display install sections
+  screens.forEach((spec, si) => {
+    const pd = pricingDisplays.find((d) => d.name === spec.name);
+    const displayCost = pd?.hardwareCost ?? 0;
+    const installCost = pd?.installCost ?? 0;
+    const structCost = pd?.structuralCost ?? 0;
+    const elecCost = pd?.electricalCost ?? 0;
+    const engCost = pd?.engCost ?? 0;
+    const pmCost = pd?.pmCost ?? 0;
+    const margin = pd?.blendedMarginPct ?? 0.20;
+    const totalCost = displayCost + installCost + structCost + elecCost + engCost + pmCost;
+    const sellingPrice = margin > 0 && margin < 1 ? totalCost / (1 - margin) : totalCost;
+
+    // Display header
+    installCellData[installRow++] = {
+      1: { v: spec.name, s: { bl: 1, fs: 12, cl: { rgb: NAVY } } },
+    };
+
+    // Margin settings row
+    installCellData[installRow++] = {
+      1: { v: "Install Margin:" },
+      2: { v: margin, s: "percent" },
+      4: { v: "Electrical Margin:" },
+      5: { v: margin, s: "percent" },
+      7: { v: "ANC Margin:" },
+      8: { v: margin, s: "percent" },
+    };
+
+    // Column headers
+    installCellData[installRow++] = {
+      1: { v: "Item", s: "header" },
+      2: { v: "Sub 1", s: "header" },
+      3: { v: "Sub 2", s: "header" },
+      4: { v: "Sub 3", s: "header" },
+      5: { v: "Add'l Contingency", s: "header" },
+      6: { v: "Total Cost", s: "header" },
+      7: { v: "Margin %", s: "header" },
+      8: { v: "Selling Price", s: "header" },
+    };
+
+    const sectionStartRow = installRow;
+
+    // Structural Materials section
+    installCellData[installRow++] = { 1: { v: "STRUCTURAL MATERIALS", s: { bl: 1, bg: { rgb: LIGHT_GRAY } } } };
+    const structItems = ["Steel Fabrication", "Steel Finish", "Mounting Hardware", "Misc Materials"];
+    structItems.forEach((item, i) => {
+      const cost = i === 0 ? structCost * 0.6 : 0;
+      installCellData[installRow] = {
+        1: { v: item },
+        2: { v: 0, s: "currency" },
+        3: { v: 0, s: "currency" },
+        4: { v: 0, s: "currency" },
+        5: { v: 0, s: "currency" },
+        6: { f: `=SUM(C${installRow + 1}:F${installRow + 1})`, s: "currency" },
+        7: { v: margin, s: "percent" },
+        8: { f: `=IF(G${installRow + 1}>=1,F${installRow + 1},F${installRow + 1}/(1-G${installRow + 1}))`, s: "currency" },
+      };
+      installRow++;
+    });
+
+    // Structural Labor section
+    installCellData[installRow++] = { 1: { v: "STRUCTURAL LABOR & LED INSTALL", s: { bl: 1, bg: { rgb: LIGHT_GRAY } } } };
+    const laborItems = ["Structural Labor", "LED Installation", "Rigging", "Equipment Rental"];
+    laborItems.forEach((item, i) => {
+      const cost = i === 0 ? installCost * 0.5 : i === 1 ? installCost * 0.5 : 0;
+      installCellData[installRow] = {
+        1: { v: item },
+        2: { v: 0, s: "currency" },
+        3: { v: 0, s: "currency" },
+        4: { v: 0, s: "currency" },
+        5: { v: 0, s: "currency" },
+        6: { f: `=SUM(C${installRow + 1}:F${installRow + 1})`, s: "currency" },
+        7: { v: margin, s: "percent" },
+        8: { f: `=IF(G${installRow + 1}>=1,F${installRow + 1},F${installRow + 1}/(1-G${installRow + 1}))`, s: "currency" },
+      };
+      installRow++;
+    });
+
+    // Electrical section
+    installCellData[installRow++] = { 1: { v: "ELECTRICAL & DATA", s: { bl: 1, bg: { rgb: LIGHT_GRAY } } } };
+    const elecItems = ["Electrical Materials", "Data Materials", "Electrical Labor", "Data Labor", "Sub Panel", "Misc"];
+    elecItems.forEach((item, i) => {
+      const cost = i === 0 ? elecCost : 0;
+      installCellData[installRow] = {
+        1: { v: item },
+        2: { v: 0, s: "currency" },
+        3: { v: 0, s: "currency" },
+        4: { v: 0, s: "currency" },
+        5: { v: 0, s: "currency" },
+        6: { f: `=SUM(C${installRow + 1}:F${installRow + 1})`, s: "currency" },
+        7: { v: margin, s: "percent" },
+        8: { f: `=IF(G${installRow + 1}>=1,F${installRow + 1},F${installRow + 1}/(1-G${installRow + 1}))`, s: "currency" },
+      };
+      installRow++;
+    });
+
+    // Engineering section
+    installCellData[installRow++] = { 1: { v: "SUBMITTALS, ENGINEERING & PERMITS", s: { bl: 1, bg: { rgb: LIGHT_GRAY } } } };
+    const engItems = ["Structural Engineering", "Structural Certification", "Electrical Engineering", "Electrical Certification", "Permits"];
+    engItems.forEach((item, i) => {
+      const cost = i === 0 ? engCost : 0;
+      installCellData[installRow] = {
+        1: { v: item },
+        2: { v: 0, s: "currency" },
+        3: { v: 0, s: "currency" },
+        4: { v: 0, s: "currency" },
+        5: { v: 0, s: "currency" },
+        6: { f: `=SUM(C${installRow + 1}:F${installRow + 1})`, s: "currency" },
+        7: { v: margin, s: "percent" },
+        8: { f: `=IF(G${installRow + 1}>=1,F${installRow + 1},F${installRow + 1}/(1-G${installRow + 1}))`, s: "currency" },
+      };
+      installRow++;
+    });
+
+    // Zone Grand Total
+    installCellData[installRow++] = {
+      1: { v: "ZONE GRAND TOTAL", s: { bl: 1, cl: { rgb: WHITE }, bg: { rgb: NAVY } } },
+      6: { v: totalCost, s: { bl: 1, cl: { rgb: WHITE }, ...CURRENCY_FMT } },
+      8: { v: sellingPrice, s: { bl: 1, cl: { rgb: WHITE }, ...CURRENCY_FMT } },
+    };
+
+    installRow++; // separator
+  });
+
+  sheets["install-base"] = {
+    id: "install-base",
+    name: "Install (Base)",
+    tabColor: "#D97706",
+    rowCount: Math.max(installRow + 5, 50),
+    columnCount: 11,
+    defaultColumnWidth: 80,
+    defaultRowHeight: 28,
+    cellData: installCellData,
+    columnData: installColWidths,
+    mergeData: [],
+    showGridlines: 1,
+  };
+
+  // === SHEET 5: LED Display Request ===
+  sheetOrder.push("led-display-request");
+  const ldrCellData: Record<number, Record<number, any>> = {};
+  const ldrColWidths: Record<number, { w: number }> = {
+    0: { w: 140 }, 1: { w: 80 }, 2: { w: 80 }, 3: { w: 80 }, 4: { w: 80 },
+    5: { w: 80 }, 6: { w: 80 }, 7: { w: 80 }, 8: { w: 100 },
+  };
+
+  ldrCellData[0] = { 0: { v: "LED Display Request Form", s: { bl: 1, fs: 14 } } };
+  ldrCellData[2] = {
+    0: { v: "Display Name", s: "header" },
+    1: { v: "Location", s: "header" },
+    2: { v: "Width (ft)", s: "header" },
+    3: { v: "Height (ft)", s: "header" },
+    4: { v: "Pitch (mm)", s: "header" },
+    5: { v: "Service", s: "header" },
+    6: { v: "Environment", s: "header" },
+    7: { v: "Quantity", s: "header" },
+    8: { v: "Notes", s: "header" },
+  };
+
+  screens.forEach((spec, si) => {
+    const row = si + 3;
+    ldrCellData[row] = {
+      0: { v: spec.name },
+      1: { v: spec.location ?? "" },
+      2: { v: spec.widthFt ?? 0, s: "number2" },
+      3: { v: spec.heightFt ?? 0, s: "number2" },
+      4: { v: spec.pixelPitchMm ?? 0, s: "number2" },
+      5: { v: spec.serviceType ?? "" },
+      6: { v: spec.environment ?? "" },
+      7: { v: spec.quantity ?? 1 },
+      8: { v: "" },
+    };
+  });
+
+  sheets["led-display-request"] = {
+    id: "led-display-request",
+    name: "LED Display Request",
+    tabColor: "#6C757D",
+    rowCount: Math.max(screens.length + 5, 20),
+    columnCount: 9,
+    defaultColumnWidth: 80,
+    defaultRowHeight: 28,
+    cellData: ldrCellData,
+    columnData: ldrColWidths,
+    mergeData: [],
+    showGridlines: 1,
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
+  };
+
+  // === SHEET 6: Form ===
+  sheetOrder.push("form");
+  const formCellData: Record<number, Record<number, any>> = {};
+  formCellData[0] = { 0: { v: "Project Form Data", s: { bl: 1, fs: 14 } } };
+  formCellData[2] = { 0: { v: "Field", s: "header" }, 1: { v: "Value", s: "header" } };
+  const formFields = [
+    ["Project Name", projectName],
+    ["Client", projectInfo?.clientName ?? ""],
+    ["Venue", projectInfo?.venue ?? ""],
+    ["Location", projectInfo?.location ?? ""],
+    ["Document Type", projectInfo?.documentMode ?? "BUDGET"],
+    ["Number of Displays", screens.length.toString()],
+    ["Bond Required", "No"],
+    ["Union Labor", "No"],
+    ["Tax Rate", "0%"],
+    ["Payment Terms", "30/30/30/10"],
+  ];
+  formFields.forEach(([label, value], i) => {
+    formCellData[i + 3] = { 0: { v: label }, 1: { v: value } };
+  });
+
+  sheets["form"] = {
+    id: "form",
+    name: "Form",
+    tabColor: "#6C757D",
+    rowCount: 20,
+    columnCount: 3,
+    defaultColumnWidth: 140,
+    defaultRowHeight: 28,
+    cellData: formCellData,
+    columnData: { 0: { w: 140 }, 1: { w: 200 } },
+    mergeData: [],
+    showGridlines: 1,
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
+  };
+
+  // === SHEET 7: Config ===
+  sheetOrder.push("config");
+  const configCellData: Record<number, Record<number, any>> = {};
+  configCellData[0] = { 0: { v: "Configuration Settings", s: { bl: 1, fs: 14 } } };
+  configCellData[2] = {
+    0: { v: "Setting", s: "header" },
+    1: { v: "Value", s: "header" },
+    2: { v: "Description", s: "header" },
+  };
+  const configRows = [
+    ["LED Margin", "30%", "Default margin for LED hardware"],
+    ["Services Margin", "20%", "Default margin for installation services"],
+    ["CMS Margin", "35%", "Default margin for CMS/software"],
+    ["Bond Rate", "1.5%", "Bond as percentage of selling price"],
+    ["Tax Rate", "8.875%", "Sales tax rate (location-specific)"],
+    ["Steel Rate ($/lb)", "$55", "Steel fabrication rate"],
+    ["LED Install Rate ($/sqft)", "$105", "LED installation rate"],
+  ];
+  configRows.forEach(([setting, value, desc], i) => {
+    configCellData[i + 3] = { 0: { v: setting }, 1: { v: value }, 2: { v: desc } };
+  });
+
+  sheets["config"] = {
+    id: "config",
+    name: "Config",
+    tabColor: "#6C757D",
+    rowCount: 15,
+    columnCount: 3,
+    defaultColumnWidth: 140,
+    defaultRowHeight: 28,
+    cellData: configCellData,
+    columnData: { 0: { w: 140 }, 1: { w: 100 }, 2: { w: 250 } },
+    mergeData: [],
+    showGridlines: 1,
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
+  };
+
+  // === SHEET 8: Pricing ===
+  sheetOrder.push("pricing");
+  const pricingCellData: Record<number, Record<number, any>> = {};
+  pricingCellData[0] = { 0: { v: "Pricing Summary", s: { bl: 1, fs: 14 } } };
+  pricingCellData[2] = {
+    0: { v: "Category", s: "header" },
+    1: { v: "Cost", s: "header" },
+    2: { v: "Selling Price", s: "header" },
+    3: { v: "Margin %", s: "header" },
+  };
+
+  const totalLedCost = pricingDisplays.reduce((s, d) => s + d.hardwareCost, 0);
+  const totalInstallCost = pricingDisplays.reduce((s, d) => s + (d.installCost ?? 0), 0);
+  const totalStructCost = pricingDisplays.reduce((s, d) => s + (d.structuralCost ?? 0), 0);
+  const totalElecCost = pricingDisplays.reduce((s, d) => s + (d.electricalCost ?? 0), 0);
+  const totalEngCost = pricingDisplays.reduce((s, d) => s + (d.engCost ?? 0), 0);
+  const totalPmCost = pricingDisplays.reduce((s, d) => s + (d.pmCost ?? 0), 0);
+  const grandCost = totalLedCost + totalInstallCost + totalStructCost + totalElecCost + totalEngCost + totalPmCost;
+  const grandSell = pricingDisplays.reduce((s, d) => s + (d.totalSellingPrice ?? 0), 0);
+
+  const pricingRows = [
+    ["LED Hardware", totalLedCost, totalLedCost * 1.43, 0.30],
+    ["Structural Materials", totalStructCost, totalStructCost * 1.25, 0.20],
+    ["Installation Labor", totalInstallCost, totalInstallCost * 1.25, 0.20],
+    ["Electrical", totalElecCost, totalElecCost * 1.25, 0.20],
+    ["Engineering/Permits", totalEngCost, totalEngCost * 1.25, 0.20],
+    ["PM/Gen Conditions", totalPmCost, totalPmCost * 1.25, 0.20],
+    ["TOTAL", grandCost, grandSell, grandSell > 0 ? (grandSell - grandCost) / grandSell : 0],
   ];
 
-  const defaultServiceMargin = pricingDisplays[0]?.blendedMarginPct ?? 0.10;
-
-  for (const cat of serviceCategories) {
-    const cost = pricingDisplays.reduce((s, d) => s + ((d as any)[cat.field] ?? 0), 0);
-    if (cost === 0) continue;
-    const r = maRow;
-    maCellData[r] = {
-      0: { v: cat.label, s: "bold" },
-      1: { v: cost, s: "currency" },
-      2: { f: `=IF(E${r + 1}>0,B${r + 1}/(1-E${r + 1}),B${r + 1})`, s: "currency" },
-      3: { f: `=C${r + 1}-B${r + 1}`, s: "currency" },
-      4: { v: defaultServiceMargin, s: getMarginStyle(defaultServiceMargin) },
+  pricingRows.forEach(([cat, cost, sell, margin], i) => {
+    const isTotal = cat === "TOTAL";
+    pricingCellData[i + 3] = {
+      0: { v: cat, s: isTotal ? "total" : undefined },
+      1: { v: cost, s: isTotal ? "totalCurrency" : "currency" },
+      2: { v: sell, s: isTotal ? "totalCurrency" : "currency" },
+      3: { v: margin, s: isTotal ? "totalPercent" : "percent" },
     };
-    maRow++;
+  });
+
+  sheets["pricing"] = {
+    id: "pricing",
+    name: "Pricing",
+    tabColor: "#6C757D",
+    rowCount: 15,
+    columnCount: 4,
+    defaultColumnWidth: 120,
+    defaultRowHeight: 28,
+    cellData: pricingCellData,
+    columnData: { 0: { w: 150 }, 1: { w: 120 }, 2: { w: 120 }, 3: { w: 100 } },
+    mergeData: [],
+    showGridlines: 1,
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
+  };
+
+  // === SHEET 9: Extended Warranty (ANC) ===
+  sheetOrder.push("extended-warranty");
+  const warrantyCellData: Record<number, Record<number, any>> = {};
+  warrantyCellData[0] = { 0: { v: "Extended Warranty (ANC)", s: { bl: 1, fs: 14 } } };
+  warrantyCellData[2] = {
+    0: { v: "Year", s: "header" },
+    1: { v: "Base Cost", s: "header" },
+    2: { v: "Escalation", s: "header" },
+    3: { v: "Annual Cost", s: "header" },
+    4: { v: "Selling Price", s: "header" },
+  };
+
+  const warrantyBaseCost = grandCost * 0.02; // 2% of hardware cost as base
+  for (let year = 1; year <= 10; year++) {
+    const escalation = year <= 3 ? 1 : Math.pow(1.10, year - 3); // 10% annual escalation after year 3
+    const annualCost = warrantyBaseCost * escalation;
+    const sellPrice = annualCost * 1.25; // 20% margin
+    warrantyCellData[year + 2] = {
+      0: { v: `Year ${year}` },
+      1: { v: warrantyBaseCost, s: "currency" },
+      2: { v: escalation, s: "number2" },
+      3: { v: annualCost, s: "currency" },
+      4: { v: sellPrice, s: "currency" },
+    };
   }
 
-  // CMS placeholder
-  maCellData[maRow] = {
-    0: { v: "CMS (Content Management System)", s: "bold" },
-    1: { v: 0, s: "currency" },
-    2: { f: `=IF(E${maRow + 1}>0,B${maRow + 1}/(1-E${maRow + 1}),B${maRow + 1})`, s: "currency" },
-    3: { f: `=C${maRow + 1}-B${maRow + 1}`, s: "currency" },
-    4: { v: 0.10, s: "marginAmber" },
+  sheets["extended-warranty"] = {
+    id: "extended-warranty",
+    name: "Extended Warranty (ANC)",
+    tabColor: "#6C757D",
+    rowCount: 15,
+    columnCount: 5,
+    defaultColumnWidth: 100,
+    defaultRowHeight: 28,
+    cellData: warrantyCellData,
+    columnData: { 0: { w: 80 }, 1: { w: 100 }, 2: { w: 100 }, 3: { w: 100 }, 4: { w: 100 } },
+    mergeData: [],
+    showGridlines: 1,
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
   };
-  maRow++;
 
-  // Scoring placeholder
-  maCellData[maRow] = {
-    0: { v: "Scoring System", s: "bold" },
-    1: { v: 0, s: "currency" },
-    2: { f: `=IF(E${maRow + 1}>0,B${maRow + 1}/(1-E${maRow + 1}),B${maRow + 1})`, s: "currency" },
-    3: { f: `=C${maRow + 1}-B${maRow + 1}`, s: "currency" },
-    4: { v: 0.10, s: "marginAmber" },
-  };
-  maRow++;
+  // === SHEET 10: Resp Matrix ===
+  sheetOrder.push("resp-matrix");
+  const respCellData: Record<number, Record<number, any>> = {};
+  respCellData[0] = { 0: { v: `Project: ${projectName}`, s: { bl: 1, fs: 12 } } };
+  respCellData[1] = { 0: { v: `Date: ${new Date().toLocaleDateString()}` } };
 
-  // Custom line items
-  for (const d of customDisplays) {
-    const r = maRow;
-    const cost = d.hardwareCost + (d.installCost ?? 0) + (d.structuralCost ?? 0) + (d.pmCost ?? 0) + (d.engCost ?? 0);
-    maCellData[r] = {
-      0: { v: d.name, s: { bl: 1, cl: { rgb: "#2563EB" } } },
-      1: { v: cost, s: "currency" },
-      2: { f: `=IF(E${r + 1}>0,B${r + 1}/(1-E${r + 1}),B${r + 1})`, s: "currency" },
-      3: { f: `=C${r + 1}-B${r + 1}`, s: "currency" },
-      4: { v: d.blendedMarginPct, s: getMarginStyle(d.blendedMarginPct) },
+  let respRow = 3;
+  const respSections = [
+    {
+      title: "Administrative",
+      items: [
+        ["Provide accurate architectural, structural engineering, and AV drawings.", "", "X"],
+        ["Provide Payment and Performance Bond.", "NA", ""],
+        ["All required zoning, building, street or sidewalk permits.", "NA", ""],
+        ["Shipping of all equipment to site.", "X", ""],
+      ],
+    },
+    {
+      title: "Engineering & Submittals",
+      items: [
+        ["Customer responsible to ensure existing structure supports new equipment.", "", "X"],
+        ["Provide mechanical drawings, electrical drawings, and load calculations.", "X", ""],
+        ["Engineering and certification for new equipment attachments.", "X", ""],
+      ],
+    },
+    {
+      title: "Physical Installation",
+      items: [
+        ["Fabricate, deliver, and install support structure.", "X", ""],
+        ["Provide & Install LED components.", "X", ""],
+        ["Provide all required Floor/Site Protection.", "", "X"],
+      ],
+    },
+    {
+      title: "Electrical & Data Installation",
+      items: [
+        ["Submit electrical engineering drawings.", "X", ""],
+        ["Provide primary power feed to each display location.", "", "X"],
+        ["Furnish signal cables as specified by ANC.", "X", ""],
+        ["Labor to pull signal cable.", "X", ""],
+      ],
+    },
+    {
+      title: "Control System",
+      items: [
+        ["Provide climate controlled control room.", "", "X"],
+        ["Supply static IP address five (5) days prior to installation.", "", "X"],
+      ],
+    },
+    {
+      title: "Training",
+      items: [
+        ["Provide appropriate on-site operation and maintenance training.", "X", ""],
+        ["Perform final systems testing and commissioning.", "X", ""],
+      ],
+    },
+  ];
+
+  respSections.forEach((section) => {
+    // Section header
+    respCellData[respRow] = {
+      0: { v: section.title, s: { bl: 1, bg: { rgb: NAVY }, cl: { rgb: WHITE } } },
+      1: { v: "ANC", s: { bl: 1, bg: { rgb: NAVY }, cl: { rgb: WHITE }, ht: 2 } },
+      2: { v: "Purchaser", s: { bl: 1, bg: { rgb: NAVY }, cl: { rgb: WHITE }, ht: 2 } },
     };
-    maRow++;
+    respRow++;
+
+    section.items.forEach(([desc, anc, purchaser]) => {
+      respCellData[respRow] = {
+        0: { v: desc },
+        1: { v: anc, ht: 2 },
+        2: { v: purchaser, ht: 2 },
+      };
+      respRow++;
+    });
+
+    respRow++; // gap
+  });
+
+  sheets["resp-matrix"] = {
+    id: "resp-matrix",
+    name: "Resp Matrix",
+    tabColor: "#6C757D",
+    rowCount: respRow + 5,
+    columnCount: 3,
+    defaultColumnWidth: 300,
+    defaultRowHeight: 28,
+    cellData: respCellData,
+    columnData: { 0: { w: 350 }, 1: { w: 80 }, 2: { w: 80 } },
+    mergeData: [],
+    showGridlines: 1,
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
+  };
+
+  // === SHEET 11: Margin Analysis (CMS Only) ===
+  sheetOrder.push("margin-analysis-cms");
+  const cmsCellData: Record<number, Record<number, any>> = {};
+  cmsCellData[0] = { 0: { v: "Margin Analysis (CMS Only)", s: { bl: 1, fs: 14 } } };
+  cmsCellData[2] = {
+    0: { v: "Item", s: "header" },
+    1: { v: "Cost", s: "header" },
+    2: { v: "Selling Price", s: "header" },
+    3: { v: "Margin $", s: "header" },
+    4: { v: "Margin %", s: "header" },
+  };
+
+  const cmsItems = [
+    ["Design & Control Software", 0, 0, 0, 0.35],
+    ["Graphics Playback Engine", 0, 0, 0, 0.35],
+    ["Image Processing", 0, 0, 0, 0.35],
+    ["Dedicated LED Router/Switch", 0, 0, 0, 0.35],
+    ["Commissioning", 0, 0, 0, 0.20],
+    ["Event Support", 0, 0, 0, 0.20],
+    ["Project Management", 0, 0, 0, 0.20],
+    ["Integration Hardware", 0, 0, 0, 0.20],
+    ["Integration Labor", 0, 0, 0, 0.20],
+    ["Shipping", 0, 0, 0, 0.20],
+    ["Travel", 0, 0, 0, 0.20],
+  ];
+
+  cmsItems.forEach(([item, cost, sell, margin$, margin], i) => {
+    cmsCellData[i + 3] = {
+      0: { v: item },
+      1: { v: cost, s: "currency" },
+      2: { v: sell, s: "currency" },
+      3: { v: margin$, s: "currency" },
+      4: { v: margin, s: "percent" },
+    };
+  });
+
+  // CMS Total
+  const cmsTotalRow = cmsItems.length + 3;
+  cmsCellData[cmsTotalRow] = {
+    0: { v: "CMS TOTAL", s: "total" },
+    1: { f: `=SUM(B3:B${cmsTotalRow})`, s: "totalCurrency" },
+    2: { f: `=SUM(C3:C${cmsTotalRow})`, s: "totalCurrency" },
+    3: { f: `=C${cmsTotalRow + 1}-B${cmsTotalRow + 1}`, s: "totalCurrency" },
+    4: { f: `=IF(C${cmsTotalRow + 1}=0,0,D${cmsTotalRow + 1}/C${cmsTotalRow + 1})`, s: "totalPercent" },
+  };
+
+  sheets["margin-analysis-cms"] = {
+    id: "margin-analysis-cms",
+    name: "Margin Analysis (CMS Only)",
+    tabColor: "#217346",
+    rowCount: 20,
+    columnCount: 5,
+    defaultColumnWidth: 120,
+    defaultRowHeight: 28,
+    cellData: cmsCellData,
+    columnData: { 0: { w: 200 }, 1: { w: 100 }, 2: { w: 100 }, 3: { w: 100 }, 4: { w: 80 } },
+    mergeData: [],
+    showGridlines: 1,
+  };
+
+  // === SHEET 12: Travel (ANC) ===
+  sheetOrder.push("travel-anc");
+  const travelCellData: Record<number, Record<number, any>> = {};
+  travelCellData[0] = { 0: { v: `${projectName} — ANC Travel`, s: { bl: 1, fs: 14 } } };
+
+  let travelRow = 3;
+  const travelSections = [
+    { name: "Travel - Installation", items: [["Hotel", 300], ["Airfare", 1000], ["Car", 125], ["Per Diem", 100], ["Bundled", 10000]] },
+    { name: "Travel - Commissioning", items: [["Hotel", 300], ["Airfare", 1000], ["Car", 125], ["Per Diem", 100], ["Bundled", 10000]] },
+    { name: "Game Support", items: [["Hotel", 300], ["Airfare", 1000], ["Car", 125], ["Per Diem", 100], ["Bundled", 10000], ["Game Day Support", 1500]] },
+  ];
+
+  travelSections.forEach((section) => {
+    // Section header
+    travelCellData[travelRow] = {
+      0: { v: "", s: "header" },
+      1: { v: section.name, s: "header" },
+      2: { v: "Cost", s: "header" },
+      3: { v: "Quantity", s: "header" },
+      4: { v: "Total Cost", s: "header" },
+    };
+    travelRow++;
+
+    const sectionStartRow = travelRow;
+    section.items.forEach(([item, unitCost], i) => {
+      travelCellData[travelRow] = {
+        1: { v: item },
+        2: { v: unitCost, s: "currency" },
+        3: { v: 0 },
+        4: { f: `=C${travelRow + 1}*D${travelRow + 1}`, s: "currency" },
+      };
+      travelRow++;
+    });
+
+    // Section total
+    travelCellData[travelRow] = {
+      1: { v: "Total", s: "bold" },
+      4: { f: `=SUM(E${sectionStartRow + 1}:E${travelRow})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+    };
+    travelRow += 2;
+  });
+
+  sheets["travel-anc"] = {
+    id: "travel-anc",
+    name: "Travel (ANC)",
+    tabColor: "#D97706",
+    rowCount: travelRow + 5,
+    columnCount: 5,
+    defaultColumnWidth: 100,
+    defaultRowHeight: 28,
+    cellData: travelCellData,
+    columnData: { 0: { w: 30 }, 1: { w: 150 }, 2: { w: 80 }, 3: { w: 80 }, 4: { w: 100 } },
+    mergeData: [],
+    showGridlines: 1,
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
+  };
+
+  // === SHEET 13: P&L ===
+  sheetOrder.push("pnl");
+  const pnlCellData: Record<number, Record<number, any>> = {};
+  pnlCellData[0] = { 0: { v: `${projectName} — P&L`, s: { bl: 1, fs: 14 } } };
+  pnlCellData[2] = { 0: { v: "Project #:" }, 3: { v: "30/30/30/10" } };
+
+  pnlCellData[4] = {
+    0: { v: "PROJECTS BUDGET", s: { bl: 1, fs: 12 } },
+  };
+
+  pnlCellData[5] = {
+    0: { v: "", s: "header" },
+    1: { v: "Revenue", s: "header" },
+    2: { v: "Budgeted Cost", s: "header" },
+    3: { v: "Margin", s: "header" },
+  };
+
+  const pnlMargin = grandSell - grandCost;
+  pnlCellData[6] = {
+    0: { v: "Base Contract" },
+    1: { v: grandSell, s: "currency" },
+    2: { v: grandCost, s: "currency" },
+    3: { v: pnlMargin, s: "currency" },
+  };
+
+  pnlCellData[7] = {
+    0: { v: "TOTAL BASE CONTRACT", s: "total" },
+    1: { v: grandSell, s: "totalCurrency" },
+    2: { v: grandCost, s: "totalCurrency" },
+    3: { v: pnlMargin, s: "totalCurrency" },
+  };
+
+  pnlCellData[9] = { 0: { v: "Change Orders", s: { cl: { rgb: "#666666" } } } };
+  pnlCellData[10] = {
+    0: { v: "Total Change Order(s) Amount" },
+    1: { v: 0, s: "currency" },
+    2: { v: 0, s: "currency" },
+    3: { v: 0, s: "currency" },
+  };
+
+  pnlCellData[12] = {
+    0: { v: "Grand Total", s: { bl: 1 } },
+    1: { v: grandSell, s: { bl: 1, ...CURRENCY_FMT, bg: { rgb: "#D1FAE5" } } },
+    2: { v: grandCost, s: { bl: 1, ...CURRENCY_FMT, bg: { rgb: "#D1FAE5" } } },
+    3: { v: pnlMargin, s: { bl: 1, ...CURRENCY_FMT, bg: { rgb: "#D1FAE5" } } },
+  };
+
+  sheets["pnl"] = {
+    id: "pnl",
+    name: "P&L",
+    tabColor: "#D97706",
+    rowCount: 20,
+    columnCount: 4,
+    defaultColumnWidth: 120,
+    defaultRowHeight: 28,
+    cellData: pnlCellData,
+    columnData: { 0: { w: 180 }, 1: { w: 120 }, 2: { w: 120 }, 3: { w: 120 } },
+    mergeData: [],
+    showGridlines: 1,
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
+  };
+
+  // === SHEET 14: PO's ===
+  sheetOrder.push("pos");
+  const poCellData: Record<number, Record<number, any>> = {};
+  poCellData[0] = { 0: { v: `${projectName} — Purchase Orders`, s: { bl: 1, fs: 14 } } };
+
+  poCellData[2] = {
+    0: { v: "PO Number", s: "header" },
+    1: { v: "Vendor", s: "header" },
+    2: { v: "Title / Description", s: "header" },
+    3: { v: "Original Contract Amount", s: "header" },
+    4: { v: "Category", s: "header" },
+  };
+
+  // 30 empty PO slots
+  for (let i = 0; i < 30; i++) {
+    poCellData[i + 3] = {
+      0: { v: "" },
+      1: { v: "" },
+      2: { v: "" },
+      3: { v: 0, s: "currency" },
+      4: { v: "" },
+    };
   }
 
-  // Total row
-  const maTotalRow = maRow;
-  maCellData[maTotalRow] = {
-    0: { v: "TOTAL", s: "total" },
-    1: { f: `=SUM(B${maDisplayStartRow + 1}:B${maTotalRow})`, s: "totalCurrency" },
-    2: { f: `=SUM(C${maDisplayStartRow + 1}:C${maTotalRow})`, s: "totalCurrency" },
-    3: { f: `=C${maTotalRow + 1}-B${maTotalRow + 1}`, s: "totalCurrency" },
-    4: { f: `=IF(C${maTotalRow + 1}>0,(C${maTotalRow + 1}-B${maTotalRow + 1})/C${maTotalRow + 1},0)`, s: "totalPercent" },
+  sheets["pos"] = {
+    id: "pos",
+    name: "PO's",
+    tabColor: "#D97706",
+    rowCount: 35,
+    columnCount: 5,
+    defaultColumnWidth: 120,
+    defaultRowHeight: 28,
+    cellData: poCellData,
+    columnData: { 0: { w: 100 }, 1: { w: 150 }, 2: { w: 200 }, 3: { w: 150 }, 4: { w: 100 } },
+    mergeData: [],
+    showGridlines: 1,
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
   };
 
-  // Freeze header row
-  const freeze = { xSplit: 0, ySplit: 1, startRow: 1, startColumn: 0 };
+  // === SHEET 15: Cash Flow ===
+  sheetOrder.push("cash-flow");
+  const cfCellData: Record<number, Record<number, any>> = {};
+  cfCellData[0] = { 0: { v: `${projectName} — Cash Flow`, s: { bl: 1, fs: 14 } } };
+  cfCellData[2] = { 3: { v: "Payment Terms: 30/30/30/10", s: { bl: 1 } } };
+
+  cfCellData[3] = {
+    3: { v: "Payment Phases" },
+    4: { v: "Contract Signed" },
+    5: { v: "Product Shipping" },
+    6: { v: "Substantial Completion" },
+    7: { v: "Sign Off" },
+  };
+
+  cfCellData[4] = {
+    3: { v: "Percentages" },
+    4: { v: 0.30, s: "percent" },
+    5: { v: 0.30, s: "percent" },
+    6: { v: 0.30, s: "percent" },
+    7: { v: 0.10, s: "percent" },
+  };
+
+  cfCellData[6] = { 1: { v: "Contract Award Date" }, 2: { v: "TBD" } };
+  cfCellData[7] = { 1: { v: "Scheduled Completion" }, 2: { v: "TBD" } };
+
+  cfCellData[9] = {
+    0: { v: "", s: "header" },
+    1: { v: "Revenue", s: "header" },
+    2: { v: "Expenses", s: "header" },
+    3: { v: "Gross Profit", s: "header" },
+    4: { v: "Gross Profit %", s: "header" },
+    5: { v: "Budget Tracking (+/-)", s: "header" },
+  };
+
+  cfCellData[10] = {
+    1: { v: grandSell, s: "currency" },
+    2: { v: grandCost, s: "currency" },
+    3: { v: grandSell - grandCost, s: "currency" },
+    4: { v: grandSell > 0 ? (grandSell - grandCost) / grandSell : 0, s: "percent" },
+    5: { v: 0, s: "currency" },
+  };
+
+  sheets["cash-flow"] = {
+    id: "cash-flow",
+    name: "Cash Flow",
+    tabColor: "#D97706",
+    rowCount: 25,
+    columnCount: 8,
+    defaultColumnWidth: 100,
+    defaultRowHeight: 28,
+    cellData: cfCellData,
+    columnData: { 0: { w: 30 }, 1: { w: 120 }, 2: { w: 120 }, 3: { w: 120 }, 4: { w: 100 }, 5: { w: 120 } },
+    mergeData: [],
+    showGridlines: 1,
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
+  };
+
+  // === SHEET 16: BID FORM ===
+  sheetOrder.push("bid-form");
+  const bidCellData: Record<number, Record<number, any>> = {};
+  bidCellData[0] = { 0: { v: "BID FORM", s: { bl: 1, fs: 16 } } };
+  bidCellData[1] = { 0: { v: projectName, s: { bl: 1, fs: 12 } } };
+
+  bidCellData[3] = {
+    0: { v: "Item #", s: "header" },
+    1: { v: "Description", s: "header" },
+    2: { v: "Quantity", s: "header" },
+    3: { v: "Unit Price", s: "header" },
+    4: { v: "Total Price", s: "header" },
+  };
+
+  // Display line items
+  screens.forEach((spec, si) => {
+    const pd = pricingDisplays.find((d) => d.name === spec.name);
+    const row = si + 4;
+    bidCellData[row] = {
+      0: { v: si + 1 },
+      1: { v: spec.name },
+      2: { v: spec.quantity ?? 1 },
+      3: { v: pd?.totalSellingPrice ?? 0, s: "currency" },
+      4: { f: `=D${row + 1}*C${row + 1}`, s: "currency" },
+    };
+  });
+
+  const bidTotalRow = screens.length + 4;
+  bidCellData[bidTotalRow] = {
+    1: { v: "SUBTOTAL", s: "bold" },
+    4: { f: screens.length > 0 ? `=SUM(E4:E${bidTotalRow})` : "=0", s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+  };
+
+  bidCellData[bidTotalRow + 1] = { 1: { v: "TAX" }, 4: { v: 0, s: "currency" } };
+  bidCellData[bidTotalRow + 2] = { 1: { v: "BOND" }, 4: { v: 0, s: "currency" } };
+
+  bidCellData[bidTotalRow + 3] = {
+    1: { v: "GRAND TOTAL", s: { bl: 1, fs: 12 } },
+    4: { f: `=E${bidTotalRow + 1}+E${bidTotalRow + 2}+E${bidTotalRow + 3}`, s: { bl: 1, ...CURRENCY_FMT } },
+  };
+
+  sheets["bid-form"] = {
+    id: "bid-form",
+    name: "BID FORM",
+    tabColor: "#6C757D",
+    rowCount: bidTotalRow + 10,
+    columnCount: 5,
+    defaultColumnWidth: 120,
+    defaultRowHeight: 28,
+    cellData: bidCellData,
+    columnData: { 0: { w: 60 }, 1: { w: 200 }, 2: { w: 80 }, 3: { w: 100 }, 4: { w: 120 } },
+    mergeData: [],
+    showGridlines: 1,
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
+  };
 
   return {
     id: "rfp-workbook",
@@ -328,38 +1407,30 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     appVersion: "1.0.0",
     locale: "EN_US" as any,
     styles,
-    sheetOrder: ["led-cost-sheet", "margin-analysis"],
-    sheets: {
-      "led-cost-sheet": {
-        id: "led-cost-sheet",
-        name: "LED Cost Sheet",
-        tabColor: "#0A52EF",
-        rowCount: Math.max(totalRowIdx + 5, 50),
-        columnCount: 20,
-        defaultColumnWidth: 80,
-        defaultRowHeight: 28,
-        freeze,
-        cellData: ledCellData,
-        columnData: ledColWidths,
-        mergeData: [],
-        showGridlines: 1,
-      },
-      "margin-analysis": {
-        id: "margin-analysis",
-        name: "Margin Analysis",
-        tabColor: "#217346",
-        rowCount: Math.max(maTotalRow + 5, 30),
-        columnCount: 5,
-        defaultColumnWidth: 120,
-        defaultRowHeight: 28,
-        freeze,
-        cellData: maCellData,
-        columnData: maColWidths,
-        mergeData: [],
-        showGridlines: 1,
-      },
-    },
+    sheetOrder,
+    sheets,
   };
+}
+
+// Helper to get Margin Analysis total row for cross-sheet reference
+function getMarginAnalysisTotalRow(pricingDocument: any, pricingDisplays: PricingDisplay[]): number {
+  const pricingTables = pricingDocument?.tables || [];
+  const hasPricingTables = pricingTables.length > 0 && pricingTables.some((t: any) => t.items?.length > 0);
+  
+  if (hasPricingTables) {
+    // Count rows: 4 header rows + for each table: header + items + subtotal + tax + bond + grand total + alternates + separator
+    let row = 5;
+    for (const table of pricingTables) {
+      const items = (table.items || []).filter((item: any) => !item.isHidden);
+      row += 1 + items.length + 4; // header + items + subtotal + tax + bond + grand total
+      row += (table.alternates?.length || 0) > 0 ? 1 + table.alternates.length : 0;
+      row++; // separator
+    }
+    return row; // DOCUMENT TOTAL row
+  } else {
+    // Fallback: 4 header rows + header + displays + total + tax + bond + subtotal
+    return 4 + 1 + pricingDisplays.length + 4;
+  }
 }
 
 function getMarginStyle(margin: number): string | Record<string, any> {
@@ -515,43 +1586,31 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
   }, []);
 
   // Rebuild workbook when props change (screens/pricing data arriving after mount)
-  // We track a key to detect when external data changes and rebuild the entire workbook.
-  const prevPropsKeyRef = useRef("");
+  const lastBuiltRef = useRef("");
+  
   useEffect(() => {
     if (!ready || !apiRef.current) {
-      console.log("[UniverSpreadsheet] Rebuild useEffect skipped — not ready:", { ready, hasApi: !!apiRef.current });
       return;
     }
 
-    // Build a key from things that change externally (screens + pricing displays)
-    const key = `${props.screens.length}|${props.pricingDisplays.map(d =>
-      `${d.name}:${d.matchedProduct?.model ?? ""}:${d.matchedProduct?.pitch ?? ""}:${d.hardwareCost}`
-    ).join("|")}`;
-
-    console.log("[UniverSpreadsheet] Rebuild check:", {
-      key,
-      prevKey: prevPropsKeyRef.current,
-      screensLength: props.screens.length,
-      displaysLength: props.pricingDisplays.length,
+    // Serialize current props to detect changes
+    const currentKey = JSON.stringify({
+      screens: props.screens.map(s => ({ n: s.name, q: s.quantity, p: s.pixelPitchMm })),
+      displays: props.pricingDisplays.map(d => ({ n: d.name, c: d.hardwareCost, s: d.totalSellingPrice, m: d.blendedMarginPct })),
+      docTables: props.pricingDocument?.tables?.length ?? 0,
     });
 
-    // First time after ready — always rebuild if we have data
-    // After that, only rebuild if key changed
-    const isFirstBuild = prevPropsKeyRef.current === "";
-    const keyChanged = key !== prevPropsKeyRef.current;
-
-    prevPropsKeyRef.current = key;
-
-    // Skip rebuild only if this isn't the first build AND key hasn't changed
-    if (!isFirstBuild && !keyChanged) {
-      console.log("[UniverSpreadsheet] Skipping rebuild — key unchanged");
+    // Skip if already built this exact data
+    if (currentKey === lastBuiltRef.current) {
       return;
     }
+    lastBuiltRef.current = currentKey;
+
+    console.log("[UniverSpreadsheet] Rebuilding workbook with", props.screens.length, "screens");
 
     // Rebuild the workbook with new data
     const api = apiRef.current;
     try {
-      console.log("[UniverSpreadsheet] Rebuilding workbook with", props.screens.length, "screens");
       const newData = buildWorkbookData(props);
       workbookDataRef.current = newData;
       // Dispose old and create new workbook
@@ -564,7 +1623,7 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
     } catch (err) {
       console.warn("[UniverSpreadsheet] Rebuild failed:", err);
     }
-  }, [ready, props.screens, props.pricingDisplays, props.pricingSummary]);
+  });
 
   if (error) {
     return (

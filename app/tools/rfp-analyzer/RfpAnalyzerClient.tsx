@@ -111,6 +111,18 @@ interface AnalysisResult {
     cost: number | null;
     section: string;
   }>;
+  // Internal audit data for weight/power/btu calculations
+  internalAudit?: {
+    perScreen?: Array<{
+      quantity?: number;
+      pixelMatrix?: string;
+      pixelResolution?: string;
+      brightnessNits?: number;
+      estimatedWeightLbs?: number;
+      totalMaxPowerW?: number;
+    }>;
+    totals?: any;
+  };
 }
 
 interface PricingPreview {
@@ -2186,6 +2198,17 @@ export default function RfpAnalyzerClient() {
                   screens={editableSpecs.length > 0 ? editableSpecs : (result?.screens || [])}
                   pricingDisplays={pricingPreview.displays}
                   pricingSummary={pricingPreview.summary}
+                  pricingDocument={result?.pricingDocument}
+                  projectInfo={{
+                    projectName: result?.project?.projectName || result?.project?.clientName,
+                    clientName: result?.project?.clientName,
+                    venue: result?.project?.venue,
+                    location: result?.project?.location,
+                    documentMode: result?.project?.documentMode,
+                    createdAt: result?.createdAt,
+                    updatedAt: result?.updatedAt,
+                  }}
+                  internalAudit={result?.internalAudit}
                   availableProducts={availableProducts}
                   onSpecEdit={(screenIdx, field, value) => {
                     setResult(prev => {

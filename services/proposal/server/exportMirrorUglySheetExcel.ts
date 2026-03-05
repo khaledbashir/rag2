@@ -198,16 +198,28 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
   const pricingTables: any[] = args.pricingDocument?.tables || [];
 
   // Processor & Equipment grouping — only for system-generated exports (not Mirror Mode uploads)
+  // NOTE: Spare parts is NOT in this list — it rolls into LED Hardware instead
   const EQUIPMENT_PATTERNS = [
     /\bsending\s+card\b/i,
     /\bsignal\s+cable\s+kit\b/i,
     /\bbackup\s+video\s+processor\b/i,
     /\bweatherproof\s+enclosure\b/i,
-    /\bspare\s+parts\s+package\b/i,
+    /\bvideo\s+processor\b/i,
+    /\bmedia\s+player\b/i,
+    /\breceiver\b/i,
+    /\bpower\s+supply\b/i,
+    /\bmount\b/i,
+    /\bcable\b/i,
   ];
+  // Spare parts pattern — rolled into LED Hardware, NOT Processor & Equipment
+  const SPARE_PARTS_PATTERN = /\bspare\s+parts\b/i;
+  
   const isSystemGenerated = args.pricingDocument?.mode !== "MIRROR";
   function isEquipmentItem(desc: string): boolean {
     return EQUIPMENT_PATTERNS.some((re) => re.test(desc));
+  }
+  function isSpareParts(desc: string): boolean {
+    return SPARE_PARTS_PATTERN.test(desc);
   }
 
   // Track base-only document total for Project Summary (set in both branches below)
@@ -227,6 +239,31 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     for (const table of pricingTables) {
       let items: any[] = table.items || [];
       if (items.length === 0) continue;
+
+      // === SPARE PARTS ROLL-IN: Add to LED Hardware, remove from list ===
+      let sparePartsCost = 0;
+      let sparePartsSell = 0;
+      const nonSpareItems: any[] = [];
+      for (const item of items) {
+        if (!item.isHidden && isSpareParts(item.description || "")) {
+          sparePartsCost += toNumber(item.cost) || 0;
+          sparePartsSell += toNumber(item.sellingPrice) || 0;
+        } else {
+          nonSpareItems.push(item);
+        }
+      }
+      items = nonSpareItems;
+      
+      // Find LED Hardware line and add spare parts cost/sell to it
+      if (sparePartsCost > 0 || sparePartsSell > 0) {
+        const ledItem = items.find((it: any) => 
+          !it.isHidden && /LED|Display|Hardware/i.test(it.description || "")
+        );
+        if (ledItem) {
+          ledItem.cost = (toNumber(ledItem.cost) || 0) + sparePartsCost;
+          ledItem.sellingPrice = (toNumber(ledItem.sellingPrice) || 0) + sparePartsSell;
+        }
+      }
 
       // Group Processor & Equipment items (system-generated only)
       let equipmentGroupItem: { description: string; sellingPrice: number; cost: number | null } | null = null;
