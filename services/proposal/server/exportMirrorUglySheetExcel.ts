@@ -197,6 +197,19 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
   const totals = args.internalAudit?.totals || {};
   const pricingTables: any[] = args.pricingDocument?.tables || [];
 
+  // Processor & Equipment grouping — only for system-generated exports (not Mirror Mode uploads)
+  const EQUIPMENT_PATTERNS = [
+    /\bsending\s+card\b/i,
+    /\bsignal\s+cable\s+kit\b/i,
+    /\bbackup\s+video\s+processor\b/i,
+    /\bweatherproof\s+enclosure\b/i,
+    /\bspare\s+parts\s+package\b/i,
+  ];
+  const isSystemGenerated = args.pricingDocument?.mode !== "MIRROR";
+  function isEquipmentItem(desc: string): boolean {
+    return EQUIPMENT_PATTERNS.some((re) => re.test(desc));
+  }
+
   // Track base-only document total for Project Summary (set in both branches below)
   let finalDocSellSum = 0;
   let marginDocTotalRow = 0; // Row number of DOCUMENT TOTAL in Margin Analysis (for cross-sheet ref)
@@ -212,8 +225,34 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     const grandTotalSellRows: number[] = []; // Col C grand total rows (base sections only)
 
     for (const table of pricingTables) {
-      const items: any[] = table.items || [];
+      let items: any[] = table.items || [];
       if (items.length === 0) continue;
+
+      // Group Processor & Equipment items (system-generated only)
+      let equipmentGroupItem: { description: string; sellingPrice: number; cost: number | null } | null = null;
+      if (isSystemGenerated) {
+        const equipItems: any[] = [];
+        const regularItems: any[] = [];
+        for (const item of items) {
+          if (!item.isHidden && isEquipmentItem(item.description || "")) {
+            equipItems.push(item);
+          } else {
+            regularItems.push(item);
+          }
+        }
+        if (equipItems.length > 0) {
+          let groupSell = 0;
+          let groupCost: number | null = null;
+          for (const eq of equipItems) {
+            groupSell += toNumber(eq.sellingPrice);
+            if (eq.cost != null) {
+              groupCost = (groupCost ?? 0) + toNumber(eq.cost);
+            }
+          }
+          equipmentGroupItem = { description: "Processor and Equipment", sellingPrice: groupSell, cost: groupCost };
+          items = regularItems;
+        }
+      }
 
       // Section header row — only section name + "Selling Price" (clean, client-facing)
       const headerRow = marginSheet.getRow(r);
@@ -225,12 +264,15 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
       marginSheet.getCell(`A${r}`).alignment = { vertical: "middle", horizontal: "left" };
       r++;
 
+      // Build combined line items list (regular + grouped equipment if applicable)
+      const exportItems = equipmentGroupItem ? [...items, equipmentGroupItem] : items;
+
       // Line items — A=description, B=selling price, F=cost (hidden column for SUM formulas)
       const firstItemRow = r;
       let sectionCostSum = 0;
       let sectionSellSum = 0;
       let hasCostData = false;
-      for (const item of items) {
+      for (const item of exportItems) {
         if (item.isHidden) continue;
         const sell = toNumber(item.sellingPrice);
         const cost = item.cost != null ? toNumber(item.cost) : null;
