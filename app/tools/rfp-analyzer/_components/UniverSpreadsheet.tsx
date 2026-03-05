@@ -7,7 +7,7 @@
  * formula recalculation, proper formatting, and full spreadsheet UX.
  */
 
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { ExtractedLEDSpec } from "@/services/rfp/unified/types";
 import type { PricingDisplay, PricingSummary } from "./rfpWorkbookBuilder";
 
@@ -1452,83 +1452,53 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Build workbook data from current props
+  const workbookDataRef = useRef(buildWorkbookData(props));
+
+  // Ref for rebuild deduplication
+  const lastBuiltRef = useRef("");
+
   // Hydration safety: don't render until client-side mount
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Debug: log props received
-  console.log("[UniverSpreadsheet] Props received:", {
-    mounted,
-    screensLength: props.screens?.length ?? 0,
-    pricingDisplaysLength: props.pricingDisplays?.length ?? 0,
-    firstScreen: props.screens?.[0]?.name ?? null,
-    firstDisplay: props.pricingDisplays?.[0]?.name ?? null,
-  });
-  console.log("[UniverSpreadsheet] Full screens:", JSON.stringify(props.screens, null, 2));
-  console.log("[UniverSpreadsheet] Full pricingDisplays:", JSON.stringify(props.pricingDisplays, null, 2));
-  console.log("[UniverSpreadsheet] Full pricingSummary:", JSON.stringify(props.pricingSummary, null, 2));
-
-  // Build workbook data from current props
-  const workbookDataRef = useRef(buildWorkbookData(props));
-  
-  // Debug: log the workbook data being built
-  console.log("[UniverSpreadsheet] buildWorkbookData LED Cost Sheet cellData:", 
-    JSON.stringify(workbookDataRef.current.sheets['led-cost-sheet'].cellData, null, 2));
-  console.log("[UniverSpreadsheet] buildWorkbookData Margin Analysis cellData:", 
-    JSON.stringify(workbookDataRef.current.sheets['margin-analysis'].cellData, null, 2));
-
-  // Don't render anything during SSR — prevents hydration error #418
-  if (!mounted) return null;
-
-  // Initialize Univer — runs once on mount
+  // Initialize Univer — runs once after mounted
   useEffect(() => {
-    console.log("[UniverSpreadsheet] MOUNTED — useEffect running");
+    if (!mounted) return;
+
     let disposed = false;
 
     async function init() {
       const el = containerRef.current;
-      console.log("[UniverSpreadsheet] init() called, container:", el, "dimensions:", el?.offsetWidth, "x", el?.offsetHeight);
-      if (!el || disposed) {
-        console.warn("[UniverSpreadsheet] init() aborted — no container or disposed");
-        return;
-      }
+      if (!el || disposed) return;
 
       try {
         // Load Univer CSS via <link> tag — NOT via import (which webpack hoists into SSR)
         if (!document.getElementById("univer-sheets-css")) {
-          console.log("[UniverSpreadsheet] injecting CSS <link> tag...");
           const link = document.createElement("link");
           link.id = "univer-sheets-css";
           link.rel = "stylesheet";
           link.href = "/univer-sheets.css";
           document.head.appendChild(link);
           await new Promise<void>((resolve) => {
-            link.onload = () => { console.log("[UniverSpreadsheet] CSS loaded"); resolve(); };
-            link.onerror = () => { console.warn("[UniverSpreadsheet] CSS failed to load"); resolve(); };
+            link.onload = () => resolve();
+            link.onerror = () => resolve();
           });
         }
 
-        console.log("[UniverSpreadsheet] importing @univerjs/presets...");
         const { createUniver, LocaleType, mergeLocales } = await import("@univerjs/presets");
-        console.log("[UniverSpreadsheet] importing @univerjs/preset-sheets-core...");
         const { UniverSheetsCorePreset } = await import("@univerjs/preset-sheets-core");
         const localeModule = await import("@univerjs/preset-sheets-core/locales/en-US");
         const UniverPresetSheetsCoreEnUS = localeModule.default;
-        console.log("[UniverSpreadsheet] all imports loaded successfully");
 
         if (disposed) return;
 
         // Univer needs a container with non-zero dimensions.
         // Force a layout pass so the container has real pixel size.
         await new Promise((r) => requestAnimationFrame(r));
-        console.log("[UniverSpreadsheet] post-rAF dimensions:", el.offsetWidth, "x", el.offsetHeight);
-        if (disposed || !el.offsetHeight) {
-          console.warn("[UniverSpreadsheet] aborted — container has zero height:", el.offsetHeight);
-          return;
-        }
+        if (disposed || !el.offsetHeight) return;
 
-        console.log("[UniverSpreadsheet] calling createUniver...");
         const { univerAPI } = createUniver({
           locale: LocaleType.EN_US,
           locales: {
@@ -1540,7 +1510,6 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
             }),
           ],
         });
-        console.log("[UniverSpreadsheet] createUniver succeeded, univerAPI:", !!univerAPI);
 
         if (disposed) {
           univerAPI.dispose();
@@ -1550,9 +1519,7 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
         apiRef.current = univerAPI;
 
         // Create workbook with pre-built data
-        console.log("[UniverSpreadsheet] creating workbook with", Object.keys(workbookDataRef.current.sheets).length, "sheets");
         univerAPI.createWorkbook(workbookDataRef.current);
-        console.log("[UniverSpreadsheet] workbook created successfully");
 
         // Listen for cell value changes
         univerAPI.addEvent(univerAPI.Event.SheetValueChanged, (params: any) => {
@@ -1565,8 +1532,14 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
         await new Promise((r) => setTimeout(r, 500));
         if (disposed) { univerAPI.dispose(); return; }
 
+        // Mark the initial build key so rebuild effect doesn't double-build
+        lastBuiltRef.current = JSON.stringify({
+          screens: propsRef.current.screens.map(s => ({ n: s.name, q: s.quantity, p: s.pixelPitchMm })),
+          displays: propsRef.current.pricingDisplays.map(d => ({ n: d.name, c: d.hardwareCost, s: d.totalSellingPrice, m: d.blendedMarginPct })),
+          docTables: propsRef.current.pricingDocument?.tables?.length ?? 0,
+        });
+
         setReady(true);
-        console.log("[UniverSpreadsheet] ready = true");
       } catch (err: any) {
         console.error("[UniverSpreadsheet] init error:", err);
         setError(err?.message || "Failed to initialize spreadsheet");
@@ -1583,15 +1556,11 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [mounted]);
 
   // Rebuild workbook when props change (screens/pricing data arriving after mount)
-  const lastBuiltRef = useRef("");
-  
   useEffect(() => {
-    if (!ready || !apiRef.current) {
-      return;
-    }
+    if (!ready || !apiRef.current) return;
 
     // Serialize current props to detect changes
     const currentKey = JSON.stringify({
@@ -1601,29 +1570,27 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
     });
 
     // Skip if already built this exact data
-    if (currentKey === lastBuiltRef.current) {
-      return;
-    }
+    if (currentKey === lastBuiltRef.current) return;
     lastBuiltRef.current = currentKey;
 
     console.log("[UniverSpreadsheet] Rebuilding workbook with", props.screens.length, "screens");
 
-    // Rebuild the workbook with new data
     const api = apiRef.current;
     try {
       const newData = buildWorkbookData(props);
       workbookDataRef.current = newData;
-      // Dispose old and create new workbook
       const oldWb = api.getActiveWorkbook?.();
       if (oldWb) {
         try { oldWb.dispose?.(); } catch { /* ignore */ }
       }
       api.createWorkbook(newData);
-      console.log("[UniverSpreadsheet] Workbook rebuilt successfully");
     } catch (err) {
       console.warn("[UniverSpreadsheet] Rebuild failed:", err);
     }
   });
+
+  // Don't render anything during SSR — prevents hydration error #418
+  if (!mounted) return null;
 
   if (error) {
     return (
