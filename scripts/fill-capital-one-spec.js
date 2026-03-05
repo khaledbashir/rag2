@@ -343,9 +343,7 @@ async function main() {
     ws.getCell("A8").value = "OEM PROCESSOR MANUFACTURER:";
     ws.mergeCells("F8:J8");
     // Tight pitches (<=1.5mm) — Eric confirming correct name. Others → Novastar.
-    const isTightPitch = pitchMm <= 1.5;
-    ws.getCell("F8").value = isTightPitch ? JEREMY_RULES.processorTightPitch : JEREMY_RULES.processorDefault;
-    if (isTightPitch) ws.getCell("F8").font = { italic: true, color: { argb: "FFDC2626" } };
+    ws.getCell("F8").value = JEREMY_RULES.processorDefault;
 
     // ── Row 9: FACTORY ──
     ws.mergeCells("A9:E9");
