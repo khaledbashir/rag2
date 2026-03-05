@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import UploadZone, { type PipelineEvent } from "./_components/UploadZone";
 import PipelineCheckpoint from "./_components/PipelineCheckpoint";
@@ -254,6 +254,7 @@ function detectSpecMismatches(
 
 export default function RfpAnalyzerClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const [phase, setPhase] = useState<Phase>("upload");
   const [events, setEvents] = useState<PipelineEvent[]>([]);
@@ -263,6 +264,7 @@ export default function RfpAnalyzerClient() {
   const [fileInfo, setFileInfo] = useState<{ filename: string; pageCount: number; sizeMb: string } | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const loadedFromDbRef = useRef(false);
 
   // Pipeline step states
   const [downloading, setDownloading] = useState<string | null>(null);
@@ -336,6 +338,102 @@ export default function RfpAnalyzerClient() {
       }
     }, 2000);
   }, []);
+
+  // ========================================================================
+  // Auto-load from DB when ?id=xxx is in URL (persistence across refresh)
+  // ========================================================================
+
+  useEffect(() => {
+    const analysisId = searchParams.get("id");
+    if (!analysisId || loadedFromDbRef.current || result) return;
+    loadedFromDbRef.current = true;
+
+    (async () => {
+      try {
+        setPhase("processing");
+        setEvents([{ type: "stage", stage: "uploading", message: "Loading saved analysis..." }]);
+
+        const res = await fetch(`/api/rfp/analyses/${analysisId}`);
+        if (!res.ok) {
+          if (res.status === 404) {
+            // Analysis deleted or invalid — clear URL and show upload
+            router.replace("/tools/rfp-analyzer", { scroll: false });
+            setPhase("upload");
+            return;
+          }
+          throw new Error(`Failed to load analysis (${res.status})`);
+        }
+
+        const data = await res.json();
+
+        // Parse JSON blobs if they come as strings (Prisma sometimes does this)
+        const parse = (v: any, fallback: any) => {
+          if (v == null) return fallback;
+          if (typeof v === "string") try { return JSON.parse(v); } catch { return fallback; }
+          return v;
+        };
+
+        const screens = parse(data.screens, []);
+        const requirements = parse(data.requirements, []);
+        const project = parse(data.project, {});
+        const triage = parse(data.triage, []);
+        const pages = parse(data.pages, []);
+        const pricingDoc = parse(data.pricingDocument, null);
+        const mirrorPricing = parse(data.mirrorModePricing, null);
+
+        const loaded: AnalysisResult = {
+          id: data.id,
+          screens,
+          requirements,
+          project: {
+            clientName: project.clientName ?? null,
+            projectName: project.projectName ?? null,
+            venue: project.venue ?? null,
+            location: project.location ?? null,
+            isOutdoor: project.isOutdoor ?? false,
+            isUnionLabor: project.isUnionLabor ?? false,
+            bondRequired: project.bondRequired ?? false,
+            specialRequirements: project.specialRequirements ?? [],
+          },
+          stats: {
+            totalPages: data.pageCount ?? 0,
+            relevantPages: data.relevantPages ?? 0,
+            noisePages: data.noisePages ?? 0,
+            drawingPages: data.drawingPages ?? 0,
+            specsFound: data.specsFound ?? screens.length,
+            processingTimeMs: data.processingTimeMs ?? 0,
+          },
+          triage,
+          pages,
+          aiWorkspaceSlug: data.aiWorkspaceSlug ?? null,
+          pricingDocument: pricingDoc,
+          mirrorModePricing: mirrorPricing,
+        };
+
+        setResult(loaded);
+        setEditableSpecs(screens);
+        setFileInfo({
+          filename: data.filename || "Loaded from history",
+          pageCount: data.pageCount ?? 0,
+          sizeMb: ((data.fileSize ?? 0) / 1024 / 1024).toFixed(1),
+        });
+
+        setEvents([
+          { type: "stage", stage: "uploaded", message: "Loaded from database" },
+          { type: "stage", stage: "extracted", message: `${screens.length} displays` },
+          { type: "complete", result: loaded },
+        ]);
+        setPhase("results");
+
+        console.log(`[RFP] Loaded analysis ${analysisId} from DB — ${screens.length} screens, pricingDoc=${!!pricingDoc}`);
+      } catch (err: any) {
+        console.error("[RFP] Failed to load analysis from DB:", err);
+        setError(err.message || "Failed to load saved analysis");
+        setPhase("upload");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // ========================================================================
   // Helpers: recalculate display costs when dims/qty/product change
@@ -844,6 +942,10 @@ export default function RfpAnalyzerClient() {
             if (event.type === "complete" && event.result) {
               setResult(event.result);
               setPhase("results");
+              // Persist analysis ID in URL for reload survival
+              if (event.result.id) {
+                router.replace(`/tools/rfp-analyzer?id=${event.result.id}`, { scroll: false });
+              }
             }
 
             if (event.type === "error") {
@@ -913,12 +1015,16 @@ export default function RfpAnalyzerClient() {
 
       setResult(analysisResult);
       setPhase("results");
+      // Persist analysis ID in URL for reload survival
+      if (analysisResult.id) {
+        router.replace(`/tools/rfp-analyzer?id=${analysisResult.id}`, { scroll: false });
+      }
     } catch (err: any) {
       console.error("Excel upload error:", err);
       setError(err.message || "Failed to parse Excel file");
       setPhase("upload");
     }
-  }, []);
+  }, [router]);
 
   // ========================================================================
   // Generate Instant PDF — route Excel through Mirror Mode pipeline
@@ -1050,6 +1156,10 @@ export default function RfpAnalyzerClient() {
             if (event.type === "complete" && event.result) {
               setResult(event.result);
               setPhase("results");
+              // Persist analysis ID in URL for reload survival
+              if (event.result.id) {
+                router.replace(`/tools/rfp-analyzer?id=${event.result.id}`, { scroll: false });
+              }
             }
 
             if (event.type === "error") {
@@ -1629,6 +1739,9 @@ export default function RfpAnalyzerClient() {
     setFilledBidFormBlob(null);
     setFilledBidFormName("");
     setBidFormFile(null);
+    // Clear URL state so refresh shows upload screen for new analysis
+    loadedFromDbRef.current = false;
+    router.replace("/tools/rfp-analyzer", { scroll: false });
     setSpecMismatches([]);
     bidFormAutoFilled.current = false;
     bidFormSpecsExtracted.current = false;

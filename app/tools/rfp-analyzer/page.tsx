@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import dynamic from "next/dynamic";
 
 const RfpAnalyzerClient = dynamic(() => import("./RfpAnalyzerClient"), {
@@ -12,5 +13,13 @@ const RfpAnalyzerClient = dynamic(() => import("./RfpAnalyzerClient"), {
 });
 
 export default function RfpAnalyzerPage() {
-  return <RfpAnalyzerClient />;
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-sm text-muted-foreground">Loading RFP Analyzer...</div>
+      </div>
+    }>
+      <RfpAnalyzerClient />
+    </Suspense>
+  );
 }

@@ -938,6 +938,10 @@ model RfpAnalysis {
   triage       Json     @default("[]")      // Page triage data
   pages        Json     @default("[]")      // AnalyzedPage[] (markdown + tables)
 
+  // Mirror Mode pricing (persisted for reload)
+  pricingDocument    Json?    // Parsed pricing tables from Excel (Mirror Mode)
+  mirrorModePricing  Json?    // Per-display pricing [{name, sellingPrice, cost, section}]
+
   // Status
   status       String   @default("complete") // "processing", "complete", "failed"
   errorMessage String?

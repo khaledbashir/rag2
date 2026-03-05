@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
         .trim();
     }
 
-    // Create analysis record
+    // Create analysis record (persist pricing data for reload survival)
     const analysis = await prisma.rfpAnalysis.create({
       data: {
         projectName: project.projectName,
@@ -133,6 +133,8 @@ export async function POST(request: NextRequest) {
         project: JSON.parse(JSON.stringify(project)),
         triage: [],
         pages: [],
+        pricingDocument: pricingDocument ? JSON.parse(JSON.stringify(pricingDocument)) : undefined,
+        mirrorModePricing: mirrorModePricing.length > 0 ? JSON.parse(JSON.stringify(mirrorModePricing)) : undefined,
       },
     });
 
