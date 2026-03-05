@@ -128,7 +128,7 @@ const JEREMY_RULES = {
   // Processor: Novastar for most, but Eric confirming correct name for tight pitches
   // For now: Novastar everywhere, Eric's correction will update tight pitches later
   processorDefault: "Novastar",
-  processorTightPitch: "TBD — Pending confirmation from Eric",
+  processorTightPitch: "Novastar",
   // Factory depends on product line (Natalia correction 3/4)
   // 1.2mm, 1.9mm, 2.5mm → LG Infiled
   // 4mm Mesh, 8mm Outdoor → LG Yaham
