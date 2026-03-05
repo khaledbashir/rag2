@@ -7,10 +7,11 @@ import { useSession } from "next-auth/react";
 import UploadZone, { type PipelineEvent } from "./_components/UploadZone";
 import PipelineCheckpoint from "./_components/PipelineCheckpoint";
 import { buildRfpWorkbook } from "./_components/rfpWorkbookBuilder";
-import WorkbookShell from "@/app/components/reusables/WorkbookShell";
+import { LED_COST_PER_SQFT_BY_PITCH } from "@/services/rfp/productCatalog";
 import dynamic from "next/dynamic";
 
 const PdfSplitPanel = dynamic(() => import("./_components/PdfSplitPanel"), { ssr: false });
+const UniverSpreadsheet = dynamic(() => import("./_components/UniverSpreadsheet"), { ssr: false });
 import type { ExtractedLEDSpec, ExtractedRequirement } from "@/services/rfp/unified/types";
 import {
   RefreshCcw,
@@ -313,6 +314,65 @@ export default function RfpAnalyzerClient() {
   }, []);
 
   // ========================================================================
+  // Helpers: recalculate display costs when dims/qty/product change
+  // ========================================================================
+
+  function recalcDisplayCosts(
+    display: PricingPreview['displays'][0],
+    newAreaSqFt: number, newQty: number, newPitch?: number
+  ) {
+    const updated = { ...display };
+    const oldTotalSqFt = (display.areaSqFt || 1) * (display.quantity || 1);
+    let ratePerSqFt = oldTotalSqFt > 0 ? display.hardwareCost / oldTotalSqFt : 0;
+
+    // If pitch changed → try catalog rate card (exact match, then ±0.5mm)
+    if (newPitch != null && newPitch !== display.pixelPitch) {
+      const catalogRate = LED_COST_PER_SQFT_BY_PITCH[String(newPitch)];
+      if (catalogRate && catalogRate > 0) {
+        ratePerSqFt = catalogRate;
+      } else {
+        const keys = Object.keys(LED_COST_PER_SQFT_BY_PITCH).map(Number);
+        const nearest = keys.reduce((b, k) => Math.abs(k - newPitch) < Math.abs(b - newPitch) ? k : b, keys[0]);
+        if (Math.abs(nearest - newPitch) <= 0.5) {
+          const r = LED_COST_PER_SQFT_BY_PITCH[String(nearest)];
+          if (r > 0) ratePerSqFt = r;
+        }
+      }
+    }
+
+    updated.areaSqFt = newAreaSqFt;
+    updated.quantity = newQty;
+    if (newPitch != null) updated.pixelPitch = newPitch;
+    updated.hardwareCost = ratePerSqFt * newAreaSqFt * newQty;
+
+    // Scale processor/shipping with qty
+    const qtyRatio = newQty / (display.quantity || 1);
+    if (display.quantity !== newQty) {
+      updated.processorCost = (display.processorCost ?? 0) * qtyRatio;
+      updated.shippingCost = (display.shippingCost ?? 0) * qtyRatio;
+    }
+
+    // Recalc totals
+    const ledTotal = updated.hardwareCost + (updated.processorCost ?? 0) + (updated.shippingCost ?? 0);
+    updated.totalCost = ledTotal + (updated.installCost ?? 0) + (updated.structuralCost ?? 0)
+      + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
+    updated.totalSellingPrice = updated.blendedMarginPct > 0
+      ? updated.totalCost / (1 - updated.blendedMarginPct) : updated.totalCost;
+    return updated;
+  }
+
+  function recalcSummary(prev: PricingPreview, updatedDisplays: PricingPreview['displays']): PricingPreview {
+    const totalCost = updatedDisplays.reduce((s, d) => s + d.totalCost, 0);
+    const totalSell = updatedDisplays.reduce((s, d) => s + d.totalSellingPrice, 0);
+    return {
+      ...prev, displays: updatedDisplays,
+      summary: { ...prev.summary, totalCost, totalSellingPrice: totalSell,
+        totalMargin: totalSell - totalCost,
+        blendedMarginPct: totalSell > 0 ? Math.round(((totalSell - totalCost) / totalSell) * 1000) / 10 : 0 },
+    };
+  }
+
+  // ========================================================================
   // Product dropdown handler (must be defined before workbookData useMemo)
   // ========================================================================
 
@@ -359,27 +419,28 @@ export default function RfpAnalyzerClient() {
 
     setPricingPreview((prev) => {
       if (!prev) return prev;
-      return {
-        ...prev,
-        displays: prev.displays.map((d) =>
-          d.name === displayName
-            ? {
-                ...d,
-                matchedProduct: {
-                  manufacturer: product.manufacturer || product.name.split(" ")[0],
-                  model: product.name,
-                  pitch: product.pitch,
-                  totalModules: cols * rows,
-                  fitScore: 100,
-                  activeWidthFt: Math.round(activeWidthFt * 100) / 100,
-                  activeHeightFt: Math.round(activeHeightFt * 100) / 100,
-                  resolutionX: Math.round(activeWidthMm / newPitch),
-                  resolutionY: Math.round(activeHeightMm / newPitch),
-                },
-              }
-            : d
-        ),
-      };
+      const updatedDisplays = prev.displays.map((d) => {
+        if (d.name !== displayName) return d;
+        // Set matched product info
+        let updated = {
+          ...d,
+          matchedProduct: {
+            manufacturer: product.manufacturer || product.name.split(" ")[0],
+            model: product.name,
+            pitch: product.pitch,
+            totalModules: cols * rows,
+            fitScore: 100,
+            activeWidthFt: Math.round(activeWidthFt * 100) / 100,
+            activeHeightFt: Math.round(activeHeightFt * 100) / 100,
+            resolutionX: Math.round(activeWidthMm / newPitch),
+            resolutionY: Math.round(activeHeightMm / newPitch),
+          },
+        };
+        // Recalculate costs with new pitch + cabinet-grid dimensions
+        updated = recalcDisplayCosts(updated, activeHeightFt * activeWidthFt, d.quantity || 1, newPitch);
+        return updated;
+      });
+      return recalcSummary(prev, updatedDisplays);
     });
   }, [availableProducts, pricingPreview, editableSpecs, result?.screens]);
 
@@ -1875,328 +1936,269 @@ export default function RfpAnalyzerClient() {
             {/* ============ WORKBOOK VIEW ============ */}
             <div className="flex gap-3">
             {/* Left: Workbook */}
-            <div className={showPdfPanel && pdfBlobUrl ? "flex-1 min-w-0 h-[75vh]" : "w-full h-[75vh]"}>
-              <WorkbookShell
-                data={workbookData}
-                editable
-                onCellEdit={(sheetIdx, rowIdx, colIdx, rawValue) => {
-                  // Strip currency/percent formatting ($, commas, %) before parsing
-                  const value = rawValue.replace(/[$,%]/g, '').replace(/,/g, '').trim();
-                  // Sheet 0: LED Cost Sheet (ANC 20-col format)
-                  // Cols: Display(0) Vendor(1) Product(2) Pitch(3) H(ft)(4) W(ft)(5) H(px)(6) W(px)(7)
-                  //       SqFt/Screen(8) Qty(9) TotalSqFt(10) NITs(11) Service(12)
-                  //       $/SqFt(13) DisplayCost(14) Processor(15) Shipping(16) TotalCost(17) Margin%(18) SellingPrice(19)
-                  if (sheetIdx === 0) {
-                    // Spec edits → update result.screens
-                    const specFieldMap: Record<number, string> = { 4: "heightFt", 5: "widthFt", 9: "quantity" };
-                    const specField = specFieldMap[colIdx];
-                    if (specField) {
-                      setResult(prev => {
-                        if (!prev) return prev;
-                        const specIdx = rowIdx - 1;
-                        if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
-                        const spec = { ...prev.screens[specIdx] };
-                        (spec as any)[specField] = parseFloat(value) || 0;
-                        const updated = [...prev.screens];
-                        updated[specIdx] = spec;
-                        setEditableSpecs(updated);
-                        autoSaveSpecs(updated, prev.id);
-                        return { ...prev, screens: updated };
-                      });
-                      return;
-                    }
-                    // Pricing edits → update pricingPreview.displays
-                    const pricingFieldMap: Record<number, string> = { 14: "hardwareCost", 15: "processorCost", 16: "shippingCost" };
-                    const pricingField = pricingFieldMap[colIdx];
-                    const isMarginEdit = colIdx === 18;
-                    if (!pricingField && !isMarginEdit) return;
+            <div className={`flex flex-col ${showPdfPanel && pdfBlobUrl ? "flex-1 min-w-0" : "w-full"}`} style={{ height: "75vh" }}>
+              {/* ---- Title Bar (matches WorkbookShell green bar) ---- */}
+              <div className="flex items-center justify-between bg-[#217346] text-white px-3 py-1.5 rounded-t-lg">
+                <span className="text-xs font-semibold tracking-wide truncate">{workbookData.fileName || "RFP Analysis"}</span>
+                <div className="flex items-center gap-1 flex-wrap">
+                  {result.aiWorkspaceSlug && (
+                    <Link
+                      href={`/chat?workspace=${result.aiWorkspaceSlug}`}
+                      target="_blank"
+                      className="flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition-colors"
+                    >
+                      <MessageSquare className="w-3 h-3" />
+                      Cross-Check
+                    </Link>
+                  )}
+                  <button
+                    onClick={handleDownloadRateCard}
+                    disabled={downloading === "ratecard" || !result?.id}
+                    className="flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                  >
+                    {downloading === "ratecard" ? <Loader2 className="w-3 h-3 animate-spin" /> : <DollarSign className="w-3 h-3" />}
+                    Rate Card
+                  </button>
+                  <button
+                    onClick={handleExportExcel}
+                    disabled={downloading === "extraction"}
+                    className="flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                  >
+                    {downloading === "extraction" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                    Specs .xlsx
+                  </button>
+                  <button
+                    onClick={() => handleDownloadVendorSheet("electrician")}
+                    disabled={downloading === "electrician" || !result?.id}
+                    className="flex items-center gap-1 px-2 py-0.5 bg-yellow-500/80 hover:bg-yellow-500 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                    title="Generate electrical quote request sheet"
+                  >
+                    {downloading === "electrician" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                    Electrical
+                  </button>
+                  <button
+                    onClick={() => handleDownloadVendorSheet("installer")}
+                    disabled={downloading === "installer" || !result?.id}
+                    className="flex items-center gap-1 px-2 py-0.5 bg-green-600/80 hover:bg-green-600 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                    title="Generate install/structural quote request sheet"
+                  >
+                    {downloading === "installer" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wrench className="w-3 h-3" />}
+                    Install
+                  </button>
+                  <button
+                    onClick={() => handleDownloadVendorSheet("led_supplier")}
+                    disabled={downloading === "led_supplier" || !result?.id}
+                    className="flex items-center gap-1 px-2 py-0.5 bg-blue-600/80 hover:bg-blue-600 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                    title="Generate LED supply quote request sheet"
+                  >
+                    {downloading === "led_supplier" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Cpu className="w-3 h-3" />}
+                    LED Supply
+                  </button>
+                  <button
+                    onClick={() => bidFormInputRef.current?.click()}
+                    disabled={downloading === "bidform" || !result?.id}
+                    className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/80 hover:bg-amber-500 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                    title="Upload a blank bid form Excel and auto-fill vendor specs"
+                  >
+                    {downloading === "bidform" ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileSpreadsheet className="w-3 h-3" />}
+                    Fill Bid Form
+                  </button>
+                  <input ref={bidFormInputRef} type="file" accept=".xlsx,.xls" onChange={handleFillBidForm} className="hidden" />
+                  <button
+                    onClick={() => scopingImportRef.current?.click()}
+                    disabled={downloading === "importing" || !result?.id}
+                    className="flex items-center gap-1 px-2 py-0.5 bg-emerald-600/80 hover:bg-emerald-600 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                    title="Upload a previously downloaded scoping workbook with updated costs"
+                  >
+                    {downloading === "importing" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                    Import Workbook
+                  </button>
+                  <input ref={scopingImportRef} type="file" accept=".xlsx,.xls" onChange={handleImportScopingWorkbook} className="hidden" />
+                  <button
+                    onClick={handleDownloadScopingWorkbook}
+                    disabled={downloading === "scoping"}
+                    className="flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                  >
+                    {downloading === "scoping" ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileSpreadsheet className="w-3 h-3" />}
+                    Full Scoping Workbook
+                  </button>
+                  <button
+                    onClick={handleCreateProposal}
+                    disabled={downloading === "creating" || !result?.id || !session?.user?.email}
+                    className="flex items-center gap-1 px-3 py-1 bg-[#0A52EF] text-white hover:bg-[#0941c3] rounded text-[10px] font-bold transition-colors disabled:opacity-50 shadow-sm ml-1"
+                  >
+                    {downloading === "creating" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                    Create Proposal
+                  </button>
+                  {pdfBlobUrl && (
+                    <button
+                      onClick={() => setShowPdfPanel(!showPdfPanel)}
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ml-1 ${
+                        showPdfPanel ? "bg-white text-[#217346]" : "bg-white/20 hover:bg-white/30 text-white"
+                      }`}
+                      title={showPdfPanel ? "Hide PDF" : "Show PDF"}
+                    >
+                      {showPdfPanel ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      PDF
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* ---- Univer Spreadsheet ---- */}
+              <div className="flex-1 min-h-0 border border-t-0 border-gray-200 dark:border-gray-700 overflow-hidden">
+                <UniverSpreadsheet
+                  screens={editableSpecs.length > 0 ? editableSpecs : (result?.screens || [])}
+                  pricingDisplays={pricingPreview?.displays || []}
+                  pricingSummary={pricingPreview?.summary || null}
+                  availableProducts={availableProducts}
+                  onSpecEdit={(screenIdx, field, value) => {
+                    setResult(prev => {
+                      if (!prev) return prev;
+                      if (screenIdx < 0 || screenIdx >= prev.screens.length) return prev;
+                      const spec = { ...prev.screens[screenIdx] };
+                      (spec as any)[field] = value;
+                      const updated = [...prev.screens];
+                      updated[screenIdx] = spec;
+                      setEditableSpecs(updated);
+                      autoSaveSpecs(updated, prev.id);
+                      return { ...prev, screens: updated };
+                    });
+                    // CASCADE: recalculate costs
                     setPricingPreview(prev => {
                       if (!prev) return prev;
-                      const specIdx = rowIdx - 1;
-                      if (specIdx < 0 || specIdx >= prev.displays.length) return prev;
+                      if (screenIdx < 0 || screenIdx >= prev.displays.length) return prev;
+                      const display = prev.displays[screenIdx];
+                      const currentSpec = editableSpecs[screenIdx] || result?.screens?.[screenIdx];
+                      let h = currentSpec?.heightFt || 0, w = currentSpec?.widthFt || 0, qty = currentSpec?.quantity || 1;
+                      if (field === 'heightFt') h = value;
+                      if (field === 'widthFt') w = value;
+                      if (field === 'quantity') qty = value;
+                      const updatedDisplays = prev.displays.map((d, i) =>
+                        i === screenIdx ? recalcDisplayCosts(d, h * w, qty) : d);
+                      return recalcSummary(prev, updatedDisplays);
+                    });
+                  }}
+                  onPricingEdit={(displayIdx, field, value) => {
+                    setPricingPreview(prev => {
+                      if (!prev) return prev;
+                      if (displayIdx < 0 || displayIdx >= prev.displays.length) return prev;
                       const updatedDisplays = prev.displays.map((d, i) => {
-                        if (i !== specIdx) return d;
+                        if (i !== displayIdx) return d;
                         const updated = { ...d };
-                        if (isMarginEdit) {
-                          let margin = parseFloat(value) || 0;
-                          if (margin > 1) margin = margin / 100;
-                          updated.blendedMarginPct = margin;
+                        if (field === "blendedMarginPct") {
+                          updated.blendedMarginPct = value;
                         } else {
-                          (updated as any)[pricingField!] = parseFloat(value) || 0;
+                          (updated as any)[field] = value;
                         }
-                        // Recalculate totalCost (LED hardware + processor + shipping)
                         updated.hardwareCost = updated.hardwareCost ?? 0;
                         const ledTotal = updated.hardwareCost + (updated.processorCost ?? 0) + (updated.shippingCost ?? 0);
                         updated.totalCost = ledTotal + (updated.installCost ?? 0) + (updated.structuralCost ?? 0) + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
                         updated.totalSellingPrice = updated.blendedMarginPct > 0
-                          ? updated.totalCost / (1 - updated.blendedMarginPct)
-                          : updated.totalCost;
+                          ? updated.totalCost / (1 - updated.blendedMarginPct) : updated.totalCost;
                         return updated;
                       });
-                      const totalCost = updatedDisplays.reduce((s, d) => s + d.totalCost, 0);
-                      const totalSell = updatedDisplays.reduce((s, d) => s + d.totalSellingPrice, 0);
-                      return {
-                        ...prev,
-                        displays: updatedDisplays,
-                        summary: { ...prev.summary, totalCost, totalSellingPrice: totalSell, totalMargin: totalSell - totalCost, blendedMarginPct: totalSell > 0 ? Math.round(((totalSell - totalCost) / totalSell) * 1000) / 10 : 0 },
-                      };
+                      return recalcSummary(prev, updatedDisplays);
                     });
-                    return;
-                  }
-                  // Sheet 1: Margin Analysis (ANC flat format)
-                  // Cols: LineItem(0) Cost(1) SellingPrice(2) Margin$(3) Margin%(4)
-                  // Row layout: [header, ...displays(non-custom), ...serviceCategories, ...customDisplays, separator, total, addRow]
-                  if (sheetIdx === 1) {
-                    const isCostEdit = colIdx === 1;
-                    const isMarginEdit = colIdx === 4;
-                    if (!isCostEdit && !isMarginEdit) return;
+                  }}
+                  onMarginAnalysisEdit={(itemIdx, field, value) => {
                     setPricingPreview(prev => {
                       if (!prev) return prev;
-                      const itemIdx = rowIdx - 1; // skip header row
-
-                      // Build the same row order as the workbook builder
-                      const nonCustomDisplays = prev.displays.filter(d => !d.isCustom);
-                      const serviceCategories = [
-                        { field: "structuralCost", label: "Structural Materials" },
-                        { field: "installCost", label: "Installation Labor" },
-                        { field: "pmCost", label: "PM / Gen. Conditions" },
-                        { field: "engCost", label: "Engineering / Permits" },
+                      const nonCustom = prev.displays.filter(d => !d.isCustom);
+                      const serviceCats = [
+                        { field: "structuralCost" }, { field: "installCost" },
+                        { field: "pmCost" }, { field: "engCost" },
                       ].filter(cat => prev.displays.reduce((s, d) => s + ((d as any)[cat.field] ?? 0), 0) > 0);
-                      const customDisplays = prev.displays.filter(d => d.isCustom);
+                      const customs = prev.displays.filter(d => d.isCustom);
+                      const dCount = nonCustom.length;
+                      const sCount = serviceCats.length;
 
-                      const displayCount = nonCustomDisplays.length;
-                      const serviceCount = serviceCategories.length;
-
-                      if (itemIdx < displayCount) {
-                        // Editing a display row
-                        const displayName = nonCustomDisplays[itemIdx].name;
+                      if (itemIdx < dCount) {
+                        const displayName = nonCustom[itemIdx].name;
                         const updatedDisplays = prev.displays.map(d => {
                           if (d.name !== displayName || d.isCustom) return d;
                           const updated = { ...d };
-                          if (isMarginEdit) {
-                            let margin = parseFloat(value) || 0;
-                            if (margin > 1) margin = margin / 100;
-                            updated.blendedMarginPct = margin;
+                          if (field === "marginPct") {
+                            updated.blendedMarginPct = value;
                           } else {
-                            // Cost edit = total LED cost (hardware + processor + shipping)
-                            const newCost = parseFloat(value) || 0;
-                            updated.hardwareCost = newCost; // set hardware as the base
+                            updated.hardwareCost = value;
                             updated.processorCost = 0;
                             updated.shippingCost = 0;
                           }
                           updated.totalCost = updated.hardwareCost + (updated.processorCost ?? 0) + (updated.shippingCost ?? 0) + (updated.installCost ?? 0) + (updated.structuralCost ?? 0) + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
-                          updated.totalSellingPrice = updated.blendedMarginPct > 0
-                            ? updated.totalCost / (1 - updated.blendedMarginPct)
-                            : updated.totalCost;
+                          updated.totalSellingPrice = updated.blendedMarginPct > 0 ? updated.totalCost / (1 - updated.blendedMarginPct) : updated.totalCost;
                           return updated;
                         });
-                        const totalCost = updatedDisplays.reduce((s, d) => s + d.totalCost, 0);
-                        const totalSell = updatedDisplays.reduce((s, d) => s + d.totalSellingPrice, 0);
-                        return { ...prev, displays: updatedDisplays, summary: { ...prev.summary, totalCost, totalSellingPrice: totalSell, totalMargin: totalSell - totalCost, blendedMarginPct: totalSell > 0 ? Math.round(((totalSell - totalCost) / totalSell) * 1000) / 10 : 0 } };
-                      } else if (itemIdx < displayCount + serviceCount) {
-                        // Editing a service category row
-                        const catIdx = itemIdx - displayCount;
-                        const cat = serviceCategories[catIdx];
-                        if (isCostEdit) {
-                          // Distribute new total cost proportionally across displays
+                        return recalcSummary(prev, updatedDisplays);
+                      } else if (itemIdx < dCount + sCount) {
+                        const cat = serviceCats[itemIdx - dCount];
+                        if (field === "cost") {
                           const currentTotal = prev.displays.reduce((s, d) => s + ((d as any)[cat.field] ?? 0), 0);
-                          const newTotal = parseFloat(value) || 0;
-                          const ratio = currentTotal > 0 ? newTotal / currentTotal : 0;
+                          const ratio = currentTotal > 0 ? value / currentTotal : 0;
                           const updatedDisplays = prev.displays.map(d => {
                             const updated = { ...d };
                             const oldVal = (d as any)[cat.field] ?? 0;
-                            (updated as any)[cat.field] = currentTotal > 0 ? oldVal * ratio : newTotal / prev.displays.length;
+                            (updated as any)[cat.field] = currentTotal > 0 ? oldVal * ratio : value / prev.displays.length;
                             updated.totalCost = updated.hardwareCost + (updated.processorCost ?? 0) + (updated.shippingCost ?? 0) + (updated.installCost ?? 0) + (updated.structuralCost ?? 0) + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
                             updated.totalSellingPrice = updated.blendedMarginPct > 0 ? updated.totalCost / (1 - updated.blendedMarginPct) : updated.totalCost;
                             return updated;
                           });
-                          const totalCost = updatedDisplays.reduce((s, d) => s + d.totalCost, 0);
-                          const totalSell = updatedDisplays.reduce((s, d) => s + d.totalSellingPrice, 0);
-                          return { ...prev, displays: updatedDisplays, summary: { ...prev.summary, totalCost, totalSellingPrice: totalSell, totalMargin: totalSell - totalCost, blendedMarginPct: totalSell > 0 ? Math.round(((totalSell - totalCost) / totalSell) * 1000) / 10 : 0 } };
+                          return recalcSummary(prev, updatedDisplays);
                         }
-                        // Margin edit for service category — can't change per-display margins from service row; skip
                         return prev;
-                      } else if (itemIdx < displayCount + serviceCount + customDisplays.length) {
-                        // Editing a custom line item
-                        const customIdx = itemIdx - displayCount - serviceCount;
-                        const customName = customDisplays[customIdx].name;
-                        const updatedDisplays = prev.displays.map(d => {
-                          if (d.name !== customName || !d.isCustom) return d;
-                          const updated = { ...d };
-                          if (isMarginEdit) {
-                            let margin = parseFloat(value) || 0;
-                            if (margin > 1) margin = margin / 100;
-                            updated.blendedMarginPct = margin;
-                          } else {
-                            updated.hardwareCost = parseFloat(value) || 0;
-                          }
-                          updated.totalCost = updated.hardwareCost + (updated.installCost ?? 0) + (updated.structuralCost ?? 0) + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
-                          updated.totalSellingPrice = updated.blendedMarginPct > 0
-                            ? updated.totalCost / (1 - updated.blendedMarginPct)
-                            : updated.totalCost;
-                          return updated;
-                        });
-                        const totalCost = updatedDisplays.reduce((s, d) => s + d.totalCost, 0);
-                        const totalSell = updatedDisplays.reduce((s, d) => s + d.totalSellingPrice, 0);
-                        return { ...prev, displays: updatedDisplays, summary: { ...prev.summary, totalCost, totalSellingPrice: totalSell, totalMargin: totalSell - totalCost, blendedMarginPct: totalSell > 0 ? Math.round(((totalSell - totalCost) / totalSell) * 1000) / 10 : 0 } };
+                      } else if (itemIdx < dCount + sCount + 2 + customs.length) {
+                        // +2 for CMS and Scoring placeholders, then custom items
+                        const customIdx = itemIdx - dCount - sCount - 2;
+                        if (customIdx >= 0 && customIdx < customs.length) {
+                          const customName = customs[customIdx].name;
+                          const updatedDisplays = prev.displays.map(d => {
+                            if (d.name !== customName || !d.isCustom) return d;
+                            const updated = { ...d };
+                            if (field === "marginPct") {
+                              updated.blendedMarginPct = value;
+                            } else {
+                              updated.hardwareCost = value;
+                            }
+                            updated.totalCost = updated.hardwareCost + (updated.installCost ?? 0) + (updated.structuralCost ?? 0) + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
+                            updated.totalSellingPrice = updated.blendedMarginPct > 0 ? updated.totalCost / (1 - updated.blendedMarginPct) : updated.totalCost;
+                            return updated;
+                          });
+                          return recalcSummary(prev, updatedDisplays);
+                        }
                       }
                       return prev;
                     });
-                    return;
-                  }
-                }}
-                onCellClick={(sheetIdx, rowIdx, colIdx) => {
-                  // Cell click handlers are wired via onClick on individual cells
-                }}
-                onExport={handleDownloadScopingWorkbook}
-                exporting={downloading === "scoping"}
-                actions={
-                  <>
-                    {result.aiWorkspaceSlug && (
-                      <Link
-                        href={`/chat?workspace=${result.aiWorkspaceSlug}`}
-                        target="_blank"
-                        className="flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition-colors"
-                      >
-                        <MessageSquare className="w-3 h-3" />
-                        Cross-Check
-                      </Link>
+                  }}
+                  className="w-full h-full"
+                />
+              </div>
+
+              {/* ---- Footer ---- */}
+              <div className="px-4 py-2 space-y-2 border border-t-0 border-gray-200 dark:border-gray-700 rounded-b-lg bg-white dark:bg-gray-900">
+                {scopingImportResult && (
+                  <div className="flex items-center gap-1.5 text-[10px] text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 rounded px-2 py-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    Imported {scopingImportResult.updatedCount} display(s)
+                    {scopingImportResult.missingCount > 0 && ` (${scopingImportResult.missingCount} unmatched)`}
+                    {scopingImportResult.warnings.length > 0 && (
+                      <span className="text-amber-600 ml-1">— {scopingImportResult.warnings[0]}</span>
                     )}
-                    <button
-                      onClick={handleDownloadRateCard}
-                      disabled={downloading === "ratecard" || !result?.id}
-                      className="flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition-colors disabled:opacity-50"
-                    >
-                      {downloading === "ratecard" ? <Loader2 className="w-3 h-3 animate-spin" /> : <DollarSign className="w-3 h-3" />}
-                      Rate Card
-                    </button>
-                    <button
-                      onClick={handleExportExcel}
-                      disabled={downloading === "extraction"}
-                      className="flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition-colors disabled:opacity-50"
-                    >
-                      {downloading === "extraction" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-                      Specs .xlsx
-                    </button>
-                    {/* Vendor-specific quote sheets */}
-                    <button
-                      onClick={() => handleDownloadVendorSheet("electrician")}
-                      disabled={downloading === "electrician" || !result?.id}
-                      className="flex items-center gap-1 px-2 py-0.5 bg-yellow-500/80 hover:bg-yellow-500 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
-                      title="Generate electrical quote request sheet"
-                    >
-                      {downloading === "electrician" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
-                      Electrical
-                    </button>
-                    <button
-                      onClick={() => handleDownloadVendorSheet("installer")}
-                      disabled={downloading === "installer" || !result?.id}
-                      className="flex items-center gap-1 px-2 py-0.5 bg-green-600/80 hover:bg-green-600 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
-                      title="Generate install/structural quote request sheet"
-                    >
-                      {downloading === "installer" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wrench className="w-3 h-3" />}
-                      Install
-                    </button>
-                    <button
-                      onClick={() => handleDownloadVendorSheet("led_supplier")}
-                      disabled={downloading === "led_supplier" || !result?.id}
-                      className="flex items-center gap-1 px-2 py-0.5 bg-blue-600/80 hover:bg-blue-600 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
-                      title="Generate LED supply quote request sheet"
-                    >
-                      {downloading === "led_supplier" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Cpu className="w-3 h-3" />}
-                      LED Supply
-                    </button>
-                    <button
-                      onClick={() => bidFormInputRef.current?.click()}
-                      disabled={downloading === "bidform" || !result?.id}
-                      className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/80 hover:bg-amber-500 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
-                      title="Upload a blank bid form Excel and auto-fill vendor specs"
-                    >
-                      {downloading === "bidform" ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileSpreadsheet className="w-3 h-3" />}
-                      Fill Bid Form
-                    </button>
-                    <input
-                      ref={bidFormInputRef}
-                      type="file"
-                      accept=".xlsx,.xls"
-                      onChange={handleFillBidForm}
-                      className="hidden"
-                    />
-                    <button
-                      onClick={() => scopingImportRef.current?.click()}
-                      disabled={downloading === "importing" || !result?.id}
-                      className="flex items-center gap-1 px-2 py-0.5 bg-emerald-600/80 hover:bg-emerald-600 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
-                      title="Upload a previously downloaded scoping workbook with updated costs"
-                    >
-                      {downloading === "importing" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-                      Import Workbook
-                    </button>
-                    <input
-                      ref={scopingImportRef}
-                      type="file"
-                      accept=".xlsx,.xls"
-                      onChange={handleImportScopingWorkbook}
-                      className="hidden"
-                    />
-                    <button
-                      onClick={handleCreateProposal}
-                      disabled={downloading === "creating" || !result?.id || !session?.user?.email}
-                      className="flex items-center gap-1 px-3 py-1 bg-[#0A52EF] text-white hover:bg-[#0941c3] rounded text-[10px] font-bold transition-colors disabled:opacity-50 shadow-sm ml-1"
-                    >
-                      {downloading === "creating" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-                      Create Proposal
-                    </button>
-                    {pdfBlobUrl && (
-                      <button
-                        onClick={() => setShowPdfPanel(!showPdfPanel)}
-                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ml-1 ${
-                          showPdfPanel
-                            ? "bg-white text-[#217346]"
-                            : "bg-white/20 hover:bg-white/30 text-white"
-                        }`}
-                        title={showPdfPanel ? "Hide PDF" : "Show PDF"}
-                      >
-                        {showPdfPanel ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                        PDF
-                      </button>
-                    )}
-                  </>
-                }
-                footer={
-                  <div className="px-4 py-2 space-y-2">
-                    {scopingImportResult && (
-                      <div className="flex items-center gap-1.5 text-[10px] text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 rounded px-2 py-1">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Imported {scopingImportResult.updatedCount} display(s)
-                        {scopingImportResult.missingCount > 0 && ` (${scopingImportResult.missingCount} unmatched)`}
-                        {scopingImportResult.warnings.length > 0 && (
-                          <span className="text-amber-600 ml-1">
-                            — {scopingImportResult.warnings[0]}
-                          </span>
-                        )}
-                        <button
-                          onClick={() => setScopingImportResult(null)}
-                          className="ml-auto text-muted-foreground hover:text-foreground"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    )}
-                    {autoSaveStatus !== "idle" && (
-                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                        {autoSaveStatus === "saving" && <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</>}
-                        {autoSaveStatus === "saved" && <><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Saved</>}
-                        {autoSaveStatus === "error" && <><AlertTriangle className="w-3 h-3 text-red-500" /> Save failed</>}
-                      </div>
-                    )}
-                    <PipelineCheckpoint
-                      unconfirmedCount={result.screens.filter((s) => s.confidence < 0.8).length}
-                      onProceed={() => {/* tab switching handled by WorkbookShell */}}
-                      nextStageLabel="Review Complete"
-                    />
+                    <button onClick={() => setScopingImportResult(null)} className="ml-auto text-muted-foreground hover:text-foreground">×</button>
                   </div>
-                }
-              />
+                )}
+                {autoSaveStatus !== "idle" && (
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    {autoSaveStatus === "saving" && <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</>}
+                    {autoSaveStatus === "saved" && <><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Saved</>}
+                    {autoSaveStatus === "error" && <><AlertTriangle className="w-3 h-3 text-red-500" /> Save failed</>}
+                  </div>
+                )}
+                <PipelineCheckpoint
+                  unconfirmedCount={result.screens.filter((s) => s.confidence < 0.8).length}
+                  onProceed={() => {}}
+                  nextStageLabel="Review Complete"
+                />
+              </div>
 
               {/* OLD TAB CONTENT REMOVED — now rendered by WorkbookShell */}
 
