@@ -198,6 +198,7 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
 
   // Track base-only document total for Project Summary (set in both branches below)
   let finalDocSellSum = 0;
+  let marginDocTotalRow = 0; // Row number of DOCUMENT TOTAL in Margin Analysis (for cross-sheet ref)
 
   // ─── Per-section layout (when pricingDocument with line items is available) ───
   if (pricingTables.length > 0 && pricingTables.some((t: any) => t.items?.length > 0)) {
@@ -340,6 +341,7 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
 
     // Document total at the end — formulas reference individual section rows
     if (docSellSum > 0) {
+      marginDocTotalRow = r;
       marginSheet.getCell(`A${r}`).value = "DOCUMENT TOTAL";
       // DOCUMENT TOTAL Col C: =SUM of all grand total C cells (base sections only)
       const sellFormula = grandTotalSellRows.map(row => `C${row}`).join("+");
@@ -426,6 +428,7 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     marginSheet.getCell(`C${bondRow}`).value = 0;
 
     const subtotalRow = endRow + 3;
+    marginDocTotalRow = subtotalRow;
     marginSheet.getCell(`A${subtotalRow}`).value = "SUB TOTAL (BID FORM)";
     // SUB TOTAL Col C: =C{totals}+C{tax}+C{bond}
     marginSheet.getCell(`C${subtotalRow}`).value = { formula: `C${endRow}+C${taxRow}+C${bondRow}`, result: sumSell };
@@ -440,13 +443,16 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     finalDocSellSum = sumSell;
   }
 
-  // Backfill document total on Project Summary (matches Margin Analysis base-only total)
+  // Backfill document total on Project Summary — cross-sheet ref to Margin Analysis
   if (finalDocSellSum > 0) {
-    // Find the first empty row after the summary fields to write the total
-    // Summary fields end around row 11, so row 12 is the total
     summarySheet.getCell("A12").value = "Document Total";
     summarySheet.getCell("A12").font = { bold: true, size: 12 };
-    summarySheet.getCell("B12").value = finalDocSellSum;
+    if (marginDocTotalRow > 0) {
+      // Cross-sheet formula: ='Margin Analysis'!C{docTotalRow}
+      summarySheet.getCell("B12").value = { formula: `'Margin Analysis'!C${marginDocTotalRow}`, result: finalDocSellSum };
+    } else {
+      summarySheet.getCell("B12").value = finalDocSellSum;
+    }
     summarySheet.getCell("B12").numFmt = moneyFmt;
     summarySheet.getCell("B12").font = { bold: true, size: 12 };
   }
@@ -478,9 +484,10 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     const r = 5 + idx;
     techSheet.getCell(`A${r}`).value = screen.name || "Unnamed Display";
     techSheet.getCell(`B${r}`).value = qty;
-    techSheet.getCell(`C${r}`).value = pitch || null;
-    techSheet.getCell(`D${r}`).value = heightFt || null;
-    techSheet.getCell(`E${r}`).value = widthFt || null;
+    // Cross-sheet refs: Pitch, Height, Width from LED Sheet
+    techSheet.getCell(`C${r}`).value = pitch ? { formula: `'LED Sheet'!E${r}`, result: pitch } : null;
+    techSheet.getCell(`D${r}`).value = heightFt ? { formula: `'LED Sheet'!F${r}`, result: heightFt } : null;
+    techSheet.getCell(`E${r}`).value = widthFt ? { formula: `'LED Sheet'!G${r}`, result: widthFt } : null;
     // Pixels H: =ROUND(D{r}*304.8/C{r},0) — only if pitch > 0, else use parsed matrix
     if (matrix?.h != null) {
       techSheet.getCell(`F${r}`).value = pixelsH;
@@ -500,8 +507,11 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     techSheet.getCell(`I${r}`).value = audit?.brightnessNits ?? null;
     techSheet.getCell(`J${r}`).value = null;
     techSheet.getCell(`K${r}`).value = null;
-    techSheet.getCell(`L${r}`).value = audit?.estimatedWeightLbs ?? null;
-    techSheet.getCell(`M${r}`).value = audit?.totalMaxPowerW ?? null;
+    // Cross-sheet refs: Weight and Power from LED Sheet
+    const weightVal = audit?.estimatedWeightLbs ?? null;
+    techSheet.getCell(`L${r}`).value = weightVal != null ? { formula: `'LED Sheet'!N${r}`, result: weightVal } : null;
+    const powerVal = audit?.totalMaxPowerW ?? null;
+    techSheet.getCell(`M${r}`).value = powerVal != null ? { formula: `'LED Sheet'!O${r}`, result: powerVal } : null;
     // BTU/hr: =M{r}*3.412
     const techPowerW = toNumber(audit?.totalMaxPowerW);
     if (techPowerW > 0) {
