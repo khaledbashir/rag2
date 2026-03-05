@@ -11,8 +11,10 @@ import React, { useEffect, useRef, useState } from "react";
 import type { ExtractedLEDSpec } from "@/services/rfp/unified/types";
 import type { PricingDisplay, PricingSummary } from "./rfpWorkbookBuilder";
 
-// CSS must be imported here (inside ssr:false dynamic component), not in the parent
-import "@univerjs/preset-sheets-core/lib/index.css";
+// NOTE: Univer CSS is loaded via a <link> tag at runtime (see init() below).
+// We CANNOT use `import "@univerjs/preset-sheets-core/lib/index.css"` anywhere —
+// even inside useEffect — because Next.js/webpack hoists CSS imports into the SSR
+// bundle, causing React hydration error #418. The CSS lives at /univer-sheets.css.
 
 // ---------------------------------------------------------------------------
 // Props
@@ -395,6 +397,20 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
       }
 
       try {
+        // Load Univer CSS via <link> tag — NOT via import (which webpack hoists into SSR)
+        if (!document.getElementById("univer-sheets-css")) {
+          console.log("[UniverSpreadsheet] injecting CSS <link> tag...");
+          const link = document.createElement("link");
+          link.id = "univer-sheets-css";
+          link.rel = "stylesheet";
+          link.href = "/univer-sheets.css";
+          document.head.appendChild(link);
+          await new Promise<void>((resolve) => {
+            link.onload = () => { console.log("[UniverSpreadsheet] CSS loaded"); resolve(); };
+            link.onerror = () => { console.warn("[UniverSpreadsheet] CSS failed to load"); resolve(); };
+          });
+        }
+
         console.log("[UniverSpreadsheet] importing @univerjs/presets...");
         const { createUniver, LocaleType, mergeLocales } = await import("@univerjs/presets");
         console.log("[UniverSpreadsheet] importing @univerjs/preset-sheets-core...");
