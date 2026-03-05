@@ -2048,8 +2048,8 @@ export default function RfpAnalyzerClient() {
             <div className={spreadsheetMode ? "flex flex-col flex-1 min-h-0 overflow-hidden" : "flex gap-3"}>
             {/* Left: Workbook */}
             <div className={`flex flex-col ${spreadsheetMode ? "flex-1 min-h-0" : showPdfPanel && pdfBlobUrl ? "flex-1 min-w-0" : "w-full"}`} style={spreadsheetMode ? undefined : { height: "75vh" }}>
-              {/* ---- Title Bar with Accordion Toolbar ---- */}
-              <div className={`bg-[#217346] text-white shrink-0 ${spreadsheetMode ? "" : "rounded-t-lg"}`}>
+              {/* ---- Title Bar with Accordion Toolbar — FIXED HEADER ---- */}
+              <div className={`bg-[#217346] text-white ${spreadsheetMode ? "sticky top-0 z-20 shrink-0" : "shrink-0 rounded-t-lg"}`}>
                 {/* Main bar - always visible */}
                 <div className="flex items-center justify-between px-3 py-1">
                   <div className="flex items-center gap-2">
@@ -2186,8 +2186,8 @@ export default function RfpAnalyzerClient() {
                 )}
               </div>
 
-              {/* ---- Univer Spreadsheet — only render when pricing data is ready ---- */}
-              <div className={`flex-1 min-h-0 overflow-hidden ${spreadsheetMode ? "border-x border-gray-200 dark:border-gray-700" : "border border-t-0 border-gray-200 dark:border-gray-700"}`}>
+              {/* ---- Univer Spreadsheet — SCROLLABLE MIDDLE AREA ---- */}
+              <div className={`flex-1 min-h-0 ${spreadsheetMode ? "overflow-auto" : "overflow-hidden"} ${spreadsheetMode ? "border-x border-gray-200 dark:border-gray-700" : "border border-t-0 border-gray-200 dark:border-gray-700"}`}>
                 {!pricingPreview ? (
                   <div className="flex items-center justify-center h-full gap-2 text-sm text-muted-foreground">
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -2332,8 +2332,30 @@ export default function RfpAnalyzerClient() {
                 )}
               </div>
 
-              {/* ---- Footer — hidden in spreadsheet mode ---- */}
-              {!spreadsheetMode && (
+              {/* ---- Footer — FIXED FOOTER in spreadsheet mode, normal in regular mode ---- */}
+              {spreadsheetMode ? (
+                <div className="sticky bottom-0 z-20 shrink-0 px-3 py-1 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex items-center justify-between text-[10px]">
+                  <div className="flex items-center gap-3">
+                    {autoSaveStatus !== "idle" && (
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        {autoSaveStatus === "saving" && <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</>}
+                        {autoSaveStatus === "saved" && <><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Saved</>}
+                        {autoSaveStatus === "error" && <><AlertTriangle className="w-3 h-3 text-red-500" /> Save failed</>}
+                      </span>
+                    )}
+                    {scopingImportResult && (
+                      <span className="flex items-center gap-1 text-emerald-600">
+                        <CheckCircle2 className="w-3 h-3" />
+                        Imported {scopingImportResult.updatedCount} display(s)
+                        <button onClick={() => setScopingImportResult(null)} className="ml-1 text-muted-foreground hover:text-foreground">×</button>
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-muted-foreground">
+                    {result.screens.length} displays • {pricingPreview?.summary?.grandTotal ? `$${pricingPreview.summary.grandTotal.toLocaleString()}` : "—"}
+                  </span>
+                </div>
+              ) : (
               <div className="px-4 py-2 space-y-2 border border-t-0 border-gray-200 dark:border-gray-700 rounded-b-lg bg-white dark:bg-gray-900">
                 {scopingImportResult && (
                   <div className="flex items-center gap-1.5 text-[10px] text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 rounded px-2 py-1">
