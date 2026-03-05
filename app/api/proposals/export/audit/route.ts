@@ -93,9 +93,12 @@ export async function POST(req: NextRequest) {
     const proposalName = (body.projectName || proposal?.clientName || body.clientName || "Proposal").toString();
     const safeFilename = proposalName.replace(/\s+/g, "_").replace(/[^\w\-_.]/g, "") || "Proposal";
     // Summary metadata available to both export paths
+    // body.clientName = receiver/contact name (from frontend form receiver.name)
+    // proposal.clientName = project name in DB (confusing legacy naming)
+    const receiverName = (body.clientName || "").toString();
     const summaryInfo = {
       projectName: proposalName,
-      clientName: (proposal?.clientName || body.clientName || "").toString(),
+      clientName: receiverName !== proposalName ? receiverName : "",
       createdAt: proposal?.createdAt ? new Date(proposal.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
       updatedAt: proposal?.updatedAt ? new Date(proposal.updatedAt).toLocaleDateString() : new Date().toLocaleDateString(),
       documentMode: ((proposal as any)?.documentMode || body.documentMode || "BUDGET").toString().toUpperCase(),

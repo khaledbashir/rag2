@@ -107,14 +107,13 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
   workbook.creator = "ANC Studio";
   workbook.created = new Date();
 
-  // Project Summary as first tab
+  // Project Summary as first tab (total filled in after Margin Analysis calculates base-only sum)
   const summarySheet = workbook.addWorksheet("Project Summary");
-  const docTotal = args.pricingDocument?.documentTotal ?? null;
   buildProjectSummary(summarySheet, args.summaryInfo || {
     projectName: args.projectName || undefined,
     clientName: args.clientName || undefined,
     displayCount: args.screens.length,
-  }, args.currency, docTotal);
+  }, args.currency);
 
   const ledSheet = workbook.addWorksheet("LED Sheet");
   const marginSheet = workbook.addWorksheet("Margin Analysis");
@@ -194,6 +193,9 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
 
   const totals = args.internalAudit?.totals || {};
   const pricingTables: any[] = args.pricingDocument?.tables || [];
+
+  // Track base-only document total for Project Summary (set in both branches below)
+  let finalDocSellSum = 0;
 
   // ─── Per-section layout (when pricingDocument with line items is available) ───
   if (pricingTables.length > 0 && pricingTables.some((t: any) => t.items?.length > 0)) {
@@ -327,6 +329,7 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
       }
       marginSheet.getRow(r).font = { bold: true, size: 12 };
     }
+    finalDocSellSum = docSellSum;
   } else {
     // ─── Fallback: flat layout (no pricingDocument) ───
     // NOTE: This fallback only shows LED display screens (from estimator).
@@ -396,6 +399,18 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     marginSheet.getCell(`D${subtotalRow}`).numFmt = moneyFmt;
     marginSheet.getCell(`E${subtotalRow}`).numFmt = percentFmt;
     marginSheet.getRow(subtotalRow).font = { bold: true };
+    finalDocSellSum = sumSell;
+  }
+
+  // Backfill document total on Project Summary (matches Margin Analysis base-only total)
+  if (finalDocSellSum > 0) {
+    // Find the first empty row after the summary fields to write the total
+    // Summary fields end around row 11, so row 12 is the total
+    summarySheet.getCell("A12").value = "Document Total";
+    summarySheet.getCell("A12").font = { bold: true, size: 12 };
+    summarySheet.getCell("B12").value = finalDocSellSum;
+    summarySheet.getCell("B12").numFmt = moneyFmt;
+    summarySheet.getCell("B12").font = { bold: true, size: 12 };
   }
 
   // Tech Specs Only — no pricing, for installers/subs
