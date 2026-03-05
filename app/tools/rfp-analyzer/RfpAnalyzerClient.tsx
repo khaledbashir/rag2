@@ -8,6 +8,7 @@ import UploadZone, { type PipelineEvent } from "./_components/UploadZone";
 import PipelineCheckpoint from "./_components/PipelineCheckpoint";
 import { buildRfpWorkbook } from "./_components/rfpWorkbookBuilder";
 import { LED_COST_PER_SQFT_BY_PITCH } from "@/services/rfp/productCatalog";
+import type { PricingDocument } from "@/types/pricing";
 import dynamic from "next/dynamic";
 
 const PdfSplitPanel = dynamic(() => import("./_components/PdfSplitPanel"), { ssr: false });
@@ -491,6 +492,76 @@ export default function RfpAnalyzerClient() {
       summary: { ...prev.summary, totalCost, totalSellingPrice: totalSell,
         totalMargin: totalSell - totalCost,
         blendedMarginPct: totalSell > 0 ? Math.round(((totalSell - totalCost) / totalSell) * 1000) / 10 : 0 },
+    };
+  }
+
+  function updatePricingDocumentFromMarginAnalysis(
+    pricingDocument: PricingDocument,
+    itemIdx: number,
+    field: string,
+    value: number
+  ): PricingDocument {
+    if (field !== "sellingPrice" && field !== "cost") return pricingDocument;
+
+    let visibleItemIdx = 0;
+    let found = false;
+
+    const tables = pricingDocument.tables.map((table) => {
+      let tableChanged = false;
+      const previousSubtotal = typeof table.subtotal === "number"
+        ? table.subtotal
+        : table.items.filter((item) => !item.isHidden).reduce((sum, item) => sum + (item.sellingPrice || 0), 0);
+
+      const items = table.items.map((item) => {
+        if (item.isHidden) return item;
+
+        const currentVisibleIdx = visibleItemIdx;
+        visibleItemIdx += 1;
+
+        if (currentVisibleIdx !== itemIdx) return item;
+
+        found = true;
+        tableChanged = true;
+        return field === "sellingPrice"
+          ? { ...item, sellingPrice: value }
+          : { ...item, cost: value };
+      });
+
+      if (!tableChanged) return table;
+
+      const subtotal = items.filter((item) => !item.isHidden).reduce((sum, item) => sum + (item.sellingPrice || 0), 0);
+      const previousTaxRate = table.tax
+        ? (typeof table.tax.rate === "number"
+          ? table.tax.rate
+          : (previousSubtotal > 0 ? (table.tax.amount || 0) / previousSubtotal : 0))
+        : 0;
+      const previousBondRate = previousSubtotal > 0 ? (table.bond || 0) / previousSubtotal : 0;
+      const tax = table.tax
+        ? { ...table.tax, amount: subtotal * previousTaxRate }
+        : table.tax;
+      const bond = subtotal * previousBondRate;
+      const grandTotal = subtotal + (tax?.amount || 0) + bond;
+
+      return {
+        ...table,
+        items,
+        subtotal,
+        tax,
+        bond,
+        grandTotal,
+      };
+    });
+
+    if (!found) return pricingDocument;
+
+    const documentTotal = tables
+      .filter((table) => !(table.isAlternateSection === true || /\balternate/i.test(table.name || "")))
+      .reduce((sum, table) => sum + (table.grandTotal || 0), 0);
+
+    return {
+      ...pricingDocument,
+      tables,
+      documentTotal,
     };
   }
 
@@ -2373,6 +2444,19 @@ export default function RfpAnalyzerClient() {
                     });
                   }}
                   onMarginAnalysisEdit={(itemIdx, field, value) => {
+                    const hasMirrorPricing = Array.isArray(result?.pricingDocument?.tables)
+                      && result.pricingDocument.tables.some((table: any) => Array.isArray(table.items) && table.items.length > 0);
+
+                    if (hasMirrorPricing && (field === "sellingPrice" || field === "cost")) {
+                      setResult(prev => {
+                        if (!prev?.pricingDocument) return prev;
+                        const updatedPricingDocument = updatePricingDocumentFromMarginAnalysis(prev.pricingDocument as PricingDocument, itemIdx, field, value);
+                        if (updatedPricingDocument === prev.pricingDocument) return prev;
+                        return { ...prev, pricingDocument: updatedPricingDocument };
+                      });
+                      return;
+                    }
+
                     setPricingPreview(prev => {
                       if (!prev) return prev;
                       const nonCustom = prev.displays.filter(d => !d.isCustom);
@@ -2391,6 +2475,9 @@ export default function RfpAnalyzerClient() {
                           const updated = { ...d };
                           if (field === "marginPct") {
                             updated.blendedMarginPct = value;
+                          } else if (field === "sellingPrice") {
+                            updated.totalSellingPrice = value;
+                            updated.blendedMarginPct = value > 0 ? (value - updated.totalCost) / value : 0;
                           } else {
                             updated.hardwareCost = value;
                             updated.processorCost = 0;
@@ -2427,6 +2514,9 @@ export default function RfpAnalyzerClient() {
                             const updated = { ...d };
                             if (field === "marginPct") {
                               updated.blendedMarginPct = value;
+                            } else if (field === "sellingPrice") {
+                              updated.totalSellingPrice = value;
+                              updated.blendedMarginPct = value > 0 ? (value - updated.totalCost) / value : 0;
                             } else {
                               updated.hardwareCost = value;
                             }

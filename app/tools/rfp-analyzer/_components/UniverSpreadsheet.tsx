@@ -35,7 +35,7 @@ export interface UniverSpreadsheetProps {
         isHidden?: boolean;
       }>;
       subtotal?: number;
-      tax?: { label: string; amount: number };
+      tax?: { label: string; amount: number; rate?: number };
       bond?: number;
       grandTotal?: number;
       isAlternateSection?: boolean;
@@ -1447,6 +1447,72 @@ function getMarginAnalysisTotalRow(pricingDocument: any, pricingDisplays: Pricin
   }
 }
 
+function getPricingDocumentFingerprint(pricingDocument: UniverSpreadsheetProps["pricingDocument"]): string {
+  if (!pricingDocument?.tables?.length) return "0";
+
+  return JSON.stringify(
+    pricingDocument.tables.map((table) => ({
+      n: table.name,
+      a: !!table.isAlternateSection,
+      i: (table.items || []).map((item) => ({
+        d: item.description,
+        s: item.sellingPrice,
+        c: item.cost ?? null,
+        h: !!item.isHidden,
+      })),
+      t: table.tax ? { l: table.tax.label, a: table.tax.amount, r: table.tax.rate ?? null } : null,
+      b: table.bond ?? 0,
+      g: table.grandTotal ?? 0,
+      x: (table.alternates || []).map((alt) => ({ d: alt.description, p: alt.priceDifference })),
+    }))
+  );
+}
+
+function getMarginAnalysisEditTarget(
+  row: number,
+  column: number,
+  props: UniverSpreadsheetProps
+): { itemIdx: number; field: "cost" | "sellingPrice" } | null {
+  const pricingTables = props.pricingDocument?.tables || [];
+  const hasPricingTables = pricingTables.length > 0 && pricingTables.some((t) => t.items?.length > 0);
+
+  if (hasPricingTables) {
+    let sheetRow = 5; // title block + blank row
+    let itemIdx = 0;
+
+    for (const table of pricingTables) {
+      const items = (table.items || []).filter((item) => !item.isHidden);
+      if (items.length === 0) continue;
+
+      sheetRow += 1; // section header
+      for (const item of items) {
+        if (row === sheetRow) {
+          if (column === 1) return { itemIdx, field: "sellingPrice" };
+          if (column === 5 && item.cost != null) return { itemIdx, field: "cost" };
+          return null;
+        }
+        itemIdx++;
+        sheetRow++;
+      }
+
+      sheetRow += 4; // subtotal + tax + bond + grand total
+      if ((table.alternates || []).length > 0) {
+        sheetRow += 1 + table.alternates!.length; // alternates header + rows
+      }
+      sheetRow += 1; // blank separator
+    }
+
+    return null;
+  }
+
+  const firstDataRow = 6; // 5 title/header rows + data starts after table header
+  const itemIdx = row - firstDataRow;
+  if (itemIdx < 0 || itemIdx >= props.pricingDisplays.length) return null;
+  if (column === 1) return { itemIdx, field: "cost" };
+  if (column === 2) return { itemIdx, field: "sellingPrice" };
+  return null;
+}
+
 function getMarginStyle(margin: number): string | Record<string, any> {
   if (margin >= 0.25) return "marginGreen";
   if (margin >= 0.15) return "marginAmber";
@@ -1550,7 +1616,7 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
         lastBuiltRef.current = JSON.stringify({
           screens: propsRef.current.screens.map(s => ({ n: s.name, q: s.quantity, p: s.pixelPitchMm })),
           displays: propsRef.current.pricingDisplays.map(d => ({ n: d.name, c: d.hardwareCost, s: d.totalSellingPrice, m: d.blendedMarginPct })),
-          docTables: propsRef.current.pricingDocument?.tables?.length ?? 0,
+          docTables: getPricingDocumentFingerprint(propsRef.current.pricingDocument),
         });
 
         setReady(true);
@@ -1580,7 +1646,7 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
     const currentKey = JSON.stringify({
       screens: props.screens.map(s => ({ n: s.name, q: s.quantity, p: s.pixelPitchMm })),
       displays: props.pricingDisplays.map(d => ({ n: d.name, c: d.hardwareCost, s: d.totalSellingPrice, m: d.blendedMarginPct })),
-      docTables: props.pricingDocument?.tables?.length ?? 0,
+      docTables: getPricingDocumentFingerprint(props.pricingDocument),
     });
 
     // Skip if already built this exact data
@@ -1666,16 +1732,9 @@ function handleValueChanged(params: any, propsRef: React.MutableRefObject<Univer
         props.onPricingEdit?.(screenIdx, "blendedMarginPct", margin);
       }
     } else if (sheetId === "margin-analysis") {
-      const itemIdx = row - 1; // row 0 is header
-      if (itemIdx < 0) continue;
-
-      if (column === 1) {
-        props.onMarginAnalysisEdit?.(itemIdx, "cost", numValue);
-      } else if (column === 4) {
-        let margin = numValue;
-        if (margin > 1) margin = margin / 100;
-        props.onMarginAnalysisEdit?.(itemIdx, "marginPct", margin);
-      }
+      const target = getMarginAnalysisEditTarget(row, column, props);
+      if (!target) continue;
+      props.onMarginAnalysisEdit?.(target.itemIdx, target.field, numValue);
     }
   }
 }
