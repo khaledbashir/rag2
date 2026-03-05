@@ -380,6 +380,14 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Debug: log props received
+  console.log("[UniverSpreadsheet] Props received:", {
+    screensLength: props.screens?.length ?? 0,
+    pricingDisplaysLength: props.pricingDisplays?.length ?? 0,
+    firstScreen: props.screens?.[0]?.name ?? null,
+    firstDisplay: props.pricingDisplays?.[0]?.name ?? null,
+  });
+
   // Build workbook data from current props
   const workbookDataRef = useRef(buildWorkbookData(props));
 
@@ -487,31 +495,44 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // NOTE: We intentionally do NOT push prop changes back into Univer cells.
-  // Univer formulas handle internal recalculation (edit H → SqFt updates, etc.).
-  // The parent callbacks (onSpecEdit, onPricingEdit, onMarginAnalysisEdit) track
-  // state for export/persistence. Pushing props back would create a circular loop
-  // (edit → parent state → push back → edit) and calling getActiveWorkbook()
-  // immediately after init triggers cyclic dependency errors in Univer's DI (redi).
-  //
-  // For external changes (e.g., product selection from parent UI), we rebuild the
-  // workbook entirely by tracking a version key.
+  // Rebuild workbook when props change (screens/pricing data arriving after mount)
+  // We track a key to detect when external data changes and rebuild the entire workbook.
   const prevPropsKeyRef = useRef("");
   useEffect(() => {
-    if (!ready || !apiRef.current) return;
-    // Build a lightweight key from things that change externally (not from Univer edits)
-    const key = props.pricingDisplays.map(d =>
-      `${d.name}:${d.matchedProduct?.model ?? ""}:${d.matchedProduct?.pitch ?? ""}`
-    ).join("|");
-    if (prevPropsKeyRef.current === "" || key === prevPropsKeyRef.current) {
-      prevPropsKeyRef.current = key;
+    if (!ready || !apiRef.current) {
+      console.log("[UniverSpreadsheet] Rebuild useEffect skipped — not ready:", { ready, hasApi: !!apiRef.current });
       return;
     }
+
+    // Build a key from things that change externally (screens + pricing displays)
+    const key = `${props.screens.length}|${props.pricingDisplays.map(d =>
+      `${d.name}:${d.matchedProduct?.model ?? ""}:${d.matchedProduct?.pitch ?? ""}:${d.hardwareCost}`
+    ).join("|")}`;
+
+    console.log("[UniverSpreadsheet] Rebuild check:", {
+      key,
+      prevKey: prevPropsKeyRef.current,
+      screensLength: props.screens.length,
+      displaysLength: props.pricingDisplays.length,
+    });
+
+    // First time after ready — always rebuild if we have data
+    // After that, only rebuild if key changed
+    const isFirstBuild = prevPropsKeyRef.current === "";
+    const keyChanged = key !== prevPropsKeyRef.current;
+
     prevPropsKeyRef.current = key;
 
-    // Product selection changed — rebuild the workbook
+    // Skip rebuild only if this isn't the first build AND key hasn't changed
+    if (!isFirstBuild && !keyChanged) {
+      console.log("[UniverSpreadsheet] Skipping rebuild — key unchanged");
+      return;
+    }
+
+    // Rebuild the workbook with new data
     const api = apiRef.current;
     try {
+      console.log("[UniverSpreadsheet] Rebuilding workbook with", props.screens.length, "screens");
       const newData = buildWorkbookData(props);
       workbookDataRef.current = newData;
       // Dispose old and create new workbook
@@ -520,9 +541,9 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
         try { oldWb.dispose?.(); } catch { /* ignore */ }
       }
       api.createWorkbook(newData);
-      console.log("[UniverSpreadsheet] workbook rebuilt after product change");
+      console.log("[UniverSpreadsheet] Workbook rebuilt successfully");
     } catch (err) {
-      console.warn("[UniverSpreadsheet] rebuild failed:", err);
+      console.warn("[UniverSpreadsheet] Rebuild failed:", err);
     }
   }, [ready, props.screens, props.pricingDisplays, props.pricingSummary]);
 
