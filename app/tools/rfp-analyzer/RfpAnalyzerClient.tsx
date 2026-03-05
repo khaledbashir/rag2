@@ -255,6 +255,8 @@ export default function RfpAnalyzerClient() {
   const [drawingUpload, setDrawingUpload] = useState<{ uploading: boolean; results: Array<{ filename: string; pages: number }> }>({ uploading: false, results: [] });
   const [quotePreviewOpen, setQuotePreviewOpen] = useState(false);
   const [editableSpecs, setEditableSpecs] = useState<ExtractedLEDSpec[]>([]);
+  // Full-screen spreadsheet mode — hides pipeline, stats, project info
+  const [spreadsheetMode, setSpreadsheetMode] = useState(true);
   // PDF split-panel viewer
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [pdfViewerPage, setPdfViewerPage] = useState<number | null>(null);
@@ -1653,9 +1655,42 @@ export default function RfpAnalyzerClient() {
   // Render
   // ========================================================================
 
+  const isSpreadsheetVisible = phase === "results" && result && pricingPreview && spreadsheetMode;
+
   return (
-    <div className="flex-1 min-w-0 bg-background relative min-h-screen pb-24">
-      {/* Header */}
+    <div className={`flex-1 min-w-0 bg-background relative ${isSpreadsheetVisible ? "h-screen overflow-hidden flex flex-col" : "min-h-screen pb-24"}`}>
+      {/* Header — thin in spreadsheet mode */}
+      {isSpreadsheetVisible ? (
+        <header className="shrink-0 z-30 bg-[#002C73] text-white px-4 py-1.5 flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-sm font-semibold truncate">{result?.project?.projectName || "RFP Analysis"}</span>
+            {fileInfo && <span className="text-xs text-white/60 hidden sm:inline">{fileInfo.filename}</span>}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSpreadsheetMode(false)}
+              className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-white/80 hover:text-white hover:bg-white/10 rounded transition-colors"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              Show Analysis
+            </button>
+            <Link
+              href="/tools/rfp-analyzer/history"
+              className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-white/60 hover:text-white hover:bg-white/10 rounded transition-colors"
+            >
+              <History className="w-3.5 h-3.5" />
+              History
+            </Link>
+            <button
+              onClick={handleReset}
+              className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-white/60 hover:text-white hover:bg-white/10 rounded transition-colors"
+            >
+              <RefreshCcw className="w-3.5 h-3.5" />
+              New
+            </button>
+          </div>
+        </header>
+      ) : (
       <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border py-4 px-6 xl:px-8">
         <div className="flex items-center justify-between max-w-[1600px] mx-auto">
           <div>
@@ -1691,9 +1726,11 @@ export default function RfpAnalyzerClient() {
           </div>
         </div>
       </header>
+      )}
 
-      <main className="p-6 xl:px-8 max-w-[1600px] mx-auto">
-        {/* Pipeline stepper — always visible */}
+      <main className={isSpreadsheetVisible ? "flex-1 min-h-0 flex flex-col overflow-hidden" : "p-6 xl:px-8 max-w-[1600px] mx-auto"}>
+        {/* Pipeline stepper — hidden in spreadsheet mode */}
+        {!isSpreadsheetVisible && (
         <PipelineStepper
           phase={phase}
           resultsTab={resultsTab}
@@ -1702,6 +1739,7 @@ export default function RfpAnalyzerClient() {
           specsFound={result?.screens?.length || result?.stats.specsFound || 0}
           onTabSwitch={setResultsTab}
         />
+        )}
 
         {/* ============ UPLOAD / PROCESSING ============ */}
         {(phase === "upload" || phase === "processing") && (
@@ -1741,7 +1779,10 @@ export default function RfpAnalyzerClient() {
           const criticalReqs = requirements.filter((r) => r.status === "critical").length;
 
           return (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 ease-out space-y-6">
+          <div className={spreadsheetMode ? "flex flex-col flex-1 min-h-0 overflow-hidden" : "animate-in fade-in slide-in-from-bottom-4 duration-500 ease-out space-y-6"}>
+            {/* ============ ANALYSIS PANELS — hidden in spreadsheet mode ============ */}
+            {!spreadsheetMode && (
+            <>
             {/* Error banner */}
             {error && (
               <div className="p-4 border border-destructive/20 bg-destructive/10 rounded-xl">
@@ -1932,13 +1973,15 @@ export default function RfpAnalyzerClient() {
                 <p className="text-sm text-blue-700 dark:text-blue-300">Matching products and calculating pricing...</p>
               </div>
             )}
+            </>
+            )}
 
             {/* ============ WORKBOOK VIEW ============ */}
-            <div className="flex gap-3">
+            <div className={spreadsheetMode ? "flex flex-col flex-1 min-h-0 overflow-hidden" : "flex gap-3"}>
             {/* Left: Workbook */}
-            <div className={`flex flex-col ${showPdfPanel && pdfBlobUrl ? "flex-1 min-w-0" : "w-full"}`} style={{ height: "75vh" }}>
+            <div className={`flex flex-col ${spreadsheetMode ? "flex-1 min-h-0" : showPdfPanel && pdfBlobUrl ? "flex-1 min-w-0" : "w-full"}`} style={spreadsheetMode ? undefined : { height: "75vh" }}>
               {/* ---- Title Bar (matches WorkbookShell green bar) ---- */}
-              <div className="flex items-center justify-between bg-[#217346] text-white px-3 py-1.5 rounded-t-lg">
+              <div className={`flex items-center justify-between bg-[#217346] text-white px-3 py-1 shrink-0 ${spreadsheetMode ? "" : "rounded-t-lg"}`}>
                 <span className="text-xs font-semibold tracking-wide truncate">{workbookData.fileName || "RFP Analysis"}</span>
                 <div className="flex items-center gap-1 flex-wrap">
                   {result.aiWorkspaceSlug && (
@@ -2045,12 +2088,18 @@ export default function RfpAnalyzerClient() {
                 </div>
               </div>
 
-              {/* ---- Univer Spreadsheet ---- */}
-              <div className="flex-1 min-h-0 border border-t-0 border-gray-200 dark:border-gray-700 overflow-hidden">
+              {/* ---- Univer Spreadsheet — only render when pricing data is ready ---- */}
+              <div className={`flex-1 min-h-0 overflow-hidden ${spreadsheetMode ? "border-x border-gray-200 dark:border-gray-700" : "border border-t-0 border-gray-200 dark:border-gray-700"}`}>
+                {!pricingPreview ? (
+                  <div className="flex items-center justify-center h-full gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Loading pricing data...
+                  </div>
+                ) : (
                 <UniverSpreadsheet
                   screens={editableSpecs.length > 0 ? editableSpecs : (result?.screens || [])}
-                  pricingDisplays={pricingPreview?.displays || []}
-                  pricingSummary={pricingPreview?.summary || null}
+                  pricingDisplays={pricingPreview.displays}
+                  pricingSummary={pricingPreview.summary}
                   availableProducts={availableProducts}
                   onSpecEdit={(screenIdx, field, value) => {
                     setResult(prev => {
@@ -2171,9 +2220,11 @@ export default function RfpAnalyzerClient() {
                   }}
                   className="w-full h-full"
                 />
+                )}
               </div>
 
-              {/* ---- Footer ---- */}
+              {/* ---- Footer — hidden in spreadsheet mode ---- */}
+              {!spreadsheetMode && (
               <div className="px-4 py-2 space-y-2 border border-t-0 border-gray-200 dark:border-gray-700 rounded-b-lg bg-white dark:bg-gray-900">
                 {scopingImportResult && (
                   <div className="flex items-center gap-1.5 text-[10px] text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 rounded px-2 py-1">
@@ -2199,10 +2250,11 @@ export default function RfpAnalyzerClient() {
                   nextStageLabel="Review Complete"
                 />
               </div>
+              )}
 
-              {/* OLD TAB CONTENT REMOVED — now rendered by WorkbookShell */}
-
-              {/* Incomplete specs quarantine — displays referenced but missing physical specs */}
+              {/* Incomplete specs + PDF panel — hidden in spreadsheet mode */}
+              {!spreadsheetMode && (
+              <>
               {result.incompleteSpecs && result.incompleteSpecs.length > 0 && (
                 <div className="mt-4 border border-amber-500/30 bg-amber-500/5 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-3">
@@ -2243,10 +2295,12 @@ export default function RfpAnalyzerClient() {
                   </div>
                 </div>
               )}
+              </>
+              )}
             </div>
 
-            {/* Right: PDF split panel */}
-            {showPdfPanel && pdfBlobUrl && (
+            {/* Right: PDF split panel — hidden in spreadsheet mode */}
+            {!spreadsheetMode && showPdfPanel && pdfBlobUrl && (
               <div className="w-[420px] shrink-0 rounded-lg border border-border overflow-hidden shadow-sm self-stretch min-h-[500px]">
                 <PdfSplitPanel
                   pdfUrl={pdfBlobUrl}
@@ -2257,8 +2311,8 @@ export default function RfpAnalyzerClient() {
             )}
             </div>
 
-            {/* Link to saved analysis */}
-            {result.id && (
+            {/* Link to saved analysis — hidden in spreadsheet mode */}
+            {!spreadsheetMode && result.id && (
               <div className="flex items-center justify-center gap-4 pt-2">
                 <Link
                   href={`/tools/rfp-analyzer/history/${result.id}`}
