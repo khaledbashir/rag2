@@ -189,6 +189,7 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
   marginSheet.getColumn(3).width = 16;
   marginSheet.getColumn(4).width = 16;
   marginSheet.getColumn(5).width = 12;
+  marginSheet.getColumn(6).hidden = true; // Hidden col F: per-item cost data for SUM formulas
 
   const moneyFmt = excelCurrencyFmt(args.currency);
   const percentFmt = "0.00%";
@@ -224,7 +225,7 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
       marginSheet.getCell(`A${r}`).alignment = { vertical: "middle", horizontal: "left" };
       r++;
 
-      // Line items — description + selling price only (no cost/margin per item)
+      // Line items — A=description, B=selling price, F=cost (hidden column for SUM formulas)
       const firstItemRow = r;
       let sectionCostSum = 0;
       let sectionSellSum = 0;
@@ -238,6 +239,11 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
         marginSheet.getCell(`A${r}`).value = item.description || "";
         marginSheet.getCell(`B${r}`).value = sell;
         marginSheet.getCell(`B${r}`).numFmt = moneyFmt;
+        // Write cost to hidden column F for SUM formulas
+        if (cost != null) {
+          marginSheet.getCell(`F${r}`).value = cost;
+          marginSheet.getCell(`F${r}`).numFmt = moneyFmt;
+        }
         sectionSellSum += sell;
         r++;
       }
@@ -256,10 +262,11 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
       const subtotalRow = r;
       marginSheet.getCell(`A${r}`).value = "SUBTOTAL";
       if (hasCostData) {
-        marginSheet.getCell(`B${r}`).value = sectionCostSum;
+        // SUBTOTAL Col B (Cost): =SUM(F{first}:F{last}) — sums hidden cost column
+        marginSheet.getCell(`B${r}`).value = { formula: `SUM(F${firstItemRow}:F${lastItemRow})`, result: sectionCostSum };
         marginSheet.getCell(`B${r}`).numFmt = moneyFmt;
       }
-      // SUBTOTAL Col C: =SUM(B{first}:B{last}) — sums selling price column
+      // SUBTOTAL Col C (Selling): =SUM(B{first}:B{last}) — sums selling price column
       marginSheet.getCell(`C${r}`).value = { formula: `SUM(B${firstItemRow}:B${lastItemRow})`, result: sectionSubtotal };
       marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
       if (sectionMargin != null) {
@@ -294,7 +301,8 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
       const grandTotalRow = r;
       marginSheet.getCell(`A${r}`).value = "SUB TOTAL (BID FORM)";
       if (hasCostData) {
-        marginSheet.getCell(`B${r}`).value = sectionCostSum;
+        // GRAND TOTAL Col B (Cost): =B{subtotal} (cost doesn't include tax/bond)
+        marginSheet.getCell(`B${r}`).value = { formula: `B${subtotalRow}`, result: sectionCostSum };
         marginSheet.getCell(`B${r}`).numFmt = moneyFmt;
       }
       // GRAND TOTAL Col C: =C{subtotal}+C{tax}+C{bond}
@@ -507,11 +515,9 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     techSheet.getCell(`I${r}`).value = audit?.brightnessNits ?? null;
     techSheet.getCell(`J${r}`).value = null;
     techSheet.getCell(`K${r}`).value = null;
-    // Cross-sheet refs: Weight and Power from LED Sheet
-    const weightVal = audit?.estimatedWeightLbs ?? null;
-    techSheet.getCell(`L${r}`).value = weightVal != null ? { formula: `'LED Sheet'!N${r}`, result: weightVal } : null;
-    const powerVal = audit?.totalMaxPowerW ?? null;
-    techSheet.getCell(`M${r}`).value = powerVal != null ? { formula: `'LED Sheet'!O${r}`, result: powerVal } : null;
+    // Cross-sheet refs: Weight and Power always reference LED Sheet (formula resolves even if source is empty)
+    techSheet.getCell(`L${r}`).value = { formula: `'LED Sheet'!N${r}`, result: toNumber(audit?.estimatedWeightLbs) || 0 };
+    techSheet.getCell(`M${r}`).value = { formula: `'LED Sheet'!O${r}`, result: toNumber(audit?.totalMaxPowerW) || 0 };
     // BTU/hr: =M{r}*3.412
     const techPowerW = toNumber(audit?.totalMaxPowerW);
     if (techPowerW > 0) {
