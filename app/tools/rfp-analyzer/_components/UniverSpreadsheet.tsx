@@ -110,7 +110,7 @@ const NUMBER_FMT_2 = { n: { pattern: '#,##0.00' } };
 // ---------------------------------------------------------------------------
 
 function buildWorkbookData(props: UniverSpreadsheetProps) {
-  const { screens, pricingDisplays, pricingSummary, pricingDocument, projectInfo, internalAudit } = props;
+  const { screens, pricingDisplays, pricingDocument, projectInfo, internalAudit } = props;
   const styles: Record<string, any> = {
     header: HEADER_STYLE,
     bold: BOLD_STYLE,
@@ -284,8 +284,8 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       3: { v: pitch > 0 ? pitch : "", s: "number2" },
       4: { v: h > 0 ? Math.round(h * 100) / 100 : "", s: "number2" },
       5: { v: w > 0 ? Math.round(w * 100) / 100 : "", s: "number2" },
-      6: { v: hPx > 0 ? hPx : "" },
-      7: { v: wPx > 0 ? wPx : "" },
+      6: pitch > 0 ? { f: `=ROUND(E${row + 1}*304.8/D${row + 1},0)`, s: "number" } : { v: hPx > 0 ? hPx : "" },
+      7: pitch > 0 ? { f: `=ROUND(F${row + 1}*304.8/D${row + 1},0)`, s: "number" } : { v: wPx > 0 ? wPx : "" },
       8: { f: `=${hCell}*${wCell}`, s: "number2" },
       9: { v: qty },
       10: { f: `=I${row + 1}*${qtyCell}`, s: "number2" },
@@ -300,7 +300,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       19: { f: `=IF(S${row + 1}>0,R${row + 1}/(1-S${row + 1}),R${row + 1})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } },
       20: { v: weight, s: "number" },
       21: { v: power, s: "number" },
-      22: { f: power > 0 ? `=V${row + 1}*3.412` : "", s: "number" },
+      22: { f: `=V${row + 1}*3.412`, s: "number" },
     };
   });
 
@@ -530,16 +530,27 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
 
     // Tax, Bond, Subtotal — use explicit indices for correct formula references
     const fbTotalsIdx = maRow - 1; // 0-indexed totals row (SUM row just written above)
-    maCellData[maRow] = { 0: { v: "TAX" }, 2: { v: 0, s: "currency" } };
+    const fbTaxIdx = maRow;
+    maCellData[maRow] = {
+      0: { v: "TAX" },
+      2: { f: `=C${fbTotalsIdx + 1}*F${fbTaxIdx + 1}`, s: "currency" },
+      5: { v: 0 }, // Tax rate in hidden col F (editable)
+    };
     maRow++;
-    maCellData[maRow] = { 0: { v: "BOND" }, 2: { v: 0, s: "currency" } };
+    const fbBondIdx = maRow;
+    maCellData[maRow] = {
+      0: { v: "BOND" },
+      2: { f: `=C${fbTotalsIdx + 1}*F${fbBondIdx + 1}`, s: "currency" },
+      5: { v: 0 }, // Bond rate in hidden col F (editable)
+    };
     maRow++;
 
     marginDocTotalRow = maRow;
     maCellData[maRow] = {
       0: { v: "SUB TOTAL (BID FORM)", s: "bold" },
-      2: { f: `=C${fbTotalsIdx + 1}+C${fbTotalsIdx + 2}+C${fbTotalsIdx + 3}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
-      3: { f: `=D${fbTotalsIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+      1: { f: `=B${fbTotalsIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+      2: { f: `=C${fbTotalsIdx + 1}+C${fbTaxIdx + 1}+C${fbBondIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+      3: { f: `=C${maRow + 1}-B${maRow + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
       4: { f: `=IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } },
     };
   }
@@ -580,34 +591,23 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
 
   screens.forEach((spec, si) => {
     const row = si + 1;
-    const audit = internalAudit?.perScreen?.[si];
-    const pd = pricingDisplays.find((d) => d.name === spec.name);
-    const mp = pd?.matchedProduct;
-
-    const h = spec.heightFt ?? 0;
-    const w = spec.widthFt ?? 0;
-    const pitch = spec.pixelPitchMm ?? 0;
-    const qty = audit?.quantity || spec.quantity || 1;
-    const hPx = spec.heightPx ?? (pitch > 0 ? Math.round(h * 304.8 / pitch) : 0);
-    const wPx = spec.widthPx ?? (pitch > 0 ? Math.round(w * 304.8 / pitch) : 0);
-    const weight = audit?.estimatedWeightLbs ?? mp?.totalWeightLbs ?? 0;
-    const power = audit?.totalMaxPowerW ?? mp?.totalMaxPowerW ?? 0;
-
+    // Cross-sheet formulas: reference LED Cost Sheet for all technical values
+    const ledRow = row + 1; // 1-based row in LED Cost Sheet (header=1, data starts at 2)
     tsCellData[row] = {
-      0: { v: spec.name, s: "bold" },
-      1: { v: qty },
-      2: { v: pitch > 0 ? pitch : "", s: "number2" },
-      3: { v: h > 0 ? h : "", s: "number2" },
-      4: { v: w > 0 ? w : "", s: "number2" },
-      5: { v: hPx > 0 ? hPx : "" },
-      6: { v: wPx > 0 ? wPx : "" },
+      0: { f: `='LED Cost Sheet'!A${ledRow}`, s: "bold" },
+      1: { f: `='LED Cost Sheet'!J${ledRow}` },
+      2: { f: `='LED Cost Sheet'!D${ledRow}`, s: "number2" },
+      3: { f: `='LED Cost Sheet'!E${ledRow}`, s: "number2" },
+      4: { f: `='LED Cost Sheet'!F${ledRow}`, s: "number2" },
+      5: { f: `='LED Cost Sheet'!G${ledRow}`, s: "number" },
+      6: { f: `='LED Cost Sheet'!H${ledRow}`, s: "number" },
       7: { f: `=D${row + 1}*E${row + 1}`, s: "number2" },
-      8: { v: mp?.nits ?? spec.brightnessNits ?? "" },
+      8: { f: `='LED Cost Sheet'!L${ledRow}` },
       9: { v: spec.serviceType ?? "" },
       10: { v: spec.environment ?? "" },
-      11: { v: weight, s: "number" },
-      12: { v: power, s: "number" },
-      13: { f: power > 0 ? `=M${row + 1}*3.412` : "", s: "number" },
+      11: { f: `='LED Cost Sheet'!U${ledRow}`, s: "number" },
+      12: { f: `='LED Cost Sheet'!V${ledRow}`, s: "number" },
+      13: { f: `=M${row + 1}*3.412`, s: "number" },
     };
   });
 
@@ -627,7 +627,78 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
   };
 
-  // === SHEET 4: Install (Base) — per-zone structural/labor/electrical ===
+  // === SHEET 4: Bundle Equipment — Processor & Equipment component breakdown ===
+  sheetOrder.push("bundle-equipment");
+  const beCellData: Record<number, Record<number, any>> = {};
+  const beColWidths: Record<number, { w: number }> = {
+    0: { w: 250 }, 1: { w: 70 }, 2: { w: 110 }, 3: { w: 110 },
+  };
+
+  beCellData[0] = { 0: { v: `${projectName} — Processor & Equipment Bundle`, s: { bl: 1, fs: 14, cl: { rgb: "#0A52EF" } } } };
+  beCellData[1] = { 0: { v: "Individual components for Processor & Equipment line on Margin Analysis. Edit costs below.", s: "italic" } };
+  beCellData[3] = {
+    0: { v: "Component", s: "header" },
+    1: { v: "Qty", s: "header" },
+    2: { v: "Unit Cost", s: "header" },
+    3: { v: "Total Cost", s: "header" },
+  };
+
+  // Default equipment items (editable by user)
+  const defaultEquipment = [
+    { name: "Video Processor", qty: 1, unitCost: 2500 },
+    { name: "Sending Card", qty: 1, unitCost: 800 },
+    { name: "Media Player", qty: 1, unitCost: 1500 },
+    { name: "Signal Cable Kit", qty: 1, unitCost: 350 },
+    { name: "Power Supply Unit", qty: 1, unitCost: 600 },
+    { name: "Receiver Cards", qty: 1, unitCost: 0 },
+    { name: "Mounting Hardware", qty: 1, unitCost: 0 },
+  ];
+
+  // Use processor costs from pricing if available
+  const totalProcessorCost = pricingDisplays.reduce((s, d) => s + (d.processorCost ?? 0), 0);
+  if (totalProcessorCost > 0) {
+    defaultEquipment[0].unitCost = totalProcessorCost; // Main processor cost
+    for (let i = 1; i < defaultEquipment.length; i++) defaultEquipment[i].unitCost = 0;
+  }
+
+  const beDataStart = 4; // 0-indexed row where data starts
+  defaultEquipment.forEach((item, i) => {
+    const r = beDataStart + i;
+    const r1 = r + 1; // 1-based for formulas
+    beCellData[r] = {
+      0: { v: item.name },
+      1: { v: item.qty },
+      2: { v: item.unitCost, s: "currency" },
+      3: { f: `=B${r1}*C${r1}`, s: "currency" },
+    };
+  });
+
+  const beTotalRowIdx = beDataStart + defaultEquipment.length;
+  const beFirstData1 = beDataStart + 1; // 1-based
+  const beLastData1 = beTotalRowIdx; // 1-based (last data row + 1 = total row, so last data = total-1+1 = total)
+  beCellData[beTotalRowIdx] = {
+    0: { v: "TOTAL", s: "total" },
+    1: { v: "", s: "total" },
+    2: { v: "", s: "total" },
+    3: { f: `=SUM(D${beFirstData1}:D${beLastData1})`, s: "totalCurrency" },
+  };
+
+  sheets["bundle-equipment"] = {
+    id: "bundle-equipment",
+    name: "Bundle Equipment",
+    tabColor: "#17A2B8",
+    rowCount: Math.max(beTotalRowIdx + 10, 25),
+    columnCount: 4,
+    defaultColumnWidth: 100,
+    defaultRowHeight: 28,
+    cellData: beCellData,
+    columnData: beColWidths,
+    mergeData: [],
+    showGridlines: 1,
+    // Editable: Qty(1), Unit Cost(2)
+  };
+
+  // === SHEET 5: Install (Base) — per-zone structural/labor/electrical ===
   sheetOrder.push("install-base");
   const installCellData: Record<number, Record<number, any>> = {};
   const installColWidths: Record<number, { w: number }> = {
@@ -641,17 +712,9 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   installRow++; // blank
 
   // Per-display install sections
-  screens.forEach((spec, si) => {
+  screens.forEach((spec) => {
     const pd = pricingDisplays.find((d) => d.name === spec.name);
-    const displayCost = pd?.hardwareCost ?? 0;
-    const installCost = pd?.installCost ?? 0;
-    const structCost = pd?.structuralCost ?? 0;
-    const elecCost = pd?.electricalCost ?? 0;
-    const engCost = pd?.engCost ?? 0;
-    const pmCost = pd?.pmCost ?? 0;
     const margin = pd?.blendedMarginPct ?? 0.20;
-    const totalCost = displayCost + installCost + structCost + elecCost + engCost + pmCost;
-    const sellingPrice = margin > 0 && margin < 1 ? totalCost / (1 - margin) : totalCost;
 
     // Display header
     installCellData[installRow++] = {
@@ -685,8 +748,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     // Structural Materials section
     installCellData[installRow++] = { 1: { v: "STRUCTURAL MATERIALS", s: { bl: 1, bg: { rgb: LIGHT_GRAY } } } };
     const structItems = ["Steel Fabrication", "Steel Finish", "Mounting Hardware", "Misc Materials"];
-    structItems.forEach((item, i) => {
-      const cost = i === 0 ? structCost * 0.6 : 0;
+    structItems.forEach((item) => {
       installCellData[installRow] = {
         1: { v: item },
         2: { v: 0, s: "currency" },
@@ -695,7 +757,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         5: { v: 0, s: "currency" },
         6: { f: `=SUM(C${installRow + 1}:F${installRow + 1})`, s: "currency" },
         7: { v: margin, s: "percent" },
-        8: { f: `=IF(G${installRow + 1}>=1,F${installRow + 1},F${installRow + 1}/(1-G${installRow + 1}))`, s: "currency" },
+        8: { f: `=IF(H${installRow + 1}>=1,G${installRow + 1},G${installRow + 1}/(1-H${installRow + 1}))`, s: "currency" },
       };
       installRow++;
     });
@@ -703,8 +765,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     // Structural Labor section
     installCellData[installRow++] = { 1: { v: "STRUCTURAL LABOR & LED INSTALL", s: { bl: 1, bg: { rgb: LIGHT_GRAY } } } };
     const laborItems = ["Structural Labor", "LED Installation", "Rigging", "Equipment Rental"];
-    laborItems.forEach((item, i) => {
-      const cost = i === 0 ? installCost * 0.5 : i === 1 ? installCost * 0.5 : 0;
+    laborItems.forEach((item) => {
       installCellData[installRow] = {
         1: { v: item },
         2: { v: 0, s: "currency" },
@@ -713,7 +774,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         5: { v: 0, s: "currency" },
         6: { f: `=SUM(C${installRow + 1}:F${installRow + 1})`, s: "currency" },
         7: { v: margin, s: "percent" },
-        8: { f: `=IF(G${installRow + 1}>=1,F${installRow + 1},F${installRow + 1}/(1-G${installRow + 1}))`, s: "currency" },
+        8: { f: `=IF(H${installRow + 1}>=1,G${installRow + 1},G${installRow + 1}/(1-H${installRow + 1}))`, s: "currency" },
       };
       installRow++;
     });
@@ -721,8 +782,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     // Electrical section
     installCellData[installRow++] = { 1: { v: "ELECTRICAL & DATA", s: { bl: 1, bg: { rgb: LIGHT_GRAY } } } };
     const elecItems = ["Electrical Materials", "Data Materials", "Electrical Labor", "Data Labor", "Sub Panel", "Misc"];
-    elecItems.forEach((item, i) => {
-      const cost = i === 0 ? elecCost : 0;
+    elecItems.forEach((item) => {
       installCellData[installRow] = {
         1: { v: item },
         2: { v: 0, s: "currency" },
@@ -731,7 +791,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         5: { v: 0, s: "currency" },
         6: { f: `=SUM(C${installRow + 1}:F${installRow + 1})`, s: "currency" },
         7: { v: margin, s: "percent" },
-        8: { f: `=IF(G${installRow + 1}>=1,F${installRow + 1},F${installRow + 1}/(1-G${installRow + 1}))`, s: "currency" },
+        8: { f: `=IF(H${installRow + 1}>=1,G${installRow + 1},G${installRow + 1}/(1-H${installRow + 1}))`, s: "currency" },
       };
       installRow++;
     });
@@ -739,8 +799,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     // Engineering section
     installCellData[installRow++] = { 1: { v: "SUBMITTALS, ENGINEERING & PERMITS", s: { bl: 1, bg: { rgb: LIGHT_GRAY } } } };
     const engItems = ["Structural Engineering", "Structural Certification", "Electrical Engineering", "Electrical Certification", "Permits"];
-    engItems.forEach((item, i) => {
-      const cost = i === 0 ? engCost : 0;
+    engItems.forEach((item) => {
       installCellData[installRow] = {
         1: { v: item },
         2: { v: 0, s: "currency" },
@@ -749,16 +808,17 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         5: { v: 0, s: "currency" },
         6: { f: `=SUM(C${installRow + 1}:F${installRow + 1})`, s: "currency" },
         7: { v: margin, s: "percent" },
-        8: { f: `=IF(G${installRow + 1}>=1,F${installRow + 1},F${installRow + 1}/(1-G${installRow + 1}))`, s: "currency" },
+        8: { f: `=IF(H${installRow + 1}>=1,G${installRow + 1},G${installRow + 1}/(1-H${installRow + 1}))`, s: "currency" },
       };
       installRow++;
     });
 
-    // Zone Grand Total
+    // Zone Grand Total — SUM all item rows (G column = Total Cost, I column = Selling Price)
+    const zoneGtRow = installRow + 1; // 1-based
     installCellData[installRow++] = {
       1: { v: "ZONE GRAND TOTAL", s: { bl: 1, cl: { rgb: WHITE }, bg: { rgb: NAVY } } },
-      6: { v: totalCost, s: { bl: 1, cl: { rgb: WHITE }, ...CURRENCY_FMT } },
-      8: { v: sellingPrice, s: { bl: 1, cl: { rgb: WHITE }, ...CURRENCY_FMT } },
+      6: { f: `=SUM(G${sectionStartRow + 1}:G${zoneGtRow - 1})`, s: { bl: 1, cl: { rgb: WHITE }, ...CURRENCY_FMT } },
+      8: { f: `=SUM(I${sectionStartRow + 1}:I${zoneGtRow - 1})`, s: { bl: 1, cl: { rgb: WHITE }, ...CURRENCY_FMT } },
     };
 
     installRow++; // separator
@@ -922,25 +982,37 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   const grandCost = totalLedCost + totalInstallCost + totalStructCost + totalElecCost + totalEngCost + totalPmCost;
   const grandSell = pricingDisplays.reduce((s, d) => s + (d.totalSellingPrice ?? 0), 0);
 
-  const pricingRows = [
-    ["LED Hardware", totalLedCost, totalLedCost * 1.43, 0.30],
-    ["Structural Materials", totalStructCost, totalStructCost * 1.25, 0.20],
-    ["Installation Labor", totalInstallCost, totalInstallCost * 1.25, 0.20],
-    ["Electrical", totalElecCost, totalElecCost * 1.25, 0.20],
-    ["Engineering/Permits", totalEngCost, totalEngCost * 1.25, 0.20],
-    ["PM/Gen Conditions", totalPmCost, totalPmCost * 1.25, 0.20],
-    ["TOTAL", grandCost, grandSell, grandSell > 0 ? (grandSell - grandCost) / grandSell : 0],
+  // Pricing rows: Cost in B, Margin% in D, Selling Price = formula =Cost/(1-Margin)
+  const pricingItems: [string, number, number][] = [
+    ["LED Hardware", totalLedCost, 0.30],
+    ["Structural Materials", totalStructCost, 0.20],
+    ["Installation Labor", totalInstallCost, 0.20],
+    ["Electrical", totalElecCost, 0.20],
+    ["Engineering/Permits", totalEngCost, 0.20],
+    ["PM/Gen Conditions", totalPmCost, 0.20],
   ];
 
-  pricingRows.forEach(([cat, cost, sell, margin], i) => {
-    const isTotal = cat === "TOTAL";
+  const pricingFirstData = 4; // 1-based row where data starts
+  const pricingLastData = pricingFirstData + pricingItems.length - 1; // last data row (1-based)
+  pricingItems.forEach(([cat, cost, margin], i) => {
+    const r1 = i + 4; // 1-based row
     pricingCellData[i + 3] = {
-      0: { v: cat, s: isTotal ? "total" : undefined },
-      1: { v: cost, s: isTotal ? "totalCurrency" : "currency" },
-      2: { v: sell, s: isTotal ? "totalCurrency" : "currency" },
-      3: { v: margin, s: isTotal ? "totalPercent" : "percent" },
+      0: { v: cat },
+      1: { v: cost, s: "currency" },
+      2: { f: `=IF(D${r1}=0,B${r1},B${r1}/(1-D${r1}))`, s: "currency" },
+      3: { v: margin, s: "percent" },
     };
   });
+
+  // TOTAL row — SUM formulas
+  const pTotalIdx = pricingItems.length + 3; // 0-indexed
+  const pTotalR = pTotalIdx + 1; // 1-based
+  pricingCellData[pTotalIdx] = {
+    0: { v: "TOTAL", s: "total" },
+    1: { f: `=SUM(B4:B${pTotalR - 1})`, s: "totalCurrency" },
+    2: { f: `=SUM(C4:C${pTotalR - 1})`, s: "totalCurrency" },
+    3: { f: `=IF(C${pTotalR}=0,0,(C${pTotalR}-B${pTotalR})/C${pTotalR})`, s: "totalPercent" },
+  };
 
   sheets["pricing"] = {
     id: "pricing",
@@ -971,15 +1043,14 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
 
   const warrantyBaseCost = grandCost * 0.02; // 2% of hardware cost as base
   for (let year = 1; year <= 10; year++) {
-    const escalation = year <= 3 ? 1 : Math.pow(1.10, year - 3); // 10% annual escalation after year 3
-    const annualCost = warrantyBaseCost * escalation;
-    const sellPrice = annualCost * 1.25; // 20% margin
-    warrantyCellData[year + 2] = {
+    const r = year + 2; // 0-indexed row
+    const r1 = r + 1; // 1-based for formulas
+    warrantyCellData[r] = {
       0: { v: `Year ${year}` },
       1: { v: warrantyBaseCost, s: "currency" },
-      2: { v: escalation, s: "number2" },
-      3: { v: annualCost, s: "currency" },
-      4: { v: sellPrice, s: "currency" },
+      2: year <= 3 ? { v: 1, s: "number2" } : { f: `=C${r1 - 1}*1.1`, s: "number2" },
+      3: { f: `=B${r1}*C${r1}`, s: "currency" },
+      4: { f: `=D${r1}/(1-0.2)`, s: "currency" },
     };
   }
 
@@ -1118,12 +1189,13 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     ["Travel", 0, 0, 0, 0.20],
   ];
 
-  cmsItems.forEach(([item, cost, sell, margin$, margin], i) => {
+  cmsItems.forEach(([item, cost, , , margin], i) => {
+    const r = i + 4; // 1-based row
     cmsCellData[i + 3] = {
       0: { v: item },
       1: { v: cost, s: "currency" },
-      2: { v: sell, s: "currency" },
-      3: { v: margin$, s: "currency" },
+      2: { f: `=IF(E${r}>=1,B${r},B${r}/(1-E${r}))`, s: "currency" },  // Selling Price = Cost/(1-Margin%)
+      3: { f: `=C${r}-B${r}`, s: "currency" },                           // Margin$ = Sell - Cost
       4: { v: margin, s: "percent" },
     };
   });
@@ -1176,7 +1248,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     travelRow++;
 
     const sectionStartRow = travelRow;
-    section.items.forEach(([item, unitCost], i) => {
+    section.items.forEach(([item, unitCost]) => {
       travelCellData[travelRow] = {
         1: { v: item },
         2: { v: unitCost, s: "currency" },
@@ -1226,19 +1298,20 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     3: { v: "Margin", s: "header" },
   };
 
-  const pnlMargin = grandSell - grandCost;
+  // Base Contract — Revenue/Cost are seed values, Margin is formula
   pnlCellData[6] = {
     0: { v: "Base Contract" },
     1: { v: grandSell, s: "currency" },
     2: { v: grandCost, s: "currency" },
-    3: { v: pnlMargin, s: "currency" },
+    3: { f: "=B7-C7", s: "currency" },
   };
 
+  // Total Base Contract — SUM formulas
   pnlCellData[7] = {
     0: { v: "TOTAL BASE CONTRACT", s: "total" },
-    1: { v: grandSell, s: "totalCurrency" },
-    2: { v: grandCost, s: "totalCurrency" },
-    3: { v: pnlMargin, s: "totalCurrency" },
+    1: { f: "=B7", s: "totalCurrency" },
+    2: { f: "=C7", s: "totalCurrency" },
+    3: { f: "=B8-C8", s: "totalCurrency" },
   };
 
   pnlCellData[9] = { 0: { v: "Change Orders", s: { cl: { rgb: "#666666" } } } };
@@ -1246,14 +1319,15 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     0: { v: "Total Change Order(s) Amount" },
     1: { v: 0, s: "currency" },
     2: { v: 0, s: "currency" },
-    3: { v: 0, s: "currency" },
+    3: { f: "=B11-C11", s: "currency" },
   };
 
+  // Grand Total = Total Base + Change Orders
   pnlCellData[12] = {
     0: { v: "Grand Total", s: { bl: 1 } },
-    1: { v: grandSell, s: { bl: 1, ...CURRENCY_FMT, bg: { rgb: "#D1FAE5" } } },
-    2: { v: grandCost, s: { bl: 1, ...CURRENCY_FMT, bg: { rgb: "#D1FAE5" } } },
-    3: { v: pnlMargin, s: { bl: 1, ...CURRENCY_FMT, bg: { rgb: "#D1FAE5" } } },
+    1: { f: "=B8+B11", s: { bl: 1, ...CURRENCY_FMT, bg: { rgb: "#D1FAE5" } } },
+    2: { f: "=C8+C11", s: { bl: 1, ...CURRENCY_FMT, bg: { rgb: "#D1FAE5" } } },
+    3: { f: "=B13-C13", s: { bl: 1, ...CURRENCY_FMT, bg: { rgb: "#D1FAE5" } } },
   };
 
   sheets["pnl"] = {
@@ -1347,8 +1421,8 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   cfCellData[10] = {
     1: { v: grandSell, s: "currency" },
     2: { v: grandCost, s: "currency" },
-    3: { v: grandSell - grandCost, s: "currency" },
-    4: { v: grandSell > 0 ? (grandSell - grandCost) / grandSell : 0, s: "percent" },
+    3: { f: `=B11-C11`, s: "currency" },                     // Gross Profit = Revenue - Expenses
+    4: { f: `=IF(B11=0,0,D11/B11)`, s: "percent" },          // Gross Profit % = Profit/Revenue
     5: { v: 0, s: "currency" },
   };
 

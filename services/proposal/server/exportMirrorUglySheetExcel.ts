@@ -619,6 +619,52 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
   techSheet.getColumn(13).width = 16;
   techSheet.getColumn(14).width = 12;
 
+  // Bundle Equipment sheet — Processor & Equipment component breakdown
+  const bundleSheet = workbook.addWorksheet("Bundle Equipment", {
+    properties: { tabColor: { argb: "FF17A2B8" } },
+  });
+  bundleSheet.mergeCells("A1:D1");
+  bundleSheet.getCell("A1").value = `${args.projectName || "Project"} — Processor & Equipment Bundle`;
+  bundleSheet.getCell("A1").font = { size: 14, bold: true, color: { argb: "FF0A52EF" } };
+  bundleSheet.getCell("A2").value = "Individual components for Processor & Equipment line on Margin Analysis. Edit costs below.";
+  bundleSheet.getCell("A2").font = { italic: true, size: 10, color: { argb: "FF6C757D" } };
+
+  setHeaderRow(bundleSheet, 4, ["Component", "Qty", "Unit Cost", "Total Cost"]);
+
+  const defaultBundleItems = [
+    { name: "Video Processor", qty: 1, cost: 2500 },
+    { name: "Sending Card", qty: 1, cost: 800 },
+    { name: "Media Player", qty: 1, cost: 1500 },
+    { name: "Signal Cable Kit", qty: 1, cost: 350 },
+    { name: "Power Supply Unit", qty: 1, cost: 600 },
+  ];
+
+  let beRow = 5;
+  for (const item of defaultBundleItems) {
+    bundleSheet.getCell(`A${beRow}`).value = item.name;
+    bundleSheet.getCell(`B${beRow}`).value = item.qty;
+    bundleSheet.getCell(`B${beRow}`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } };
+    bundleSheet.getCell(`C${beRow}`).value = item.cost;
+    bundleSheet.getCell(`C${beRow}`).numFmt = moneyFmt;
+    bundleSheet.getCell(`C${beRow}`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } };
+    bundleSheet.getCell(`D${beRow}`).value = { formula: `B${beRow}*C${beRow}` };
+    bundleSheet.getCell(`D${beRow}`).numFmt = moneyFmt;
+    beRow++;
+  }
+
+  const beTotalRow = beRow;
+  bundleSheet.getCell(`A${beTotalRow}`).value = "TOTAL";
+  bundleSheet.getCell(`A${beTotalRow}`).font = { bold: true };
+  bundleSheet.getCell(`D${beTotalRow}`).value = { formula: `SUM(D5:D${beTotalRow - 1})` };
+  bundleSheet.getCell(`D${beTotalRow}`).numFmt = moneyFmt;
+  bundleSheet.getCell(`D${beTotalRow}`).font = { bold: true };
+  bundleSheet.getCell(`D${beTotalRow}`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD4EDDA" } };
+
+  bundleSheet.getColumn(1).width = 35;
+  bundleSheet.getColumn(2).width = 8;
+  bundleSheet.getColumn(3).width = 14;
+  bundleSheet.getColumn(4).width = 14;
+
   const buffer = await workbook.xlsx.writeBuffer();
   return buffer as unknown as Buffer;
 }
