@@ -407,10 +407,10 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
 
       maCellData[subtotalIdx] = {
         0: { v: "SUBTOTAL", s: "bold" },
-        1: hasCostData ? { f: `SUM(F${firstItemRow + 1}:F${lastItemRow + 1})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
-        2: { f: `SUM(B${firstItemRow + 1}:B${lastItemRow + 1})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
-        3: hasCostData ? { f: `C${subtotalIdx + 1}-B${subtotalIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
-        4: hasCostData ? { f: `IF(C${subtotalIdx + 1}=0,0,D${subtotalIdx + 1}/C${subtotalIdx + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
+        1: hasCostData ? { f: `=SUM(F${firstItemRow + 1}:F${lastItemRow + 1})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
+        2: { f: `=SUM(B${firstItemRow + 1}:B${lastItemRow + 1})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+        3: hasCostData ? { f: `=C${subtotalIdx + 1}-B${subtotalIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
+        4: hasCostData ? { f: `=IF(C${subtotalIdx + 1}=0,0,D${subtotalIdx + 1}/C${subtotalIdx + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
       };
       maRow++;
 
@@ -421,7 +421,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       maCellData[taxIdx] = {
         0: { v: table.tax?.label || "TAX" },
         2: taxRate > 0
-          ? { f: `C${subtotalIdx + 1}*F${taxIdx + 1}`, s: "currency" }
+          ? { f: `=C${subtotalIdx + 1}*F${taxIdx + 1}`, s: "currency" }
           : { v: taxAmount, s: "currency" },
         5: taxRate > 0 ? { v: taxRate } : undefined,
       };
@@ -434,7 +434,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       maCellData[bondIdx] = {
         0: { v: "BOND" },
         2: bondRate > 0
-          ? { f: `C${subtotalIdx + 1}*F${bondIdx + 1}`, s: "currency" }
+          ? { f: `=C${subtotalIdx + 1}*F${bondIdx + 1}`, s: "currency" }
           : { v: bondAmount, s: "currency" },
         5: bondRate > 0 ? { v: bondRate } : undefined,
       };
@@ -444,10 +444,10 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       const grandTotalIdx = maRow;
       maCellData[grandTotalIdx] = {
         0: { v: "SUB TOTAL (BID FORM)", s: "bold" },
-        1: hasCostData ? { f: `B${subtotalIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
-        2: { f: `C${subtotalIdx + 1}+C${taxIdx + 1}+C${bondIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
-        3: hasCostData ? { f: `C${grandTotalIdx + 1}-B${grandTotalIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
-        4: hasCostData ? { f: `IF(C${grandTotalIdx + 1}=0,0,D${grandTotalIdx + 1}/C${grandTotalIdx + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
+        1: hasCostData ? { f: `=B${subtotalIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
+        2: { f: `=C${subtotalIdx + 1}+C${taxIdx + 1}+C${bondIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+        3: hasCostData ? { f: `=C${grandTotalIdx + 1}-B${grandTotalIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
+        4: hasCostData ? { f: `=IF(C${grandTotalIdx + 1}=0,0,D${grandTotalIdx + 1}/C${grandTotalIdx + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
       };
       maRow++;
 
@@ -477,10 +477,10 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       const sellFormula = grandTotalSellRows.map(r => `C${r + 1}`).join("+");
       maCellData[maRow] = {
         0: { v: "DOCUMENT TOTAL", s: { bl: 1, fs: 12 } },
-        1: subtotalCostRows.length > 0 ? { f: subtotalCostRows.map(r => `B${r + 1}`).join("+"), s: { bl: 1, ...CURRENCY_FMT } } : undefined,
-        2: { f: sellFormula, s: { bl: 1, ...CURRENCY_FMT } },
-        3: { f: `C${maRow + 1}-B${maRow + 1}`, s: { bl: 1, ...CURRENCY_FMT } },
-        4: { f: `IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: { bl: 1, ...PERCENT_FMT } },
+        1: subtotalCostRows.length > 0 ? { f: "=" + subtotalCostRows.map(r => `B${r + 1}`).join("+"), s: { bl: 1, ...CURRENCY_FMT } } : undefined,
+        2: { f: "=" + sellFormula, s: { bl: 1, ...CURRENCY_FMT } },
+        3: { f: `=C${maRow + 1}-B${maRow + 1}`, s: { bl: 1, ...CURRENCY_FMT } },
+        4: { f: `=IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: { bl: 1, ...PERCENT_FMT } },
       };
     }
   } else {
@@ -504,8 +504,8 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         0: { v: d.name, s: "bold" },
         1: { v: cost, s: "currency" },
         2: { v: sell, s: "currency" },
-        3: { f: `C${maRow + 1}-B${maRow + 1}`, s: "currency" },
-        4: { f: `IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: getMarginStyle(sell > 0 ? margin / sell : 0) },
+        3: { f: `=C${maRow + 1}-B${maRow + 1}`, s: "currency" },
+        4: { f: `=IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: getMarginStyle(sell > 0 ? margin / sell : 0) },
       };
       maRow++;
     }
@@ -513,10 +513,10 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     const lastDataRow = maRow - 1;
     maCellData[maRow] = {
       0: { v: "", s: "total" },
-      1: { f: `SUM(B${displayStartRow + 1}:B${lastDataRow + 1})`, s: "totalCurrency" },
-      2: { f: `SUM(C${displayStartRow + 1}:C${lastDataRow + 1})`, s: "totalCurrency" },
-      3: { f: `SUM(D${displayStartRow + 1}:D${lastDataRow + 1})`, s: "totalCurrency" },
-      4: { f: `IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: "totalPercent" },
+      1: { f: `=SUM(B${displayStartRow + 1}:B${lastDataRow + 1})`, s: "totalCurrency" },
+      2: { f: `=SUM(C${displayStartRow + 1}:C${lastDataRow + 1})`, s: "totalCurrency" },
+      3: { f: `=SUM(D${displayStartRow + 1}:D${lastDataRow + 1})`, s: "totalCurrency" },
+      4: { f: `=IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: "totalPercent" },
     };
     maRow++;
 
@@ -530,9 +530,9 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     marginDocTotalRow = maRow;
     maCellData[maRow] = {
       0: { v: "SUB TOTAL (BID FORM)", s: "bold" },
-      2: { f: `C${fbTotalsIdx + 1}+C${fbTotalsIdx + 2}+C${fbTotalsIdx + 3}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
-      3: { f: `D${fbTotalsIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
-      4: { f: `IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } },
+      2: { f: `=C${fbTotalsIdx + 1}+C${fbTotalsIdx + 2}+C${fbTotalsIdx + 3}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+      3: { f: `=D${fbTotalsIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+      4: { f: `=IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } },
     };
   }
 
