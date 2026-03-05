@@ -174,7 +174,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   };
   
   const psColWidths: Record<number, { w: number }> = {
-    0: { w: 140 }, 1: { w: 200 }, 2: { w: 100 }, 3: { w: 100 },
+    0: { w: 180 }, 1: { w: 450 }, 2: { w: 120 }, 3: { w: 120 },
   };
 
   sheets["project-summary"] = {
@@ -182,8 +182,8 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     name: "Project Summary",
     tabColor: "#217346",
     rowCount: 20,
-    columnCount: 4,
-    defaultColumnWidth: 140,
+    columnCount: 10,
+    defaultColumnWidth: 120,
     defaultRowHeight: 28,
     cellData: psCellData,
     columnData: psColWidths,
@@ -203,9 +203,9 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   ];
 
   const ledColWidths: Record<number, { w: number }> = {
-    0: { w: 140 }, 1: { w: 80 }, 2: { w: 130 }, 3: { w: 70 },
-    4: { w: 60 }, 5: { w: 60 }, 6: { w: 60 }, 7: { w: 60 },
-    8: { w: 85 }, 9: { w: 45 }, 10: { w: 80 }, 11: { w: 55 },
+    0: { w: 200 }, 1: { w: 90 }, 2: { w: 140 }, 3: { w: 75 },
+    4: { w: 65 }, 5: { w: 65 }, 6: { w: 65 }, 7: { w: 65 },
+    8: { w: 90 }, 9: { w: 50 }, 10: { w: 85 }, 11: { w: 60 },
     12: { w: 70 }, 13: { w: 75 }, 14: { w: 100 }, 15: { w: 85 },
     16: { w: 80 }, 17: { w: 100 }, 18: { w: 75 }, 19: { w: 100 },
     20: { w: 90 }, 21: { w: 90 }, 22: { w: 80 },
@@ -330,7 +330,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     name: "LED Cost Sheet",
     tabColor: "#0A52EF",
     rowCount: Math.max(totalRowIdx + 5, 50),
-    columnCount: 23,
+    columnCount: 26,
     defaultColumnWidth: 80,
     defaultRowHeight: 28,
     freeze,
@@ -344,7 +344,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   sheetOrder.push("margin-analysis");
   const maCellData: Record<number, Record<number, any>> = {};
   const maColWidths: Record<number, { w: number }> = {
-    0: { w: 200 }, 1: { w: 100 }, 2: { w: 100 }, 3: { w: 100 }, 4: { w: 80 }, 5: { w: 100 },
+    0: { w: 320 }, 1: { w: 130 }, 2: { w: 130 }, 3: { w: 130 }, 4: { w: 100 }, 5: { w: 130 },
   };
 
   let maRow = 0;
@@ -527,7 +527,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     name: "Margin Analysis",
     tabColor: "#217346",
     rowCount: Math.max(maRow + 5, 50),
-    columnCount: 6,
+    columnCount: 10,
     defaultColumnWidth: 100,
     defaultRowHeight: 28,
     freeze,
@@ -545,9 +545,9 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     "Weight (lbs)", "Total Power (W)", "BTU/hr",
   ];
   const tsColWidths: Record<number, { w: number }> = {
-    0: { w: 140 }, 1: { w: 50 }, 2: { w: 100 }, 3: { w: 80 }, 4: { w: 80 },
-    5: { w: 80 }, 6: { w: 80 }, 7: { w: 70 }, 8: { w: 100 }, 9: { w: 80 }, 10: { w: 80 },
-    11: { w: 90 }, 12: { w: 100 }, 13: { w: 80 },
+    0: { w: 200 }, 1: { w: 55 }, 2: { w: 120 }, 3: { w: 85 }, 4: { w: 85 },
+    5: { w: 85 }, 6: { w: 85 }, 7: { w: 75 }, 8: { w: 110 }, 9: { w: 85 }, 10: { w: 85 },
+    11: { w: 100 }, 12: { w: 110 }, 13: { w: 85 },
   };
 
   const tsCellData: Record<number, Record<number, any>> = {};
@@ -609,8 +609,8 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   sheetOrder.push("install-base");
   const installCellData: Record<number, Record<number, any>> = {};
   const installColWidths: Record<number, { w: number }> = {
-    0: { w: 4 }, 1: { w: 200 }, 2: { w: 80 }, 3: { w: 80 }, 4: { w: 80 },
-    5: { w: 80 }, 6: { w: 80 }, 7: { w: 80 }, 8: { w: 80 }, 9: { w: 80 }, 10: { w: 100 },
+    0: { w: 4 }, 1: { w: 280 }, 2: { w: 110 }, 3: { w: 110 }, 4: { w: 110 },
+    5: { w: 110 }, 6: { w: 110 }, 7: { w: 110 }, 8: { w: 110 }, 9: { w: 110 }, 10: { w: 120 },
   };
 
   let installRow = 0;
@@ -760,8 +760,8 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   sheetOrder.push("led-display-request");
   const ldrCellData: Record<number, Record<number, any>> = {};
   const ldrColWidths: Record<number, { w: number }> = {
-    0: { w: 140 }, 1: { w: 80 }, 2: { w: 80 }, 3: { w: 80 }, 4: { w: 80 },
-    5: { w: 80 }, 6: { w: 80 }, 7: { w: 80 }, 8: { w: 100 },
+    0: { w: 200 }, 1: { w: 100 }, 2: { w: 100 }, 3: { w: 100 }, 4: { w: 100 },
+    5: { w: 100 }, 6: { w: 100 }, 7: { w: 100 }, 8: { w: 120 },
   };
 
   ldrCellData[0] = { 0: { v: "LED Display Request Form", s: { bl: 1, fs: 14 } } };
