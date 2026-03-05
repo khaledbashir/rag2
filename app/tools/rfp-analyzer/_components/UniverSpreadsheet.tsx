@@ -377,11 +377,18 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
   const apiRef = useRef<any>(null);
   const propsRef = useRef(props);
   propsRef.current = props; // Always current
+  const [mounted, setMounted] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Hydration safety: don't render until client-side mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // Debug: log props received
   console.log("[UniverSpreadsheet] Props received:", {
+    mounted,
     screensLength: props.screens?.length ?? 0,
     pricingDisplaysLength: props.pricingDisplays?.length ?? 0,
     firstScreen: props.screens?.[0]?.name ?? null,
@@ -390,6 +397,9 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
 
   // Build workbook data from current props
   const workbookDataRef = useRef(buildWorkbookData(props));
+
+  // Don't render anything during SSR — prevents hydration error #418
+  if (!mounted) return null;
 
   // Initialize Univer — runs once on mount
   useEffect(() => {

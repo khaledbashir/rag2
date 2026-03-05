@@ -293,6 +293,8 @@ export default function RfpAnalyzerClient() {
     bidFormValue: string | number | null;
     severity: "critical" | "warning";
   }>>([]);
+  // Accordion toolbar state
+  const [expandedToolbar, setExpandedToolbar] = useState<string | null>(null);
 
   // Debounced auto-save: patches screens to DB 2s after last edit
   const autoSaveSpecs = useCallback((specs: ExtractedLEDSpec[], analysisId: string | null) => {
@@ -1980,112 +1982,142 @@ export default function RfpAnalyzerClient() {
             <div className={spreadsheetMode ? "flex flex-col flex-1 min-h-0 overflow-hidden" : "flex gap-3"}>
             {/* Left: Workbook */}
             <div className={`flex flex-col ${spreadsheetMode ? "flex-1 min-h-0" : showPdfPanel && pdfBlobUrl ? "flex-1 min-w-0" : "w-full"}`} style={spreadsheetMode ? undefined : { height: "75vh" }}>
-              {/* ---- Title Bar (matches WorkbookShell green bar) ---- */}
-              <div className={`flex items-center justify-between bg-[#217346] text-white px-3 py-1 shrink-0 ${spreadsheetMode ? "" : "rounded-t-lg"}`}>
-                <span className="text-xs font-semibold tracking-wide truncate">{workbookData.fileName || "RFP Analysis"}</span>
-                <div className="flex items-center gap-1 flex-wrap">
-                  {result.aiWorkspaceSlug && (
-                    <Link
-                      href={`/chat?workspace=${result.aiWorkspaceSlug}`}
-                      target="_blank"
+              {/* ---- Title Bar with Accordion Toolbar ---- */}
+              <div className={`bg-[#217346] text-white shrink-0 ${spreadsheetMode ? "" : "rounded-t-lg"}`}>
+                {/* Main bar - always visible */}
+                <div className="flex items-center justify-between px-3 py-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold tracking-wide truncate">{workbookData.fileName || "RFP Analysis"}</span>
+                    {result.aiWorkspaceSlug && (
+                      <Link
+                        href={`/chat?workspace=${result.aiWorkspaceSlug}`}
+                        target="_blank"
+                        className="flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition-colors"
+                      >
+                        <MessageSquare className="w-3 h-3" />
+                        Cross-Check
+                      </Link>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {/* Primary action - always visible */}
+                    <button
+                      onClick={handleCreateProposal}
+                      disabled={downloading === "creating" || !result?.id || !session?.user?.email}
+                      className="flex items-center gap-1 px-3 py-1 bg-[#0A52EF] text-white hover:bg-[#0941c3] rounded text-[10px] font-bold transition-colors disabled:opacity-50 shadow-sm"
+                    >
+                      {downloading === "creating" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                      Create Proposal
+                    </button>
+                    {pdfBlobUrl && (
+                      <button
+                        onClick={() => setShowPdfPanel(!showPdfPanel)}
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                          showPdfPanel ? "bg-white text-[#217346]" : "bg-white/20 hover:bg-white/30 text-white"
+                        }`}
+                      >
+                        {showPdfPanel ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                        PDF
+                      </button>
+                    )}
+                    {/* Accordion toggle */}
+                    <button
+                      onClick={() => setExpandedToolbar(expandedToolbar === "tools" ? null : "tools")}
                       className="flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition-colors"
                     >
-                      <MessageSquare className="w-3 h-3" />
-                      Cross-Check
-                    </Link>
-                  )}
-                  <button
-                    onClick={handleDownloadRateCard}
-                    disabled={downloading === "ratecard" || !result?.id}
-                    className="flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition-colors disabled:opacity-50"
-                  >
-                    {downloading === "ratecard" ? <Loader2 className="w-3 h-3 animate-spin" /> : <DollarSign className="w-3 h-3" />}
-                    Rate Card
-                  </button>
-                  <button
-                    onClick={handleExportExcel}
-                    disabled={downloading === "extraction"}
-                    className="flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition-colors disabled:opacity-50"
-                  >
-                    {downloading === "extraction" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-                    Specs .xlsx
-                  </button>
-                  <button
-                    onClick={() => handleDownloadVendorSheet("electrician")}
-                    disabled={downloading === "electrician" || !result?.id}
-                    className="flex items-center gap-1 px-2 py-0.5 bg-yellow-500/80 hover:bg-yellow-500 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
-                    title="Generate electrical quote request sheet"
-                  >
-                    {downloading === "electrician" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
-                    Electrical
-                  </button>
-                  <button
-                    onClick={() => handleDownloadVendorSheet("installer")}
-                    disabled={downloading === "installer" || !result?.id}
-                    className="flex items-center gap-1 px-2 py-0.5 bg-green-600/80 hover:bg-green-600 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
-                    title="Generate install/structural quote request sheet"
-                  >
-                    {downloading === "installer" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wrench className="w-3 h-3" />}
-                    Install
-                  </button>
-                  <button
-                    onClick={() => handleDownloadVendorSheet("led_supplier")}
-                    disabled={downloading === "led_supplier" || !result?.id}
-                    className="flex items-center gap-1 px-2 py-0.5 bg-blue-600/80 hover:bg-blue-600 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
-                    title="Generate LED supply quote request sheet"
-                  >
-                    {downloading === "led_supplier" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Cpu className="w-3 h-3" />}
-                    LED Supply
-                  </button>
-                  <button
-                    onClick={() => bidFormInputRef.current?.click()}
-                    disabled={downloading === "bidform" || !result?.id}
-                    className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/80 hover:bg-amber-500 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
-                    title="Upload a blank bid form Excel and auto-fill vendor specs"
-                  >
-                    {downloading === "bidform" ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileSpreadsheet className="w-3 h-3" />}
-                    Fill Bid Form
-                  </button>
-                  <input ref={bidFormInputRef} type="file" accept=".xlsx,.xls" onChange={handleFillBidForm} className="hidden" />
-                  <button
-                    onClick={() => scopingImportRef.current?.click()}
-                    disabled={downloading === "importing" || !result?.id}
-                    className="flex items-center gap-1 px-2 py-0.5 bg-emerald-600/80 hover:bg-emerald-600 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
-                    title="Upload a previously downloaded scoping workbook with updated costs"
-                  >
-                    {downloading === "importing" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-                    Import Workbook
-                  </button>
-                  <input ref={scopingImportRef} type="file" accept=".xlsx,.xls" onChange={handleImportScopingWorkbook} className="hidden" />
-                  <button
-                    onClick={handleDownloadScopingWorkbook}
-                    disabled={downloading === "scoping"}
-                    className="flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition-colors disabled:opacity-50"
-                  >
-                    {downloading === "scoping" ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileSpreadsheet className="w-3 h-3" />}
-                    Full Scoping Workbook
-                  </button>
-                  <button
-                    onClick={handleCreateProposal}
-                    disabled={downloading === "creating" || !result?.id || !session?.user?.email}
-                    className="flex items-center gap-1 px-3 py-1 bg-[#0A52EF] text-white hover:bg-[#0941c3] rounded text-[10px] font-bold transition-colors disabled:opacity-50 shadow-sm ml-1"
-                  >
-                    {downloading === "creating" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-                    Create Proposal
-                  </button>
-                  {pdfBlobUrl && (
-                    <button
-                      onClick={() => setShowPdfPanel(!showPdfPanel)}
-                      className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ml-1 ${
-                        showPdfPanel ? "bg-white text-[#217346]" : "bg-white/20 hover:bg-white/30 text-white"
-                      }`}
-                      title={showPdfPanel ? "Hide PDF" : "Show PDF"}
-                    >
-                      {showPdfPanel ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                      PDF
+                      <ChevronDown className={`w-3 h-3 transition-transform ${expandedToolbar === "tools" ? "rotate-180" : ""}`} />
+                      Tools
                     </button>
-                  )}
+                  </div>
                 </div>
+                {/* Expandable toolbar sections */}
+                {expandedToolbar === "tools" && (
+                  <div className="border-t border-white/10 px-3 py-2 space-y-2">
+                    {/* Row 1: Exports */}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-[9px] uppercase tracking-wider text-white/50 mr-1">Export</span>
+                      <button
+                        onClick={handleDownloadRateCard}
+                        disabled={downloading === "ratecard" || !result?.id}
+                        className="flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                      >
+                        {downloading === "ratecard" ? <Loader2 className="w-3 h-3 animate-spin" /> : <DollarSign className="w-3 h-3" />}
+                        Rate Card
+                      </button>
+                      <button
+                        onClick={handleExportExcel}
+                        disabled={downloading === "extraction"}
+                        className="flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                      >
+                        {downloading === "extraction" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                        Specs
+                      </button>
+                      <button
+                        onClick={handleDownloadScopingWorkbook}
+                        disabled={downloading === "scoping"}
+                        className="flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                      >
+                        {downloading === "scoping" ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileSpreadsheet className="w-3 h-3" />}
+                        Scoping Workbook
+                      </button>
+                    </div>
+                    {/* Row 2: Vendor Quotes */}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-[9px] uppercase tracking-wider text-white/50 mr-1">Vendor Quotes</span>
+                      <button
+                        onClick={() => handleDownloadVendorSheet("electrician")}
+                        disabled={downloading === "electrician" || !result?.id}
+                        className="flex items-center gap-1 px-2 py-0.5 bg-yellow-500/80 hover:bg-yellow-500 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                        title="Electrical quote request"
+                      >
+                        {downloading === "electrician" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                        Electrical
+                      </button>
+                      <button
+                        onClick={() => handleDownloadVendorSheet("installer")}
+                        disabled={downloading === "installer" || !result?.id}
+                        className="flex items-center gap-1 px-2 py-0.5 bg-green-600/80 hover:bg-green-600 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                        title="Install/structural quote request"
+                      >
+                        {downloading === "installer" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wrench className="w-3 h-3" />}
+                        Install
+                      </button>
+                      <button
+                        onClick={() => handleDownloadVendorSheet("led_supplier")}
+                        disabled={downloading === "led_supplier" || !result?.id}
+                        className="flex items-center gap-1 px-2 py-0.5 bg-blue-600/80 hover:bg-blue-600 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                        title="LED supply quote request"
+                      >
+                        {downloading === "led_supplier" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Cpu className="w-3 h-3" />}
+                        LED Supply
+                      </button>
+                    </div>
+                    {/* Row 3: Import */}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-[9px] uppercase tracking-wider text-white/50 mr-1">Import</span>
+                      <button
+                        onClick={() => bidFormInputRef.current?.click()}
+                        disabled={downloading === "bidform" || !result?.id}
+                        className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/80 hover:bg-amber-500 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                        title="Auto-fill bid form"
+                      >
+                        {downloading === "bidform" ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileSpreadsheet className="w-3 h-3" />}
+                        Fill Bid Form
+                      </button>
+                      <input ref={bidFormInputRef} type="file" accept=".xlsx,.xls" onChange={handleFillBidForm} className="hidden" />
+                      <button
+                        onClick={() => scopingImportRef.current?.click()}
+                        disabled={downloading === "importing" || !result?.id}
+                        className="flex items-center gap-1 px-2 py-0.5 bg-emerald-600/80 hover:bg-emerald-600 text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                        title="Import updated costs"
+                      >
+                        {downloading === "importing" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                        Import Workbook
+                      </button>
+                      <input ref={scopingImportRef} type="file" accept=".xlsx,.xls" onChange={handleImportScopingWorkbook} className="hidden" />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* ---- Univer Spreadsheet — only render when pricing data is ready ---- */}
