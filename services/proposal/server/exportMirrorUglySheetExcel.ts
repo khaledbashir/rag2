@@ -29,6 +29,71 @@ function setHeaderRow(sheet: ExcelJS.Worksheet, rowNumber: number, labels: strin
   row.alignment = { vertical: "middle", horizontal: "center" };
 }
 
+export interface ProjectSummaryInfo {
+  projectName?: string;
+  clientName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  documentMode?: string;
+  displayCount?: number;
+}
+
+export function buildProjectSummary(
+  sheet: ExcelJS.Worksheet,
+  info: ProjectSummaryInfo,
+  currency?: string,
+  documentTotal?: number,
+) {
+  const moneyFmt = excelCurrencyFmt(currency);
+  const projectName = info.projectName || info.clientName || "Untitled Project";
+
+  // Title row
+  sheet.mergeCells("A1:C1");
+  sheet.getCell("A1").value = projectName;
+  sheet.getCell("A1").font = { bold: true, size: 16 };
+  sheet.getCell("A1").alignment = { vertical: "middle" };
+  sheet.getRow(1).height = 30;
+
+  // Subtitle
+  sheet.mergeCells("A2:C2");
+  sheet.getCell("A2").value = "ANC LED Display Proposal";
+  sheet.getCell("A2").font = { size: 11, italic: true, color: { argb: "FF6C757D" } };
+
+  // Summary fields starting at row 4
+  const fields: [string, any][] = [
+    ["Project Name", projectName],
+    ["Client", info.clientName || "—"],
+    ["Document Type", (info.documentMode || "BUDGET").replace(/_/g, " ")],
+    ["Number of Displays", info.displayCount ?? 0],
+    ["Created", info.createdAt || new Date().toLocaleDateString()],
+    ["Revision Date", info.updatedAt || new Date().toLocaleDateString()],
+    ["Revised By", "ANC Studio"],
+  ];
+
+  let r = 4;
+  for (const [label, value] of fields) {
+    sheet.getCell(`A${r}`).value = label;
+    sheet.getCell(`A${r}`).font = { bold: true, color: { argb: "FF374151" } };
+    sheet.getCell(`B${r}`).value = value;
+    r++;
+  }
+
+  // Document total (if available)
+  if (documentTotal && Number.isFinite(documentTotal) && documentTotal > 0) {
+    r++; // blank row
+    sheet.getCell(`A${r}`).value = "Document Total";
+    sheet.getCell(`A${r}`).font = { bold: true, size: 12 };
+    sheet.getCell(`B${r}`).value = documentTotal;
+    sheet.getCell(`B${r}`).numFmt = moneyFmt;
+    sheet.getCell(`B${r}`).font = { bold: true, size: 12 };
+  }
+
+  // Column widths
+  sheet.getColumn(1).width = 22;
+  sheet.getColumn(2).width = 45;
+  sheet.getColumn(3).width = 20;
+}
+
 export async function generateMirrorUglySheetExcelBuffer(args: {
   clientName?: string | null;
   projectName?: string | null;
@@ -36,10 +101,20 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
   internalAudit: InternalAuditLike | null;
   currency?: string;
   pricingDocument?: any;
+  summaryInfo?: ProjectSummaryInfo;
 }): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ANC Studio";
   workbook.created = new Date();
+
+  // Project Summary as first tab
+  const summarySheet = workbook.addWorksheet("Project Summary");
+  const docTotal = args.pricingDocument?.documentTotal ?? null;
+  buildProjectSummary(summarySheet, args.summaryInfo || {
+    projectName: args.projectName || undefined,
+    clientName: args.clientName || undefined,
+    displayCount: args.screens.length,
+  }, args.currency, docTotal);
 
   const ledSheet = workbook.addWorksheet("LED Sheet");
   const marginSheet = workbook.addWorksheet("Margin Analysis");

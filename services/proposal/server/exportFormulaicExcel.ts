@@ -20,6 +20,8 @@ import ExcelJS from 'exceljs';
 import { ScreenInput, ScreenAudit } from '@/lib/estimator';
 import { excelCurrencyFmt } from '@/services/pricing/currencyService';
 
+import { ProjectSummaryInfo, buildProjectSummary } from "./exportMirrorUglySheetExcel";
+
 export interface AuditExcelOptions {
     proposalName?: string;
     clientName?: string;
@@ -32,6 +34,7 @@ export interface AuditExcelOptions {
     bondRateOverride?: number;
     taxRateOverride?: number;
     currency?: string;
+    summaryInfo?: ProjectSummaryInfo;
     aiGeneratedSOW?: {
         designServices?: string;
         constructionLogistics?: string;
@@ -71,6 +74,18 @@ export async function generateAuditExcel(
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'ANC Natalia Intelligence Core';
     workbook.created = new Date();
+
+    // 0. Project Summary (first tab)
+    const summarySheet = workbook.addWorksheet('Project Summary');
+    const docTotal = screens.reduce((sum, s) => {
+        const b = s.internalAudit?.breakdown || {};
+        return sum + (Number(b.sellPrice || b.finalClientTotal) || 0);
+    }, 0);
+    buildProjectSummary(summarySheet, options?.summaryInfo || {
+        projectName: options?.proposalName,
+        clientName: options?.clientName,
+        displayCount: screens.length,
+    }, options?.currency, docTotal > 0 ? docTotal : undefined);
 
     // 1. Margin Analysis (The Master Truth)
     const marginSheet = workbook.addWorksheet('Margin Analysis', {

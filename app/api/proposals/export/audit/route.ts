@@ -92,6 +92,15 @@ export async function POST(req: NextRequest) {
 
     const proposalName = (body.projectName || proposal?.clientName || body.clientName || "Proposal").toString();
     const safeFilename = proposalName.replace(/\s+/g, "_").replace(/[^\w\-_.]/g, "") || "Proposal";
+    // Summary metadata available to both export paths
+    const summaryInfo = {
+      projectName: proposalName,
+      clientName: (proposal?.clientName || body.clientName || "").toString(),
+      createdAt: proposal?.createdAt ? new Date(proposal.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
+      updatedAt: proposal?.updatedAt ? new Date(proposal.updatedAt).toLocaleDateString() : new Date().toLocaleDateString(),
+      documentMode: ((proposal as any)?.documentMode || body.documentMode || "BUDGET").toString().toUpperCase(),
+      displayCount: effectiveScreens.length,
+    };
     const buffer = effectiveMode === "MIRROR"
       ? await generateMirrorUglySheetExcelBuffer({
         clientName: proposal?.clientName || body.clientName,
@@ -100,6 +109,7 @@ export async function POST(req: NextRequest) {
         internalAudit,
         currency,
         pricingDocument,
+        summaryInfo,
       })
       : await generateAuditExcelBuffer(screensWithAudit, {
         proposalName,
@@ -115,6 +125,7 @@ export async function POST(req: NextRequest) {
         structuralTonnage: body.structuralTonnage ?? (proposal?.structuralTonnage ? Number(proposal.structuralTonnage) : undefined),
         reinforcingTonnage: body.reinforcingTonnage ?? (proposal?.reinforcingTonnage ? Number(proposal.reinforcingTonnage) : undefined),
         currency,
+        summaryInfo,
       });
 
     return new Response(buffer as any, {
