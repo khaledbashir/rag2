@@ -173,7 +173,9 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     ledSheet.getCell(`N${r}`).value = audit?.estimatedWeightLbs ?? null;
     ledSheet.getCell(`O${r}`).value = audit?.totalMaxPowerW ?? null;
     const powerW = toNumber(audit?.totalMaxPowerW);
-    ledSheet.getCell(`P${r}`).value = powerW > 0 ? Math.round(powerW * 3.412) : null;
+    if (powerW > 0) {
+      ledSheet.getCell(`P${r}`).value = { formula: `O${r}*3.412`, result: Math.round(powerW * 3.412) };
+    }
   });
 
   marginSheet.getCell("A1").value = `Project Name: ${args.projectName || args.clientName || ""}`.trim();
@@ -203,6 +205,10 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     let docCostSum = 0;
     let docSellSum = 0;
 
+    // Track row positions for DOCUMENT TOTAL formulas
+    const subtotalCostRows: number[] = []; // Col B subtotal rows (base sections only)
+    const grandTotalSellRows: number[] = []; // Col C grand total rows (base sections only)
+
     for (const table of pricingTables) {
       const items: any[] = table.items || [];
       if (items.length === 0) continue;
@@ -218,13 +224,15 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
       r++;
 
       // Line items — description + selling price only (no cost/margin per item)
+      const firstItemRow = r;
       let sectionCostSum = 0;
       let sectionSellSum = 0;
+      let hasCostData = false;
       for (const item of items) {
         if (item.isHidden) continue;
         const sell = toNumber(item.sellingPrice);
         const cost = item.cost != null ? toNumber(item.cost) : null;
-        if (cost != null) sectionCostSum += cost;
+        if (cost != null) { sectionCostSum += cost; hasCostData = true; }
 
         marginSheet.getCell(`A${r}`).value = item.description || "";
         marginSheet.getCell(`B${r}`).value = sell;
@@ -232,6 +240,7 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
         sectionSellSum += sell;
         r++;
       }
+      const lastItemRow = r - 1;
 
       // Subtotal row — expand to show Cost | Selling | Margin $ | Margin %
       const sectionSubtotal = toNumber(table.subtotal) || sectionSellSum;
@@ -243,17 +252,21 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
         docCostSum += sectionCostSum;
         docSellSum += sectionSubtotal;
       }
+      const subtotalRow = r;
       marginSheet.getCell(`A${r}`).value = "SUBTOTAL";
-      if (sectionCostSum > 0) {
+      if (hasCostData) {
         marginSheet.getCell(`B${r}`).value = sectionCostSum;
         marginSheet.getCell(`B${r}`).numFmt = moneyFmt;
       }
-      marginSheet.getCell(`C${r}`).value = sectionSubtotal;
+      // SUBTOTAL Col C: =SUM(B{first}:B{last}) — sums selling price column
+      marginSheet.getCell(`C${r}`).value = { formula: `SUM(B${firstItemRow}:B${lastItemRow})`, result: sectionSubtotal };
       marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
       if (sectionMargin != null) {
-        marginSheet.getCell(`D${r}`).value = sectionMargin;
+        // Margin $: =C{row}-B{row}
+        marginSheet.getCell(`D${r}`).value = { formula: `C${r}-B${r}`, result: sectionMargin };
         marginSheet.getCell(`D${r}`).numFmt = moneyFmt;
-        marginSheet.getCell(`E${r}`).value = sectionSubtotal > 0 ? sectionMargin / sectionSubtotal : 0;
+        // Margin %: =IF(C{row}=0,0,D{row}/C{row})
+        marginSheet.getCell(`E${r}`).value = { formula: `IF(C${r}=0,0,D${r}/C${r})`, result: sectionSubtotal > 0 ? sectionMargin / sectionSubtotal : 0 };
         marginSheet.getCell(`E${r}`).numFmt = percentFmt;
       }
       marginSheet.getRow(r).font = { bold: true };
@@ -261,6 +274,7 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
 
       // Tax row
       const taxAmount = toNumber(table.tax?.amount);
+      const taxRow = r;
       marginSheet.getCell(`A${r}`).value = table.tax?.label || "TAX";
       marginSheet.getCell(`C${r}`).value = taxAmount;
       marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
@@ -268,6 +282,7 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
 
       // Bond row
       const bondAmount = toNumber(table.bond);
+      const bondRow = r;
       marginSheet.getCell(`A${r}`).value = "BOND";
       marginSheet.getCell(`C${r}`).value = bondAmount;
       marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
@@ -275,20 +290,30 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
 
       // Grand Total row — full cost/margin summary
       const sectionGrandTotal = toNumber(table.grandTotal) || (sectionSubtotal + taxAmount + bondAmount);
+      const grandTotalRow = r;
       marginSheet.getCell(`A${r}`).value = "SUB TOTAL (BID FORM)";
-      if (sectionCostSum > 0) {
+      if (hasCostData) {
         marginSheet.getCell(`B${r}`).value = sectionCostSum;
         marginSheet.getCell(`B${r}`).numFmt = moneyFmt;
       }
-      marginSheet.getCell(`C${r}`).value = sectionGrandTotal;
+      // GRAND TOTAL Col C: =C{subtotal}+C{tax}+C{bond}
+      marginSheet.getCell(`C${r}`).value = { formula: `C${subtotalRow}+C${taxRow}+C${bondRow}`, result: sectionGrandTotal };
       marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
       if (sectionMargin != null) {
-        marginSheet.getCell(`D${r}`).value = sectionMargin;
+        // Margin $: =C{row}-B{row}
+        marginSheet.getCell(`D${r}`).value = { formula: `C${r}-B${r}`, result: sectionMargin };
         marginSheet.getCell(`D${r}`).numFmt = moneyFmt;
-        marginSheet.getCell(`E${r}`).value = sectionGrandTotal > 0 ? sectionMargin / sectionGrandTotal : 0;
+        // Margin %: =IF(C{row}=0,0,D{row}/C{row})
+        marginSheet.getCell(`E${r}`).value = { formula: `IF(C${r}=0,0,D${r}/C${r})`, result: sectionGrandTotal > 0 ? sectionMargin / sectionGrandTotal : 0 };
         marginSheet.getCell(`E${r}`).numFmt = percentFmt;
       }
       marginSheet.getRow(r).font = { bold: true };
+
+      // Track rows for DOCUMENT TOTAL formulas (base sections only)
+      if (!isAlternateSection) {
+        if (hasCostData) subtotalCostRows.push(subtotalRow);
+        grandTotalSellRows.push(grandTotalRow);
+      }
       r++;
 
       // Alternates (if any)
@@ -313,18 +338,24 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
       r++;
     }
 
-    // Document total at the end — sum actual rendered section values
+    // Document total at the end — formulas reference individual section rows
     if (docSellSum > 0) {
       marginSheet.getCell(`A${r}`).value = "DOCUMENT TOTAL";
-      marginSheet.getCell(`C${r}`).value = docSellSum;
+      // DOCUMENT TOTAL Col C: =SUM of all grand total C cells (base sections only)
+      const sellFormula = grandTotalSellRows.map(row => `C${row}`).join("+");
+      marginSheet.getCell(`C${r}`).value = { formula: sellFormula, result: docSellSum };
       marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
-      if (docCostSum > 0) {
-        marginSheet.getCell(`B${r}`).value = docCostSum;
+      if (docCostSum > 0 && subtotalCostRows.length > 0) {
+        // DOCUMENT TOTAL Col B: =SUM of all subtotal B cells (cost)
+        const costFormula = subtotalCostRows.map(row => `B${row}`).join("+");
+        marginSheet.getCell(`B${r}`).value = { formula: costFormula, result: docCostSum };
         marginSheet.getCell(`B${r}`).numFmt = moneyFmt;
         const totalMargin = docSellSum - docCostSum;
-        marginSheet.getCell(`D${r}`).value = totalMargin;
+        // Margin $: =C{row}-B{row}
+        marginSheet.getCell(`D${r}`).value = { formula: `C${r}-B${r}`, result: totalMargin };
         marginSheet.getCell(`D${r}`).numFmt = moneyFmt;
-        marginSheet.getCell(`E${r}`).value = docSellSum > 0 ? totalMargin / docSellSum : 0;
+        // Margin %: =IF(C{row}=0,0,D{row}/C{row})
+        marginSheet.getCell(`E${r}`).value = { formula: `IF(C${r}=0,0,D${r}/C${r})`, result: docSellSum > 0 ? totalMargin / docSellSum : 0 };
         marginSheet.getCell(`E${r}`).numFmt = percentFmt;
       }
       marginSheet.getRow(r).font = { bold: true, size: 12 };
@@ -360,7 +391,8 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
       marginSheet.getCell(`B${row}`).value = cost || 0;
       marginSheet.getCell(`C${row}`).value = sell || 0;
       marginSheet.getCell(`D${row}`).value = margin || 0;
-      marginSheet.getCell(`E${row}`).value = marginPct || 0;
+      // Margin %: =IF(C{row}=0,0,D{row}/C{row})
+      marginSheet.getCell(`E${row}`).value = { formula: `IF(C${row}=0,0,D${row}/C${row})`, result: marginPct || 0 };
 
       marginSheet.getCell(`B${row}`).numFmt = moneyFmt;
       marginSheet.getCell(`C${row}`).numFmt = moneyFmt;
@@ -368,12 +400,15 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
       marginSheet.getCell(`E${row}`).numFmt = percentFmt;
     });
 
-    const endRow = 6 + args.screens.length;
+    const lastDataRow = 5 + args.screens.length; // last screen data row (row 6 = first screen when 0-indexed from row 5+1)
+    const endRow = lastDataRow + 1; // totals row
     marginSheet.getCell(`A${endRow}`).value = "";
-    marginSheet.getCell(`B${endRow}`).value = sumCost;
-    marginSheet.getCell(`C${endRow}`).value = sumSell;
-    marginSheet.getCell(`D${endRow}`).value = sumMargin;
-    marginSheet.getCell(`E${endRow}`).value = sumSell > 0 ? sumMargin / sumSell : 0;
+    // Totals: =SUM(B6:B{last}), =SUM(C6:C{last}), =SUM(D6:D{last})
+    marginSheet.getCell(`B${endRow}`).value = { formula: `SUM(B6:B${lastDataRow})`, result: sumCost };
+    marginSheet.getCell(`C${endRow}`).value = { formula: `SUM(C6:C${lastDataRow})`, result: sumSell };
+    marginSheet.getCell(`D${endRow}`).value = { formula: `SUM(D6:D${lastDataRow})`, result: sumMargin };
+    // Margin %: =IF(C{row}=0,0,D{row}/C{row})
+    marginSheet.getCell(`E${endRow}`).value = { formula: `IF(C${endRow}=0,0,D${endRow}/C${endRow})`, result: sumSell > 0 ? sumMargin / sumSell : 0 };
     marginSheet.getRow(endRow).font = { bold: true };
     ["B", "C", "D"].forEach((col) => {
       marginSheet.getCell(`${col}${endRow}`).numFmt = moneyFmt;
@@ -392,9 +427,12 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
 
     const subtotalRow = endRow + 3;
     marginSheet.getCell(`A${subtotalRow}`).value = "SUB TOTAL (BID FORM)";
-    marginSheet.getCell(`C${subtotalRow}`).value = sumSell;
-    marginSheet.getCell(`D${subtotalRow}`).value = sumMargin;
-    marginSheet.getCell(`E${subtotalRow}`).value = sumSell > 0 ? sumMargin / sumSell : 0;
+    // SUB TOTAL Col C: =C{totals}+C{tax}+C{bond}
+    marginSheet.getCell(`C${subtotalRow}`).value = { formula: `C${endRow}+C${taxRow}+C${bondRow}`, result: sumSell };
+    // Margin $: =D{totals} (margin doesn't include tax/bond)
+    marginSheet.getCell(`D${subtotalRow}`).value = { formula: `D${endRow}`, result: sumMargin };
+    // Margin %: =IF(C{row}=0,0,D{row}/C{row})
+    marginSheet.getCell(`E${subtotalRow}`).value = { formula: `IF(C${subtotalRow}=0,0,D${subtotalRow}/C${subtotalRow})`, result: sumSell > 0 ? sumMargin / sumSell : 0 };
     marginSheet.getCell(`C${subtotalRow}`).numFmt = moneyFmt;
     marginSheet.getCell(`D${subtotalRow}`).numFmt = moneyFmt;
     marginSheet.getCell(`E${subtotalRow}`).numFmt = percentFmt;
@@ -443,16 +481,32 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     techSheet.getCell(`C${r}`).value = pitch || null;
     techSheet.getCell(`D${r}`).value = heightFt || null;
     techSheet.getCell(`E${r}`).value = widthFt || null;
-    techSheet.getCell(`F${r}`).value = pixelsH;
-    techSheet.getCell(`G${r}`).value = pixelsW;
-    techSheet.getCell(`H${r}`).value = sqFt > 0 ? Math.round(sqFt * 100) / 100 : null;
+    // Pixels H: =ROUND(D{r}*304.8/C{r},0) — only if pitch > 0, else use parsed matrix
+    if (matrix?.h != null) {
+      techSheet.getCell(`F${r}`).value = pixelsH;
+    } else if (pitch > 0) {
+      techSheet.getCell(`F${r}`).value = { formula: `ROUND(D${r}*304.8/C${r},0)`, result: pixelsH ?? 0 };
+    }
+    // Pixels W: =ROUND(E{r}*304.8/C{r},0)
+    if (matrix?.w != null) {
+      techSheet.getCell(`G${r}`).value = pixelsW;
+    } else if (pitch > 0) {
+      techSheet.getCell(`G${r}`).value = { formula: `ROUND(E${r}*304.8/C${r},0)`, result: pixelsW ?? 0 };
+    }
+    // Sq Ft: =D{r}*E{r}
+    if (heightFt > 0 && widthFt > 0) {
+      techSheet.getCell(`H${r}`).value = { formula: `D${r}*E${r}`, result: Math.round(sqFt * 100) / 100 };
+    }
     techSheet.getCell(`I${r}`).value = audit?.brightnessNits ?? null;
     techSheet.getCell(`J${r}`).value = null;
     techSheet.getCell(`K${r}`).value = null;
     techSheet.getCell(`L${r}`).value = audit?.estimatedWeightLbs ?? null;
     techSheet.getCell(`M${r}`).value = audit?.totalMaxPowerW ?? null;
+    // BTU/hr: =M{r}*3.412
     const techPowerW = toNumber(audit?.totalMaxPowerW);
-    techSheet.getCell(`N${r}`).value = techPowerW > 0 ? Math.round(techPowerW * 3.412) : null;
+    if (techPowerW > 0) {
+      techSheet.getCell(`N${r}`).value = { formula: `M${r}*3.412`, result: Math.round(techPowerW * 3.412) };
+    }
   });
 
   techSheet.getColumn(1).width = 45;
