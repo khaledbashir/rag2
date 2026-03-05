@@ -394,9 +394,18 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
     firstScreen: props.screens?.[0]?.name ?? null,
     firstDisplay: props.pricingDisplays?.[0]?.name ?? null,
   });
+  console.log("[UniverSpreadsheet] Full screens:", JSON.stringify(props.screens, null, 2));
+  console.log("[UniverSpreadsheet] Full pricingDisplays:", JSON.stringify(props.pricingDisplays, null, 2));
+  console.log("[UniverSpreadsheet] Full pricingSummary:", JSON.stringify(props.pricingSummary, null, 2));
 
   // Build workbook data from current props
   const workbookDataRef = useRef(buildWorkbookData(props));
+  
+  // Debug: log the workbook data being built
+  console.log("[UniverSpreadsheet] buildWorkbookData LED Cost Sheet cellData:", 
+    JSON.stringify(workbookDataRef.current.sheets['led-cost-sheet'].cellData, null, 2));
+  console.log("[UniverSpreadsheet] buildWorkbookData Margin Analysis cellData:", 
+    JSON.stringify(workbookDataRef.current.sheets['margin-analysis'].cellData, null, 2));
 
   // Don't render anything during SSR — prevents hydration error #418
   if (!mounted) return null;

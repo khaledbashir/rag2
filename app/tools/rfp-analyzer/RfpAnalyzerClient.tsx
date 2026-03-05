@@ -103,6 +103,14 @@ interface AnalysisResult {
   }>;
   hasMarginAnalysis?: boolean;
   hasLedCostSheet?: boolean;
+  // Mirror Mode pricing extracted from Excel
+  pricingDocument?: any;
+  mirrorModePricing?: Array<{
+    name: string;
+    sellingPrice: number;
+    cost: number | null;
+    section: string;
+  }>;
 }
 
 interface PricingPreview {
@@ -589,10 +597,56 @@ export default function RfpAnalyzerClient() {
 
   useEffect(() => {
     if (result && result.screens.length > 0 && !pricingPreview && !loadingPricing) {
-      autoPreviewPricing([]);
+      // Check if this is a Mirror Mode file with pre-extracted pricing
+      if (result.mirrorModePricing && result.mirrorModePricing.length > 0) {
+        console.log("[RFP] Using Mirror Mode pricing from Excel, skipping rate card estimation");
+        // Build pricing displays from extracted Mirror Mode data
+        const displays: PricingPreview["displays"] = result.screens.map((spec) => {
+          // Find matching pricing item by name
+          const pricingItem = result.mirrorModePricing!.find(
+            (p) => p.name.toLowerCase().includes(spec.name.toLowerCase()) ||
+                   spec.name.toLowerCase().includes(p.name.toLowerCase())
+          );
+          const cost = pricingItem?.cost ?? 0;
+          const sellPrice = pricingItem?.sellingPrice ?? 0;
+          const margin = sellPrice > 0 ? (sellPrice - cost) / sellPrice : 0;
+          return {
+            name: spec.name,
+            location: spec.location,
+            pixelPitch: spec.pixelPitchMm,
+            areaSqFt: (spec.widthFt ?? 0) * (spec.heightFt ?? 0) * (spec.quantity || 1),
+            quantity: spec.quantity || 1,
+            hardwareCost: cost,
+            installCost: 0,
+            pmCost: 0,
+            engCost: 0,
+            totalCost: cost,
+            totalSellingPrice: sellPrice,
+            blendedMarginPct: margin,
+            costSource: "mirror_mode",
+          };
+        });
+        const totalCost = displays.reduce((s, d) => s + d.totalCost, 0);
+        const totalSell = displays.reduce((s, d) => s + d.totalSellingPrice, 0);
+        setPricingPreview({
+          displays,
+          summary: {
+            totalCost,
+            totalSellingPrice: totalSell,
+            totalMargin: totalSell - totalCost,
+            blendedMarginPct: totalSell > 0 ? Math.round(((totalSell - totalCost) / totalSell) * 1000) / 10 : 0,
+            displayCount: displays.length,
+            quotedCount: displays.filter((d) => d.costSource === "mirror_mode").length,
+            rateCardCount: 0,
+          },
+        });
+      } else {
+        // Standard flow: estimate via rate card
+        autoPreviewPricing([]);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result?.id, result?.screens?.length]);
+  }, [result?.id, result?.screens?.length, result?.mirrorModePricing]);
 
   // Load available products for the dropdown selector
   useEffect(() => {

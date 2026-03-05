@@ -11,7 +11,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import ExcelJS from "exceljs";
+import * as xlsx from "xlsx";
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "@/services/rfp/unified/types";
+import { parsePricingTablesWithValidation } from "@/services/pricing/pricingTableParser";
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -36,6 +38,34 @@ export async function POST(request: NextRequest) {
     // Try to find LED Cost Sheet, Margin Analysis, or any sheet with display data
     const ledSheet = findSheet(workbook, ["LED Cost Sheet", "LED_Cost_Sheet", "LED Cost"]);
     const marginSheet = findSheet(workbook, ["Margin Analysis", "Margin-Analysis", "MarginAnalysis"]);
+
+    // ─── Parse pricing tables for Mirror Mode files ───
+    // This extracts actual costs from Margin Analysis instead of re-estimating
+    let pricingDocument: any = null;
+    let mirrorModePricing: any[] = []; // Per-display pricing extracted from Excel
+    try {
+      const xlsxWorkbook = xlsx.read(buffer, { type: "buffer" });
+      const pricingResult = parsePricingTablesWithValidation(xlsxWorkbook, file.name, { strict: false });
+      pricingDocument = pricingResult.document;
+      if (pricingDocument?.tables?.length > 0) {
+        console.log(`[analyze-excel] Found ${pricingDocument.tables.length} pricing tables, document total: ${pricingDocument.documentTotal}`);
+        // Extract per-display pricing from tables
+        for (const table of pricingDocument.tables) {
+          for (const item of (table.items || [])) {
+            if (item.description && !item.isHidden) {
+              mirrorModePricing.push({
+                name: item.description,
+                sellingPrice: item.sellingPrice || 0,
+                cost: item.cost ?? null,
+                section: table.name,
+              });
+            }
+          }
+        }
+      }
+    } catch (pricingErr) {
+      console.warn("[analyze-excel] Pricing table parse failed:", pricingErr);
+    }
 
     // Extract project info from Project Info sheet if available
     const projectInfoSheet = findSheet(workbook, ["Project Info", "ProjectInfo"]);
@@ -125,6 +155,9 @@ export async function POST(request: NextRequest) {
       warnings: warnings.length > 0 ? warnings : undefined,
       hasMarginAnalysis: !!marginSheet,
       hasLedCostSheet: !!ledSheet,
+      // Mirror Mode pricing extracted from Excel
+      pricingDocument,
+      mirrorModePricing,
     };
 
     console.log(`[analyze-excel] Parsed ${screens.length} displays from ${file.name} in ${Date.now() - startTime}ms`);
