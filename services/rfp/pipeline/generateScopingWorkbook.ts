@@ -362,18 +362,23 @@ export async function generateScopingWorkbook(
   const grandMargin = round2(grandSelling - grandCost);
   const grandMarginPct = grandSelling > 0 ? round2(grandMargin / grandSelling) : 0;
 
-  // ─── Sheet 0: Project Summary (first tab) ──────────────────────────────
-  const summarySheet = wb.addWorksheet("Project Summary", {
-    properties: { tabColor: { argb: C.DARK_HEADER } },
-  });
-  buildProjectSummary(summarySheet, {
+  // ─── Sheet 0: Project Overview (first tab) ─────────────────────────────
+  buildProjectOverview(wb, {
     projectName,
     clientName,
-    createdAt: today,
-    updatedAt: today,
-    documentMode: "SCOPING_WORKBOOK",
+    date: today,
+    currency,
+    environment: project.isOutdoor ? "Outdoor" : "Indoor",
+    unionLabor: project.isUnionLabor,
+    bondRequired: includeBond,
+    location: project.location || project.venue || "",
     displayCount: displays.length,
-  } as ProjectSummaryInfo, currency, grandSelling);
+    grandCost,
+    grandSelling,
+    grandMargin,
+    grandMarginPct,
+    displays,
+  });
 
   // ─── Sheet 1: Margin Analysis ───────────────────────────────────────────
   buildMarginAnalysis(wb, projectName, clientName, today, displays, grandCost, grandSelling, grandMargin, grandMarginPct, includeBond);
@@ -428,6 +433,159 @@ export async function generateScopingWorkbook(
 // ═══════════════════════════════════════════════════════════════════════════════
 // SHEET BUILDERS
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── 0. PROJECT OVERVIEW ────────────────────────────────────────────────────
+
+interface ProjectOverviewData {
+  projectName: string;
+  clientName: string;
+  date: string;
+  currency: string;
+  environment: string;
+  unionLabor: boolean;
+  bondRequired: boolean;
+  location: string;
+  displayCount: number;
+  grandCost: number;
+  grandSelling: number;
+  grandMargin: number;
+  grandMarginPct: number;
+  displays: ComputedDisplay[];
+}
+
+function buildProjectOverview(wb: ExcelJS.Workbook, data: ProjectOverviewData): void {
+  const ws = wb.addWorksheet("Project Overview", {
+    properties: { tabColor: { argb: C.DARK_HEADER } },
+  });
+
+  ws.getColumn(1).width = 4;
+  ws.getColumn(2).width = 36;
+  ws.getColumn(3).width = 30;
+
+  setTitle(ws, "C", `${data.projectName} — Project Overview`);
+  setMeta(ws, "C", `${data.clientName} | ${data.date} | ANC Proposal Engine`);
+
+  let row = 4;
+
+  // ─── Section 1: Project Information ───
+  const piR = ws.getRow(row);
+  piR.getCell(2).value = "PROJECT INFORMATION";
+  hdr(piR.getCell(2), C.ANC_BLUE);
+  hdr(piR.getCell(3), C.ANC_BLUE);
+  row++;
+
+  const infoRows: [string, string | number][] = [
+    ["Client", data.clientName],
+    ["Project Name", data.projectName],
+    ["Location", data.location || "—"],
+    ["Date Created", data.date],
+    ["Currency", data.currency],
+    ["Environment", data.environment],
+    ["Union Labor", data.unionLabor ? "Yes (+15%)" : "No"],
+    ["Bond Required", data.bondRequired ? "Yes" : "No"],
+    ["Number of Displays", data.displayCount],
+  ];
+
+  for (const [label, value] of infoRows) {
+    const r = ws.getRow(row);
+    r.getCell(2).value = label;
+    r.getCell(2).font = { bold: true, name: "Calibri", size: 10 };
+    r.getCell(3).value = value;
+    r.getCell(3).font = { name: "Calibri", size: 10 };
+    if (row % 2 === 0) {
+      r.getCell(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.LIGHT_GRAY } };
+      r.getCell(3).fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.LIGHT_GRAY } };
+    }
+    row++;
+  }
+  row++; // separator
+
+  // ─── Section 2: Financial Parameters ───
+  const fpR = ws.getRow(row);
+  fpR.getCell(2).value = "FINANCIAL PARAMETERS";
+  hdr(fpR.getCell(2), C.ANC_BLUE);
+  hdr(fpR.getCell(3), C.ANC_BLUE);
+  row++;
+
+  const finRows: [string, string][] = [
+    ["LED Hardware Margin", `${(CATEGORY_MARGINS.ledHardware * 100).toFixed(0)}%`],
+    ["Install / Services Margin", `${(CATEGORY_MARGINS.install * 100).toFixed(0)}%`],
+    ["Engineering Margin", `${(CATEGORY_MARGINS.engineering * 100).toFixed(0)}%`],
+    ["Equipment Margin", `${(CATEGORY_MARGINS.equipment * 100).toFixed(0)}%`],
+    ["CMS Margin", `${(CATEGORY_MARGINS.cms * 100).toFixed(0)}%`],
+    ["Bond Rate", data.bondRequired ? `${(BOND_RATE * 100).toFixed(1)}%` : "N/A"],
+    ["Tax Rate", "Per zone (editable on MA)"],
+    ["Tariff Rate", "Per zone (editable on MA)"],
+  ];
+
+  for (const [label, value] of finRows) {
+    const r = ws.getRow(row);
+    r.getCell(2).value = label;
+    r.getCell(2).font = { bold: true, name: "Calibri", size: 10 };
+    r.getCell(3).value = value;
+    r.getCell(3).font = { name: "Calibri", size: 10 };
+    if (row % 2 === 0) {
+      r.getCell(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.LIGHT_GRAY } };
+      r.getCell(3).fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.LIGHT_GRAY } };
+    }
+    row++;
+  }
+  row++; // separator
+
+  // ─── Section 3: Summary Totals ───
+  const stR = ws.getRow(row);
+  stR.getCell(2).value = "SUMMARY TOTALS";
+  hdr(stR.getCell(2), C.ANC_BLUE);
+  hdr(stR.getCell(3), C.ANC_BLUE);
+  row++;
+
+  const totalRows: [string, number, string][] = [
+    ["Total Cost", data.grandCost, FMT_USD],
+    ["Total Selling Price", data.grandSelling, FMT_USD],
+    ["Blended Margin $", data.grandMargin, FMT_USD],
+    ["Blended Margin %", data.grandMarginPct, FMT_PCT],
+  ];
+
+  for (const [label, value, fmt] of totalRows) {
+    const r = ws.getRow(row);
+    r.getCell(2).value = label;
+    r.getCell(2).font = { bold: true, name: "Calibri", size: 10 };
+    r.getCell(3).value = value;
+    r.getCell(3).numFmt = fmt;
+    r.getCell(3).font = { name: "Calibri", size: 10 };
+    row++;
+  }
+
+  // Document Total — cross-sheet formula to MA BASE BID GRAND TOTAL
+  const dtR = ws.getRow(row);
+  dtR.getCell(2).value = "DOCUMENT TOTAL";
+  dtR.getCell(2).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
+  dtR.getCell(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.ANC_BLUE } };
+  dtR.getCell(3).value = data.grandSelling;
+  dtR.getCell(3).numFmt = FMT_USD;
+  dtR.getCell(3).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
+  dtR.getCell(3).fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.ANC_BLUE } };
+  row++;
+  row++;
+
+  // ─── Section 4: Display Summary Table ───
+  const dsR = ws.getRow(row);
+  dsR.getCell(2).value = "DISPLAY SUMMARY";
+  hdr(dsR.getCell(2), C.DARK_HEADER);
+  hdr(dsR.getCell(3), C.DARK_HEADER);
+  row++;
+
+  // Mini table — Display Name | Selling Price
+  for (const d of data.displays) {
+    const r = ws.getRow(row);
+    r.getCell(2).value = d.spec.name;
+    r.getCell(2).font = { name: "Calibri", size: 10 };
+    r.getCell(3).value = d.sellingPrice;
+    r.getCell(3).numFmt = FMT_USD;
+    r.getCell(3).font = { name: "Calibri", size: 10 };
+    row++;
+  }
+}
 
 // ─── 1. MARGIN ANALYSIS ─────────────────────────────────────────────────────
 
