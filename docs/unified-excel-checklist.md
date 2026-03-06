@@ -57,13 +57,16 @@
 - [ ] Grand total toggle in browser — row grouping only works in downloaded Excel
 - [ ] Edit online → export → verify formulas preserved in .xlsx
 
-## Phase 5: Mirror Mode Round-Trip — TODO
-- [ ] Export unified Excel from Budget builder
-- [ ] Re-upload to Mirror Mode
-- [ ] Parser recognizes unified format (MA tab, LED sheet)
-- [ ] Generate PDF — verify clean output
+## Phase 5: Mirror Mode Round-Trip — MOSTLY DONE
+- [x] Parser recognizes unified format (MA tab with per-screen sections) — commit d99686df
+- [x] TARIFF row recognized end-to-end (parser → PricingTable → PDF → Excel export) — commit d99686df
+- [x] BASE BID GRAND TOTAL detected as global document total (Strategy 3: after boundaries) — commit d99686df
+- [x] Alt "Add/Deduct from Above" header detected as isAlternateHeader — already worked
+- [x] Screen headers with "Selling Price" detected as viable section starts — already worked
+- [x] Tariff displayed in PDF template, PricingTableEditor, Mirror Excel export — commit d99686df
+- [ ] Export unified Excel from Budget builder → re-upload → verify clean PDF
 - [ ] Repeat for RFP builder export
-- [ ] Verify alt sections render correctly in PDF
+- [ ] CMS/Scoring placeholder rows may get lumped into adjacent boundary (harmless at $0)
 
 ## Phase 6: Polish — TODO
 - [ ] Yellow highlighting on editable input cells
