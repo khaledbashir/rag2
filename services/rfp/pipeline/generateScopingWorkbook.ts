@@ -531,11 +531,11 @@ function buildProjectOverview(wb: ExcelJS.Workbook, data: ProjectOverviewData): 
   row++;
 
   const finRows: [string, string][] = [
-    ["LED Hardware Margin", `${(CATEGORY_MARGINS.ledHardware * 100).toFixed(0)}%`],
-    ["Install / Services Margin", `${(CATEGORY_MARGINS.install * 100).toFixed(0)}%`],
-    ["Engineering Margin", `${(CATEGORY_MARGINS.engineering * 100).toFixed(0)}%`],
-    ["Equipment Margin", `${(CATEGORY_MARGINS.equipment * 100).toFixed(0)}%`],
-    ["CMS Margin", `${(CATEGORY_MARGINS.cms * 100).toFixed(0)}%`],
+    ["LED Hardware Margin", `${(DEFAULT_MARGINS.ledHardware * 100).toFixed(0)}%`],
+    ["Install / Services Margin", `${(DEFAULT_MARGINS.install * 100).toFixed(0)}%`],
+    ["Engineering Margin", `${(DEFAULT_MARGINS.engineering * 100).toFixed(0)}%`],
+    ["Equipment Margin", `${(DEFAULT_MARGINS.equipment * 100).toFixed(0)}%`],
+    ["CMS Margin", `${(DEFAULT_MARGINS.cms * 100).toFixed(0)}%`],
     ["Bond Rate", data.bondRequired ? `${(BOND_RATE * 100).toFixed(1)}%` : "N/A"],
     ["Tax Rate", "Per zone (editable on MA)"],
     ["Tariff Rate", "Per zone (editable on MA)"],
@@ -661,17 +661,24 @@ function buildBudgetSummary(
   const sellFormula = (r: number) => `IF(F${r}>=1,C${r},C${r}/(1-F${r}))`;
   const marginFormula = (r: number) => `D${r}-C${r}`;
 
+  // Weighted average margin from all displays (or default 25%)
+  const avgMargin = displays.length > 0
+    ? displays.reduce((s, d) => s + d.marginPct, 0) / displays.length
+    : 0.25;
+  const hwMargin = avgMargin > 0 ? avgMargin : DEFAULT_MARGINS.ledHardware;
+  const svcMargin = avgMargin > 0 ? Math.max(avgMargin * 0.67, 0.15) : DEFAULT_MARGINS.install;
+
   // Category rows — each with cost, selling (formula), margin$, margin%
   const categories: [string, number, number][] = [
-    ["LED Hardware (all displays)", totalLedHw, CATEGORY_MARGINS.ledHardware],
-    ["Structural Materials", totalStructMat, CATEGORY_MARGINS.structural],
-    ["Structural Labor & LED Installation", totalInstall, CATEGORY_MARGINS.install],
-    ["Electrical & Data", totalElectrical, CATEGORY_MARGINS.electrical],
-    ["PM / General Conditions / Travel", totalPm, CATEGORY_MARGINS.pm],
-    ["Engineering & Permits", totalEng, CATEGORY_MARGINS.engineering],
+    ["LED Hardware (all displays)", totalLedHw, hwMargin],
+    ["Structural Materials", totalStructMat, svcMargin],
+    ["Structural Labor & LED Installation", totalInstall, svcMargin],
+    ["Electrical & Data", totalElectrical, svcMargin],
+    ["PM / General Conditions / Travel", totalPm, svcMargin],
+    ["Engineering & Permits", totalEng, svcMargin],
   ];
   if (totalEquip > 0) {
-    categories.push(["Processor & Equipment", totalEquip, CATEGORY_MARGINS.equipment]);
+    categories.push(["Processor & Equipment", totalEquip, hwMargin]);
   }
 
   const catStartRow = row;
@@ -724,8 +731,9 @@ function buildBudgetSummary(
 
 // ─── 1. MARGIN ANALYSIS ─────────────────────────────────────────────────────
 
-// Per-category margin rates (validated from real ANC workbooks)
-const CATEGORY_MARGINS: Record<string, number> = {
+// Default margin rates — used ONLY when display has no priced margin data.
+// When a display has marginPct from the pricing engine, that takes priority.
+const DEFAULT_MARGINS: Record<string, number> = {
   ledHardware: 0.30,
   structural: 0.20,
   install: 0.20,
@@ -812,21 +820,24 @@ function buildMarginAnalysis(
     row++;
 
     // ─── Category rows — each with Cost | Selling | Margin$ | Margin% ───
+    // Use display's priced margin for hardware, default margins for services
     const catStartRow = row;
     const ledHardwareWithSpares = d.ledHardwareCost + d.sparePartsCost;
+    const hwMargin = d.marginPct > 0 ? d.marginPct : DEFAULT_MARGINS.ledHardware;
+    const svcMargin = d.marginPct > 0 ? Math.max(d.marginPct * 0.67, 0.15) : DEFAULT_MARGINS.install;
 
-    writeCategory("LED Hardware", ledHardwareWithSpares, CATEGORY_MARGINS.ledHardware);
-    writeCategory("Structural Materials", d.structuralMaterialsCost, CATEGORY_MARGINS.structural);
-    writeCategory("Structural Labor & LED Installation", d.structuralLaborCost, CATEGORY_MARGINS.install);
-    writeCategory("Electrical & Data", d.electricalCost, CATEGORY_MARGINS.electrical);
-    writeCategory("PM / General Conditions / Travel", d.pmCost + d.travelCost, CATEGORY_MARGINS.pm);
-    writeCategory("Engineering & Permits", d.engCost, CATEGORY_MARGINS.engineering);
+    writeCategory("LED Hardware", ledHardwareWithSpares, hwMargin);
+    writeCategory("Structural Materials", d.structuralMaterialsCost, svcMargin);
+    writeCategory("Structural Labor & LED Installation", d.structuralLaborCost, svcMargin);
+    writeCategory("Electrical & Data", d.electricalCost, svcMargin);
+    writeCategory("PM / General Conditions / Travel", d.pmCost + d.travelCost, svcMargin);
+    writeCategory("Engineering & Permits", d.engCost, svcMargin);
 
     // Equipment bundle (group non-zero items into one line)
     const equipCost = d.sendingCardCost + d.signalCableCost + d.upsCost
       + d.backupProcessorCost + d.weatherproofCost;
     if (equipCost > 0) {
-      writeCategory("Processor & Equipment", equipCost, CATEGORY_MARGINS.equipment);
+      writeCategory("Processor & Equipment", equipCost, hwMargin);
     }
     const catEndRow = row - 1;
 
@@ -933,7 +944,7 @@ function buildMarginAnalysis(
   cmsR.getCell(2).value = "CMS (Content Management System)";
   cmsR.getCell(2).font = { bold: true, name: "Calibri" };
   cmsR.getCell(3).value = 0; cmsR.getCell(3).numFmt = FMT_USD; inputCell(cmsR.getCell(3));
-  cmsR.getCell(6).value = CATEGORY_MARGINS.cms; cmsR.getCell(6).numFmt = FMT_PCT; inputCell(cmsR.getCell(6));
+  cmsR.getCell(6).value = DEFAULT_MARGINS.cms; cmsR.getCell(6).numFmt = FMT_PCT; inputCell(cmsR.getCell(6));
   cmsR.getCell(4).value = { formula: sellFormula(row), result: 0 }; cmsR.getCell(4).numFmt = FMT_USD;
   cmsR.getCell(5).value = { formula: marginDollarFormula(row), result: 0 }; cmsR.getCell(5).numFmt = FMT_USD;
   screenGrandTotalRows.push(cmsRow);
@@ -945,7 +956,7 @@ function buildMarginAnalysis(
   scR.getCell(2).value = "Scoring System";
   scR.getCell(2).font = { bold: true, name: "Calibri" };
   scR.getCell(3).value = 0; scR.getCell(3).numFmt = FMT_USD; inputCell(scR.getCell(3));
-  scR.getCell(6).value = CATEGORY_MARGINS.scoring; scR.getCell(6).numFmt = FMT_PCT; inputCell(scR.getCell(6));
+  scR.getCell(6).value = DEFAULT_MARGINS.scoring; scR.getCell(6).numFmt = FMT_PCT; inputCell(scR.getCell(6));
   scR.getCell(4).value = { formula: sellFormula(row), result: 0 }; scR.getCell(4).numFmt = FMT_USD;
   scR.getCell(5).value = { formula: marginDollarFormula(row), result: 0 }; scR.getCell(5).numFmt = FMT_USD;
   screenGrandTotalRows.push(scoringRow);
@@ -1025,10 +1036,10 @@ function buildLedCostSheet(
     dr.getCell(1).font = { bold: true, name: "Calibri" };
     // Vendor
     dr.getCell(2).value = d.match?.module?.manufacturer
-      ? `${d.match.module.manufacturer} ${d.match.module.model || ""}`.trim()
+      ? `${d.match.module.manufacturer} ${d.match.module.name || ""}`.trim()
       : (d.spec.environment === "outdoor" ? "Yaham" : "LG/Yaham");
     // Product
-    dr.getCell(3).value = d.match?.module?.model || "—";
+    dr.getCell(3).value = d.match?.module?.name || "—";
     // Pitch
     dr.getCell(4).value = d.spec.pixelPitchMm ? `${d.spec.pixelPitchMm}mm` : "—";
     dr.getCell(4).alignment = { horizontal: "center" };
