@@ -1,8 +1,7 @@
 "use client";
 
 import { useFormContext } from "react-hook-form";
-import { useRouter } from "next/navigation";
-import { FileSpreadsheet, PenTool, FileSearch } from "lucide-react";
+import { FileSpreadsheet, PenTool } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type WorkflowMode = "mirror" | "intelligence";
@@ -17,7 +16,6 @@ interface ModeSelectorProps {
  */
 const ModeSelector = ({ onSelect }: ModeSelectorProps) => {
   const { setValue } = useFormContext();
-  const router = useRouter();
 
   const handleSelect = (mode: WorkflowMode) => {
     if (mode === "mirror") {
@@ -61,30 +59,6 @@ const ModeSelector = ({ onSelect }: ModeSelectorProps) => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-4xl w-full">
-        {/* RFP Filter — primary path */}
-        <button
-          type="button"
-          onClick={() => router.push("/tools/pdf-triage")}
-          className={cn(
-            "group relative flex flex-col items-center text-center p-8 rounded-xl border border-border bg-card",
-            "hover:border-foreground/20 hover:bg-muted/30",
-            "transition-all duration-200 cursor-pointer"
-          )}
-        >
-          <div className="w-12 h-12 rounded-xl bg-muted/50 flex items-center justify-center mb-5 group-hover:bg-muted transition-colors duration-200">
-            <FileSearch className="w-6 h-6 text-muted-foreground group-hover:text-foreground transition-colors duration-200" />
-          </div>
-          <h3 className="text-sm font-semibold text-foreground mb-2">
-            I Have an RFP
-          </h3>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Got a large RFP PDF? Filter it down to only the relevant pages first, then build your proposal from the clean version.
-          </p>
-          <div className="mt-5 px-4 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground group-hover:border-foreground/30 group-hover:text-foreground transition-all duration-200">
-            Filter RFP
-          </div>
-        </button>
-
         {/* Existing modes */}
         {modes.map((mode) => (
           <button
