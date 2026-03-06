@@ -1946,13 +1946,13 @@ export default function RfpAnalyzerClient() {
           </div>
         </header>
       ) : (
-      <header className="shrink-0 z-30 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 py-4 px-6 xl:px-8">
-        <div className="flex items-center justify-between max-w-[1600px] mx-auto">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">
+      <header className="shrink-0 z-30 border-b border-border bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-6 xl:px-8">
+        <div className="mx-auto flex max-w-[1600px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold leading-tight text-foreground sm:text-2xl">
               {phase === "upload" ? "New RFP" : phase === "processing" ? "Reading your RFP..." : result?.project?.projectName || "RFP Analysis"}
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">
               {phase === "upload"
                 ? "Drop your RFP — specs, pricing, and proposal in minutes"
                 : fileInfo
@@ -1961,10 +1961,10 @@ export default function RfpAnalyzerClient() {
               }
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
             <Link
               href="/tools/rfp-analyzer/history"
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:text-sm"
             >
               <History className="w-4 h-4" />
               History
@@ -1972,7 +1972,7 @@ export default function RfpAnalyzerClient() {
             {phase !== "upload" && (
               <button
                 onClick={handleReset}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:text-sm"
               >
                 <RefreshCcw className="w-4 h-4" />
                 {phase === "processing" ? "Cancel" : "New Analysis"}
@@ -1984,10 +1984,40 @@ export default function RfpAnalyzerClient() {
       )}
 
       <main className={isSpreadsheetVisible ? "flex-1 min-h-0 flex flex-col overflow-hidden" : "flex-1 min-h-0 overflow-y-auto overscroll-contain"}>
-        {isSpreadsheetVisible ? (
-          <>
-        {/* ============ RESULTS ============ */}
-        {phase === "results" && result && (() => {
+        {(() => {
+          const uploadContent = (phase === "upload" || phase === "processing") && (
+            <>
+              <UploadZone
+                onUpload={handleUpload}
+                onExcelUpload={handleExcelUpload}
+                isLoading={phase === "processing"}
+                events={events}
+              />
+              {error && phase === "upload" && (
+                <div className="mt-6 p-5 max-w-2xl mx-auto text-center border border-destructive/20 bg-destructive/10 rounded-xl">
+                  <p className="text-sm text-destructive font-medium mb-3">{error}</p>
+                  <div className="flex items-center justify-center gap-3">
+                    {lastSessionData.current && (
+                      <button
+                        onClick={handleResumeAnalysis}
+                        className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 inline-flex items-center gap-2"
+                      >
+                        <RefreshCcw className="w-4 h-4" /> Resume Analysis
+                      </button>
+                    )}
+                    <button onClick={handleRetry} className="px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-muted">
+                      {lastSessionData.current ? "Re-upload File" : "Try Again"}
+                    </button>
+                  </div>
+                  {lastSessionData.current && (
+                    <p className="text-xs text-muted-foreground mt-2">File already uploaded — resume skips the upload step</p>
+                  )}
+                </div>
+              )}
+            </>
+          );
+
+          const resultsContent = phase === "results" && result && (() => {
           const criticalReqs = requirements.filter((r) => r.status === "critical").length;
 
           return (
@@ -2613,59 +2643,34 @@ export default function RfpAnalyzerClient() {
             )}
           </div>
           );
-        })()}
-          </div>
-        ) : (
-          <div className="w-full max-w-[1480px] mx-auto px-4 sm:px-6 xl:px-8 py-6 min-h-full">
-            <div className="sticky top-0 z-20 pb-4 pt-1 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75">
-              <div className="rounded-2xl border border-border/70 bg-card/90 shadow-sm px-4 py-4">
-                <PipelineStepper
-                  phase={phase}
-                  resultsTab={resultsTab}
-                  hasResult={!!result}
-                  hasPricing={!!pricingPreview}
-                  specsFound={result?.screens?.length || result?.stats.specsFound || 0}
-                  onTabSwitch={setResultsTab}
-                />
+        })();
+
+          if (isSpreadsheetVisible) {
+            return <>{resultsContent}</>;
+          }
+
+          return (
+            <div className="w-full max-w-[1480px] mx-auto px-4 sm:px-6 xl:px-8 py-4 sm:py-5 min-h-full">
+              <div className="sticky top-0 z-20 pb-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+                <div className="rounded-xl border border-border/70 bg-card/90 shadow-sm px-3 py-3 sm:px-4 sm:py-3.5">
+                  <PipelineStepper
+                    phase={phase}
+                    resultsTab={resultsTab}
+                    hasResult={!!result}
+                    hasPricing={!!pricingPreview}
+                    specsFound={result?.screens?.length || result?.stats.specsFound || 0}
+                    onTabSwitch={setResultsTab}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-5">
+                {uploadContent}
+                {resultsContent}
               </div>
             </div>
-
-            <div className="space-y-6">
-
-            {(phase === "upload" || phase === "processing") && (
-              <>
-                <UploadZone
-                  onUpload={handleUpload}
-                  onExcelUpload={handleExcelUpload}
-                  isLoading={phase === "processing"}
-                  events={events}
-                />
-                {error && phase === "upload" && (
-                  <div className="mt-6 p-5 max-w-2xl mx-auto text-center border border-destructive/20 bg-destructive/10 rounded-xl">
-                    <p className="text-sm text-destructive font-medium mb-3">{error}</p>
-                    <div className="flex items-center justify-center gap-3">
-                      {lastSessionData.current && (
-                        <button
-                          onClick={handleResumeAnalysis}
-                          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 inline-flex items-center gap-2"
-                        >
-                          <RefreshCcw className="w-4 h-4" /> Resume Analysis
-                        </button>
-                      )}
-                      <button onClick={handleRetry} className="px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-muted">
-                        {lastSessionData.current ? "Re-upload File" : "Try Again"}
-                      </button>
-                    </div>
-                    {lastSessionData.current && (
-                      <p className="text-xs text-muted-foreground mt-2">File already uploaded — resume skips the upload step</p>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
       </main>
     </div>
