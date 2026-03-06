@@ -1886,7 +1886,7 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
     <div
       ref={containerRef}
       className={props.className}
-      style={{ width: "100%", height: "100%", minWidth: 800, minHeight: 300, position: "relative" }}
+      style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
     />
   );
 }

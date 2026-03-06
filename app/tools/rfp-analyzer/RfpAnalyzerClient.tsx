@@ -2231,7 +2231,7 @@ export default function RfpAnalyzerClient() {
             {/* ============ WORKBOOK VIEW ============ */}
             <div className={spreadsheetMode ? "flex flex-col flex-1 min-h-0 overflow-hidden" : "flex gap-3"}>
             {/* Left: Workbook */}
-            <div className={`flex flex-col ${spreadsheetMode ? "flex-1 min-h-0" : showPdfPanel && pdfBlobUrl ? "flex-1 min-w-0" : "w-full"}`} style={spreadsheetMode ? undefined : { height: "75vh" }}>
+            <div className={`flex flex-col ${spreadsheetMode ? "flex-1 min-h-0" : showPdfPanel && pdfBlobUrl ? "flex-1 min-w-0" : "w-full"}`} style={spreadsheetMode ? undefined : { height: "90vh" }}>
               {/* ---- Title Bar with Accordion Toolbar — FIXED HEADER ---- */}
               <div className={`bg-[#217346] text-white ${spreadsheetMode ? "sticky top-0 z-20 shrink-0" : "shrink-0 rounded-t-lg"}`}>
                 {/* Main bar - always visible */}
@@ -2370,8 +2370,8 @@ export default function RfpAnalyzerClient() {
                 )}
               </div>
 
-              {/* ---- Univer Spreadsheet — SCROLLABLE MIDDLE AREA ---- */}
-              <div className={`flex-1 min-h-0 ${spreadsheetMode ? "overflow-auto" : "overflow-hidden"} ${spreadsheetMode ? "border-x border-gray-200 dark:border-gray-700" : "border border-t-0 border-gray-200 dark:border-gray-700"}`}>
+              {/* ---- Univer Spreadsheet — FILLS REMAINING SPACE ---- */}
+              <div className={`flex-1 min-h-0 overflow-hidden relative ${spreadsheetMode ? "border-x border-gray-200 dark:border-gray-700" : "border border-t-0 border-gray-200 dark:border-gray-700"}`}>
                 {!pricingPreview ? (
                   <div className="flex items-center justify-center h-full gap-2 text-sm text-muted-foreground">
                     <Loader2 className="w-4 h-4 animate-spin" />
