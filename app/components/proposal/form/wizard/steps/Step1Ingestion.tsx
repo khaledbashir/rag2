@@ -333,38 +333,95 @@ const Step1Ingestion = () => {
                             /* Mirror: Empty State — Excel Upload */
                             <div className="flex items-center justify-center min-h-[500px] w-full">
                                 <div className="w-full max-w-lg">
-                                    <div className="group relative rounded-2xl border border-border bg-card hover:bg-muted/50 hover:border-brand-blue/30 transition-all duration-300 flex flex-col items-center justify-center text-center p-8 cursor-pointer border-dashed min-h-[420px]">
-                                        <input
-                                            type="file"
-                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                            accept=".xlsx, .xls"
-                                            onChange={async (e) => {
-                                                const file = e.target.files?.[0];
-                                                if (file) await importANCExcel(file);
-                                            }}
-                                        />
-                                        <div className="w-16 h-16 rounded-2xl bg-brand-blue/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 shadow-[0_0_30px_rgba(59,130,246,0.1)]">
-                                            <FileSpreadsheet className="w-8 h-8 text-brand-blue" />
-                                        </div>
-                                        <h3 className="text-xl font-bold text-foreground mb-2">
-                                            Upload Excel Estimate
-                                        </h3>
-                                        <p className="text-muted-foreground text-sm max-w-xs">
-                                            Drag and drop your standard .xlsx file here to generate a branded PDF.
-                                        </p>
-                                        {excelImportLoading && (
-                                            <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-20 rounded-2xl">
-                                                {isAiImport ? (
+                                    {isAiImport ? (
+                                        /* ═══ AI IMPORT — Premium Upload Experience ═══ */
+                                        <div className="group relative rounded-2xl border-2 border-amber-400/30 bg-gradient-to-b from-amber-50/80 via-white to-amber-50/40 dark:from-amber-950/30 dark:via-background dark:to-amber-950/20 hover:border-amber-400/50 transition-all duration-500 flex flex-col items-center justify-center text-center p-10 cursor-pointer min-h-[420px] overflow-hidden">
+                                            <input
+                                                type="file"
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                accept=".xlsx, .xls"
+                                                onChange={async (e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (file) await importANCExcel(file);
+                                                }}
+                                            />
+                                            {/* Ambient glow */}
+                                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-amber-400/10 rounded-full blur-3xl pointer-events-none" />
+
+                                            {/* BETA badge */}
+                                            <div className="absolute top-4 right-4 px-2.5 py-0.5 rounded-full bg-amber-400 text-[10px] font-bold uppercase tracking-widest text-amber-950 z-[5]">
+                                                BETA
+                                            </div>
+
+                                            {/* Icon */}
+                                            <div className="relative mb-8">
+                                                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-100 to-amber-200 dark:from-amber-900/50 dark:to-amber-800/30 flex items-center justify-center group-hover:scale-110 transition-transform duration-500 shadow-lg shadow-amber-200/30 dark:shadow-amber-900/20">
+                                                    <Sparkles className="w-10 h-10 text-amber-600 dark:text-amber-400" />
+                                                </div>
+                                                <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-green-500 border-2 border-white dark:border-background flex items-center justify-center">
+                                                    <Zap className="w-2.5 h-2.5 text-white" />
+                                                </div>
+                                            </div>
+
+                                            {/* Title */}
+                                            <h3 className="text-xl font-bold text-foreground mb-2">
+                                                AI-Powered Import
+                                            </h3>
+                                            <p className="text-muted-foreground text-sm max-w-sm mb-6 leading-relaxed">
+                                                Drop any Excel file — any format, any template. AI reads it and extracts your pricing automatically.
+                                            </p>
+
+                                            {/* Feature pills */}
+                                            <div className="flex flex-wrap gap-2 justify-center mb-6">
+                                                <span className="px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[11px] font-medium">Any template format</span>
+                                                <span className="px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[11px] font-medium">Auto-detect pricing</span>
+                                                <span className="px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[11px] font-medium">Instant PDF</span>
+                                            </div>
+
+                                            {/* Upload button area */}
+                                            <div className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 text-amber-950 text-sm font-semibold group-hover:from-amber-500 group-hover:to-amber-600 transition-all duration-300 shadow-md shadow-amber-300/30">
+                                                Upload Excel
+                                            </div>
+                                            <p className="text-[11px] text-muted-foreground/50 mt-3">.xlsx or .xls</p>
+
+                                            {/* Loading overlay */}
+                                            {excelImportLoading && (
+                                                <div className="absolute inset-0 bg-gradient-to-b from-amber-50/95 via-white/95 to-amber-50/95 dark:from-amber-950/95 dark:via-background/95 dark:to-amber-950/95 backdrop-blur-sm flex items-center justify-center z-20 rounded-2xl">
                                                     <AiImportLoader />
-                                                ) : (
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        /* ═══ STANDARD PARSER — Original Upload ═══ */
+                                        <div className="group relative rounded-2xl border border-border bg-card hover:bg-muted/50 hover:border-brand-blue/30 transition-all duration-300 flex flex-col items-center justify-center text-center p-8 cursor-pointer border-dashed min-h-[420px]">
+                                            <input
+                                                type="file"
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                accept=".xlsx, .xls"
+                                                onChange={async (e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (file) await importANCExcel(file);
+                                                }}
+                                            />
+                                            <div className="w-16 h-16 rounded-2xl bg-brand-blue/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 shadow-[0_0_30px_rgba(59,130,246,0.1)]">
+                                                <FileSpreadsheet className="w-8 h-8 text-brand-blue" />
+                                            </div>
+                                            <h3 className="text-xl font-bold text-foreground mb-2">
+                                                Upload Excel Estimate
+                                            </h3>
+                                            <p className="text-muted-foreground text-sm max-w-xs">
+                                                Drag and drop your standard .xlsx file here to generate a branded PDF.
+                                            </p>
+                                            {excelImportLoading && (
+                                                <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-20 rounded-2xl">
                                                     <div className="flex flex-col items-center gap-3">
                                                         <Zap className="w-6 h-6 text-brand-blue animate-pulse" />
                                                         <span className="text-brand-blue font-medium text-sm">Processing Excel...</span>
                                                     </div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         ) : (
