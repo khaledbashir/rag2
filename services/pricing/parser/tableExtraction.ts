@@ -51,12 +51,23 @@ export function extractTable(
 
     // Capture tax
     if (row.isTax) {
-      const rate = parseNumber(row.cells[row.cells.findIndex((c: any) =>
-        String(c).includes("0.") || String(c).includes("%")
-      )]) || 0;
+      // Find a cell that looks like a tax rate — must be a bare decimal (0.08875)
+      // or explicit percentage (8.875%). Exclude dollar amounts ($10,500.00) which
+      // falsely match "0." patterns.
+      const rateCellIdx = row.cells.findIndex((c: any) => {
+        const s = String(c ?? "").trim();
+        if (/[$£€]/.test(s)) return false; // skip currency values
+        if (/^\d{1,3}(\.\d+)?%$/.test(s)) return true; // "8.875%", "13%"
+        if (/^0\.\d+$/.test(s)) return true; // "0.08875"
+        return false;
+      });
+      const rawRate = rateCellIdx >= 0 ? (parseNumber(row.cells[rateCellIdx]) || 0) : 0;
+      let computedRate = rawRate > 1 ? rawRate / 100 : rawRate;
+      // Sanity clamp: tax rates above 50% are clearly misparsed dollar amounts
+      if (computedRate > 0.50) computedRate = 0;
       tax = {
         label: row.label || "Tax",
-        rate: rate > 1 ? rate / 100 : rate,
+        rate: computedRate,
         amount: row.sell || 0,
       };
       continue;

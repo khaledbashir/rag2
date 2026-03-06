@@ -428,16 +428,14 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       let sectionCostSum = 0;
       let sectionSellSum = 0;
       let hasCostData = false;
+      let zeroSellCount = 0;
 
       for (const item of items) {
         const sell = item.sellingPrice || 0;
         const cost = item.cost ?? null;
         if (cost != null) { sectionCostSum += cost; hasCostData = true; }
 
-        // Debug: flag $0 selling prices
-        if (sell === 0 && item.description) {
-          console.warn(`[UniverSpreadsheet] MA item "${ item.description}" has $0 selling price (cost=${cost})`);
-        }
+        if (sell === 0) zeroSellCount++;
 
         maCellData[maRow] = {
           0: { v: item.description || "" },
@@ -448,6 +446,16 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         maRow++;
       }
       const lastItemRow = maRow - 1;
+
+      // Diagnostic: detect $0 selling price pattern (Bon Secours bug)
+      if (zeroSellCount > 0 && items.length > 0) {
+        const pct = Math.round((zeroSellCount / items.length) * 100);
+        if (pct >= 80 && hasCostData) {
+          console.error(`[UniverSpreadsheet] BUG DETECTED: "${table.name}" — ${zeroSellCount}/${items.length} items (${pct}%) have $0 selling price but costs exist ($${sectionCostSum.toFixed(2)}). Parser likely mapped sell column incorrectly.`);
+        } else if (zeroSellCount > 0) {
+          console.warn(`[UniverSpreadsheet] "${table.name}" — ${zeroSellCount}/${items.length} items have $0 selling price (sectionSellSum=$${sectionSellSum.toFixed(2)}, sectionCostSum=$${sectionCostSum.toFixed(2)})`);
+        }
+      }
 
       // Subtotal row
       const isAlternateSection = table.isAlternateSection === true || /\balternate/i.test(table.name || "");
@@ -469,8 +477,14 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
 
       // Tax row — formula-driven: =SUBTOTAL * taxRate (rate in hidden col F)
       const taxAmount = table.tax?.amount || 0;
-      const sectionSubtotal = sectionSellSum || 1; // avoid /0
-      const taxRate = table.tax?.rate ?? (taxAmount > 0 && sectionSubtotal > 0 ? taxAmount / sectionSubtotal : 0);
+      // Use parser-provided rate if available; else derive from amount/subtotal.
+      // NEVER divide by 1 fallback — if sectionSellSum is 0, rate is 0.
+      let taxRate = table.tax?.rate ?? (taxAmount > 0 && sectionSellSum > 0 ? taxAmount / sectionSellSum : 0);
+      // Sanity clamp: tax rate > 50% is clearly a misparsed dollar amount
+      if (taxRate > 0.50) {
+        console.warn(`[UniverSpreadsheet] Tax rate ${taxRate} exceeds 50% for "${table.name}" — clamped to 0`);
+        taxRate = 0;
+      }
       const taxIdx = maRow;
       maCellData[taxIdx] = {
         0: { v: table.tax?.label || "TAX" },
@@ -481,7 +495,12 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
 
       // Bond row — formula-driven: =SUBTOTAL * bondRate (rate in hidden col F)
       const bondAmount = table.bond || 0;
-      const bondRate = bondAmount > 0 && sectionSubtotal > 0 ? bondAmount / sectionSubtotal : 0.015;
+      let bondRate = bondAmount > 0 && sectionSellSum > 0 ? bondAmount / sectionSellSum : 0.015;
+      // Sanity clamp: bond rate should never exceed 10%
+      if (bondRate > 0.10) {
+        console.warn(`[UniverSpreadsheet] Bond rate ${bondRate} exceeds 10% for "${table.name}" — clamped to 1.5%`);
+        bondRate = 0.015;
+      }
       const bondIdx = maRow;
       maCellData[bondIdx] = {
         0: { v: "BOND" },
