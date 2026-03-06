@@ -34,6 +34,77 @@ import ModeSelector, { type WorkflowMode } from "@/app/components/proposal/form/
 import RfpIngestion from "@/app/components/proposal/form/wizard/RfpIngestion";
 import { isModeUnselected, isMirrorMode as checkMirrorMode } from "@/lib/modeDetection";
 
+// ─── AI Import Loader ──────────────────────────────────────────────────────
+const AI_IMPORT_STEPS = [
+    { label: "Reading spreadsheet", duration: 1500 },
+    { label: "Converting to text", duration: 1000 },
+    { label: "AI is analyzing pricing data", duration: 6000 },
+    { label: "Extracting line items", duration: 3000 },
+    { label: "Building pricing document", duration: 2000 },
+    { label: "Finalizing import", duration: 1500 },
+];
+
+const AiImportLoader = () => {
+    const [step, setStep] = useState(0);
+
+    useEffect(() => {
+        if (step >= AI_IMPORT_STEPS.length - 1) return;
+        const timer = setTimeout(() => setStep((s) => s + 1), AI_IMPORT_STEPS[step].duration);
+        return () => clearTimeout(timer);
+    }, [step]);
+
+    const progress = Math.min(((step + 1) / AI_IMPORT_STEPS.length) * 100, 95);
+
+    return (
+        <div className="flex flex-col items-center gap-5 px-6">
+            {/* Animated AI icon */}
+            <div className="relative">
+                <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
+                    <Sparkles className="w-7 h-7 text-amber-600 dark:text-amber-400 animate-pulse" />
+                </div>
+                <div className="absolute -inset-2 rounded-3xl border border-amber-400/20 animate-ping opacity-30" />
+            </div>
+
+            {/* Step label */}
+            <div className="text-center">
+                <p className="text-sm font-semibold text-foreground mb-1">
+                    AI-Powered Import
+                </p>
+                <p className="text-xs text-muted-foreground h-4 transition-all duration-300">
+                    {AI_IMPORT_STEPS[step].label}...
+                </p>
+            </div>
+
+            {/* Progress bar */}
+            <div className="w-48 h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                    className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all duration-700 ease-out"
+                    style={{ width: `${progress}%` }}
+                />
+            </div>
+
+            {/* Step indicators */}
+            <div className="flex items-center gap-1.5">
+                {AI_IMPORT_STEPS.map((_, i) => (
+                    <div
+                        key={i}
+                        className={cn(
+                            "w-1.5 h-1.5 rounded-full transition-all duration-300",
+                            i <= step
+                                ? "bg-amber-500 scale-100"
+                                : "bg-muted-foreground/20 scale-75",
+                        )}
+                    />
+                ))}
+            </div>
+
+            <p className="text-[10px] text-muted-foreground/60 uppercase tracking-widest">
+                BETA
+            </p>
+        </div>
+    );
+};
+
 const Step1Ingestion = () => {
     const {
         importANCExcel,
@@ -69,6 +140,7 @@ const Step1Ingestion = () => {
     const mirrorMode = checkMirrorMode(details);
     const [modeJustSelected, setModeJustSelected] = useState(false);
     const [rfpMode, setRfpMode] = useState(false);
+    const isAiImport = watch("details.aiImport") === true;
 
     const handleModeSelect = (_mirror: boolean, _mode?: WorkflowMode) => {
         setModeJustSelected(true);
@@ -282,10 +354,14 @@ const Step1Ingestion = () => {
                                         </p>
                                         {excelImportLoading && (
                                             <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-20 rounded-2xl">
-                                                <div className="flex flex-col items-center gap-3">
-                                                    <Zap className="w-6 h-6 text-brand-blue animate-pulse" />
-                                                    <span className="text-brand-blue font-medium text-sm">Processing Excel...</span>
-                                                </div>
+                                                {isAiImport ? (
+                                                    <AiImportLoader />
+                                                ) : (
+                                                    <div className="flex flex-col items-center gap-3">
+                                                        <Zap className="w-6 h-6 text-brand-blue animate-pulse" />
+                                                        <span className="text-brand-blue font-medium text-sm">Processing Excel...</span>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
