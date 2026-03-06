@@ -76,17 +76,29 @@ export async function POST(req: NextRequest) {
                 console.log(`[EXCEL IMPORT] PricingDocument: ${pricingDocument.tables.length} tables, ${pricingDocument.documentTotal} total`);
                 (data as any).validation = validation;
             } else if (validation?.status === "FAIL" || !pricingDocument) {
+                // Use the actual parser errors so users know exactly what went wrong
+                const parserErrors: string[] = validation?.errors || [];
                 const respCandidates = validation?.evidence?.respMatrixSheetCandidates || [];
-                const hasRespHint = respCandidates.length > 0 || validation?.errors?.some((e: string) => /resp matrix/i.test(e));
-                const message = hasRespHint
-                    ? "We couldn't read the Responsibility Matrix from this Excel. If your file includes one, make sure the sheet name starts with 'Resp Matrix' and includes ANC/Purchaser columns."
-                    : "We couldn't read the pricing tables from this Excel. Please confirm the workbook has a valid Margin Analysis tab with Description, Cost, and Selling Price columns.";
+                const hasRespHint = respCandidates.length > 0 || parserErrors.some((e: string) => /resp matrix/i.test(e));
+
+                let message: string;
+                if (hasRespHint) {
+                    message = "We couldn't read the Responsibility Matrix from this Excel. If your file includes one, make sure the sheet name starts with 'Resp Matrix' and includes ANC/Purchaser columns.";
+                } else if (parserErrors.length > 0) {
+                    // Show the actual parser error — it now contains specific diagnostics
+                    message = parserErrors[0];
+                } else {
+                    message = "Parser could not extract pricing data from this file.";
+                }
+
                 return NextResponse.json({
                     error: message,
+                    parserErrors,
+                    detectedSheet: validation?.evidence?.marginSheetDetected || null,
                     help: [
-                        "Check that the Margin Analysis tab exists and has standard pricing columns.",
-                        "If using a Responsibility Matrix, verify the tab name starts with 'Resp Matrix'.",
-                        "Upload the corrected file again.",
+                        "The file must have a 'Margin Analysis' tab.",
+                        "That tab needs 'Cost' and/or 'Selling Price' column headers.",
+                        "If this is a different template format, use the Column Mapper after upload.",
                     ],
                 }, { status: 422 });
             }
