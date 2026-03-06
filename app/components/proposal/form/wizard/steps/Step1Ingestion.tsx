@@ -36,12 +36,10 @@ import { isModeUnselected, isMirrorMode as checkMirrorMode } from "@/lib/modeDet
 
 // ─── AI Import Loader ──────────────────────────────────────────────────────
 const AI_IMPORT_STEPS = [
-    { label: "Reading spreadsheet", duration: 1500 },
-    { label: "Converting to text", duration: 1000 },
-    { label: "AI is analyzing pricing data", duration: 6000 },
-    { label: "Extracting line items", duration: 3000 },
-    { label: "Building pricing document", duration: 2000 },
-    { label: "Finalizing import", duration: 1500 },
+    { label: "Reading spreadsheet" },
+    { label: "Analyzing pricing structure" },
+    { label: "Extracting line items" },
+    { label: "Building proposal data" },
 ];
 
 const AiImportLoader = () => {
@@ -49,58 +47,26 @@ const AiImportLoader = () => {
 
     useEffect(() => {
         if (step >= AI_IMPORT_STEPS.length - 1) return;
-        const timer = setTimeout(() => setStep((s) => s + 1), AI_IMPORT_STEPS[step].duration);
+        const timer = setTimeout(() => setStep((s) => s + 1), 3000);
         return () => clearTimeout(timer);
     }, [step]);
 
-    const progress = Math.min(((step + 1) / AI_IMPORT_STEPS.length) * 100, 95);
-
     return (
-        <div className="flex flex-col items-center gap-5 px-6">
-            {/* Animated AI icon */}
-            <div className="relative">
-                <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
-                    <Sparkles className="w-7 h-7 text-amber-600 dark:text-amber-400 animate-pulse" />
-                </div>
-                <div className="absolute -inset-2 rounded-3xl border border-amber-400/20 animate-ping opacity-30" />
+        <div className="flex flex-col items-center gap-4">
+            <div className="w-10 h-10 rounded-xl bg-brand-blue/10 flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-brand-blue animate-pulse" />
             </div>
-
-            {/* Step label */}
             <div className="text-center">
-                <p className="text-sm font-semibold text-foreground mb-1">
-                    AI-Powered Import
-                </p>
-                <p className="text-xs text-muted-foreground h-4 transition-all duration-300">
-                    {AI_IMPORT_STEPS[step].label}...
+                <p className="text-sm font-medium text-foreground">
+                    {AI_IMPORT_STEPS[step].label}
                 </p>
             </div>
-
-            {/* Progress bar */}
-            <div className="w-48 h-1.5 bg-muted rounded-full overflow-hidden">
+            <div className="w-40 h-1 bg-muted rounded-full overflow-hidden">
                 <div
-                    className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all duration-700 ease-out"
-                    style={{ width: `${progress}%` }}
+                    className="h-full bg-brand-blue rounded-full transition-all duration-1000 ease-out"
+                    style={{ width: `${Math.min(((step + 1) / AI_IMPORT_STEPS.length) * 100, 95)}%` }}
                 />
             </div>
-
-            {/* Step indicators */}
-            <div className="flex items-center gap-1.5">
-                {AI_IMPORT_STEPS.map((_, i) => (
-                    <div
-                        key={i}
-                        className={cn(
-                            "w-1.5 h-1.5 rounded-full transition-all duration-300",
-                            i <= step
-                                ? "bg-amber-500 scale-100"
-                                : "bg-muted-foreground/20 scale-75",
-                        )}
-                    />
-                ))}
-            </div>
-
-            <p className="text-[10px] text-muted-foreground/60 uppercase tracking-widest">
-                BETA
-            </p>
         </div>
     );
 };
@@ -334,8 +300,8 @@ const Step1Ingestion = () => {
                             <div className="flex items-center justify-center min-h-[500px] w-full">
                                 <div className="w-full max-w-lg">
                                     {isAiImport ? (
-                                        /* ═══ AI IMPORT — Premium Upload Experience ═══ */
-                                        <div className="group relative rounded-2xl border-2 border-amber-400/30 bg-gradient-to-b from-amber-50/80 via-white to-amber-50/40 dark:from-amber-950/30 dark:via-background dark:to-amber-950/20 hover:border-amber-400/50 transition-all duration-500 flex flex-col items-center justify-center text-center p-10 cursor-pointer min-h-[420px] overflow-hidden">
+                                        /* ═══ AI IMPORT — Solid border, no dashes, cleaner feel ═══ */
+                                        <div className="group relative rounded-2xl border-2 border-brand-blue/20 bg-card hover:border-brand-blue/40 transition-all duration-300 flex flex-col items-center justify-center text-center p-10 cursor-pointer min-h-[420px]">
                                             <input
                                                 type="file"
                                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
@@ -345,48 +311,27 @@ const Step1Ingestion = () => {
                                                     if (file) await importANCExcel(file);
                                                 }}
                                             />
-                                            {/* Ambient glow */}
-                                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-amber-400/10 rounded-full blur-3xl pointer-events-none" />
-
                                             {/* BETA badge */}
-                                            <div className="absolute top-4 right-4 px-2.5 py-0.5 rounded-full bg-amber-400 text-[10px] font-bold uppercase tracking-widest text-amber-950 z-[5]">
+                                            <div className="absolute top-4 right-4 px-2 py-0.5 rounded-md bg-brand-blue/10 text-[10px] font-semibold uppercase tracking-wider text-brand-blue">
                                                 BETA
                                             </div>
 
-                                            {/* Icon */}
-                                            <div className="relative mb-8">
-                                                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-100 to-amber-200 dark:from-amber-900/50 dark:to-amber-800/30 flex items-center justify-center group-hover:scale-110 transition-transform duration-500 shadow-lg shadow-amber-200/30 dark:shadow-amber-900/20">
-                                                    <Sparkles className="w-10 h-10 text-amber-600 dark:text-amber-400" />
-                                                </div>
-                                                <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-green-500 border-2 border-white dark:border-background flex items-center justify-center">
-                                                    <Zap className="w-2.5 h-2.5 text-white" />
-                                                </div>
+                                            <div className="w-16 h-16 rounded-2xl bg-brand-blue/10 flex items-center justify-center mb-6 group-hover:scale-105 transition-transform duration-300">
+                                                <Sparkles className="w-8 h-8 text-brand-blue" />
                                             </div>
-
-                                            {/* Title */}
                                             <h3 className="text-xl font-bold text-foreground mb-2">
                                                 AI-Powered Import
                                             </h3>
-                                            <p className="text-muted-foreground text-sm max-w-sm mb-6 leading-relaxed">
-                                                Drop any Excel file — any format, any template. AI reads it and extracts your pricing automatically.
+                                            <p className="text-muted-foreground text-sm max-w-xs mb-8">
+                                                Drop any Excel — AI reads the pricing and builds your proposal regardless of template format.
                                             </p>
-
-                                            {/* Feature pills */}
-                                            <div className="flex flex-wrap gap-2 justify-center mb-6">
-                                                <span className="px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[11px] font-medium">Any template format</span>
-                                                <span className="px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[11px] font-medium">Auto-detect pricing</span>
-                                                <span className="px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[11px] font-medium">Instant PDF</span>
-                                            </div>
-
-                                            {/* Upload button area */}
-                                            <div className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 text-amber-950 text-sm font-semibold group-hover:from-amber-500 group-hover:to-amber-600 transition-all duration-300 shadow-md shadow-amber-300/30">
+                                            <div className="px-5 py-2 rounded-lg bg-brand-blue text-white text-sm font-medium group-hover:bg-brand-blue/90 transition-colors duration-200">
                                                 Upload Excel
                                             </div>
                                             <p className="text-[11px] text-muted-foreground/50 mt-3">.xlsx or .xls</p>
 
-                                            {/* Loading overlay */}
                                             {excelImportLoading && (
-                                                <div className="absolute inset-0 bg-gradient-to-b from-amber-50/95 via-white/95 to-amber-50/95 dark:from-amber-950/95 dark:via-background/95 dark:to-amber-950/95 backdrop-blur-sm flex items-center justify-center z-20 rounded-2xl">
+                                                <div className="absolute inset-0 bg-background/90 backdrop-blur-sm flex items-center justify-center z-20 rounded-2xl">
                                                     <AiImportLoader />
                                                 </div>
                                             )}
