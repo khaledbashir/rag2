@@ -1913,7 +1913,7 @@ export default function RfpAnalyzerClient() {
   const isSpreadsheetVisible = phase === "results" && result && pricingPreview && spreadsheetMode;
 
   return (
-    <div className={`flex-1 min-w-0 bg-background relative ${isSpreadsheetVisible ? "h-screen overflow-hidden flex flex-col" : "min-h-screen pb-24"}`}>
+    <div className={`flex-1 min-w-0 bg-background relative flex flex-col ${isSpreadsheetVisible ? "h-screen overflow-hidden" : "min-h-0 h-full overflow-hidden"}`}>
       {/* Header — thin in spreadsheet mode */}
       {isSpreadsheetVisible ? (
         <header className="shrink-0 z-30 bg-[#002C73] text-white px-4 py-1.5 flex items-center justify-between">
@@ -1946,7 +1946,7 @@ export default function RfpAnalyzerClient() {
           </div>
         </header>
       ) : (
-      <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border py-4 px-6 xl:px-8">
+      <header className="shrink-0 z-30 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 py-4 px-6 xl:px-8">
         <div className="flex items-center justify-between max-w-[1600px] mx-auto">
           <div>
             <h1 className="text-2xl font-bold text-foreground">
@@ -1983,52 +1983,9 @@ export default function RfpAnalyzerClient() {
       </header>
       )}
 
-      <main className={isSpreadsheetVisible ? "flex-1 min-h-0 flex flex-col overflow-hidden" : "p-6 xl:px-8 max-w-[1600px] mx-auto"}>
-        {/* Pipeline stepper — hidden in spreadsheet mode */}
-        {!isSpreadsheetVisible && (
-        <PipelineStepper
-          phase={phase}
-          resultsTab={resultsTab}
-          hasResult={!!result}
-          hasPricing={!!pricingPreview}
-          specsFound={result?.screens?.length || result?.stats.specsFound || 0}
-          onTabSwitch={setResultsTab}
-        />
-        )}
-
-        {/* ============ UPLOAD / PROCESSING ============ */}
-        {(phase === "upload" || phase === "processing") && (
+      <main className={isSpreadsheetVisible ? "flex-1 min-h-0 flex flex-col overflow-hidden" : "flex-1 min-h-0 overflow-y-auto overscroll-contain"}>
+        {isSpreadsheetVisible ? (
           <>
-            <UploadZone
-              onUpload={handleUpload}
-              onExcelUpload={handleExcelUpload}
-              isLoading={phase === "processing"}
-              events={events}
-            />
-            {error && phase === "upload" && (
-              <div className="mt-6 p-5 max-w-2xl mx-auto text-center border border-destructive/20 bg-destructive/10 rounded-xl">
-                <p className="text-sm text-destructive font-medium mb-3">{error}</p>
-                <div className="flex items-center justify-center gap-3">
-                  {lastSessionData.current && (
-                    <button
-                      onClick={handleResumeAnalysis}
-                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 inline-flex items-center gap-2"
-                    >
-                      <RefreshCcw className="w-4 h-4" /> Resume Analysis
-                    </button>
-                  )}
-                  <button onClick={handleRetry} className="px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-muted">
-                    {lastSessionData.current ? "Re-upload File" : "Try Again"}
-                  </button>
-                </div>
-                {lastSessionData.current && (
-                  <p className="text-xs text-muted-foreground mt-2">File already uploaded — resume skips the upload step</p>
-                )}
-              </div>
-            )}
-          </>
-        )}
-
         {/* ============ RESULTS ============ */}
         {phase === "results" && result && (() => {
           const criticalReqs = requirements.filter((r) => r.status === "critical").length;
@@ -2409,7 +2366,6 @@ export default function RfpAnalyzerClient() {
                       autoSaveSpecs(updated, prev.id);
                       return { ...prev, screens: updated };
                     });
-                    // CASCADE: recalculate costs
                     setPricingPreview(prev => {
                       if (!prev) return prev;
                       if (screenIdx < 0 || screenIdx >= prev.displays.length) return prev;
@@ -2508,7 +2464,6 @@ export default function RfpAnalyzerClient() {
                         }
                         return prev;
                       } else if (itemIdx < dCount + sCount + 2 + customs.length) {
-                        // +2 for CMS and Scoring placeholders, then custom items
                         const customIdx = itemIdx - dCount - sCount - 2;
                         if (customIdx >= 0 && customIdx < customs.length) {
                           const customName = customs[customIdx].name;
@@ -2589,7 +2544,6 @@ export default function RfpAnalyzerClient() {
               </div>
               )}
 
-              {/* Incomplete specs + PDF panel — hidden in spreadsheet mode */}
               {!spreadsheetMode && (
               <>
               {result.incompleteSpecs && result.incompleteSpecs.length > 0 && (
@@ -2636,7 +2590,6 @@ export default function RfpAnalyzerClient() {
               )}
             </div>
 
-            {/* Right: PDF split panel — hidden in spreadsheet mode */}
             {!spreadsheetMode && showPdfPanel && pdfBlobUrl && (
               <div className="w-[420px] shrink-0 rounded-lg border border-border overflow-hidden shadow-sm self-stretch min-h-[500px]">
                 <PdfSplitPanel
@@ -2648,7 +2601,6 @@ export default function RfpAnalyzerClient() {
             )}
             </div>
 
-            {/* Link to saved analysis — hidden in spreadsheet mode */}
             {!spreadsheetMode && result.id && (
               <div className="flex items-center justify-center gap-4 pt-2">
                 <Link
@@ -2662,6 +2614,59 @@ export default function RfpAnalyzerClient() {
           </div>
           );
         })()}
+          </div>
+        ) : (
+          <div className="w-full max-w-[1480px] mx-auto px-4 sm:px-6 xl:px-8 py-6 min-h-full">
+            <div className="sticky top-0 z-20 pb-4 pt-1 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+              <div className="rounded-2xl border border-border/70 bg-card/90 shadow-sm px-4 py-4">
+                <PipelineStepper
+                  phase={phase}
+                  resultsTab={resultsTab}
+                  hasResult={!!result}
+                  hasPricing={!!pricingPreview}
+                  specsFound={result?.screens?.length || result?.stats.specsFound || 0}
+                  onTabSwitch={setResultsTab}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-6">
+
+            {(phase === "upload" || phase === "processing") && (
+              <>
+                <UploadZone
+                  onUpload={handleUpload}
+                  onExcelUpload={handleExcelUpload}
+                  isLoading={phase === "processing"}
+                  events={events}
+                />
+                {error && phase === "upload" && (
+                  <div className="mt-6 p-5 max-w-2xl mx-auto text-center border border-destructive/20 bg-destructive/10 rounded-xl">
+                    <p className="text-sm text-destructive font-medium mb-3">{error}</p>
+                    <div className="flex items-center justify-center gap-3">
+                      {lastSessionData.current && (
+                        <button
+                          onClick={handleResumeAnalysis}
+                          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 inline-flex items-center gap-2"
+                        >
+                          <RefreshCcw className="w-4 h-4" /> Resume Analysis
+                        </button>
+                      )}
+                      <button onClick={handleRetry} className="px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-muted">
+                        {lastSessionData.current ? "Re-upload File" : "Try Again"}
+                      </button>
+                    </div>
+                    {lastSessionData.current && (
+                      <p className="text-xs text-muted-foreground mt-2">File already uploaded — resume skips the upload step</p>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+            </div>
+          </div>
+        )}
+
       </main>
     </div>
   );
