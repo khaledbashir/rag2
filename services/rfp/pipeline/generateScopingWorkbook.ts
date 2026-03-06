@@ -381,7 +381,7 @@ export async function generateScopingWorkbook(
   });
 
   // ─── Sheet 1: Margin Analysis ───────────────────────────────────────────
-  buildMarginAnalysis(wb, projectName, clientName, today, displays, grandCost, grandSelling, grandMargin, grandMarginPct, includeBond);
+  buildMarginAnalysis(wb, projectName, clientName, today, displays, altDisplays, grandCost, grandSelling, grandMargin, grandMarginPct, includeBond);
 
   // ─── Sheet 2: Budget Summary (per-category view) ───────────────────────
   buildBudgetSummary(wb, projectName, clientName, today, displays, grandCost, grandSelling, grandMargin, grandMarginPct);
@@ -723,6 +723,7 @@ function buildMarginAnalysis(
   clientName: string,
   date: string,
   displays: ComputedDisplay[],
+  altDisplays: ComputedDisplay[],
   grandCost: number,
   grandSelling: number,
   grandMargin: number,
@@ -868,6 +869,36 @@ function buildMarginAnalysis(
     }
     screenGrandTotalRows.push(grandRow);
     row++;
+
+    // ─── ALT ADD/DEDUCT lines — show delta from base ───
+    const baseName = d.spec.name.toLowerCase().trim();
+    const matchingAlts = altDisplays.filter((alt) => {
+      const altName = alt.spec.name.toLowerCase().trim();
+      // Match: alt name contains base name, or shares a prefix before " — Alt"
+      return altName.includes(baseName) || baseName.includes(altName.replace(/\s*—\s*alt.*$/i, "").trim());
+    });
+
+    if (matchingAlts.length > 0) {
+      const altHeaderR = ws.getRow(row);
+      altHeaderR.getCell(2).value = "    Alternates — Add/Deduct from Above";
+      altHeaderR.getCell(2).font = { bold: true, italic: true, name: "Calibri", size: 10, color: { argb: "FF6C757D" } };
+      row++;
+
+      for (const alt of matchingAlts) {
+        const deltaCost = round2(alt.totalCost - d.totalCost);
+        const deltaSell = round2(alt.sellingPrice - d.sellingPrice);
+        const altR = ws.getRow(row);
+        altR.getCell(2).value = `      ${alt.spec.alternateDescription || alt.spec.name}`;
+        altR.getCell(2).font = { italic: true, name: "Calibri", size: 10, color: { argb: "FF6C757D" } };
+        altR.getCell(3).value = deltaCost;
+        altR.getCell(3).numFmt = "+$#,##0;-$#,##0;$0";
+        altR.getCell(3).font = { italic: true, name: "Calibri", size: 10, color: { argb: deltaCost >= 0 ? "FFDC3545" : "FF28A745" } };
+        altR.getCell(4).value = deltaSell;
+        altR.getCell(4).numFmt = "+$#,##0;-$#,##0;$0";
+        altR.getCell(4).font = { italic: true, name: "Calibri", size: 10, color: { argb: deltaSell >= 0 ? "FFDC3545" : "FF28A745" } };
+        row++;
+      }
+    }
 
     row++; // blank separator between screens
   });
