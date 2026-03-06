@@ -218,18 +218,55 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   });
 
   // Build lookup from pricingDocument for Mirror Mode (when pricingDisplays is empty)
+  // Store all items for both exact and fuzzy matching
+  const pricingDocItems: Array<{ description: string; sellingPrice: number; cost: number | null }> = [];
   const pricingDocLookup: Record<string, { sellingPrice: number; cost: number | null }> = {};
   if (pricingDocument?.tables) {
     for (const table of pricingDocument.tables) {
       for (const item of (table.items || [])) {
         if (item.description && !item.isHidden) {
-          pricingDocLookup[item.description.toLowerCase()] = {
+          const entry = {
+            description: item.description,
             sellingPrice: item.sellingPrice || 0,
             cost: item.cost ?? null,
           };
+          pricingDocLookup[item.description.toLowerCase()] = entry;
+          pricingDocItems.push(entry);
         }
       }
     }
+  }
+
+  // Fuzzy match: try exact, then substring containment, then word overlap
+  function findDocPricing(specName: string): { sellingPrice: number; cost: number | null } | undefined {
+    if (!specName) return undefined;
+    const key = specName.toLowerCase().trim();
+    // 1. Exact match
+    if (pricingDocLookup[key]) return pricingDocLookup[key];
+    // 2. Spec name contained in description or vice versa
+    for (const item of pricingDocItems) {
+      const desc = item.description.toLowerCase().trim();
+      if (desc.includes(key) || key.includes(desc)) return item;
+    }
+    // 3. Word overlap (at least 2 words matching)
+    const specWords = key.split(/[\s\-_/]+/).filter(w => w.length > 2);
+    let bestMatch: typeof pricingDocItems[0] | undefined;
+    let bestOverlap = 0;
+    for (const item of pricingDocItems) {
+      const descWords = item.description.toLowerCase().split(/[\s\-_/]+/).filter(w => w.length > 2);
+      const overlap = specWords.filter(w => descWords.includes(w)).length;
+      if (overlap > bestOverlap && overlap >= 2) {
+        bestOverlap = overlap;
+        bestMatch = item;
+      }
+    }
+    return bestMatch;
+  }
+
+  // Debug: log available pricingDoc items vs screen names for match debugging
+  if (pricingDocItems.length > 0) {
+    console.log("[UniverSpreadsheet] pricingDocLookup keys:", Object.keys(pricingDocLookup));
+    console.log("[UniverSpreadsheet] screen names:", screens.map(s => s.name));
   }
 
   screens.forEach((spec, si) => {
@@ -237,9 +274,9 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     const pd = pricingDisplays.find((d) => d.name === spec.name);
     const mp = pd?.matchedProduct;
     const audit = internalAudit?.perScreen?.[si];
-    
-    // For Mirror Mode: look up pricing from pricingDocument
-    const docPricing = pricingDocLookup[spec.name?.toLowerCase() || ""];
+
+    // For Mirror Mode: look up pricing from pricingDocument (fuzzy match)
+    const docPricing = findDocPricing(spec.name || "");
 
     const hasOverride = mp?.activeWidthFt && mp?.activeHeightFt;
     const h = hasOverride ? mp.activeHeightFt! : (spec.heightFt ?? 0);
@@ -262,16 +299,14 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       ? 1 - totalCostKnown / sellingPrice
       : (pd?.blendedMarginPct ?? 0.30);
     
-    // Debug: log Mirror Mode pricing resolution
-    if (si === 0) {
-      console.log("[UniverSpreadsheet] LED Cost Sheet row 0 pricing:", {
-        specName: spec.name,
-        docPricing,
-        pdTotalSellingPrice: pd?.totalSellingPrice,
-        resolvedSellingPrice: sellingPrice,
-        marginPct,
-      });
-    }
+    // Debug: log pricing resolution for every screen
+    console.log(`[UniverSpreadsheet] LED row ${si} pricing:`, {
+      specName: spec.name,
+      docMatch: docPricing ? docPricing.sellingPrice : "NO_MATCH",
+      pdSell: pd?.totalSellingPrice ?? "N/A",
+      resolved: sellingPrice,
+      margin: marginPct,
+    });
 
     const hCell = `E${row + 1}`;
     const wCell = `F${row + 1}`;
@@ -345,7 +380,9 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   sheetOrder.push("margin-analysis");
   const maCellData: Record<number, Record<number, any>> = {};
   const maColWidths: Record<number, { w: number }> = {
-    0: { w: 320 }, 1: { w: 130 }, 2: { w: 130 }, 3: { w: 130 }, 4: { w: 100 }, 5: { w: 130 },
+    0: { w: 320 }, 1: { w: 130 }, 2: { w: 130 }, 3: { w: 130 }, 4: { w: 100 },
+    5: { w: 0 },  // Col F: hidden (cost/rate storage)
+    6: { w: 0 },  // Col G: hidden (unused)
   };
 
   let maRow = 0;
@@ -366,13 +403,13 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
 
   if (hasPricingTables) {
     // ══════════════════════════════════════════════════════════════════════
-    // Mirror Mode MA — column layout MUST match exportMirrorUglySheetExcel:
+    // Mirror Mode MA — column layout:
     //   Col A (0) = Description
-    //   Col B (1) = Selling Price (items: static value; subtotal/gt: formula)
-    //   Col C (2) = Selling totals (SUBTOTAL/TAX/BOND/GRAND TOTAL)
+    //   Col B (1) = Selling Price per item (static) / Cost subtotal (formula)
+    //   Col C (2) = Selling totals (SUBTOTAL/TAX/BOND/GRAND TOTAL formulas)
     //   Col D (3) = Margin $ (=C-B when cost data exists)
     //   Col E (4) = Margin % (=IF(C=0,0,D/C))
-    //   Col F (5) = Hidden: per-item cost (for SUM in SUBTOTAL col B)
+    //   Col F (5) = Hidden: per-item cost / tax rate / bond rate
     // ══════════════════════════════════════════════════════════════════════
     for (const table of pricingTables) {
       const items = (table.items || []).filter((item: any) => !item.isHidden);
@@ -395,8 +432,11 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         const cost = item.cost ?? null;
         if (cost != null) { sectionCostSum += cost; hasCostData = true; }
 
-        // Item row: B = selling price (static value, editable by user)
-        // F = cost (hidden, for SUBTOTAL cost SUM)
+        // Debug: flag $0 selling prices
+        if (sell === 0 && item.description) {
+          console.warn(`[UniverSpreadsheet] MA item "${ item.description}" has $0 selling price (cost=${cost})`);
+        }
+
         maCellData[maRow] = {
           0: { v: item.description || "" },
           1: { v: sell, s: "currency" },
@@ -415,53 +455,65 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         grandTotalSellRows.push(subtotalIdx + 3);
       }
 
-      const sr = subtotalIdx + 1; // 1-based row
+      const sr = subtotalIdx + 1; // 1-based row for SUBTOTAL
       maCellData[subtotalIdx] = {
         0: { v: "SUBTOTAL", s: "bold" },
-        1: hasCostData ? { f: `=ROUND(SUM(F${firstItemRow + 1}:F${lastItemRow + 1}),2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
-        2: { f: `=ROUND(SUM(B${firstItemRow + 1}:B${lastItemRow + 1}),2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
-        3: hasCostData ? { f: `=ROUND(C${sr}-B${sr},2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
-        4: hasCostData ? { f: `=ROUND(IF(C${sr}=0,0,D${sr}/C${sr}),4)`, s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
+        1: hasCostData ? { f: `=SUM(F${firstItemRow + 1}:F${lastItemRow + 1})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
+        2: { f: `=SUM(B${firstItemRow + 1}:B${lastItemRow + 1})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+        3: hasCostData ? { f: `=C${sr}-B${sr}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
+        4: hasCostData ? { f: `=IF(C${sr}=0,0,D${sr}/C${sr})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
       };
       maRow++;
 
-      // Tax row
+      // Tax row — use pre-computed static value (not formula) to avoid Univer formula bugs
       const taxAmount = table.tax?.amount || 0;
       const taxIdx = maRow;
-      const taxRate = (sectionSellSum > 0 && taxAmount > 0) ? taxAmount / sectionSellSum : 0;
       maCellData[taxIdx] = {
         0: { v: table.tax?.label || "TAX" },
-        2: taxRate > 0
-          ? { f: `=ROUND(C${sr}*F${taxIdx + 1},2)`, s: "currency" }
-          : { v: taxAmount, s: "currency" },
-        5: taxRate > 0 ? { v: taxRate } : undefined,
+        2: { v: taxAmount, s: "currency" },
       };
       maRow++;
 
-      // Bond row
+      // Bond row — use pre-computed static value
       const bondAmount = table.bond || 0;
       const bondIdx = maRow;
-      const bondRate = (sectionSellSum > 0 && bondAmount > 0) ? bondAmount / sectionSellSum : 0;
       maCellData[bondIdx] = {
         0: { v: "BOND" },
-        2: bondRate > 0
-          ? { f: `=ROUND(C${sr}*F${bondIdx + 1},2)`, s: "currency" }
-          : { v: bondAmount, s: "currency" },
-        5: bondRate > 0 ? { v: bondRate } : undefined,
+        2: { v: bondAmount, s: "currency" },
       };
       maRow++;
 
-      // Grand Total row
+      // Grand Total row = SUBTOTAL + TAX + BOND
       const grandTotalIdx = maRow;
       const gr = grandTotalIdx + 1; // 1-based row
       maCellData[grandTotalIdx] = {
         0: { v: "SUB TOTAL (BID FORM)", s: "bold" },
-        1: hasCostData ? { f: `=ROUND(B${sr},2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
-        2: { f: `=ROUND(C${sr}+C${taxIdx + 1}+C${bondIdx + 1},2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
-        3: hasCostData ? { f: `=ROUND(C${gr}-B${gr},2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
-        4: hasCostData ? { f: `=ROUND(IF(C${gr}=0,0,D${gr}/C${gr}),4)`, s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
+        1: hasCostData ? { f: `=B${sr}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
+        2: { f: `=C${sr}+C${taxIdx + 1}+C${bondIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+        3: hasCostData ? { f: `=C${gr}-B${gr}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
+        4: hasCostData ? { f: `=IF(C${gr}=0,0,D${gr}/C${gr})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
       };
       maRow++;
+
+      // Debug: log formula references for first section
+      if (pricingTables.indexOf(table) === 0) {
+        console.log("[UniverSpreadsheet] MA Section 1 formula debug:", {
+          tableName: table.name,
+          itemCount: items.length,
+          firstItemRow: firstItemRow, firstItemRow1Based: firstItemRow + 1,
+          lastItemRow: lastItemRow, lastItemRow1Based: lastItemRow + 1,
+          subtotalIdx, sr,
+          taxIdx, taxIdx1Based: taxIdx + 1,
+          bondIdx, bondIdx1Based: bondIdx + 1,
+          grandTotalIdx, gr,
+          taxAmount, bondAmount,
+          sectionSellSum, sectionCostSum,
+          hasCostData,
+          subtotalCFormula: `=SUM(B${firstItemRow + 1}:B${lastItemRow + 1})`,
+          grandTotalCFormula: `=C${sr}+C${taxIdx + 1}+C${bondIdx + 1}`,
+          sampleItems: items.slice(0, 3).map(i => ({ desc: i.description, sell: i.sellingPrice, cost: i.cost })),
+        });
+      }
 
       // Alternates
       const alternates = table.alternates || [];
@@ -490,10 +542,10 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       const dr = maRow + 1; // 1-based
       maCellData[maRow] = {
         0: { v: "DOCUMENT TOTAL", s: { bl: 1, fs: 12 } },
-        1: subtotalCostRows.length > 0 ? { f: "=ROUND(" + subtotalCostRows.map(r => `B${r + 1}`).join("+") + ",2)", s: { bl: 1, ...CURRENCY_FMT } } : undefined,
-        2: { f: `=ROUND(${sellFormula},2)`, s: { bl: 1, ...CURRENCY_FMT } },
-        3: { f: `=ROUND(C${dr}-B${dr},2)`, s: { bl: 1, ...CURRENCY_FMT } },
-        4: { f: `=ROUND(IF(C${dr}=0,0,D${dr}/C${dr}),4)`, s: { bl: 1, ...PERCENT_FMT } },
+        1: subtotalCostRows.length > 0 ? { f: "=" + subtotalCostRows.map(r => `B${r + 1}`).join("+"), s: { bl: 1, ...CURRENCY_FMT } } : undefined,
+        2: { f: `=${sellFormula}`, s: { bl: 1, ...CURRENCY_FMT } },
+        3: { f: `=C${dr}-B${dr}`, s: { bl: 1, ...CURRENCY_FMT } },
+        4: { f: `=IF(C${dr}=0,0,D${dr}/C${dr})`, s: { bl: 1, ...PERCENT_FMT } },
       };
     }
   } else {
@@ -517,8 +569,8 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       maCellData[maRow] = {
         0: { v: d.name, s: "bold" },
         1: { v: cost, s: "currency" },
-        2: { f: `=ROUND(IF(E${r}>=1,B${r},B${r}/(1-E${r})),2)`, s: "currency" },
-        3: { f: `=ROUND(C${r}-B${r},2)`, s: "currency" },
+        2: { f: `=IF(E${r}>=1,B${r},B${r}/(1-E${r}))`, s: "currency" },
+        3: { f: `=C${r}-B${r}`, s: "currency" },
         4: { v: marginPct, s: getMarginStyle(marginPct) },
       };
       maRow++;
@@ -527,37 +579,37 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     const lastDataRow = maRow - 1;
     maCellData[maRow] = {
       0: { v: "", s: "total" },
-      1: { f: `=ROUND(SUM(B${displayStartRow + 1}:B${lastDataRow + 1}),2)`, s: "totalCurrency" },
-      2: { f: `=ROUND(SUM(C${displayStartRow + 1}:C${lastDataRow + 1}),2)`, s: "totalCurrency" },
-      3: { f: `=ROUND(SUM(D${displayStartRow + 1}:D${lastDataRow + 1}),2)`, s: "totalCurrency" },
-      4: { f: `=ROUND(IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1}),4)`, s: "totalPercent" },
+      1: { f: `=SUM(B${displayStartRow + 1}:B${lastDataRow + 1})`, s: "totalCurrency" },
+      2: { f: `=SUM(C${displayStartRow + 1}:C${lastDataRow + 1})`, s: "totalCurrency" },
+      3: { f: `=SUM(D${displayStartRow + 1}:D${lastDataRow + 1})`, s: "totalCurrency" },
+      4: { f: `=IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: "totalPercent" },
     };
     maRow++;
 
-    // Tax, Bond, Subtotal — use explicit indices for correct formula references
-    const fbTotalsIdx = maRow - 1; // 0-indexed totals row (SUM row just written above)
+    // Tax, Bond — static 0 values (editable by user), rate stored in hidden col F
+    const fbTotalsIdx = maRow - 1; // 0-indexed totals row (SUM row)
     const fbTaxIdx = maRow;
     maCellData[maRow] = {
       0: { v: "TAX" },
-      2: { f: `=ROUND(C${fbTotalsIdx + 1}*F${fbTaxIdx + 1},2)`, s: "currency" },
-      5: { v: 0 }, // Tax rate in hidden col F (editable)
+      2: { f: `=C${fbTotalsIdx + 1}*F${fbTaxIdx + 1}`, s: "currency" },
+      5: { v: 0 }, // Tax rate (editable)
     };
     maRow++;
     const fbBondIdx = maRow;
     maCellData[maRow] = {
       0: { v: "BOND" },
-      2: { f: `=ROUND(C${fbTotalsIdx + 1}*F${fbBondIdx + 1},2)`, s: "currency" },
-      5: { v: 0 }, // Bond rate in hidden col F (editable)
+      2: { f: `=C${fbTotalsIdx + 1}*F${fbBondIdx + 1}`, s: "currency" },
+      5: { v: 0 }, // Bond rate (editable)
     };
     maRow++;
 
     marginDocTotalRow = maRow;
     maCellData[maRow] = {
       0: { v: "SUB TOTAL (BID FORM)", s: "bold" },
-      1: { f: `=ROUND(B${fbTotalsIdx + 1},2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
-      2: { f: `=ROUND(C${fbTotalsIdx + 1}+C${fbTaxIdx + 1}+C${fbBondIdx + 1},2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
-      3: { f: `=ROUND(C${maRow + 1}-B${maRow + 1},2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
-      4: { f: `=ROUND(IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1}),4)`, s: { ...BOLD_STYLE, ...PERCENT_FMT } },
+      1: { f: `=B${fbTotalsIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+      2: { f: `=C${fbTotalsIdx + 1}+C${fbTaxIdx + 1}+C${fbBondIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+      3: { f: `=C${maRow + 1}-B${maRow + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+      4: { f: `=IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } },
     };
   }
 
@@ -566,7 +618,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     name: "Margin Analysis",
     tabColor: "#217346",
     rowCount: Math.max(maRow + 5, 50),
-    columnCount: 10,
+    columnCount: 7,
     defaultColumnWidth: 100,
     defaultRowHeight: 28,
     freeze,
