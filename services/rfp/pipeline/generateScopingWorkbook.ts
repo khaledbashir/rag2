@@ -431,6 +431,19 @@ export async function generateScopingWorkbook(
 
 // ─── 1. MARGIN ANALYSIS ─────────────────────────────────────────────────────
 
+// Per-category margin rates (validated from real ANC workbooks)
+const CATEGORY_MARGINS: Record<string, number> = {
+  ledHardware: 0.30,
+  structural: 0.20,
+  install: 0.20,
+  electrical: 0.20,
+  pm: 0.20,
+  engineering: 0.20,
+  equipment: 0.30,
+  cms: 0.35,
+  scoring: 0.10,
+};
+
 function buildMarginAnalysis(
   wb: ExcelJS.Workbook,
   projectName: string,
@@ -447,15 +460,18 @@ function buildMarginAnalysis(
     properties: { tabColor: { argb: C.ANC_BLUE } },
   });
 
-  const colWidths = [4, 44, 16, 16, 16, 12, 4, 4];
+  //   A     B                      C      D              E         F          G
+  //   [sp]  Zone / Category        Cost   Selling Price  Margin $  Margin %   Rate
+  const colWidths = [4, 44, 16, 16, 16, 12, 12];
   colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+  ws.getColumn(7).hidden = true; // Col G: editable rates (tax/bond/tariff) — hidden
 
   setTitle(ws, "F", `${projectName} — Margin Analysis`);
   setMeta(ws, "F", `${clientName} | ${date} | ANC Proposal Engine`);
 
-  // Headers
+  // Column headers
   let row = 4;
-  const headers = ["", "Zone / Line Item", "Cost", "Selling Price", "Margin $", "Margin %"];
+  const headers = ["", "Zone / Category", "Cost", "Selling Price", "Margin $", "Margin %"];
   headers.forEach((h, i) => {
     const cell = ws.getCell(row, i + 1);
     cell.value = h;
@@ -464,190 +480,175 @@ function buildMarginAnalysis(
   ws.getRow(row).height = 28;
   row++;
 
-  // Track zone summary row numbers for SUM formulas
-  const zoneSummaryRows: number[] = [];
+  // Helpers for sub-line rows
+  const subFont = { name: "Calibri", color: { argb: "FF666666" }, size: 10 };
+  const subFontBold = { name: "Calibri", bold: true, size: 10 };
+  const sellFormula = (r: number) => `IF(F${r}>=1,C${r},C${r}/(1-F${r}))`;
+  const marginDollarFormula = (r: number) => `D${r}-C${r}`;
+  const blendedMarginFormula = (r: number) => `IF(D${r}=0,0,1-C${r}/D${r})`;
 
-  // Per-zone summary
-  displays.forEach((d, idx) => {
-    zoneSummaryRows.push(row);
+  function writeCategory(label: string, cost: number, marginPct: number): void {
     const r = ws.getRow(row);
-    r.getCell(1).value = "";
-    r.getCell(2).value = d.spec.name + (d.spec.location ? ` — ${d.spec.location}` : "");
-    r.getCell(2).font = { bold: true, name: "Calibri" };
-    r.getCell(3).value = d.totalCost; r.getCell(3).numFmt = FMT_USD;
-    // Margin % is the input driver — keep as hard value
-    r.getCell(6).value = d.marginPct; r.getCell(6).numFmt = FMT_PCT;
-    // Selling Price formula: =C{row}/(1-F{row})
-    r.getCell(4).value = { formula: `IF(F${row}>=1,C${row},C${row}/(1-F${row}))`, result: d.sellingPrice };
+    r.getCell(2).value = `    ${label}`; r.getCell(2).font = subFont;
+    r.getCell(3).value = cost; r.getCell(3).numFmt = FMT_USD; inputCell(r.getCell(3));
+    r.getCell(4).value = { formula: sellFormula(row), result: cost > 0 ? round2(cost / (1 - marginPct)) : 0 };
     r.getCell(4).numFmt = FMT_USD;
-    // Margin $ formula: =D{row}-C{row}
-    r.getCell(5).value = { formula: `D${row}-C${row}`, result: d.marginDollars };
+    r.getCell(5).value = { formula: marginDollarFormula(row), result: cost > 0 ? round2(cost / (1 - marginPct) - cost) : 0 };
     r.getCell(5).numFmt = FMT_USD;
-    stripe(r, 6, idx % 2 === 0);
+    r.getCell(6).value = marginPct; r.getCell(6).numFmt = FMT_PCT; inputCell(r.getCell(6));
+    row++;
+  }
+
+  // Track per-screen grand total rows for BASE BID GRAND TOTAL
+  const screenGrandTotalRows: number[] = [];
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PER-SCREEN SECTIONS
+  // ═══════════════════════════════════════════════════════════════════════════
+  displays.forEach((d, idx) => {
+    // ─── Screen header ───
+    const headerR = ws.getRow(row);
+    const screenLabel = d.spec.name + (d.spec.location ? ` — ${d.spec.location}` : "");
+    headerR.getCell(2).value = screenLabel;
+    headerR.font = { bold: true, color: { argb: C.WHITE }, size: 11, name: "Calibri" };
+    headerR.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.DARK_HEADER } };
+    headerR.getCell(4).value = "Selling Price";
+    headerR.getCell(4).font = { bold: true, color: { argb: C.WHITE }, size: 11, name: "Calibri" };
+    headerR.getCell(4).alignment = { horizontal: "center" };
     row++;
 
-    // Sub-lines
-    // Spare parts rolled into LED Hardware (not shown as separate line)
+    // ─── Category rows — each with Cost | Selling | Margin$ | Margin% ───
+    const catStartRow = row;
     const ledHardwareWithSpares = d.ledHardwareCost + d.sparePartsCost;
-    const subLines: [string, number][] = [
-      ["LED Hardware", ledHardwareWithSpares],
-      ["Structural Materials", d.structuralMaterialsCost],
-      ["Structural Labor & LED Installation", d.structuralLaborCost],
-      ["Electrical & Data", d.electricalCost],
-      ["PM / General Conditions / Travel", d.pmCost + d.travelCost],
-      ["Engineering & Permits", d.engCost],
-    ];
 
-    // Smart bundles (only show non-zero)
-    if (d.sendingCardCost > 0) subLines.push(["Sending Card", d.sendingCardCost]);
-    if (d.signalCableCost > 0) subLines.push(["Signal Cable Kit", d.signalCableCost]);
-    if (d.upsCost > 0) subLines.push(["UPS Battery Backup", d.upsCost]);
-    if (d.backupProcessorCost > 0) subLines.push(["Backup Video Processor", d.backupProcessorCost]);
-    if (d.weatherproofCost > 0) subLines.push(["Weatherproof Enclosure Surcharge", d.weatherproofCost]);
+    writeCategory("LED Hardware", ledHardwareWithSpares, CATEGORY_MARGINS.ledHardware);
+    writeCategory("Structural Materials", d.structuralMaterialsCost, CATEGORY_MARGINS.structural);
+    writeCategory("Structural Labor & LED Installation", d.structuralLaborCost, CATEGORY_MARGINS.install);
+    writeCategory("Electrical & Data", d.electricalCost, CATEGORY_MARGINS.electrical);
+    writeCategory("PM / General Conditions / Travel", d.pmCost + d.travelCost, CATEGORY_MARGINS.pm);
+    writeCategory("Engineering & Permits", d.engCost, CATEGORY_MARGINS.engineering);
 
-    // Track sub-line rows for zone cost SUM
-    const subStartRow = row;
-    subLines.forEach(([label, cost]) => {
-      const sr = ws.getRow(row);
-      sr.getCell(2).value = `    ${label}`;
-      sr.getCell(2).font = { name: "Calibri", color: { argb: "FF666666" }, size: 10 };
-      sr.getCell(3).value = cost; sr.getCell(3).numFmt = FMT_USD;
-      sr.getCell(3).font = { name: "Calibri", color: { argb: "FF666666" }, size: 10 };
-      row++;
-    });
+    // Equipment bundle (group non-zero items into one line)
+    const equipCost = d.sendingCardCost + d.signalCableCost + d.upsCost
+      + d.backupProcessorCost + d.weatherproofCost;
+    if (equipCost > 0) {
+      writeCategory("Processor & Equipment", equipCost, CATEGORY_MARGINS.equipment);
+    }
+    const catEndRow = row - 1;
 
-    // Zone cost cell = SUM of sub-lines (live formula)
-    const zoneRow = zoneSummaryRows[zoneSummaryRows.length - 1];
-    ws.getCell(zoneRow, 3).value = { formula: `SUM(C${subStartRow}:C${row - 1})`, result: d.totalCost };
-    ws.getCell(zoneRow, 3).numFmt = FMT_USD;
-
-    // Per-zone TAX row — formula: =D{zoneRow} * taxRate (editable rate in col G)
-    const zoneTaxRow = row;
-    const ztR = ws.getRow(row);
-    ztR.getCell(2).value = "    TAX";
-    ztR.getCell(2).font = { name: "Calibri", color: { argb: "FF666666" }, size: 10 };
-    ztR.getCell(4).value = { formula: `D${zoneRow}*G${row}`, result: 0 };
-    ztR.getCell(4).numFmt = FMT_USD;
-    ztR.getCell(7).value = 0; ztR.getCell(7).numFmt = FMT_PCT; // Tax rate — editable
-    inputCell(ztR.getCell(7));
+    // ─── SUBTOTAL — SUM of category rows ───
+    const subtotalRow = row;
+    const stR = ws.getRow(row);
+    stR.getCell(2).value = "    SUBTOTAL"; stR.getCell(2).font = subFontBold;
+    stR.getCell(3).value = { formula: `SUM(C${catStartRow}:C${catEndRow})`, result: d.totalCost };
+    stR.getCell(3).numFmt = FMT_USD; stR.getCell(3).font = subFontBold;
+    stR.getCell(4).value = { formula: `SUM(D${catStartRow}:D${catEndRow})`, result: d.sellingPrice };
+    stR.getCell(4).numFmt = FMT_USD; stR.getCell(4).font = subFontBold;
+    stR.getCell(5).value = { formula: marginDollarFormula(row), result: d.marginDollars };
+    stR.getCell(5).numFmt = FMT_USD; stR.getCell(5).font = subFontBold;
+    stR.getCell(6).value = { formula: blendedMarginFormula(row), result: d.marginPct };
+    stR.getCell(6).numFmt = FMT_PCT; stR.getCell(6).font = subFontBold;
     row++;
 
-    // Per-zone BOND row — formula: =D{zoneRow} * bondRate
-    const zoneBondRow = row;
-    const zbR = ws.getRow(row);
-    zbR.getCell(2).value = "    BOND";
-    zbR.getCell(2).font = { name: "Calibri", color: { argb: "FF666666" }, size: 10 };
-    zbR.getCell(4).value = { formula: `D${zoneRow}*G${row}`, result: includeBond ? round2(d.sellingPrice * BOND_RATE) : 0 };
-    zbR.getCell(4).numFmt = FMT_USD;
-    zbR.getCell(7).value = includeBond ? BOND_RATE : 0; zbR.getCell(7).numFmt = FMT_PCT;
-    inputCell(zbR.getCell(7));
+    // ─── TAX — formula: =D{subtotal} * rate ───
+    const taxRow = row;
+    const txR = ws.getRow(row);
+    txR.getCell(2).value = "    TAX"; txR.getCell(2).font = subFont;
+    txR.getCell(4).value = { formula: `D${subtotalRow}*G${row}`, result: 0 };
+    txR.getCell(4).numFmt = FMT_USD;
+    txR.getCell(7).value = 0; txR.getCell(7).numFmt = FMT_PCT; inputCell(txR.getCell(7));
     row++;
 
-    // Per-zone GRAND TOTAL = Selling + Tax + Bond
-    const zoneGrandR = ws.getRow(row);
-    zoneGrandR.getCell(2).value = "    ZONE TOTAL";
-    zoneGrandR.getCell(2).font = { bold: true, name: "Calibri", size: 10 };
-    zoneGrandR.getCell(4).value = { formula: `D${zoneRow}+D${zoneTaxRow}+D${zoneBondRow}`, result: d.sellingPrice };
-    zoneGrandR.getCell(4).numFmt = FMT_USD;
-    zoneGrandR.getCell(4).font = { bold: true, name: "Calibri" };
+    // ─── BOND — formula: =D{subtotal} * rate ───
+    const bondRow = row;
+    const bdR = ws.getRow(row);
+    bdR.getCell(2).value = "    BOND"; bdR.getCell(2).font = subFont;
+    bdR.getCell(4).value = { formula: `D${subtotalRow}*G${row}`, result: includeBond ? round2(d.sellingPrice * BOND_RATE) : 0 };
+    bdR.getCell(4).numFmt = FMT_USD;
+    bdR.getCell(7).value = includeBond ? BOND_RATE : 0; bdR.getCell(7).numFmt = FMT_PCT; inputCell(bdR.getCell(7));
     row++;
 
-    row++; // separator
+    // ─── TARIFF — formula: =D{subtotal} * rate ───
+    const tariffRow = row;
+    const trR = ws.getRow(row);
+    trR.getCell(2).value = "    TARIFF"; trR.getCell(2).font = subFont;
+    trR.getCell(4).value = { formula: `D${subtotalRow}*G${row}`, result: 0 };
+    trR.getCell(4).numFmt = FMT_USD;
+    trR.getCell(7).value = 0; trR.getCell(7).numFmt = FMT_PCT; inputCell(trR.getCell(7));
+    row++;
+
+    // ─── GRAND TOTAL — Subtotal + Tax + Bond + Tariff ───
+    const grandRow = row;
+    const grR = ws.getRow(row);
+    grR.getCell(2).value = "    GRAND TOTAL"; grR.getCell(2).font = { bold: true, name: "Calibri", size: 11 };
+    grR.getCell(3).value = { formula: `C${subtotalRow}`, result: d.totalCost };
+    grR.getCell(3).numFmt = FMT_USD; grR.getCell(3).font = { bold: true, name: "Calibri" };
+    grR.getCell(4).value = { formula: `D${subtotalRow}+D${taxRow}+D${bondRow}+D${tariffRow}`, result: d.sellingPrice };
+    grR.getCell(4).numFmt = FMT_USD; grR.getCell(4).font = { bold: true, name: "Calibri" };
+    grR.getCell(5).value = { formula: `D${grandRow}-C${grandRow}`, result: d.marginDollars };
+    grR.getCell(5).numFmt = FMT_USD; grR.getCell(5).font = { bold: true, name: "Calibri" };
+    grR.getCell(6).value = { formula: `IF(D${grandRow}=0,0,1-C${grandRow}/D${grandRow})`, result: d.marginPct };
+    grR.getCell(6).numFmt = FMT_PCT; grR.getCell(6).font = { bold: true, name: "Calibri" };
+    // Light bottom border to separate from next section
+    for (let c = 2; c <= 6; c++) {
+      grR.getCell(c).border = { bottom: { style: "medium", color: { argb: C.ANC_BLUE } } };
+    }
+    screenGrandTotalRows.push(grandRow);
+    row++;
+
+    row++; // blank separator between screens
   });
 
-  // ─── CMS Section (placeholder — links to CMS tab) ───
-  const cmsMargin = 0.10;
-  zoneSummaryRows.push(row);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ADDITIONAL SECTIONS (CMS, Scoring) — single-line placeholders
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // CMS placeholder
+  const cmsRow = row;
   const cmsR = ws.getRow(row);
   cmsR.getCell(2).value = "CMS (Content Management System)";
   cmsR.getCell(2).font = { bold: true, name: "Calibri" };
   cmsR.getCell(3).value = 0; cmsR.getCell(3).numFmt = FMT_USD; inputCell(cmsR.getCell(3));
-  cmsR.getCell(6).value = cmsMargin; cmsR.getCell(6).numFmt = FMT_PCT; inputCell(cmsR.getCell(6));
-  cmsR.getCell(4).value = { formula: `IF(F${row}>=1,C${row},C${row}/(1-F${row}))`, result: 0 };
-  cmsR.getCell(4).numFmt = FMT_USD;
-  cmsR.getCell(5).value = { formula: `D${row}-C${row}`, result: 0 };
-  cmsR.getCell(5).numFmt = FMT_USD;
-  stripe(cmsR, 6, true);
+  cmsR.getCell(6).value = CATEGORY_MARGINS.cms; cmsR.getCell(6).numFmt = FMT_PCT; inputCell(cmsR.getCell(6));
+  cmsR.getCell(4).value = { formula: sellFormula(row), result: 0 }; cmsR.getCell(4).numFmt = FMT_USD;
+  cmsR.getCell(5).value = { formula: marginDollarFormula(row), result: 0 }; cmsR.getCell(5).numFmt = FMT_USD;
+  screenGrandTotalRows.push(cmsRow);
+  row++;
+
+  // Scoring placeholder
+  const scoringRow = row;
+  const scR = ws.getRow(row);
+  scR.getCell(2).value = "Scoring System";
+  scR.getCell(2).font = { bold: true, name: "Calibri" };
+  scR.getCell(3).value = 0; scR.getCell(3).numFmt = FMT_USD; inputCell(scR.getCell(3));
+  scR.getCell(6).value = CATEGORY_MARGINS.scoring; scR.getCell(6).numFmt = FMT_PCT; inputCell(scR.getCell(6));
+  scR.getCell(4).value = { formula: sellFormula(row), result: 0 }; scR.getCell(4).numFmt = FMT_USD;
+  scR.getCell(5).value = { formula: marginDollarFormula(row), result: 0 }; scR.getCell(5).numFmt = FMT_USD;
+  screenGrandTotalRows.push(scoringRow);
   row++;
   row++; // separator
 
-  // ─── Scoring Section (placeholder — links to Scoring tab) ───
-  const scoringMargin = 0.10;
-  zoneSummaryRows.push(row);
-  const scoreR = ws.getRow(row);
-  scoreR.getCell(2).value = "Scoring System";
-  scoreR.getCell(2).font = { bold: true, name: "Calibri" };
-  scoreR.getCell(3).value = 0; scoreR.getCell(3).numFmt = FMT_USD; inputCell(scoreR.getCell(3));
-  scoreR.getCell(6).value = scoringMargin; scoreR.getCell(6).numFmt = FMT_PCT; inputCell(scoreR.getCell(6));
-  scoreR.getCell(4).value = { formula: `IF(F${row}>=1,C${row},C${row}/(1-F${row}))`, result: 0 };
-  scoreR.getCell(4).numFmt = FMT_USD;
-  scoreR.getCell(5).value = { formula: `D${row}-C${row}`, result: 0 };
-  scoreR.getCell(5).numFmt = FMT_USD;
-  stripe(scoreR, 6, false);
-  row++;
-  row++; // separator
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BASE BID GRAND TOTAL — sums all screen grand totals + CMS + Scoring
+  // ═══════════════════════════════════════════════════════════════════════════
+  const costGtRefs = screenGrandTotalRows.map((r) => `C${r}`).join(",");
+  const sellGtRefs = screenGrandTotalRows.map((r) => `D${r}`).join(",");
 
-  // Subtotal — SUM formulas referencing zone summary rows
-  const costRefs = zoneSummaryRows.map((r) => `C${r}`).join(",");
-  const sellRefs = zoneSummaryRows.map((r) => `D${r}`).join(",");
-  const marginDollarRefs = zoneSummaryRows.map((r) => `E${r}`).join(",");
-
-  const subR = ws.getRow(row);
-  subR.getCell(2).value = "SUBTOTAL";
-  subR.getCell(3).value = { formula: `SUM(${costRefs})`, result: grandCost };
-  subR.getCell(3).numFmt = FMT_USD;
-  subR.getCell(4).value = { formula: `SUM(${sellRefs})`, result: grandSelling };
-  subR.getCell(4).numFmt = FMT_USD;
-  subR.getCell(5).value = { formula: `SUM(${marginDollarRefs})`, result: grandMargin };
-  subR.getCell(5).numFmt = FMT_USD;
-  // Blended margin % = 1 - (Cost / Selling)
-  subR.getCell(6).value = { formula: `IF(D${row}=0,0,1-C${row}/D${row})`, result: grandMarginPct };
-  subR.getCell(6).numFmt = FMT_PCT;
-  totalStyle(subR, 6, C.MEDIUM_GRAY);
-  const subtotalRow = row;
-  row++;
-
-  // Tax row
-  const taxR = ws.getRow(row);
-  taxR.getCell(2).value = "TAX";
-  taxR.getCell(3).value = 0; taxR.getCell(3).numFmt = FMT_USD;
-  taxR.getCell(4).value = 0; taxR.getCell(4).numFmt = FMT_USD;
-  inputCell(taxR.getCell(3)); inputCell(taxR.getCell(4));
-  const taxRow = row;
-  row++;
-
-  // Bond row
-  let bondRow = 0;
-  if (includeBond) {
-    const bondR = ws.getRow(row);
-    bondR.getCell(2).value = "BOND";
-    const bondAmt = round2(grandSelling * BOND_RATE);
-    bondR.getCell(3).value = bondAmt; bondR.getCell(3).numFmt = FMT_USD;
-    bondR.getCell(4).value = bondAmt; bondR.getCell(4).numFmt = FMT_USD;
-    bondRow = row;
-    row++;
+  const baseBidRow = row;
+  const bbR = ws.getRow(row);
+  bbR.getCell(2).value = "BASE BID GRAND TOTAL";
+  bbR.getCell(3).value = { formula: `SUM(${costGtRefs})`, result: grandCost };
+  bbR.getCell(3).numFmt = FMT_USD;
+  bbR.getCell(4).value = { formula: `SUM(${sellGtRefs})`, result: grandSelling };
+  bbR.getCell(4).numFmt = FMT_USD;
+  bbR.getCell(5).value = { formula: `D${baseBidRow}-C${baseBidRow}`, result: grandMargin };
+  bbR.getCell(5).numFmt = FMT_USD;
+  bbR.getCell(6).value = { formula: `IF(D${baseBidRow}=0,0,1-C${baseBidRow}/D${baseBidRow})`, result: grandMarginPct };
+  bbR.getCell(6).numFmt = FMT_PCT;
+  totalStyle(bbR, 6, C.ANC_BLUE);
+  for (let c = 2; c <= 6; c++) {
+    bbR.getCell(c).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
   }
-
-  // Grand total — formulas summing subtotal + tax + bond
-  row++;
-  const gtR = ws.getRow(row);
-  gtR.getCell(2).value = "GRAND TOTAL";
-  const costSumParts = bondRow > 0 ? `C${subtotalRow}+C${taxRow}+C${bondRow}` : `C${subtotalRow}+C${taxRow}`;
-  const sellSumParts = bondRow > 0 ? `D${subtotalRow}+D${taxRow}+D${bondRow}` : `D${subtotalRow}+D${taxRow}`;
-  gtR.getCell(3).value = { formula: costSumParts, result: grandCost };
-  gtR.getCell(3).numFmt = FMT_USD;
-  gtR.getCell(4).value = { formula: sellSumParts, result: grandSelling };
-  gtR.getCell(4).numFmt = FMT_USD;
-  gtR.getCell(5).value = { formula: `D${row}-C${row}`, result: grandMargin };
-  gtR.getCell(5).numFmt = FMT_USD;
-  gtR.getCell(6).value = { formula: `IF(D${row}=0,0,1-C${row}/D${row})`, result: grandMarginPct };
-  gtR.getCell(6).numFmt = FMT_PCT;
-  totalStyle(gtR, 6, C.ANC_BLUE);
-  gtR.getCell(2).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
-  gtR.getCell(3).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
-  gtR.getCell(4).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
-  gtR.getCell(5).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
-  gtR.getCell(6).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
 }
 
 // ─── 2. LED COST SHEET ──────────────────────────────────────────────────────
