@@ -356,6 +356,29 @@ const SEED_PRODUCTS = [
         },
     },
 
+    {
+        manufacturer: "LG/Yaham",
+        productFamily: "Mesh",
+        modelNumber: "LG-MESH-P4-RS1921",
+        displayName: "LG 4mm Mesh Outdoor",
+        pixelPitch: 4,
+        cabinetWidthMm: 1000,
+        cabinetHeightMm: 500,
+        cabinetDepthMm: 91,
+        weightKgPerCabinet: 7.5,
+        maxNits: 6000,
+        maxPowerWattsPerCab: 300,
+        environment: "outdoor",
+        serviceType: "front",
+        supportsHalfModule: false,
+        extendedSpecs: {
+            diode: "Nationstar RS1921",
+            receiverCard: "1G Novastar",
+            controller: "COEX Series",
+            transparency: 65,
+        },
+    },
+
     // ===================== LG/YAHAM MIP ALTERNATES (Capital One 2026) =====================
     // Higher brightness (2,000 NITS) alternatives with Nationstar MIP-A1010WN diode
     // 5G Fiber Novastar Receiver Cards, COEX Series Controller

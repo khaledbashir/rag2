@@ -26,7 +26,7 @@ const FIELD_KEY_VOCABULARY: Record<string, string> = {
 
   // Display specs
   pixelPitch: "Physical pixel pitch in mm",
-  virtualPixelPitch: "Virtual pixel pitch (if applicable)",
+  virtualPixelPitch: "Always N/A",
   indoorOutdoor: "Indoor or Outdoor installation",
   panelResolutionW: "Panel/cabinet resolution width in pixels",
   panelResolutionH: "Panel/cabinet resolution height in pixels",

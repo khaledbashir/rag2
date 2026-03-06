@@ -433,6 +433,11 @@ export function parseFormSheet(workbook: xlsx.WorkBook): FormSheetResult {
     if (d.totalResolutionH != null && d.specResolutionH == null) d.specResolutionH = d.totalResolutionH;
   }
 
+  // Natalia rule: "claimed pixel pitch" is ALWAYS N/A (global override)
+  for (const d of displays) {
+    d.virtualPixelPitch = "N/A";
+  }
+
   // Calculate derived fields
   for (const d of displays) {
     if (d.totalResolutionW && d.totalResolutionH && d.areaSqFt && d.areaSqFt > 0) {
