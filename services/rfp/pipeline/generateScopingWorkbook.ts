@@ -953,6 +953,8 @@ function buildMarginAnalysis(
   for (let c = 2; c <= 6; c++) {
     bbR.getCell(c).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
   }
+  // Toggleable: row grouping so user can collapse/expand the grand total
+  bbR.outlineLevel = 1;
 }
 
 // ─── 2. LED COST SHEET ──────────────────────────────────────────────────────
