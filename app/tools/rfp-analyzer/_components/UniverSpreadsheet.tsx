@@ -1617,13 +1617,248 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
   };
 
+  // === Budget Summary — per-category aggregate (matches Excel Budget Summary tab) ===
+  sheetOrder.push("budget-summary");
+  const bsCellData: Record<number, Record<number, any>> = {};
+  const bsColWidths: Record<number, { w: number }> = {
+    0: { w: 30 }, 1: { w: 280 }, 2: { w: 120 }, 3: { w: 120 }, 4: { w: 120 }, 5: { w: 90 },
+  };
+
+  bsCellData[0] = { 1: { v: `${projectName} — Budget Summary`, s: { bl: 1, fs: 14, cl: { rgb: "#217346" } } } };
+  bsCellData[1] = { 1: { v: "By Category | Same data as Margin Analysis, grouped differently", s: "italic" } };
+  bsCellData[3] = {
+    1: { v: "Category", s: "header" },
+    2: { v: "Cost", s: "header" },
+    3: { v: "Selling Price", s: "header" },
+    4: { v: "Margin $", s: "header" },
+    5: { v: "Margin %", s: "header" },
+  };
+
+  // Aggregate costs across all displays by category
+  let bsTotalLedHw = 0, bsTotalStruct = 0, bsTotalInstall = 0;
+  let bsTotalElec = 0, bsTotalPm = 0, bsTotalEng = 0, bsTotalEquip = 0;
+
+  for (const d of pricingDisplays) {
+    bsTotalLedHw += d.hardwareCost || 0;
+    bsTotalStruct += (d.structuralCost ?? 0);
+    bsTotalInstall += (d.installCost ?? 0);
+    bsTotalElec += (d.electricalCost ?? 0);
+    bsTotalPm += (d.pmCost ?? 0);
+    bsTotalEng += (d.engCost ?? 0);
+    bsTotalEquip += (d.processorCost ?? 0);
+  }
+
+  const avgMarginPct = pricingDisplays.length > 0
+    ? pricingDisplays.reduce((s, d) => s + (d.blendedMarginPct ?? 0.25), 0) / pricingDisplays.length
+    : 0.25;
+  const bsHwMargin = avgMarginPct > 0 ? avgMarginPct : 0.30;
+  const bsSvcMargin = avgMarginPct > 0 ? Math.max(avgMarginPct * 0.67, 0.15) : 0.20;
+
+  const bsCategories: [string, number, number][] = [
+    ["LED Hardware (all displays)", bsTotalLedHw, bsHwMargin],
+    ["Structural Materials", bsTotalStruct, bsSvcMargin],
+    ["Installation Labor", bsTotalInstall, bsSvcMargin],
+    ["Electrical & Data", bsTotalElec, bsSvcMargin],
+    ["PM / General Conditions", bsTotalPm, bsSvcMargin],
+    ["Engineering & Permits", bsTotalEng, bsSvcMargin],
+  ];
+  if (bsTotalEquip > 0) {
+    bsCategories.push(["Processor & Equipment", bsTotalEquip, bsHwMargin]);
+  }
+
+  const bsDataStart = 4;
+  bsCategories.forEach(([label, cost, margin], i) => {
+    const r = bsDataStart + i;
+    const r1 = r + 1;
+    bsCellData[r] = {
+      1: { v: label },
+      2: { v: cost, s: "currency" },
+      3: { f: `=ROUND(IF(F${r1}>=1,C${r1},C${r1}/(1-F${r1})),2)`, s: "currency" },
+      4: { f: `=ROUND(D${r1}-C${r1},2)`, s: "currency" },
+      5: { v: margin, s: "percent" },
+    };
+  });
+
+  const bsTotalIdx = bsDataStart + bsCategories.length + 1;
+  const bsTotalR = bsTotalIdx + 1;
+  const bsFirstR = bsDataStart + 1;
+  const bsLastR = bsDataStart + bsCategories.length;
+  bsCellData[bsTotalIdx] = {
+    1: { v: "GRAND TOTAL", s: { bl: 1, fs: 12 } },
+    2: { f: `=ROUND(SUM(C${bsFirstR}:C${bsLastR}),2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+    3: { f: `=ROUND(SUM(D${bsFirstR}:D${bsLastR}),2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+    4: { f: `=ROUND(D${bsTotalR}-C${bsTotalR},2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+    5: { f: `=IF(D${bsTotalR}=0,0,E${bsTotalR}/D${bsTotalR})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } },
+  };
+
+  sheets["budget-summary"] = {
+    id: "budget-summary",
+    name: "Budget Summary",
+    tabColor: "#217346",
+    rowCount: bsTotalIdx + 5,
+    columnCount: 7,
+    defaultColumnWidth: 100,
+    defaultRowHeight: 28,
+    cellData: bsCellData,
+    columnData: bsColWidths,
+    mergeData: [],
+    showGridlines: 1,
+  };
+
+  // === Processor Count ===
+  sheetOrder.push("processor-count");
+  const pcCellData: Record<number, Record<number, any>> = {};
+  const pcColWidths: Record<number, { w: number }> = {
+    0: { w: 220 }, 1: { w: 90 }, 2: { w: 90 }, 3: { w: 110 }, 4: { w: 110 }, 5: { w: 110 },
+  };
+
+  pcCellData[0] = { 0: { v: `${projectName} — Processor Count`, s: { bl: 1, fs: 14 } } };
+  pcCellData[2] = {
+    0: { v: "Display", s: "header" },
+    1: { v: "W (px)", s: "header" },
+    2: { v: "H (px)", s: "header" },
+    3: { v: "Total Pixels", s: "header" },
+    4: { v: "Ports Needed", s: "header" },
+    5: { v: "Processor", s: "header" },
+  };
+
+  screens.forEach((spec, si) => {
+    const pd = pricingDisplays.find((d) => d.name === spec.name);
+    const wPx = spec.widthPx ?? (spec.pixelPitchMm && spec.widthFt ? Math.round(spec.widthFt * 304.8 / spec.pixelPitchMm) : 0);
+    const hPx = spec.heightPx ?? (spec.pixelPitchMm && spec.heightFt ? Math.round(spec.heightFt * 304.8 / spec.pixelPitchMm) : 0);
+    const qty = spec.quantity ?? 1;
+    const totalPx = wPx * hPx * qty;
+    const portsNeeded = totalPx > 0 ? Math.ceil(totalPx / 650000) : 0;
+    const r = si + 3;
+    pcCellData[r] = {
+      0: { v: spec.name },
+      1: { v: wPx, s: "number" },
+      2: { v: hPx, s: "number" },
+      3: { v: totalPx, s: "number" },
+      4: { v: portsNeeded },
+      5: { v: "NovaStar 660 Pro" },
+    };
+  });
+
+  sheets["processor-count"] = {
+    id: "processor-count",
+    name: "Processor Count",
+    tabColor: "#17A2B8",
+    rowCount: Math.max(screens.length + 5, 15),
+    columnCount: 6,
+    defaultColumnWidth: 100,
+    defaultRowHeight: 28,
+    cellData: pcCellData,
+    columnData: pcColWidths,
+    mergeData: [],
+    showGridlines: 1,
+  };
+
+  // === Scoring ===
+  sheetOrder.push("scoring");
+  const scoreCellData: Record<number, Record<number, any>> = {};
+  scoreCellData[0] = { 0: { v: `${projectName} — Scoring System`, s: { bl: 1, fs: 14 } } };
+  scoreCellData[2] = {
+    0: { v: "Item", s: "header" },
+    1: { v: "Cost", s: "header" },
+    2: { v: "Selling Price", s: "header" },
+    3: { v: "Margin $", s: "header" },
+    4: { v: "Margin %", s: "header" },
+  };
+
+  const scoreItems = [
+    "Scoring Controller", "Scoring Software License", "LED Scoring Digits",
+    "Shot Clock Displays", "Game Clock Display", "Scoring Integration Labor",
+    "Scoring Cable Kit", "Commissioning",
+  ];
+
+  scoreItems.forEach((item, i) => {
+    const r = i + 4;
+    scoreCellData[i + 3] = {
+      0: { v: item },
+      1: { v: 0, s: "currency" },
+      2: { f: `=ROUND(IF(E${r}>=1,B${r},B${r}/(1-E${r})),2)`, s: "currency" },
+      3: { f: `=ROUND(C${r}-B${r},2)`, s: "currency" },
+      4: { v: 0.10, s: "percent" },
+    };
+  });
+
+  const scoreTotalIdx = scoreItems.length + 3;
+  const scoreTotalR = scoreTotalIdx + 1;
+  scoreCellData[scoreTotalIdx] = {
+    0: { v: "SCORING TOTAL", s: "total" },
+    1: { f: `=ROUND(SUM(B4:B${scoreTotalR - 1}),2)`, s: "totalCurrency" },
+    2: { f: `=ROUND(SUM(C4:C${scoreTotalR - 1}),2)`, s: "totalCurrency" },
+    3: { f: `=ROUND(C${scoreTotalR}-B${scoreTotalR},2)`, s: "totalCurrency" },
+    4: { f: `=IF(C${scoreTotalR}=0,0,D${scoreTotalR}/C${scoreTotalR})`, s: "totalPercent" },
+  };
+
+  sheets["scoring"] = {
+    id: "scoring",
+    name: "Scoring",
+    tabColor: "#6C757D",
+    rowCount: scoreTotalIdx + 5,
+    columnCount: 5,
+    defaultColumnWidth: 120,
+    defaultRowHeight: 28,
+    cellData: scoreCellData,
+    columnData: { 0: { w: 200 }, 1: { w: 100 }, 2: { w: 100 }, 3: { w: 100 }, 4: { w: 80 } },
+    mergeData: [],
+    showGridlines: 1,
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // REORDER TABS — Natalia's FINAL confirmed order (March 6, 2026)
+  // 1 Project Overview | 2 Margin Analysis | 3 Budget Summary | 4 LED Cost
+  // 5 Tech Specs | 6 Install | 7 Processor Count | 8 Bundle Equipment
+  // 9 Travel | 10 CMS | 11 Scoring | 12 Resp Matrix | 13 P&L | 14 Cash Flow
+  // Then: internal/utility tabs
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Rename tabs to match unified format
+  if (sheets["project-summary"]) sheets["project-summary"].name = "Project Overview";
+  if (sheets["margin-analysis-cms"]) sheets["margin-analysis-cms"].name = "CMS";
+  if (sheets["travel-anc"]) sheets["travel-anc"].name = "Travel";
+
+  const finalOrder = [
+    "project-summary",       // 1. Project Overview
+    "margin-analysis",       // 2. Margin Analysis
+    "budget-summary",        // 3. Budget Summary
+    "led-cost-sheet",        // 4. LED Cost Sheet
+    "tech-specs",            // 5. Tech Specs
+    "install-base",          // 6. Install
+    "processor-count",       // 7. Processor Count
+    "bundle-equipment",      // 8. Bundle Equipment
+    "travel-anc",            // 9. Travel
+    "margin-analysis-cms",   // 10. CMS
+    "scoring",               // 11. Scoring
+    "resp-matrix",           // 12. Resp Matrix
+    "pnl",                   // 13. P&L
+    "cash-flow",             // 14. Cash Flow
+    // Internal/utility tabs after the main ones
+    "pos",
+    "bid-form",
+    "led-display-request",
+    "form",
+    "config",
+    "pricing",
+    "extended-warranty",
+  ];
+
+  // Only include tabs that were actually built
+  const reorderedSheetOrder = finalOrder.filter((id) => sheetOrder.includes(id));
+  // Append any tabs we missed (future-proofing)
+  for (const id of sheetOrder) {
+    if (!reorderedSheetOrder.includes(id)) reorderedSheetOrder.push(id);
+  }
+
   return {
     id: "rfp-workbook",
     name: "RFP Scoping Workbook",
     appVersion: "1.0.0",
     locale: "EN_US" as any,
     styles,
-    sheetOrder,
+    sheetOrder: reorderedSheetOrder,
     sheets,
   };
 }
