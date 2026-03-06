@@ -205,6 +205,8 @@ function parsePricingTablesInner(
   if (strict && tables.length === 0) {
     return fail("No pricing tables extracted", sheetName);
   }
+  // Filter out empty alternate sections (e.g. placeholder "Alternates - Add to Cost Above" with $0 lines)
+  tables = tables.filter((t) => t.items.length > 0 || t.alternates.length > 0 || !t.isAlternateSection);
   if (strict && tables.some((t) => t.items.length === 0 && t.alternates.length === 0)) {
     return fail("One or more pricing sections are empty", sheetName);
   }
