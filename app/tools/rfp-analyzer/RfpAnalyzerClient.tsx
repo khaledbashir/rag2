@@ -1913,7 +1913,7 @@ export default function RfpAnalyzerClient() {
   const isSpreadsheetVisible = phase === "results" && result && pricingPreview && spreadsheetMode;
 
   return (
-    <div className={`flex-1 min-w-0 bg-background relative flex flex-col ${isSpreadsheetVisible ? "h-screen overflow-hidden" : "min-h-0 h-full overflow-hidden"}`}>
+    <div className={`flex-1 min-w-0 bg-background relative ${isSpreadsheetVisible ? "flex flex-col h-screen overflow-hidden" : "min-h-screen pb-24"}`}>
       {/* Header — thin in spreadsheet mode */}
       {isSpreadsheetVisible ? (
         <header className="shrink-0 z-30 bg-[#002C73] text-white px-4 py-1.5 flex items-center justify-between">
@@ -1946,7 +1946,7 @@ export default function RfpAnalyzerClient() {
           </div>
         </header>
       ) : (
-      <header className="shrink-0 z-30 border-b border-border bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-6 xl:px-8">
+      <header className="sticky top-0 z-30 border-b border-border bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-6 xl:px-8">
         <div className="mx-auto flex max-w-[1600px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <h1 className="text-xl font-bold leading-tight text-foreground sm:text-2xl">
@@ -1983,7 +1983,7 @@ export default function RfpAnalyzerClient() {
       </header>
       )}
 
-      <main className={isSpreadsheetVisible ? "flex-1 min-h-0 flex flex-col overflow-hidden" : "flex-1 min-h-0 overflow-y-auto overscroll-contain"}>
+      <main className={isSpreadsheetVisible ? "flex-1 min-h-0 flex flex-col overflow-hidden" : "p-6 xl:px-8 max-w-[1600px] mx-auto"}>
         {(() => {
           const uploadContent = (phase === "upload" || phase === "processing") && (
             <>
