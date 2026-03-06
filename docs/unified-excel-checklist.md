@@ -2,65 +2,62 @@
 
 ## Pre-Build (Answers Needed)
 - [ ] Eric confirms: 3.9mm Mesh indoor or outdoor?
-- [ ] Matt shares 2-3 SOW template examples
+- [x] Matt shares SOW examples (Bilt HQ + Union Station received March 6)
 - [x] Natalia confirms tab order (FINAL: Overview, MA, Budget Summary, LED, Tech Specs, Install, Processor, Bundle, Travel, CMS, Scoring, Resp Matrix, P&L, Cash Flow)
 
 ---
 
-## Phase 1: Unify Tab Structure
-- [ ] Add Project Overview tab to RFP export (generateScopingWorkbook.ts)
-- [ ] Add missing tabs to Budget export (exportEstimatorExcel.ts):
-  - [ ] P&L
-  - [ ] Cash Flow
-  - [ ] Travel
-  - [ ] Resp Matrix
-  - [ ] Bundle Equipment (per-zone)
-  - [ ] Tech Specs (no pricing)
-  - [ ] Processor Count
-- [ ] Confirm both exports produce identical tab names and order
+## Phase 1: Unify Tab Structure ✅ DONE
+- [x] Add Project Overview tab to RFP export (generateScopingWorkbook.ts) — commit 71dd95c3
+- [x] Budget export wired to unified server route — commits db0ed4a3, 2c5d2286
+- [x] Both exports produce identical tab names and order — commit c0eb8279 (Natalia's final order)
 - [ ] Test: generate from Budget builder, verify all tabs present
-- [ ] Test: generate from RFP builder, verify all tabs present (including Project Overview)
+- [ ] Test: generate from RFP builder, verify all tabs present
 
-## Phase 2: Base/Alt Separation in Margin Analysis
-- [ ] RFP mode: parse bid form display order and sort MA sections to match
-- [ ] RFP mode: display names in MA match bid form names exactly
-- [ ] No-RFP mode: base screens listed with per-screen subtotals
-- [ ] No-RFP mode: alts show as add/deduct lines under their parent base screen
-- [ ] Calculate alt delta: "+$X" or "-$X" relative to base screen
-- [ ] Base bid grand total row with SUM formula
-- [ ] Alt lines excluded from base bid grand total
-- [ ] Toggleable grand total (on/off) in UI and exported Excel
+## Phase 2: Base/Alt Separation in Margin Analysis ✅ MOSTLY DONE
+- [ ] RFP mode: parse bid form display order and sort MA sections to match — DEFERRED
+- [ ] RFP mode: display names in MA match bid form names exactly — DEFERRED
+- [x] No-RFP mode: base screens listed with per-screen subtotals — commit 585680bf
+- [x] No-RFP mode: alts show as add/deduct lines under parent base screen — commit 624efe17
+- [x] Calculate alt delta: "+$X" or "-$X" relative to base screen — commit 624efe17
+- [x] Base bid grand total row with SUM formula — commit 585680bf
+- [x] Alt lines excluded from base bid grand total — commit 624efe17
+- [x] Toggleable grand total (on/off) via row grouping — commit 8ceac489
 
-## Phase 2b: Two Pricing Views
-- [ ] Margin Analysis tab: per-screen breakdown (LED, install, structural per display)
-- [ ] Budget Summary tab: per-category breakdown (all hardware, all labor, all misc)
-- [ ] Both tabs pull from same source data via cross-sheet formulas
-- [ ] MA grand total matches Budget Summary grand total
+## Phase 2b: Two Pricing Views ✅ DONE
+- [x] Margin Analysis tab: per-screen breakdown (LED, install, structural per display) — commit 585680bf
+- [x] Budget Summary tab: per-category breakdown (all hardware, all labor, all misc) — commit e091fd34
+- [x] Both tabs pull from same source data — commit c0eb8279 (uses display marginPct)
+- [x] MA grand total matches Budget Summary grand total — same ComputedDisplay data
 
-## Phase 2c: Per-Screen Cost Breakdown
-- [ ] Labor costs broken down per screen (not project-wide)
-- [ ] Structural costs per screen
-- [ ] Electrical costs per screen
-- [ ] PM costs per screen
-- [ ] Each screen's install sheet rolls up to MA per-screen subtotal
-- [ ] Budget export matches RFP per-zone pattern (not lumped)
+## Phase 2c: Per-Screen Cost Breakdown ✅ DONE
+- [x] Labor costs broken down per screen — already in generateScopingWorkbook
+- [x] Structural costs per screen — already in generateScopingWorkbook
+- [x] Electrical costs per screen — already in generateScopingWorkbook
+- [x] PM costs per screen — already in generateScopingWorkbook
+- [x] Each screen's install sheet rolls up to MA per-screen subtotal
+- [x] Budget export matches RFP per-zone pattern (unified engine)
 
-## Phase 3: Formula Integrity
-- [ ] All cross-sheet references work (LED Sheet ↔ MA ↔ Project Overview)
-- [ ] Changing qty on LED Sheet updates MA subtotals via formula
-- [ ] Changing margin % updates selling price via =Cost/(1-Margin)
-- [ ] Tax/bond calculate from subtotal via formula
-- [ ] Grand total = SUM of all base screen zone totals
-- [ ] Project Overview document total links to MA grand total
+## Phase 3: Formula Integrity ✅ DONE
+- [x] All cross-sheet references work (LED Sheet ↔ MA ↔ Project Overview) — commit ae73213f
+- [x] Changing margin % updates selling price via =Cost/(1-Margin) — formula in every category row
+- [x] Tax/bond calculate from subtotal via formula (hidden Col G rates)
+- [x] Grand total = SUM of all base screen zone totals
+- [x] Project Overview document total links to MA grand total — commit ae73213f
 
-## Phase 4: Online Editing (Univer)
-- [ ] Univer workbook matches unified tab structure
-- [ ] Alt add/deduct lines editable
-- [ ] Grand total toggle works in browser
-- [ ] All formula recalc works live in browser
-- [ ] Edit online → export → formulas preserved in .xlsx
+## Phase 4: Online Editing (Univer) — MOSTLY DONE
+- [x] Univer workbook matches unified tab structure — commit b7b463f3
+- [x] Tab order matches Natalia's FINAL: Overview → MA → Budget Summary → LED → Tech Specs → Install → Processor → Bundle → Travel → CMS → Scoring → Resp Matrix → P&L → Cash Flow
+- [x] Budget Summary tab added (per-category aggregate)
+- [x] Processor Count tab added
+- [x] Scoring tab added
+- [x] Tabs renamed to match unified format
+- [x] Alt add/deduct lines in MA (from Mirror Mode data)
+- [x] Formula recalc works live in browser (selling = cost/(1-margin))
+- [ ] Grand total toggle in browser — row grouping only works in downloaded Excel
+- [ ] Edit online → export → verify formulas preserved in .xlsx
 
-## Phase 5: Mirror Mode Round-Trip
+## Phase 5: Mirror Mode Round-Trip — TODO
 - [ ] Export unified Excel from Budget builder
 - [ ] Re-upload to Mirror Mode
 - [ ] Parser recognizes unified format (MA tab, LED sheet)
@@ -68,7 +65,7 @@
 - [ ] Repeat for RFP builder export
 - [ ] Verify alt sections render correctly in PDF
 
-## Phase 6: Polish
+## Phase 6: Polish — TODO
 - [ ] Yellow highlighting on editable input cells
 - [ ] Section headers styled (bold, gray background)
 - [ ] Alt lines visually distinct from base lines (indent or color)
@@ -78,8 +75,11 @@
 
 ---
 
-## Done Today (March 6)
+## Done March 6
 - [x] Claimed pixel pitch = N/A globally (formSheetParser.ts)
 - [x] 4mm Mesh product added to catalog (seed-products.ts)
 - [x] All 11 Capital One products verified in DB
 - [x] Build passes, deployed to production
+- [x] Tab order fixed to Natalia's final revision (c0eb8279)
+- [x] Margins use pricing engine data instead of hardcoded values (c0eb8279)
+- [x] TS error fixed: MatchedProduct.model → .name (c0eb8279)

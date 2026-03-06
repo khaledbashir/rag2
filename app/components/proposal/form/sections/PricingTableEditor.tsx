@@ -271,6 +271,7 @@ export default function PricingTableEditor() {
             subtotal: 0,
             tax: null,
             bond: 0,
+            tariff: 0,
             grandTotal: 0,
             alternates: [],
         };
@@ -499,7 +500,7 @@ function PricingSection({
     // Computed totals
     const effectiveSubtotal = computeEffectiveSubtotal(table, priceOverrides);
     const effectiveTax = computeEffectiveTax(table, effectiveSubtotal);
-    const effectiveGrandTotal = effectiveSubtotal + effectiveTax + (table.bond || 0);
+    const effectiveGrandTotal = effectiveSubtotal + effectiveTax + (table.bond || 0) + (table.tariff || 0);
     const hasAnyOverride = items.some((_, idx) => {
         const key = `${table.id}:${idx}`;
         return descriptionOverrides[key] !== undefined || priceOverrides[key] !== undefined;
@@ -701,6 +702,12 @@ function PricingSection({
                             <div className="flex justify-between text-xs text-muted-foreground px-1">
                                 <span>Bond</span>
                                 <span className="font-medium">{formatCurrency(table.bond)}</span>
+                            </div>
+                        )}
+                        {(table.tariff || 0) > 0 && (
+                            <div className="flex justify-between text-xs text-muted-foreground px-1">
+                                <span>Tariff</span>
+                                <span className="font-medium">{formatCurrency(table.tariff)}</span>
                             </div>
                         )}
                         <div className="flex justify-between text-sm font-bold text-foreground px-1 pt-1 border-t border-border">

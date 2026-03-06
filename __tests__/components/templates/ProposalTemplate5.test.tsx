@@ -105,6 +105,7 @@ function buildPricingTable(name: string, items: Array<{ description: string; sel
     subtotal: items.reduce((s, i) => s + i.sellingPrice, 0),
     tax: null,
     bond: 0,
+    tariff: 0,
     grandTotal,
     alternates: [],
     sourceStartRow: 0,

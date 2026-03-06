@@ -208,6 +208,7 @@ export async function POST(req: NextRequest) {
         amount: round2(c.salesTaxCost),
       },
       bond: round2(c.bondCost),
+      tariff: 0,
       grandTotal: round2(c.finalTotal),
     }));
 
@@ -229,6 +230,7 @@ export async function POST(req: NextRequest) {
         amount: round2(projectTax),
       },
       bond: round2(projectBond),
+      tariff: 0,
       grandTotal: round2(projectTotal),
     };
 

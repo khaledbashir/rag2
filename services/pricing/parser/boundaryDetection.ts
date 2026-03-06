@@ -179,7 +179,7 @@ export function findTableBoundaries(rows: RawRow[], headerRowLabel?: string): Ta
       if (!candidate || candidate.isEmpty) continue;
       if (candidate.isHeader && !candidate.isAlternateHeader) return false;
       if (candidate.isGrandTotal) return false;
-      if (candidate.isTax || candidate.isBond || candidate.isSubtotal || candidate.isAlternateLine || candidate.isAlternateHeader) continue;
+      if (candidate.isTax || candidate.isBond || candidate.isTariff || candidate.isSubtotal || candidate.isAlternateLine || candidate.isAlternateHeader) continue;
       const hasLineValue = Number.isFinite(candidate.sell) || Number.isFinite(candidate.cost);
       if (candidate.label && hasLineValue) return true;
     }
@@ -388,7 +388,33 @@ export function findGlobalDocumentTotal(
       r.rowIndex < firstBoundaryStartRowIndex
   );
 
-  if (!candidates.length) return null;
-  const last = candidates[candidates.length - 1];
-  return Number.isFinite(last.sell) ? last.sell : last.cost;
+  if (candidates.length) {
+    const last = candidates[candidates.length - 1];
+    return Number.isFinite(last.sell) ? last.sell : last.cost;
+  }
+
+  // Strategy 3: grand-total rows AFTER the last boundary (e.g. "BASE BID GRAND TOTAL")
+  const lastBoundaryEndRowIndex = Math.max(
+    ...boundaries.map((b) => {
+      const row = rows[b.endRow];
+      return row ? row.rowIndex : 0;
+    })
+  );
+  if (Number.isFinite(lastBoundaryEndRowIndex)) {
+    const afterCandidates = rows.filter(
+      (r) =>
+        r.isGrandTotal &&
+        (Number.isFinite(r.sell) || Number.isFinite(r.cost)) &&
+        r.rowIndex > lastBoundaryEndRowIndex
+    );
+    if (afterCandidates.length) {
+      const last = afterCandidates[afterCandidates.length - 1];
+      console.log(
+        `[PRICING PARSER] Global total found AFTER boundaries at row ${last.rowIndex}: ${Number.isFinite(last.sell) ? last.sell : last.cost}`
+      );
+      return Number.isFinite(last.sell) ? last.sell : last.cost;
+    }
+  }
+
+  return null;
 }

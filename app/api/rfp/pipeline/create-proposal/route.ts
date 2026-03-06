@@ -147,6 +147,7 @@ export async function POST(request: NextRequest) {
         subtotal,
         tax: null,
         bond: bondCost,
+        tariff: 0,
         grandTotal: subtotal + bondCost,
         alternates: [],
       };

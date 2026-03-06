@@ -89,7 +89,9 @@ export interface RenderedTableTotals {
     tax: number;
     /** Bond amount — rounded */
     bond: number;
-    /** subtotal + tax + bond — guaranteed to equal the sum of rounded components */
+    /** Tariff amount — rounded */
+    tariff: number;
+    /** subtotal + tax + bond + tariff — guaranteed to equal the sum of rounded components */
     grandTotal: number;
 }
 
@@ -158,15 +160,18 @@ export function computeTableTotals(
     // Step 3: Bond — use Excel's bond amount directly
     const bond = roundToDisplay(table.bond || 0);
 
+    // Step 3b: Tariff — use Excel's tariff amount directly
+    const tariff = roundToDisplay(table.tariff || 0);
+
     // Step 4: Grand total — Mirror Mode: always use Excel's grandTotal directly.
     // Natalia's rule: "whatever is here is what your engine will show" — no recalculation.
     // Excel's grandTotal was set from the actual total row in the spreadsheet.
     // Only fall back to calculated when Excel had no grand total row (grandTotal === 0).
     const grandTotal = (Number.isFinite(table.grandTotal) && table.grandTotal > 0)
         ? roundToDisplay(table.grandTotal)
-        : (subtotal + tax + bond);
+        : (subtotal + tax + bond + tariff);
 
-    return { items, subtotal, taxLabel, tax, bond, grandTotal };
+    return { items, subtotal, taxLabel, tax, bond, tariff, grandTotal };
 }
 
 // ============================================================================

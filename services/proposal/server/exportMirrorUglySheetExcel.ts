@@ -375,8 +375,18 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
       marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
       r++;
 
+      // Tariff row
+      const tariffAmount = toNumber((table as any).tariff);
+      const tariffRow = r;
+      if (tariffAmount > 0) {
+        marginSheet.getCell(`A${r}`).value = "TARIFF";
+        marginSheet.getCell(`C${r}`).value = tariffAmount;
+        marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
+        r++;
+      }
+
       // Grand Total row — full cost/margin summary
-      const sectionGrandTotal = toNumber(table.grandTotal) || (sectionSubtotal + taxAmount + bondAmount);
+      const sectionGrandTotal = toNumber(table.grandTotal) || (sectionSubtotal + taxAmount + bondAmount + tariffAmount);
       const grandTotalRow = r;
       marginSheet.getCell(`A${r}`).value = "SUB TOTAL (BID FORM)";
       if (hasCostData) {
@@ -384,8 +394,11 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
         marginSheet.getCell(`B${r}`).value = { formula: `B${subtotalRow}`, result: sectionCostSum };
         marginSheet.getCell(`B${r}`).numFmt = moneyFmt;
       }
-      // GRAND TOTAL Col C: =C{subtotal}+C{tax}+C{bond}
-      marginSheet.getCell(`C${r}`).value = { formula: `C${subtotalRow}+C${taxRow}+C${bondRow}`, result: sectionGrandTotal };
+      // GRAND TOTAL Col C: =C{subtotal}+C{tax}+C{bond}+C{tariff}
+      const gtFormula = tariffAmount > 0
+        ? `C${subtotalRow}+C${taxRow}+C${bondRow}+C${tariffRow}`
+        : `C${subtotalRow}+C${taxRow}+C${bondRow}`;
+      marginSheet.getCell(`C${r}`).value = { formula: gtFormula, result: sectionGrandTotal };
       marginSheet.getCell(`C${r}`).numFmt = moneyFmt;
       if (sectionMargin != null) {
         // Margin $: =C{row}-B{row}

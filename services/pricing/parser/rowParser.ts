@@ -25,6 +25,7 @@ export interface RawRow {
   isTax: boolean;
   isBond: boolean;
   isGrandTotal: boolean;
+  isTariff: boolean;
   isAlternateHeader: boolean;
   isAlternateLine: boolean;
   isHidden: boolean;
@@ -134,6 +135,7 @@ export function parseAllRows(
       || labelNorm === "vat" || labelNorm.startsWith("vat ")
       || labelNorm === "sales tax" || labelNorm.startsWith("sales tax ");
     const isBond = labelNorm === "bond" || labelNorm === "bond cost" || labelNorm === "performance bond";
+    const isTariff = labelNorm === "tariff" || labelNorm === "tariff cost" || labelNorm.startsWith("tariff ");
     const isGrandTotal = labelNorm.includes("grand total") || labelNorm.includes("sub total (bid form)") || labelNorm === "total" || labelNorm === "project total";
     const isAlternateHeader = isAlternateAddToCost || isAlternateDeduct || (looksLikeAlternateHeader && !hasColumnHeaders);
     const isAlternateLine = labelNorm.startsWith("alt ") || labelNorm.startsWith("alt-") || labelNorm.includes("alternate");
@@ -158,6 +160,7 @@ export function parseAllRows(
       isTax,
       isBond,
       isGrandTotal,
+      isTariff,
       isAlternateHeader,
       isAlternateLine: isAlternateLine && hasNumericData,
       isHidden: hiddenRowSet ? hiddenRowSet.has(i) : false,

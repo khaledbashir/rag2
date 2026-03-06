@@ -18,6 +18,7 @@ interface JsreportPricingTable {
     taxLabel?: string;
     tax?: string;
     bond?: string;
+    tariff?: string;
     grandTotal: string;
 }
 
@@ -183,6 +184,9 @@ export function transformProposalToJsreport(
         }
         if (Math.abs(totals.bond) >= 0.01) {
             result.bond = formatCurrency(totals.bond, currency);
+        }
+        if (Math.abs(totals.tariff ?? 0) >= 0.01) {
+            result.tariff = formatCurrency(totals.tariff, currency);
         }
         return result;
     };

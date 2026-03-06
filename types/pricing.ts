@@ -75,7 +75,10 @@ export interface PricingTable {
   /** Bond amount (often $0) */
   bond: number;
 
-  /** Grand total including tax and bond */
+  /** Tariff amount (often $0) */
+  tariff: number;
+
+  /** Grand total including tax, bond, and tariff */
   grandTotal: number;
 
   /** Alternate options for this table (rendered separately) */

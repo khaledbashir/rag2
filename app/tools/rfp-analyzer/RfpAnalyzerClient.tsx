@@ -536,11 +536,13 @@ export default function RfpAnalyzerClient() {
           : (previousSubtotal > 0 ? (table.tax.amount || 0) / previousSubtotal : 0))
         : 0;
       const previousBondRate = previousSubtotal > 0 ? (table.bond || 0) / previousSubtotal : 0;
+      const previousTariffRate = previousSubtotal > 0 ? (table.tariff || 0) / previousSubtotal : 0;
       const tax = table.tax
         ? { ...table.tax, amount: subtotal * previousTaxRate }
         : table.tax;
       const bond = subtotal * previousBondRate;
-      const grandTotal = subtotal + (tax?.amount || 0) + bond;
+      const tariff = subtotal * previousTariffRate;
+      const grandTotal = subtotal + (tax?.amount || 0) + bond + tariff;
 
       return {
         ...table,
@@ -548,6 +550,7 @@ export default function RfpAnalyzerClient() {
         subtotal,
         tax,
         bond,
+        tariff,
         grandTotal,
       };
     });

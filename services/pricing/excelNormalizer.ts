@@ -429,6 +429,7 @@ export function buildPricingDocumentFromGrid(
             subtotal,
             tax: null,
             bond: 0,
+            tariff: 0,
             grandTotal: subtotal,
             alternates,
             sourceStartRow: headerRow + 1 + section.startIndex,
@@ -464,6 +465,7 @@ export function buildPricingDocumentFromGrid(
             subtotal,
             tax: null,
             bond: 0,
+            tariff: 0,
             grandTotal: subtotal,
             alternates: [],
         });

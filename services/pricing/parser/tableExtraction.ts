@@ -25,6 +25,7 @@ export function extractTable(
   let subtotal = 0;
   let tax: TaxInfo | null = null;
   let bond = 0;
+  let tariff = 0;
   let grandTotal = 0;
   const alternates: AlternateItem[] = [];
 
@@ -76,6 +77,12 @@ export function extractTable(
     // Capture bond
     if (row.isBond) {
       bond = Number.isFinite(row.sell) ? row.sell : 0;
+      continue;
+    }
+
+    // Capture tariff
+    if (row.isTariff) {
+      tariff = Number.isFinite(row.sell) ? row.sell : 0;
       continue;
     }
 
@@ -175,13 +182,13 @@ export function extractTable(
 
   // If no grand total found, calculate it
   if (grandTotal === 0) {
-    grandTotal = subtotal + (tax?.amount || 0) + bond;
+    grandTotal = subtotal + (tax?.amount || 0) + bond + tariff;
   }
 
-  // If grandTotal equals subtotal exactly but tax/bond exist separately,
-  // the "Total" row was likely a subtotal — recalculate to include tax/bond.
-  if (grandTotal > 0 && grandTotal === subtotal && (tax || bond > 0)) {
-    grandTotal = subtotal + (tax?.amount || 0) + bond;
+  // If grandTotal equals subtotal exactly but tax/bond/tariff exist separately,
+  // the "Total" row was likely a subtotal — recalculate to include tax/bond/tariff.
+  if (grandTotal > 0 && grandTotal === subtotal && (tax || bond > 0 || tariff > 0)) {
+    grandTotal = subtotal + (tax?.amount || 0) + bond + tariff;
   }
 
   const sanitizedName = boundary.name.replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, ' ').trim();
@@ -194,6 +201,7 @@ export function extractTable(
     subtotal,
     tax,
     bond,
+    tariff,
     grandTotal,
     alternates,
     sourceStartRow: boundary.startRow,
@@ -233,6 +241,7 @@ export function prependSyntheticRollupTable(
     subtotal: summarySubtotal,
     tax: null,
     bond: 0,
+    tariff: 0,
     grandTotal: globalTotal as number,
     alternates: [],
     sourceStartRow: -1,

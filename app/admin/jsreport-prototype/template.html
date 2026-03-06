@@ -334,6 +334,12 @@
                     <td class="px-4 py-1.5 text-right text-xs font-bold text-gray-800">{{table.bond}}</td>
                 </tr>
                 {{/if}}
+                {{#if table.tariff}}
+                <tr>
+                    <td class="px-4 py-1.5 text-right text-xs font-semibold text-gray-500">Tariff</td>
+                    <td class="px-4 py-1.5 text-right text-xs font-bold text-gray-800">{{table.tariff}}</td>
+                </tr>
+                {{/if}}
                 <tr class="bg-[#f8fafc] border-t border-gray-200">
                     <td class="px-4 py-2 text-right text-sm font-bold text-[#002C73] uppercase tracking-wide">Total</td>
                     <td class="px-4 py-2 text-right text-sm font-bold text-[#002C73]">{{table.grandTotal}}</td>
