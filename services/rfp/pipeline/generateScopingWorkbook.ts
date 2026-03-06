@@ -383,7 +383,10 @@ export async function generateScopingWorkbook(
   // ─── Sheet 1: Margin Analysis ───────────────────────────────────────────
   buildMarginAnalysis(wb, projectName, clientName, today, displays, grandCost, grandSelling, grandMargin, grandMarginPct, includeBond);
 
-  // ─── Sheet 2: LED Cost Sheet ────────────────────────────────────────────
+  // ─── Sheet 2: Budget Summary (per-category view) ───────────────────────
+  buildBudgetSummary(wb, projectName, clientName, today, displays, grandCost, grandSelling, grandMargin, grandMarginPct);
+
+  // ─── Sheet 3: LED Cost Sheet ────────────────────────────────────────────
   buildLedCostSheet(wb, projectName, displays);
 
   // ─── Sheet 3: Processor Count (right after LED Cost Sheet) ─────────────
@@ -585,6 +588,118 @@ function buildProjectOverview(wb: ExcelJS.Workbook, data: ProjectOverviewData): 
     r.getCell(3).font = { name: "Calibri", size: 10 };
     row++;
   }
+}
+
+// ─── 1b. BUDGET SUMMARY (per-category view) ─────────────────────────────────
+
+function buildBudgetSummary(
+  wb: ExcelJS.Workbook,
+  projectName: string,
+  clientName: string,
+  date: string,
+  displays: ComputedDisplay[],
+  grandCost: number,
+  grandSelling: number,
+  grandMargin: number,
+  grandMarginPct: number,
+): void {
+  const ws = wb.addWorksheet("Budget Summary", {
+    properties: { tabColor: { argb: C.GREEN_TAB } },
+  });
+
+  const colWidths = [4, 44, 16, 16, 16, 12];
+  colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  setTitle(ws, "F", `${projectName} — Budget Summary`);
+  setMeta(ws, "F", `${clientName} | ${date} | By Category`);
+
+  let row = 4;
+  const headers = ["", "Category", "Cost", "Selling Price", "Margin $", "Margin %"];
+  headers.forEach((h, i) => {
+    const cell = ws.getCell(row, i + 1);
+    cell.value = h;
+    hdr(cell, C.GREEN_TAB);
+  });
+  ws.getRow(row).height = 28;
+  row++;
+
+  // Aggregate costs across all displays by category
+  let totalLedHw = 0, totalStructMat = 0, totalInstall = 0;
+  let totalElectrical = 0, totalPm = 0, totalEng = 0, totalEquip = 0;
+
+  for (const d of displays) {
+    totalLedHw += d.ledHardwareCost + d.sparePartsCost;
+    totalStructMat += d.structuralMaterialsCost;
+    totalInstall += d.structuralLaborCost;
+    totalElectrical += d.electricalCost;
+    totalPm += d.pmCost + d.travelCost;
+    totalEng += d.engCost;
+    totalEquip += d.sendingCardCost + d.signalCableCost + d.upsCost
+      + d.backupProcessorCost + d.weatherproofCost;
+  }
+
+  const sellFormula = (r: number) => `IF(F${r}>=1,C${r},C${r}/(1-F${r}))`;
+  const marginFormula = (r: number) => `D${r}-C${r}`;
+
+  // Category rows — each with cost, selling (formula), margin$, margin%
+  const categories: [string, number, number][] = [
+    ["LED Hardware (all displays)", totalLedHw, CATEGORY_MARGINS.ledHardware],
+    ["Structural Materials", totalStructMat, CATEGORY_MARGINS.structural],
+    ["Structural Labor & LED Installation", totalInstall, CATEGORY_MARGINS.install],
+    ["Electrical & Data", totalElectrical, CATEGORY_MARGINS.electrical],
+    ["PM / General Conditions / Travel", totalPm, CATEGORY_MARGINS.pm],
+    ["Engineering & Permits", totalEng, CATEGORY_MARGINS.engineering],
+  ];
+  if (totalEquip > 0) {
+    categories.push(["Processor & Equipment", totalEquip, CATEGORY_MARGINS.equipment]);
+  }
+
+  const catStartRow = row;
+  for (const [label, cost, marginPct] of categories) {
+    const r = ws.getRow(row);
+    r.getCell(2).value = label;
+    r.getCell(2).font = { name: "Calibri", size: 10 };
+    r.getCell(3).value = cost; r.getCell(3).numFmt = FMT_USD;
+    r.getCell(4).value = { formula: sellFormula(row), result: cost > 0 ? round2(cost / (1 - marginPct)) : 0 };
+    r.getCell(4).numFmt = FMT_USD;
+    r.getCell(5).value = { formula: marginFormula(row), result: cost > 0 ? round2(cost / (1 - marginPct) - cost) : 0 };
+    r.getCell(5).numFmt = FMT_USD;
+    r.getCell(6).value = marginPct; r.getCell(6).numFmt = FMT_PCT;
+    stripe(r, 6, row % 2 === 0);
+    row++;
+  }
+  const catEndRow = row - 1;
+
+  // Subtotal
+  row++;
+  const stR = ws.getRow(row);
+  stR.getCell(2).value = "SUBTOTAL";
+  stR.getCell(3).value = { formula: `SUM(C${catStartRow}:C${catEndRow})`, result: grandCost };
+  stR.getCell(3).numFmt = FMT_USD;
+  stR.getCell(4).value = { formula: `SUM(D${catStartRow}:D${catEndRow})`, result: grandSelling };
+  stR.getCell(4).numFmt = FMT_USD;
+  stR.getCell(5).value = { formula: `D${row}-C${row}`, result: grandMargin };
+  stR.getCell(5).numFmt = FMT_USD;
+  stR.getCell(6).value = { formula: `IF(D${row}=0,0,1-C${row}/D${row})`, result: grandMarginPct };
+  stR.getCell(6).numFmt = FMT_PCT;
+  totalStyle(stR, 6, C.MEDIUM_GRAY);
+  row++;
+
+  // Grand total — same as MA grand total (cross-validates)
+  row++;
+  const gtR = ws.getRow(row);
+  gtR.getCell(2).value = "GRAND TOTAL";
+  gtR.getCell(3).value = grandCost; gtR.getCell(3).numFmt = FMT_USD;
+  gtR.getCell(4).value = grandSelling; gtR.getCell(4).numFmt = FMT_USD;
+  gtR.getCell(5).value = grandMargin; gtR.getCell(5).numFmt = FMT_USD;
+  gtR.getCell(6).value = grandMarginPct; gtR.getCell(6).numFmt = FMT_PCT;
+  totalStyle(gtR, 6, C.ANC_BLUE);
+  for (let c = 2; c <= 6; c++) {
+    gtR.getCell(c).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
+  }
+
+  // Note: grand totals match between MA and Budget Summary since both
+  // use the same per-display ComputedDisplay data and margin rates.
 }
 
 // ─── 1. MARGIN ANALYSIS ─────────────────────────────────────────────────────
