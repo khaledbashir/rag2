@@ -3553,23 +3553,26 @@ export const ProposalContextProvider = ({
                 0,
             );
 
-            if (importedScreens.length === 0) {
-                diagnosticErrors.push(
-                    "No display screens were extracted from the Excel file. Check that the LED Sheet tab exists and has valid rows.",
-                );
-            }
-            if (auditTotal === 0 && importedScreens.length > 0) {
-                diagnosticWarnings.push(
-                    'Project total is $0.00. The Margin Analysis tab may be missing, or the total row could not be located. Check your Excel for a "Sub Total (Bid Form)" or "Grand Total" row.',
-                );
-            }
-            if (
-                !data.formData?.details?.marginAnalysis ||
-                data.formData.details.marginAnalysis.length === 0
-            ) {
-                diagnosticWarnings.push(
-                    "No Margin Analysis sheet was found. Non-LED costs (structural, electrical, PM) will not appear in the proposal.",
-                );
+            // AI Import only extracts pricing — skip screen/MA checks
+            if (!isAiImport) {
+                if (importedScreens.length === 0) {
+                    diagnosticErrors.push(
+                        "No display screens were extracted from the Excel file. Check that the LED Sheet tab exists and has valid rows.",
+                    );
+                }
+                if (auditTotal === 0 && importedScreens.length > 0) {
+                    diagnosticWarnings.push(
+                        'Project total is $0.00. The Margin Analysis tab may be missing, or the total row could not be located. Check your Excel for a "Sub Total (Bid Form)" or "Grand Total" row.',
+                    );
+                }
+                if (
+                    !data.formData?.details?.marginAnalysis ||
+                    data.formData.details.marginAnalysis.length === 0
+                ) {
+                    diagnosticWarnings.push(
+                        "No Margin Analysis sheet was found. Non-LED costs (structural, electrical, PM) will not appear in the proposal.",
+                    );
+                }
             }
             const pricingDoc =
                 (data as any).pricingDocument ||
@@ -3583,7 +3586,9 @@ export const ProposalContextProvider = ({
             setExcelDiagnostics({
                 warnings: diagnosticWarnings,
                 errors: diagnosticErrors,
-                totalOk: auditTotal > 0 && importedScreens.length > 0,
+                totalOk: isAiImport
+                    ? !!(pricingDoc && pricingDoc.documentTotal > 0)
+                    : auditTotal > 0 && importedScreens.length > 0,
             });
 
             aiExtractionSuccess();
