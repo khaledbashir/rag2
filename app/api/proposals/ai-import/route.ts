@@ -12,9 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as xlsx from "xlsx";
 import crypto from "node:crypto";
 import { PricingTable, PricingDocument, createTableId } from "@/types/pricing";
-
-const ANYTHING_LLM_BASE = process.env.ANYTHING_LLM_API_BASE || "https://basheer-anything-llm.prd42b.easypanel.host/api/v1";
-const ANYTHING_LLM_KEY = process.env.ANYTHING_LLM_API_KEY || "";
+import { ANYTHING_LLM_BASE_URL, ANYTHING_LLM_KEY } from "@/lib/variables";
 
 const SYSTEM_PROMPT = `You are an ANC Proposal Engine data extractor. You receive raw spreadsheet data (tab-separated) from an LED display project's Margin Analysis tab. Extract ALL pricing information into a JSON object.
 
@@ -186,7 +184,7 @@ async function callAI(excelText: string): Promise<any> {
 }
 
 async function callAnythingLLM(excelText: string): Promise<any> {
-  const base = ANYTHING_LLM_BASE.replace(/\/+$/, "");
+  const base = ANYTHING_LLM_BASE_URL.replace(/\/+$/, "");
   const workspace = process.env.ANYTHING_LLM_REASONING_WORKSPACE || process.env.ANYTHING_LLM_WORKSPACE || "reasoning";
 
   const res = await fetch(`${base}/workspace/${workspace}/chat`, {
