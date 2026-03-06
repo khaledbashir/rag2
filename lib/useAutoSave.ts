@@ -144,6 +144,25 @@ export function useAutoSave({
         }
     }, [projectId, getValues, setStatus]);
 
+    // Seed the hash on mount so hydration (reset(initialData)) doesn't trigger a save.
+    // Without this, opening a project overwrites updatedAt to "now".
+    const seededRef = useRef(false);
+    useEffect(() => {
+        if (!isValidProjectId(projectId) || seededRef.current) return;
+        // Wait one tick so reset(initialData) has applied, then snapshot the hash
+        const timer = setTimeout(() => {
+            lastSavedRef.current = JSON.stringify(getValues());
+            seededRef.current = true;
+        }, 100);
+        return () => clearTimeout(timer);
+    }, [projectId, getValues]);
+
+    // Reset seed flag when projectId changes (navigating to a different project)
+    useEffect(() => {
+        seededRef.current = false;
+        lastSavedRef.current = "";
+    }, [projectId]);
+
     // Debounced save on form changes
     useEffect(() => {
         if (!isValidProjectId(projectId)) return;
