@@ -381,50 +381,70 @@ export async function generateScopingWorkbook(
   });
 
   // ─── Sheet 1: Margin Analysis ───────────────────────────────────────────
-  buildMarginAnalysis(wb, projectName, clientName, today, displays, altDisplays, grandCost, grandSelling, grandMargin, grandMarginPct, includeBond);
+  const maGrandTotalRow = buildMarginAnalysis(wb, projectName, clientName, today, displays, altDisplays, grandCost, grandSelling, grandMargin, grandMarginPct, includeBond);
 
-  // ─── Sheet 2: Budget Summary (per-category view) ───────────────────────
+  // Cross-sheet link: Project Overview document total → MA BASE BID GRAND TOTAL selling price
+  const overviewSheet = wb.getWorksheet("Project Overview");
+  if (overviewSheet) {
+    overviewSheet.eachRow((row) => {
+      if (row.getCell(2).value === "DOCUMENT TOTAL") {
+        row.getCell(3).value = {
+          formula: `'Margin Analysis'!D${maGrandTotalRow}`,
+          result: grandSelling,
+        };
+      }
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TAB ORDER (FINAL — Natalia, March 6 2026)
+  // 1 Project Overview | 2 Margin Analysis | 3 Budget Summary | 4 LED Cost
+  // 5 Tech Specs | 6 Install (per screen) | 7 Processor Count | 8 Bundle Equip
+  // 9 Travel | 10 CMS | 11 Scoring | 12 Resp Matrix | 13 P&L | 14 Cash Flow
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // 3. Budget Summary
   buildBudgetSummary(wb, projectName, clientName, today, displays, grandCost, grandSelling, grandMargin, grandMarginPct);
 
-  // ─── Sheet 3: LED Cost Sheet ────────────────────────────────────────────
+  // 4. LED Cost Sheet
   buildLedCostSheet(wb, projectName, displays);
 
-  // ─── Sheet 3: Processor Count (right after LED Cost Sheet) ─────────────
-  buildProcessorCount(wb, projectName, displays);
+  // 5. Tech Specs (no pricing — for installers/subs)
+  buildTechSpecsSheet(wb, projectName, displays);
 
-  // ─── Sheet 4-N: Per-Zone Install Sheets ─────────────────────────────────
+  // 6. Install sheets (one per screen)
   displays.forEach((d) => {
     buildInstallSheet(wb, projectName, today, d, installComplexity);
   });
 
-  // ─── P&L ────────────────────────────────────────────────────────────────
-  buildPnL(wb, projectName, displays, grandCost, grandSelling, grandMargin, paymentTerms);
+  // 7. Processor Count
+  buildProcessorCount(wb, projectName, displays);
 
-  // ─── Cash Flow ──────────────────────────────────────────────────────────
-  buildCashFlow(wb, projectName, grandSelling, grandCost, paymentTerms, contractDate, completionDate);
-
-  // ─── PO's ───────────────────────────────────────────────────────────────
-  buildPOs(wb, projectName);
-
-  // ─── Resp Matrix ────────────────────────────────────────────────────────
-  buildRespMatrix(wb, projectName, project);
-
-  // ─── Travel ─────────────────────────────────────────────────────────────
-  buildTravel(wb, projectName);
-
-  // ─── CMS ────────────────────────────────────────────────────────────────
-  buildCMS(wb, projectName);
-
-  // ─── Scoring ────────────────────────────────────────────────────────────
-  buildScoring(wb, projectName, displays);
-
-  // ─── Bundle Equipment (Processor & Equipment breakdown per display) ────
+  // 8. Bundle Equipment
   buildBundleEquipmentSheet(wb, projectName, displays);
 
-  // ─── Tech Specs (Installers) — no pricing, cross-sheet refs to LED Cost Sheet
-  buildTechSpecsSheet(wb, projectName, displays);
+  // 9. Travel
+  buildTravel(wb, projectName);
 
-  // ─── Alternates (reference only — not in budget) ──────────────────────
+  // 10. CMS
+  buildCMS(wb, projectName);
+
+  // 11. Scoring
+  buildScoring(wb, projectName, displays);
+
+  // 12. Resp Matrix
+  buildRespMatrix(wb, projectName, project);
+
+  // 13. P&L
+  buildPnL(wb, projectName, displays, grandCost, grandSelling, grandMargin, paymentTerms);
+
+  // 14. Cash Flow
+  buildCashFlow(wb, projectName, grandSelling, grandCost, paymentTerms, contractDate, completionDate);
+
+  // Internal: PO's
+  buildPOs(wb, projectName);
+
+  // Alternates (reference only — not in budget)
   if (altDisplays.length > 0) {
     buildAlternatesSheet(wb, projectName, altDisplays);
   }
@@ -729,7 +749,7 @@ function buildMarginAnalysis(
   grandMargin: number,
   grandMarginPct: number,
   includeBond: boolean,
-): void {
+): number {
   const ws = wb.addWorksheet("Margin Analysis", {
     properties: { tabColor: { argb: C.ANC_BLUE } },
   });
@@ -955,6 +975,8 @@ function buildMarginAnalysis(
   }
   // Toggleable: row grouping so user can collapse/expand the grand total
   bbR.outlineLevel = 1;
+
+  return baseBidRow; // Return row number for cross-sheet formula references
 }
 
 // ─── 2. LED COST SHEET ──────────────────────────────────────────────────────
