@@ -3632,7 +3632,11 @@ export const ProposalContextProvider = ({
             if (excelPreview && excelPreview.sheets?.length > 0) {
                 console.log("[EXCEL IMPORT] Parser failed — activating Column Mapper fallback");
                 setColumnMapperNeeded(true);
-                showError("Standard parser couldn't read this file", "Use the Column Mapper below to manually map columns.");
+                // Show the specific parser error so user knows WHY it failed
+                const detail = message.includes("Margin Analysis") || message.includes("Cost") || message.includes("Selling Price")
+                    ? message
+                    : "This file uses a different template format than expected.";
+                showError(detail, "Use the Column Mapper below to manually map columns.");
             } else {
                 showError("Excel import failed", message);
             }

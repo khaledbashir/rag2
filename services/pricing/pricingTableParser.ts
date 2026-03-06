@@ -97,7 +97,7 @@ function parsePricingTablesInner(
   // 1. Find Margin Analysis sheet (fuzzy: Margin-Analysis, Margin Analysis (CAD), etc.)
   const sheetName = findMarginAnalysisSheet(workbook);
   if (!sheetName) {
-    return fail("No sheet matching Margin/Analysis/Total found", null);
+    return fail("No Margin Analysis tab found. This file may not be an ANC Cost Analysis workbook — expected a tab named 'Margin Analysis'.", null);
   }
   console.log(`[PRICING PARSER] Found sheet: "${sheetName}"`);
 
@@ -125,7 +125,7 @@ function parsePricingTablesInner(
   // 4. Find column headers
   let columnMap = findColumnHeaders(data);
   if (!columnMap) {
-    return fail("Could not find valid pricing column headers", sheetName);
+    return fail("Could not find 'Cost' or 'Selling Price' columns in the Margin Analysis tab. This may be a different template format — expected standard ANC column headers.", sheetName);
   }
   console.log(`[PRICING PARSER] Column map: label@${columnMap.label}, cost@${columnMap.cost}, sell@${columnMap.sell}`);
 

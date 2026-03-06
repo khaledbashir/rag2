@@ -113,14 +113,98 @@ function findMarginColumns(cells: string[], sellIdx: number): { margin: number; 
 // Main entry point
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Column validation: detect header-vs-data shift
+// ---------------------------------------------------------------------------
+
+const isTextLabel = (v: any) => {
+  const s = String(v ?? "").trim();
+  return s.length > 0 && /[a-z]/i.test(s);
+};
+
+const isNumericCell = (v: any) => {
+  if (typeof v === "number" && isFinite(v)) return true;
+  const s = String(v ?? "").replace(/[$£€C,\s]/g, "").trim();
+  return s.length > 0 && isFinite(parseFloat(s));
+};
+
+/**
+ * After finding a column map from headers, validate that the label column
+ * actually contains text in data rows. If it contains mostly numbers, the
+ * header row is shifted relative to data — apply a corrective shift.
+ */
+function validateColumnMap(data: any[][], headerRowIdx: number, map: ColumnMap): ColumnMap {
+  const start = headerRowIdx + 1;
+  const end = Math.min(data.length, start + 20);
+  let labelText = 0;
+  let labelNumeric = 0;
+
+  for (let i = start; i < end; i++) {
+    const row = data[i] || [];
+    const v = row[map.label];
+    if (v === "" || v === null || v === undefined) continue;
+    if (isTextLabel(v)) labelText++;
+    else if (isNumericCell(v)) labelNumeric++;
+  }
+
+  // If label column has MORE numbers than text, header is likely shifted right
+  if (labelNumeric > labelText && labelNumeric >= 3) {
+    // Try shifting the entire map left by 1
+    const shifted: ColumnMap = {
+      label: map.label - 1,
+      cost: map.cost - 1,
+      sell: map.sell - 1,
+      margin: map.margin - 1,
+      marginPct: map.marginPct - 1,
+    };
+    // Verify shift is valid (no negative indices) and label col now has text
+    if (shifted.label >= 0 && shifted.cost >= 0 && shifted.sell >= 0) {
+      let shiftedText = 0;
+      let shiftedNumeric = 0;
+      for (let i = start; i < end; i++) {
+        const row = data[i] || [];
+        const v = row[shifted.label];
+        if (v === "" || v === null || v === undefined) continue;
+        if (isTextLabel(v)) shiftedText++;
+        else if (isNumericCell(v)) shiftedNumeric++;
+      }
+      if (shiftedText > shiftedNumeric) {
+        console.log(`[COL DETECT] Header-data shift detected: label col ${map.label} has ${labelNumeric} numbers vs ${labelText} text. Shifting all columns left by 1.`);
+        return shifted;
+      }
+    }
+  }
+
+  return map;
+}
+
+// ---------------------------------------------------------------------------
+// Main entry point
+// ---------------------------------------------------------------------------
+
 /**
  * Find column headers dynamically.
  * Searches first 40 rows. Returns null only if no viable cost+sell pair found.
+ *
+ * Tiered:
+ *   Tier 1 — exact cost+sell synonym match
+ *   Tier 2 — fuzzy contains match
+ *   Tier 3 — sell-only (no cost column — common in audit/summary sheets)
  */
 export function findColumnHeaders(data: any[][]): ColumnMap | null {
   const limit = Math.min(data.length, 40);
 
-  // Pass 1: Tier 1 exact match
+  // Find the header row index for validation (first row with cost or sell keywords)
+  const findHeaderRow = (map: ColumnMap): number => {
+    for (let i = 0; i < limit; i++) {
+      const row = data[i] || [];
+      const cells = row.map(norm);
+      if (COST_EXACT.has(cells[map.cost]) || SELL_EXACT.has(cells[map.sell])) return i;
+    }
+    return 0;
+  };
+
+  // Pass 1: Tier 1 exact match (cost + sell)
   for (let i = 0; i < limit; i++) {
     const row = data[i] || [];
     const cells = row.map(norm);
@@ -128,12 +212,14 @@ export function findColumnHeaders(data: any[][]): ColumnMap | null {
     const sellIdx = findByExactSet(cells, SELL_EXACT);
     if (costIdx !== -1 && sellIdx !== -1 && costIdx !== sellIdx) {
       const { margin, marginPct } = findMarginColumns(cells, sellIdx);
-      console.log(`[COL DETECT] Tier 1 match at row ${i}: cost@${costIdx}="${cells[costIdx]}", sell@${sellIdx}="${cells[sellIdx]}"`);
-      return { label: findLabelColumn(cells, costIdx), cost: costIdx, sell: sellIdx, margin, marginPct };
+      const rawMap = { label: findLabelColumn(cells, costIdx), cost: costIdx, sell: sellIdx, margin, marginPct };
+      const validated = validateColumnMap(data, i, rawMap);
+      console.log(`[COL DETECT] Tier 1 match at row ${i}: cost@${validated.cost}="${cells[costIdx]}", sell@${validated.sell}="${cells[sellIdx]}"${validated !== rawMap ? " (shift-corrected)" : ""}`);
+      return validated;
     }
   }
 
-  // Pass 2: Tier 2 fuzzy contains match
+  // Pass 2: Tier 2 fuzzy contains match (cost + sell)
   for (let i = 0; i < limit; i++) {
     const row = data[i] || [];
     const cells = row.map(norm);
@@ -142,12 +228,37 @@ export function findColumnHeaders(data: any[][]): ColumnMap | null {
     const sellIdx = findByContains(cells, SELL_CONTAINS, costIdx);
     if (sellIdx === -1) continue;
     const { margin, marginPct } = findMarginColumns(cells, sellIdx);
-    console.log(`[COL DETECT] Tier 2 fuzzy match at row ${i}: cost@${costIdx}="${cells[costIdx]}", sell@${sellIdx}="${cells[sellIdx]}"`);
-    return { label: findLabelColumn(cells, costIdx), cost: costIdx, sell: sellIdx, margin, marginPct };
+    const rawMap = { label: findLabelColumn(cells, costIdx), cost: costIdx, sell: sellIdx, margin, marginPct };
+    const validated = validateColumnMap(data, i, rawMap);
+    console.log(`[COL DETECT] Tier 2 fuzzy match at row ${i}: cost@${validated.cost}="${cells[costIdx]}", sell@${validated.sell}="${cells[sellIdx]}"${validated !== rawMap ? " (shift-corrected)" : ""}`);
+    return validated;
+  }
+
+  // Pass 3: Tier 3 — sell-only (no cost column found, common in audit sheets)
+  for (let i = 0; i < limit; i++) {
+    const row = data[i] || [];
+    const cells = row.map(norm);
+    const sellIdx = findByExactSet(cells, SELL_EXACT);
+    if (sellIdx !== -1) {
+      // Verify this row's sell column has numeric data below it (not just a stray label)
+      let numericCount = 0;
+      for (let j = i + 1; j < Math.min(data.length, i + 15); j++) {
+        const dr = data[j] || [];
+        if (isNumericCell(dr[sellIdx])) numericCount++;
+      }
+      if (numericCount >= 2) {
+        const labelIdx = findLabelColumn(cells, sellIdx);
+        // In sell-only mode, cost maps to same column as sell (best-effort)
+        const rawMap = { label: labelIdx, cost: sellIdx, sell: sellIdx, margin: sellIdx + 1, marginPct: sellIdx + 2 };
+        const validated = validateColumnMap(data, i, rawMap);
+        console.log(`[COL DETECT] Tier 3 sell-only match at row ${i}: sell@${validated.sell}="${cells[sellIdx]}" (no cost column)`);
+        return validated;
+      }
+    }
   }
 
   // Diagnostic: log first 10 rows so failures are debuggable
-  console.warn("[COL DETECT] FAILED — no cost+sell columns found. First 10 rows:");
+  console.warn("[COL DETECT] FAILED — no pricing columns found. First 10 rows:");
   for (let i = 0; i < Math.min(data.length, 10); i++) {
     const row = (data[i] || []).map(norm).filter((c) => c.length > 0);
     if (row.length > 0) console.warn(`  R${i}: ${row.join(" | ")}`);
