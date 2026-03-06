@@ -16,6 +16,7 @@ import type {
   ExtractedProjectInfo,
   ExtractedRequirement,
 } from "@/services/rfp/unified/types";
+import { buildProjectSummary, type ProjectSummaryInfo } from "@/services/proposal/server/exportMirrorUglySheetExcel";
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
 
@@ -74,6 +75,21 @@ export async function POST(request: NextRequest) {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "ANC Proposal Engine";
     workbook.created = new Date();
+
+    // ━━━ SHEET 0: Project Summary (first tab) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    const summarySheet = workbook.addWorksheet("Project Summary", {
+      properties: { tabColor: { argb: COLORS.DARK_HEADER } },
+    });
+    const summaryInfo: ProjectSummaryInfo = {
+      projectName,
+      clientName: project.clientName ?? undefined,
+      createdAt: new Date(analysis.createdAt).toLocaleDateString(),
+      updatedAt: new Date(analysis.updatedAt || analysis.createdAt).toLocaleDateString(),
+      documentMode: "RFP_ANALYSIS",
+      displayCount: specs.length,
+    };
+    buildProjectSummary(summarySheet, summaryInfo);
 
     // ━━━ SHEET 1: LED Displays ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

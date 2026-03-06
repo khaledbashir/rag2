@@ -400,6 +400,8 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   let marginDocTotalRow = 0;
   const subtotalCostRows: number[] = [];
   const grandTotalSellRows: number[] = [];
+  // Track section name → MA grand total row (0-indexed) for cross-sheet LED → MA linking
+  const sectionGrandTotalMap: Record<string, number> = {};
 
   if (hasPricingTables) {
     // ══════════════════════════════════════════════════════════════════════
@@ -465,21 +467,26 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       };
       maRow++;
 
-      // Tax row — use pre-computed static value (not formula) to avoid Univer formula bugs
+      // Tax row — formula-driven: =SUBTOTAL * taxRate (rate in hidden col F)
       const taxAmount = table.tax?.amount || 0;
+      const sectionSubtotal = sectionSellSum || 1; // avoid /0
+      const taxRate = table.tax?.rate ?? (taxAmount > 0 && sectionSubtotal > 0 ? taxAmount / sectionSubtotal : 0);
       const taxIdx = maRow;
       maCellData[taxIdx] = {
         0: { v: table.tax?.label || "TAX" },
-        2: { v: taxAmount, s: "currency" },
+        2: { f: `=C${sr}*F${taxIdx + 1}`, s: "currency" },
+        5: { v: taxRate }, // Tax rate (editable in hidden col F)
       };
       maRow++;
 
-      // Bond row — use pre-computed static value
+      // Bond row — formula-driven: =SUBTOTAL * bondRate (rate in hidden col F)
       const bondAmount = table.bond || 0;
+      const bondRate = bondAmount > 0 && sectionSubtotal > 0 ? bondAmount / sectionSubtotal : 0.015;
       const bondIdx = maRow;
       maCellData[bondIdx] = {
         0: { v: "BOND" },
-        2: { v: bondAmount, s: "currency" },
+        2: { f: `=C${sr}*F${bondIdx + 1}`, s: "currency" },
+        5: { v: bondRate }, // Bond rate (editable in hidden col F)
       };
       maRow++;
 
@@ -493,6 +500,10 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         3: hasCostData ? { f: `=C${gr}-B${gr}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
         4: hasCostData ? { f: `=IF(C${gr}=0,0,D${gr}/C${gr})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
       };
+      // Track for cross-sheet LED → MA linking
+      if (table.name) {
+        sectionGrandTotalMap[table.name.toLowerCase().trim()] = grandTotalIdx;
+      }
       maRow++;
 
       // Debug: log formula references for first section
@@ -611,6 +622,38 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       3: { f: `=C${maRow + 1}-B${maRow + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
       4: { f: `=IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } },
     };
+  }
+
+  // Cross-sheet linking: LED selling price → MA section grand total
+  // If a screen name matches an MA section name, link via formula instead of static value
+  if (Object.keys(sectionGrandTotalMap).length > 0) {
+    screens.forEach((spec, si) => {
+      const ledRow = si + 1; // 0-indexed row in LED sheet
+      const screenName = (spec.name || "").toLowerCase().trim();
+      if (!screenName) return;
+
+      // Fuzzy match: exact, then substring containment
+      let maGrandTotalIdx: number | undefined;
+      if (sectionGrandTotalMap[screenName] != null) {
+        maGrandTotalIdx = sectionGrandTotalMap[screenName];
+      } else {
+        for (const [sectionName, rowIdx] of Object.entries(sectionGrandTotalMap)) {
+          if (sectionName.includes(screenName) || screenName.includes(sectionName)) {
+            maGrandTotalIdx = rowIdx;
+            break;
+          }
+        }
+      }
+
+      if (maGrandTotalIdx != null && ledCellData[ledRow]) {
+        // Col 19 = Selling Price → reference MA grand total Col C (1-based row)
+        const maRow1Based = maGrandTotalIdx + 1;
+        ledCellData[ledRow][19] = {
+          f: `='Margin Analysis'!C${maRow1Based}`,
+          s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 },
+        };
+      }
+    });
   }
 
   sheets["margin-analysis"] = {

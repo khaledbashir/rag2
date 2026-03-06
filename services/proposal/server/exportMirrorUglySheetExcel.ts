@@ -115,7 +115,7 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     displayCount: args.screens.length,
   }, args.currency);
 
-  const ledSheet = workbook.addWorksheet("LED Sheet");
+  const ledSheet = workbook.addWorksheet("LED Cost Sheet");
   const marginSheet = workbook.addWorksheet("Margin Analysis");
 
   ledSheet.getCell("A1").value = `Project Name: ${args.projectName || args.clientName || ""}`.trim();
@@ -572,9 +572,9 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     techSheet.getCell(`A${r}`).value = screen.name || "Unnamed Display";
     techSheet.getCell(`B${r}`).value = qty;
     // Cross-sheet refs: Pitch, Height, Width from LED Sheet
-    techSheet.getCell(`C${r}`).value = pitch ? { formula: `'LED Sheet'!E${r}`, result: pitch } : null;
-    techSheet.getCell(`D${r}`).value = heightFt ? { formula: `'LED Sheet'!F${r}`, result: heightFt } : null;
-    techSheet.getCell(`E${r}`).value = widthFt ? { formula: `'LED Sheet'!G${r}`, result: widthFt } : null;
+    techSheet.getCell(`C${r}`).value = pitch ? { formula: `'LED Cost Sheet'!E${r}`, result: pitch } : null;
+    techSheet.getCell(`D${r}`).value = heightFt ? { formula: `'LED Cost Sheet'!F${r}`, result: heightFt } : null;
+    techSheet.getCell(`E${r}`).value = widthFt ? { formula: `'LED Cost Sheet'!G${r}`, result: widthFt } : null;
     // Pixels H: =ROUND(D{r}*304.8/C{r},0) — only if pitch > 0, else use parsed matrix
     if (matrix?.h != null) {
       techSheet.getCell(`F${r}`).value = pixelsH;
@@ -595,8 +595,8 @@ export async function generateMirrorUglySheetExcelBuffer(args: {
     techSheet.getCell(`J${r}`).value = null;
     techSheet.getCell(`K${r}`).value = null;
     // Cross-sheet refs: Weight and Power always reference LED Sheet (formula resolves even if source is empty)
-    techSheet.getCell(`L${r}`).value = { formula: `'LED Sheet'!N${r}`, result: toNumber(audit?.estimatedWeightLbs) || 0 };
-    techSheet.getCell(`M${r}`).value = { formula: `'LED Sheet'!O${r}`, result: toNumber(audit?.totalMaxPowerW) || 0 };
+    techSheet.getCell(`L${r}`).value = { formula: `'LED Cost Sheet'!N${r}`, result: toNumber(audit?.estimatedWeightLbs) || 0 };
+    techSheet.getCell(`M${r}`).value = { formula: `'LED Cost Sheet'!O${r}`, result: toNumber(audit?.totalMaxPowerW) || 0 };
     // BTU/hr: =M{r}*3.412
     const techPowerW = toNumber(audit?.totalMaxPowerW);
     if (techPowerW > 0) {

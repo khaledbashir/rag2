@@ -580,7 +580,7 @@ export async function parseANCExcel(buffer: Buffer, fileName?: string): Promise<
         altRowsDetected,
         blankRowsSkipped,
         headerRowIndex,
-        sheetsRead: ['LED Sheet', 'Margin Analysis'].filter(Boolean),
+        sheetsRead: ['LED Cost Sheet', 'Margin Analysis'].filter(Boolean),
     };
 
     const verificationManifest: VerificationManifest = computeManifest(
