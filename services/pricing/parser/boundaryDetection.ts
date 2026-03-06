@@ -22,6 +22,24 @@ export interface TableBoundary {
  *   the data rows between the header and the first detail-section header are
  *   orphaned.  This parameter lets us recover them as a named summary table.
  */
+/**
+ * Quick viability check for a header row — does it have real line items after it?
+ * Used before the full isViableSectionStart (which needs anyPriorHeaderHasColumnHeaders context).
+ */
+function isViableSectionStartEarly(rows: RawRow[], headerIdx: number): boolean {
+  const scanLimit = Math.min(rows.length - 1, headerIdx + 20);
+  for (let j = headerIdx + 1; j <= scanLimit; j++) {
+    const r = rows[j];
+    if (!r || r.isEmpty) continue;
+    if (r.isHeader && !r.isAlternateHeader) return false;
+    if (r.isGrandTotal) return false;
+    if (r.isTax || r.isBond || r.isTariff || r.isSubtotal || r.isAlternateLine || r.isAlternateHeader) continue;
+    const hasLineValue = Number.isFinite(r.sell) || Number.isFinite(r.cost);
+    if (r.label && hasLineValue) return true;
+  }
+  return false;
+}
+
 export function findTableBoundaries(rows: RawRow[], headerRowLabel?: string): TableBoundary[] {
   const boundaries: TableBoundary[] = [];
 
@@ -29,9 +47,20 @@ export function findTableBoundaries(rows: RawRow[], headerRowLabel?: string): Ta
   // In many ANC Excels the "TOTAL:" row doubles as the column-header row.
   // Data rows that follow (section roll-ups, subtotal, tax, bond, grand total)
   // have no preceding isHeader row and would otherwise be lost.
-  const firstHeaderIdx = rows.findIndex(
+  let firstHeaderIdx = rows.findIndex(
     (r) => !r.isEmpty && r.isHeader && !r.isAlternateHeader
   );
+
+  // If the first "header" is not a viable section start (e.g. a warranty row
+  // with empty formula results), skip past it to the next viable header.
+  // This ensures orphan boundaries include trailing subtotal/tax/bond/GT rows.
+  if (firstHeaderIdx > 0 && !isViableSectionStartEarly(rows, firstHeaderIdx)) {
+    const nextViable = rows.findIndex(
+      (r, i) => i > firstHeaderIdx && !r.isEmpty && r.isHeader && !r.isAlternateHeader
+    );
+    // No viable header found — all data is one orphan block
+    firstHeaderIdx = nextViable >= 0 ? nextViable : rows.length;
+  }
 
   if (firstHeaderIdx > 0) {
     // There are rows before the first section header
