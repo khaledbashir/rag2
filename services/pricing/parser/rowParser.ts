@@ -138,7 +138,7 @@ export function parseAllRows(
     const isTariff = labelNorm === "tariff" || labelNorm === "tariff cost" || labelNorm.startsWith("tariff ");
     const isGrandTotal = labelNorm.includes("grand total") || labelNorm.includes("sub total (bid form)") || labelNorm === "total" || labelNorm === "project total";
     const isAlternateHeader = isAlternateAddToCost || isAlternateDeduct || (looksLikeAlternateHeader && !hasColumnHeaders);
-    const isAlternateLine = labelNorm.startsWith("alt ") || labelNorm.startsWith("alt-") || labelNorm.includes("alternate");
+    const isAlternateLine = labelNorm.startsWith("alt ") || labelNorm.startsWith("alt-") || labelNorm.startsWith("alt:") || labelNorm.includes("alternate");
 
     rows.push({
       rowIndex: i,

@@ -255,9 +255,27 @@ export function findTableBoundaries(rows: RawRow[], headerRowLabel?: string): Ta
       currentTable.endRow = i;
     }
 
-    // For alternate sections, track the end but DON'T nest — they're standalone
-    if (inAlternates && currentTable && (row.isAlternateLine || (!row.isEmpty && row.label))) {
-      // Keep extending the standalone alternates boundary
+    // When in alternates mode, close the alt boundary if we hit something
+    // that clearly isn't part of the alternates (e.g. grand total, non-alt row)
+    if (inAlternates && currentTable) {
+      if (row.isGrandTotal) {
+        // Grand total after alternates (e.g. "BASE BID GRAND TOTAL") — close alt boundary
+        if (currentTable.endRow === -1) {
+          // Find last actual alternate line before this grand total
+          let closeRow = currentTable.startRow || 0;
+          for (let j = i - 1; j >= (currentTable.startRow || 0); j--) {
+            if (rows[j].isAlternateLine) {
+              closeRow = j; break;
+            }
+          }
+          currentTable.endRow = closeRow;
+        }
+        boundaries.push(currentTable as TableBoundary);
+        currentTable = null;
+        inAlternates = false;
+      } else if (row.isAlternateLine || (!row.isEmpty && row.label)) {
+        // Keep extending the standalone alternates boundary
+      }
     }
   }
 
