@@ -3263,9 +3263,19 @@ export const ProposalContextProvider = ({
         const formData = new FormData();
         formData.append("file", file);
 
+        // Choose endpoint: AI import (BETA) or standard parser
+        const isAiImport = getValues("details.aiImport" as any) === true;
+        const importEndpoint = isAiImport
+            ? "/api/proposals/ai-import"
+            : "/api/proposals/import-excel";
+
+        if (isAiImport) {
+            console.log("[EXCEL IMPORT] Using AI-powered import (BETA)");
+        }
+
         setExcelImportLoading(true);
         try {
-            const res = await fetch("/api/proposals/import-excel", {
+            const res = await fetch(importEndpoint, {
                 method: "POST",
                 body: formData,
             });
