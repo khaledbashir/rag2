@@ -157,11 +157,21 @@ export default function EstimatorStudio({
         if (previewData.sheets.length === 0) return;
         setExporting(true);
         try {
-            const blob = await exportEstimatorExcel(previewData);
+            // Use unified server-side export (same generator as RFP path)
+            const res = await fetch("/api/estimator/export-unified", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ answers }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ error: `Export failed (${res.status})` }));
+                throw new Error(err.error || `Export failed (${res.status})`);
+            }
+            const blob = await res.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = previewData.fileName;
+            a.download = res.headers.get("Content-Disposition")?.split("filename=")[1]?.replace(/"/g, "") || previewData.fileName;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -172,7 +182,7 @@ export default function EstimatorStudio({
         } finally {
             setExporting(false);
         }
-    }, [previewData]);
+    }, [answers, previewData]);
 
     const handleComplete = useCallback(() => {
         setQuestionsComplete(true);
