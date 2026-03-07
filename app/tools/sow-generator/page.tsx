@@ -30,6 +30,10 @@ import {
   FileText,
   Undo,
   Redo,
+  MessageSquare,
+  Send,
+  Zap,
+  ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -557,8 +561,12 @@ export default function SOWGeneratorPage() {
     signoff: "<p>Each display will be reviewed to confirm that equipment has been installed per the SOW and to the satisfaction of the ANC project manager and the customer.</p>",
   });
 
-  // AI suggestion state
+  // AI state
   const [aiLoadingSection, setAiLoadingSection] = useState<string | null>(null);
+  const [aiCommand, setAiCommand] = useState("");
+  const [aiProcessing, setAiProcessing] = useState(false);
+  const [aiLastAction, setAiLastAction] = useState<string | null>(null);
+  const aiInputRef = useRef<HTMLInputElement>(null);
 
   // Derived
   const validDisplays = displays.filter((d) => d.name.trim());
@@ -707,6 +715,201 @@ export default function SOWGeneratorPage() {
       // Silently fail — AI assist is optional
     } finally {
       setAiLoadingSection(null);
+    }
+  };
+
+  // ─── AI Command Handler ──────────────────────────────────────────
+  const executeAICommand = async (command: string) => {
+    if (!command.trim()) return;
+    setAiProcessing(true);
+    setAiLastAction(null);
+    const cmd = command.toLowerCase().trim();
+
+    try {
+      // ── Local intent parsing (fast, no API call needed) ──────────
+
+      // Add display: "add a 20x40 display called Main Scoreboard at 10mm"
+      const displayMatch = cmd.match(/add\s+(?:a\s+)?(?:(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)\s+)?display\s+(?:called\s+|named\s+)?["""]?([^"""\d][^"""]*?)["""]?(?:\s+(?:at\s+)?(\d+(?:\.\d+)?)\s*mm)?$/i)
+        || cmd.match(/add\s+display\s*[:\-]?\s*(.+)/i);
+      if (displayMatch || cmd.startsWith("add display")) {
+        const newD = makeDisplay();
+        if (displayMatch && displayMatch[3]) {
+          // Full match: dimensions + name + pitch
+          newD.heightFt = displayMatch[1] || "";
+          newD.widthFt = displayMatch[2] || "";
+          newD.name = displayMatch[3].trim();
+          newD.pixelPitch = displayMatch[4] || "";
+        } else if (displayMatch && displayMatch[1] && !displayMatch[2]) {
+          // Simple: "add display Main Scoreboard"
+          newD.name = displayMatch[1].trim();
+        }
+        setDisplays(prev => [...prev, newD]);
+        setAiLastAction(`Added display "${newD.name || "New Display"}"`);
+        setAiCommand("");
+        setAiProcessing(false);
+        return;
+      }
+
+      // Toggle union labor
+      if (cmd.includes("union")) {
+        const enable = !cmd.includes("no ") && !cmd.includes("remove") && !cmd.includes("disable");
+        setIsUnionLabor(enable);
+        setAiLastAction(enable ? "Enabled union labor" : "Disabled union labor");
+        setAiCommand("");
+        setAiProcessing(false);
+        return;
+      }
+
+      // Toggle night work
+      if (cmd.includes("night")) {
+        const enable = !cmd.includes("no ") && !cmd.includes("remove") && !cmd.includes("disable");
+        setHasNightWork(enable);
+        setAiLastAction(enable ? "Enabled night work" : "Disabled night work");
+        setAiCommand("");
+        setAiProcessing(false);
+        return;
+      }
+
+      // Set dates: "set dates april 1 to july 30" or "install from 05/01/26 to 07/30/26"
+      const dateMatch = cmd.match(/(?:set\s+)?(?:install\s+)?(?:dates?|from)\s+(\S+)\s+(?:to|through|-)\s+(\S+)/i);
+      if (dateMatch) {
+        const tryParse = (s: string) => {
+          const d = new Date(s);
+          return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
+        };
+        const start = tryParse(dateMatch[1]);
+        const end = tryParse(dateMatch[2]);
+        if (start) setInstallStart(start);
+        if (end) setInstallEnd(end);
+        setAiLastAction(`Set install dates: ${start || dateMatch[1]} to ${end || dateMatch[2]}`);
+        setAiCommand("");
+        setAiProcessing(false);
+        return;
+      }
+
+      // Set project info: "project name XYZ" / "venue ABC" / "client DEF"
+      if (cmd.startsWith("project name") || cmd.startsWith("set project")) {
+        const name = cmd.replace(/^(?:set\s+)?project\s+(?:name\s+)?/i, "").trim();
+        if (name) { setProjectName(name); setAiLastAction(`Set project name: ${name}`); }
+        setAiCommand(""); setAiProcessing(false); return;
+      }
+      if (cmd.startsWith("venue") || cmd.startsWith("set venue")) {
+        const v = cmd.replace(/^(?:set\s+)?venue\s+/i, "").trim();
+        if (v) { setVenue(v); setAiLastAction(`Set venue: ${v}`); }
+        setAiCommand(""); setAiProcessing(false); return;
+      }
+      if (cmd.startsWith("client") || cmd.startsWith("set client")) {
+        const c = cmd.replace(/^(?:set\s+)?client\s+/i, "").trim();
+        if (c) { setClientName(c); setAiLastAction(`Set client: ${c}`); }
+        setAiCommand(""); setAiProcessing(false); return;
+      }
+      if (cmd.startsWith("address") || cmd.startsWith("set address")) {
+        const a = cmd.replace(/^(?:set\s+)?address\s+/i, "").trim();
+        if (a) { setAddress(a); setAiLastAction(`Set address: ${a}`); }
+        setAiCommand(""); setAiProcessing(false); return;
+      }
+
+      // Add/remove exclusion
+      if (cmd.match(/add\s+exclusion/i)) {
+        const text = cmd.replace(/^add\s+exclusion\s*/i, "").trim();
+        if (text) {
+          setExclusions(prev => [...prev, { id: uid(), text, enabled: true }]);
+          setAiLastAction(`Added exclusion: ${text}`);
+        }
+        setAiCommand(""); setAiProcessing(false); return;
+      }
+      if (cmd.match(/remove\s+exclusion/i)) {
+        const text = cmd.replace(/^remove\s+exclusion\s*/i, "").trim().toLowerCase();
+        if (text) {
+          setExclusions(prev => prev.filter(e => !e.text.toLowerCase().includes(text)));
+          setAiLastAction(`Removed exclusion matching: ${text}`);
+        }
+        setAiCommand(""); setAiProcessing(false); return;
+      }
+
+      // Toggle demolition: "enable demolition" / "add demolition"
+      if (cmd.includes("demolition")) {
+        const enable = !cmd.includes("no ") && !cmd.includes("remove") && !cmd.includes("disable");
+        setDisplays(prev => prev.map(d => ({ ...d, hasDemolition: enable })));
+        setAiLastAction(enable ? "Enabled demolition for all displays" : "Disabled demolition");
+        setAiCommand(""); setAiProcessing(false); return;
+      }
+
+      // Set revision
+      const revMatch = cmd.match(/revision\s+#?(\d+)/i);
+      if (revMatch) {
+        setRevision(revMatch[1]);
+        setAiLastAction(`Set revision to #${revMatch[1]}`);
+        setAiCommand(""); setAiProcessing(false); return;
+      }
+
+      // ── AI-powered actions (needs API call) ──────────────────────
+
+      // Add section with AI-generated content
+      if (cmd.match(/(?:add|write|create)\s+(?:a\s+)?(?:section|clause)\s+(?:about|for|on|called)?\s*(.+)/i)) {
+        const topicMatch = cmd.match(/(?:add|write|create)\s+(?:a\s+)?(?:section|clause)\s+(?:about|for|on|called)?\s*(.+)/i);
+        const topic = topicMatch?.[1]?.trim() || command;
+
+        // Check if it matches a preset
+        const preset = SECTION_PRESETS.find(p => p.title.toLowerCase().includes(topic.toLowerCase()));
+        if (preset && preset.title !== "Custom Section") {
+          setCustomSectionsBefore(prev => [...prev, { id: uid(), title: preset.title, content: preset.content, position: "before-scope" }]);
+          setAiLastAction(`Added "${preset.title}" section from template`);
+          setAiCommand(""); setAiProcessing(false); return;
+        }
+
+        // AI-generate the content
+        try {
+          const context = `Project: ${projectName}. Venue: ${venue}. Client: ${clientName}. ${validDisplays.length} displays. ${hasDemolition ? "Demolition included." : ""} ${isUnionLabor ? "Union labor." : ""}`;
+          const res = await fetch("/api/ai/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message: `Write a professional "${topic}" section for an LED display installation SOW. Context: ${context}. Output ONLY the section text, 2-4 sentences, professional tone.`,
+              systemPrompt: "You are a technical writer for ANC, an LED display installation company. Write concise, professional SOW section text. No headers or labels.",
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const text = data.response || data.message || "";
+            const title = topic.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+            setCustomSectionsBefore(prev => [...prev, {
+              id: uid(),
+              title,
+              content: `<p>${text}</p>`,
+              position: "before-scope",
+            }]);
+            setAiLastAction(`Added "${title}" section with AI-generated content`);
+          }
+        } catch {
+          setAiLastAction("AI unavailable — added blank section");
+          const title = topic.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+          setCustomSectionsBefore(prev => [...prev, { id: uid(), title, content: "<p></p>", position: "before-scope" }]);
+        }
+        setAiCommand(""); setAiProcessing(false); return;
+      }
+
+      // Fallback: ask AI to interpret and respond
+      try {
+        const context = `Current SOW state: Project "${projectName}", Venue "${venue}", Client "${clientName}", ${validDisplays.length} display(s): ${validDisplays.map(d => d.name).join(", ")}. Union: ${isUnionLabor}. Night: ${hasNightWork}. Exclusions: ${exclusions.filter(e => e.enabled).map(e => e.text).join(", ")}.`;
+        const res = await fetch("/api/ai/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: `The user said: "${command}". ${context}. Interpret what they want and respond with a brief, helpful answer. If they're asking you to do something, explain what action to take.`,
+            systemPrompt: "You are an AI assistant helping build an LED display installation SOW for ANC. Be concise and actionable.",
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setAiLastAction(data.response || data.message || "I understood your request but couldn't execute it automatically. Try a more specific command.");
+        }
+      } catch {
+        setAiLastAction("Try: 'add display [name]', 'add section about [topic]', 'set venue [name]', 'union labor', 'night work'");
+      }
+      setAiCommand("");
+    } finally {
+      setAiProcessing(false);
     }
   };
 
@@ -1110,27 +1313,100 @@ export default function SOWGeneratorPage() {
         </div>
       </div>
 
-      {/* Bottom Bar */}
-      <div className="flex items-center justify-between mt-6 p-4 rounded-xl bg-muted/30 border border-border">
-        <div className="text-xs text-muted-foreground">
-          {validDisplays.length} display{validDisplays.length !== 1 ? "s" : ""} |{" "}
-          {exclusions.filter(e => e.enabled).length} exclusions |{" "}
-          Rev #{revision}
-          {autoFilled && " | Auto-filled from project"}
+      {/* ═══ AI Command Bar (sticky bottom) ═══ */}
+      <div className="sticky bottom-0 left-0 right-0 mt-6 bg-background/95 backdrop-blur-sm border-t border-border shadow-[0_-4px_20px_rgba(0,0,0,0.08)] rounded-t-xl z-30">
+        {/* AI response toast */}
+        {aiLastAction && (
+          <div className="px-4 py-2 bg-brand-blue/5 border-b border-brand-blue/10">
+            <div className="flex items-center gap-2 max-w-4xl mx-auto">
+              <Zap className="w-3.5 h-3.5 text-brand-blue shrink-0" />
+              <p className="text-xs text-foreground flex-1">{aiLastAction}</p>
+              <button onClick={() => setAiLastAction(null)} className="text-muted-foreground hover:text-foreground"><X className="w-3 h-3" /></button>
+            </div>
+          </div>
+        )}
+
+        <div className="max-w-4xl mx-auto px-4 py-3">
+          {/* Quick action chips */}
+          <div className="flex items-center gap-1.5 mb-2 overflow-x-auto scrollbar-none">
+            <span className="text-[10px] text-muted-foreground font-medium shrink-0">Quick:</span>
+            {[
+              { label: "+ Display", cmd: "add display " },
+              { label: "+ Section", cmd: "add section about " },
+              { label: "Union Labor", cmd: "union labor" },
+              { label: "Night Work", cmd: "night work" },
+              { label: "Demolition", cmd: "enable demolition" },
+              { label: "+ Exclusion", cmd: "add exclusion " },
+              { label: "Safety Section", cmd: "add section about safety requirements" },
+              { label: "Warranty", cmd: "add section about warranty" },
+            ].map((chip) => (
+              <button
+                key={chip.label}
+                onClick={() => {
+                  if (chip.cmd.endsWith(" ")) {
+                    setAiCommand(chip.cmd);
+                    aiInputRef.current?.focus();
+                  } else {
+                    executeAICommand(chip.cmd);
+                  }
+                }}
+                className="shrink-0 px-2 py-1 text-[10px] font-medium rounded-full border border-border hover:border-brand-blue/30 hover:bg-brand-blue/5 text-muted-foreground hover:text-brand-blue transition-all"
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Command input + download */}
+          <div className="flex items-center gap-2">
+            <div className="flex-1 relative">
+              <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-500" />
+              <input
+                ref={aiInputRef}
+                value={aiCommand}
+                onChange={(e) => setAiCommand(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !aiProcessing) executeAICommand(aiCommand); }}
+                placeholder='Try: "add 20x40 display called Main Scoreboard at 10mm" or "write a safety section"'
+                className="w-full pl-9 pr-10 py-2.5 text-sm rounded-xl border border-border bg-muted/30 focus:bg-background focus:border-brand-blue/40 focus:outline-none focus:ring-2 focus:ring-brand-blue/10 transition-all"
+                disabled={aiProcessing}
+              />
+              {aiCommand && (
+                <button
+                  onClick={() => executeAICommand(aiCommand)}
+                  disabled={aiProcessing}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-brand-blue text-white hover:bg-brand-blue/90 transition-colors"
+                >
+                  {aiProcessing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                </button>
+              )}
+            </div>
+            <button
+              onClick={handleGenerate}
+              disabled={!canGenerate || generating}
+              className={cn(
+                "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all shrink-0",
+                canGenerate && !generating
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-600/20"
+                  : "bg-muted text-muted-foreground cursor-not-allowed"
+              )}
+            >
+              {generating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              DOCX
+            </button>
+          </div>
+
+          {/* Status line */}
+          <div className="flex items-center justify-between mt-1.5">
+            <p className="text-[10px] text-muted-foreground">
+              {validDisplays.length} display{validDisplays.length !== 1 ? "s" : ""} |{" "}
+              {exclusions.filter(e => e.enabled).length} exclusions |{" "}
+              {customSectionsBefore.length + customSectionsAfter.length > 0 ? `${customSectionsBefore.length + customSectionsAfter.length} custom section${customSectionsBefore.length + customSectionsAfter.length > 1 ? "s" : ""} | ` : ""}
+              Rev #{revision}
+              {autoFilled && " | Auto-filled"}
+            </p>
+            <p className="text-[10px] text-muted-foreground">AI-assisted SOW builder</p>
+          </div>
         </div>
-        <button
-          onClick={handleGenerate}
-          disabled={!canGenerate || generating}
-          className={cn(
-            "flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all",
-            canGenerate && !generating
-              ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-600/20"
-              : "bg-muted text-muted-foreground cursor-not-allowed"
-          )}
-        >
-          {generating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-          Download DOCX
-        </button>
       </div>
     </div>
   );
