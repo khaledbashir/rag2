@@ -194,6 +194,7 @@ const Step4Export = () => {
     } = useProposalContext();
     const { watch, getValues, setValue } = useFormContext<ProposalType>();
     const [exporting, setExporting] = useState(false);
+    const [sowExporting, setSowExporting] = useState(false);
     const [verificationLoading, setVerificationLoading] = useState(false);
     const [verificationResponse, setVerificationResponse] = useState<any | null>(null);
     const [verificationError, setVerificationError] = useState<string | null>(null);
@@ -582,6 +583,63 @@ const Step4Export = () => {
             await downloadBundlePdfs();
         } finally {
             setTimeout(() => setExporting(false), 2000);
+        }
+    };
+
+    const handleInstallSOW = async () => {
+        setSowExporting(true);
+        try {
+            const formData = getValues();
+            const formScreens = formData.details?.screens || [];
+            const pDoc = (formData.details as any)?.pricingDocument;
+            const tables = pDoc?.tables || [];
+
+            const displays = (formScreens as any[]).map((s: any, i: number) => {
+                const table = tables[i] || tables.find((t: any) =>
+                    t.name && s.name && t.name.toLowerCase().includes(s.name.toLowerCase())
+                );
+                return {
+                    name: s.name || s.screenName || `Display ${i + 1}`,
+                    widthFt: Number(s.widthFt || s.width || 0),
+                    heightFt: Number(s.heightFt || s.height || 0),
+                    pixelPitch: Number(s.pixelPitch || s.pitchMm || 0),
+                    quantity: Number(s.quantity || 1),
+                    environment: (s.environment || "Indoor") as "Indoor" | "Outdoor",
+                    structureType: s.structureType || "wall",
+                    installPrice: table?.grandTotal || 0,
+                };
+            });
+
+            const payload = {
+                projectName: formData.details?.proposalName || "Untitled Project",
+                clientName: (formData as any).receiver?.name || "Client",
+                venue: (formData.details as any)?.venue || formData.details?.proposalName || "",
+                date: new Date().toISOString().split("T")[0],
+                displays,
+                includeElectrical: true,
+                includeStructural: true,
+                currency: pDoc?.currency || "USD",
+            };
+
+            const res = await fetch("/api/sow/generate-installation", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+
+            if (!res.ok) throw new Error(await res.text());
+
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${payload.projectName} - Installation SOW.docx`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error("Installation SOW export failed:", err);
+        } finally {
+            setSowExporting(false);
         }
     };
 
@@ -1964,6 +2022,32 @@ const Step4Export = () => {
                                             </TooltipTrigger>
                                             <TooltipContent side="right" className="max-w-xs">
                                                 <p className="text-xs">Generate PDF via jsreport engine (deterministic rendering)</p>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </div>
+
+                                    <div className="p-4 flex items-center justify-between hover:bg-card/40 transition-colors border-t border-border/30">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600">
+                                                <FileSignature className="w-4 h-4" />
+                                            </div>
+                                            <div>
+                                                <div className="text-xs font-bold text-zinc-900 dark:text-foreground">Install SOW</div>
+                                                <div className="text-[10px] text-zinc-500 dark:text-muted-foreground">Subcontractor DOCX</div>
+                                            </div>
+                                        </div>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    onClick={handleInstallSOW}
+                                                    disabled={sowExporting || screens.length === 0}
+                                                    className="p-2 hover:bg-emerald-500/10 text-emerald-600 hover:text-emerald-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    {sowExporting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="right" className="max-w-xs">
+                                                <p className="text-xs">{screens.length === 0 ? "Add screens first" : "Generate Installation Scope of Work (DOCX)"}</p>
                                             </TooltipContent>
                                         </Tooltip>
                                     </div>
