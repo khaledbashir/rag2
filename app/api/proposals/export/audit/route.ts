@@ -4,6 +4,7 @@ import { generateAuditExcelBuffer } from "@/services/proposal/server/exportFormu
 import { generateMirrorUglySheetExcelBuffer } from "@/services/proposal/server/exportMirrorUglySheetExcel";
 import { generateScopingWorkbook } from "@/services/rfp/pipeline/generateScopingWorkbook";
 import { mapMirrorToScoping } from "@/services/rfp/pipeline/pricingDocumentToScopingMapper";
+import { mapIntelligenceToScoping } from "@/services/rfp/pipeline/screenAuditToScopingMapper";
 
 export async function POST(req: NextRequest) {
   try {
@@ -133,22 +134,18 @@ export async function POST(req: NextRequest) {
         summaryInfo,
       });
     } else {
-      buffer = await generateAuditExcelBuffer(screensWithAudit, {
+      // Intelligence/Manual Mode: canonical workbook via generateScopingWorkbook
+      const scopingOptions = mapIntelligenceToScoping({
+        screens: screensWithAudit,
+        currency,
         proposalName,
-        clientName: proposal?.clientName,
-        status: (proposal?.status as any) ?? "DRAFT",
-        boTaxApplies: /morgantown|wvu|milan\s+puskar/i.test(`${projectAddress} ${venue}`),
-        // REQ-126: Pass financial overrides for Zero Math Error compliance
+        clientName: receiverName || proposal?.clientName || body.clientName,
+        location: projectAddress || venue || null,
         bondRateOverride: body.bondRateOverride ?? (proposal?.bondRateOverride ? Number(proposal.bondRateOverride) : undefined),
         taxRateOverride: body.taxRateOverride ?? (proposal?.taxRateOverride ? Number(proposal.taxRateOverride) : undefined),
-        // REQ-126: Pass PDF total for verification section
-        pdfTotal: body.pdfTotal ?? internalAudit?.totals?.finalClientTotal,
-        // REQ-86: Structural steel tonnage
-        structuralTonnage: body.structuralTonnage ?? (proposal?.structuralTonnage ? Number(proposal.structuralTonnage) : undefined),
-        reinforcingTonnage: body.reinforcingTonnage ?? (proposal?.reinforcingTonnage ? Number(proposal.reinforcingTonnage) : undefined),
-        currency,
-        summaryInfo,
       });
+      const result = await generateScopingWorkbook(scopingOptions);
+      buffer = result.buffer;
     }
 
     return new Response(buffer as any, {
