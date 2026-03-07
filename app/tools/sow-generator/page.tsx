@@ -61,6 +61,13 @@ interface TaskItem {
   enabled: boolean;
 }
 
+interface CustomSection {
+  id: string;
+  title: string;
+  content: string;
+  position: "before-scope" | "after-tasks";
+}
+
 interface ProjectSummary {
   id: string;
   clientName: string;
@@ -68,6 +75,18 @@ interface ProjectSummary {
   screenCount: number;
   updatedAt: string;
 }
+
+// Section presets — common sections Matt might need that aren't in the 3 reference SOWs
+const SECTION_PRESETS: { title: string; content: string; icon: string }[] = [
+  { title: "Safety Requirements", content: "<p>All work shall comply with OSHA standards and applicable local safety regulations. Subcontractor shall provide all required PPE for their workers and maintain a safe work environment at all times.</p>", icon: "shield" },
+  { title: "Warranty", content: "<p>Subcontractor shall warrant all workmanship for a period of one (1) year from the date of substantial completion. Any defects in workmanship discovered during the warranty period shall be corrected at no additional cost to ANC or the Owner.</p>", icon: "badge" },
+  { title: "Schedule Milestones", content: "<p>Subcontractor shall provide a detailed installation schedule within five (5) business days of contract execution. Schedule shall include mobilization, installation phases, testing, and demobilization dates.</p>", icon: "calendar" },
+  { title: "Site Access & Logistics", content: "<p>Site access, staging areas, and working hours will be coordinated with the general contractor and venue operations. Subcontractor is responsible for coordinating material deliveries and crane/lift scheduling.</p>", icon: "truck" },
+  { title: "Insurance Requirements", content: "<p>Subcontractor shall maintain Commercial General Liability insurance with minimum limits of $1,000,000 per occurrence and $2,000,000 aggregate. Certificate of insurance shall be provided prior to mobilization.</p>", icon: "shield-check" },
+  { title: "Change Order Procedures", content: "<p>Any changes to the scope of work must be documented via written change order signed by both parties before work commences. No additional work will be compensated without prior written authorization from ANC.</p>", icon: "file-pen" },
+  { title: "Material Storage", content: "<p>Subcontractor shall be responsible for secure storage of all materials on-site. ANC will coordinate with the Owner to provide designated staging and storage areas. Subcontractor assumes all risk for stored materials.</p>", icon: "warehouse" },
+  { title: "Custom Section", content: "<p></p>", icon: "plus" },
+];
 
 function uid() { return crypto.randomUUID(); }
 
@@ -282,6 +301,90 @@ function EditableList({
   );
 }
 
+// ─── Add Section Button + Preset Picker ─────────────────────────────────────
+
+function AddSectionButton({
+  position,
+  showPicker,
+  onTogglePicker,
+  onAdd,
+}: {
+  position: "before-scope" | "after-tasks";
+  showPicker: boolean;
+  onTogglePicker: () => void;
+  onAdd: (title: string, content: string) => void;
+}) {
+  return (
+    <div className="relative my-4">
+      <div className="flex items-center gap-2">
+        <div className="flex-1 border-t border-dashed border-muted-foreground/20" />
+        <button
+          onClick={onTogglePicker}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-brand-blue hover:bg-brand-blue/5 rounded-full border border-dashed border-muted-foreground/30 hover:border-brand-blue/30 transition-all"
+        >
+          <Plus className="w-3 h-3" /> Add Section
+        </button>
+        <div className="flex-1 border-t border-dashed border-muted-foreground/20" />
+      </div>
+      {showPicker && (
+        <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-20 bg-white dark:bg-zinc-900 border border-border rounded-xl shadow-xl p-3 w-80">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Choose a section template</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {SECTION_PRESETS.map((preset) => (
+              <button
+                key={preset.title}
+                onClick={() => { onAdd(preset.title, preset.content); onTogglePicker(); }}
+                className="text-left px-2.5 py-2 rounded-lg hover:bg-muted/50 transition-colors border border-transparent hover:border-border"
+              >
+                <span className="text-xs font-medium text-foreground">{preset.title}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CustomSectionBlock({
+  section,
+  onUpdate,
+  onRemove,
+  onAISuggest,
+  aiLoading,
+}: {
+  section: CustomSection;
+  onUpdate: (field: "title" | "content", value: string) => void;
+  onRemove: () => void;
+  onAISuggest: (sectionId: string) => void;
+  aiLoading: boolean;
+}) {
+  return (
+    <div className="mb-4 group/custom relative border border-dashed border-brand-blue/20 rounded-lg p-3 bg-brand-blue/[0.02]">
+      <div className="flex items-center gap-2 mb-1">
+        <input
+          value={section.title}
+          onChange={(e) => onUpdate("title", e.target.value)}
+          placeholder="Section Title"
+          className="text-sm font-bold underline text-foreground bg-transparent border-none focus:outline-none flex-1"
+        />
+        <button onClick={() => onAISuggest(section.id)} disabled={aiLoading} className="p-1 rounded-full hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-600" title="AI suggest">
+          {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+        </button>
+        <button onClick={onRemove} className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/20 text-muted-foreground hover:text-red-500" title="Remove section">
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <SectionEditor
+        content={section.content}
+        onChange={(html) => onUpdate("content", html)}
+        sectionId={section.id}
+        placeholder="Click to write section content... or use the AI sparkle button"
+      />
+    </div>
+  );
+}
+
 // ─── Display Card ───────────────────────────────────────────────────────────
 
 function DisplayCard({
@@ -439,6 +542,9 @@ export default function SOWGeneratorPage() {
   const [displays, setDisplays] = useState<DisplayEntry[]>([makeDisplay()]);
   const [displayTasks, setDisplayTasks] = useState<Record<string, TaskItem[]>>({});
   const [exclusions, setExclusions] = useState<ExclusionItem[]>(DEFAULT_EXCLUSIONS.map(e => ({ ...e, id: uid() })));
+  const [customSectionsBefore, setCustomSectionsBefore] = useState<CustomSection[]>([]);
+  const [customSectionsAfter, setCustomSectionsAfter] = useState<CustomSection[]>([]);
+  const [showPresetPicker, setShowPresetPicker] = useState<"before-scope" | "after-tasks" | null>(null);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [autoFilled, setAutoFilled] = useState(false);
@@ -645,6 +751,10 @@ export default function SOWGeneratorPage() {
         bidDueDate: bidDueDate,
         sectionOverrides,
         customExclusions: exclusions.filter(e => e.enabled && !DEFAULT_EXCLUSIONS.some(d => d.text === e.text)).map(e => e.text),
+        customSections: [
+          ...customSectionsBefore.map(cs => ({ title: cs.title, content: stripHtml(cs.content), position: "before-scope" })),
+          ...customSectionsAfter.map(cs => ({ title: cs.title, content: stripHtml(cs.content), position: "after-tasks" })),
+        ],
         displays: validDisplays.map((d) => ({
           name: d.name.trim(),
           widthFt: parseFloat(d.widthFt) || 0,
@@ -860,6 +970,25 @@ export default function SOWGeneratorPage() {
             />
           </div>
 
+          {/* ── Custom Sections (before SCOPE OF WORK) ──────────────────── */}
+          {customSectionsBefore.map((cs) => (
+            <CustomSectionBlock
+              key={cs.id}
+              section={cs}
+              onUpdate={(field, value) => setCustomSectionsBefore(prev => prev.map(s => s.id === cs.id ? { ...s, [field]: value } : s))}
+              onRemove={() => setCustomSectionsBefore(prev => prev.filter(s => s.id !== cs.id))}
+              onAISuggest={handleAISuggest}
+              aiLoading={aiLoadingSection === cs.id}
+            />
+          ))}
+
+          <AddSectionButton
+            position="before-scope"
+            showPicker={showPresetPicker === "before-scope"}
+            onTogglePicker={() => setShowPresetPicker(prev => prev === "before-scope" ? null : "before-scope")}
+            onAdd={(title, content) => setCustomSectionsBefore(prev => [...prev, { id: uid(), title, content, position: "before-scope" }])}
+          />
+
           {/* ── REFERENCE DOCUMENTS (optional) ─────────────────────────── */}
           <div className="mb-4">
             <label className="flex items-center gap-2 cursor-pointer text-[11px] text-muted-foreground mb-2">
@@ -941,6 +1070,25 @@ export default function SOWGeneratorPage() {
               })}
             </div>
           </div>
+
+          {/* ── Custom Sections (after tasks, before pricing) ─────────── */}
+          {customSectionsAfter.map((cs) => (
+            <CustomSectionBlock
+              key={cs.id}
+              section={cs}
+              onUpdate={(field, value) => setCustomSectionsAfter(prev => prev.map(s => s.id === cs.id ? { ...s, [field]: value } : s))}
+              onRemove={() => setCustomSectionsAfter(prev => prev.filter(s => s.id !== cs.id))}
+              onAISuggest={handleAISuggest}
+              aiLoading={aiLoadingSection === cs.id}
+            />
+          ))}
+
+          <AddSectionButton
+            position="after-tasks"
+            showPicker={showPresetPicker === "after-tasks"}
+            onTogglePicker={() => setShowPresetPicker(prev => prev === "after-tasks" ? null : "after-tasks")}
+            onAdd={(title, content) => setCustomSectionsAfter(prev => [...prev, { id: uid(), title, content, position: "after-tasks" }])}
+          />
 
           {/* ── ITEMIZED PRICING ───────────────────────────────────────── */}
           <div className="border-t-[3px] border-black dark:border-white pt-3 mt-6">

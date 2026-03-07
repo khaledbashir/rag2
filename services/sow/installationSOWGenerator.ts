@@ -75,6 +75,8 @@ export interface InstallSOWInput {
   currency?: string;
   /** Per-section text overrides — key is section id, value is custom text */
   sectionOverrides?: Record<string, string>;
+  /** User-added custom sections */
+  customSections?: { title: string; content: string; position: "before-scope" | "after-tasks" }[];
 }
 
 /** Structured SOW data for the live preview UI */
@@ -431,6 +433,15 @@ export async function generateInstallationSOW(input: InstallSOWInput): Promise<B
     }
   }
 
+  // ─── Custom Sections (before scope) ──────────────────────────────
+  const beforeScopeSections = (input.customSections || []).filter(s => s.position === "before-scope");
+  for (const cs of beforeScopeSections) {
+    children.push(sectionHeading(cs.title));
+    for (const para of cs.content.split("\n\n")) {
+      if (para.trim()) children.push(bodyParagraph(para.trim()));
+    }
+  }
+
   // ─── REFERENCE DOCUMENTS (optional — Bilt HQ pattern) ────────────
   let nextSectionNum = 1;
   if (input.includeReferenceDocuments) {
@@ -485,6 +496,16 @@ export async function generateInstallationSOW(input: InstallSOWInput): Promise<B
     children.push(spacer(200));
     children.push(...buildDisplayTasks(display, nextSectionNum, input));
     nextSectionNum++;
+  }
+
+  // ─── Custom Sections (after tasks) ───────────────────────────────
+  const afterTasksSections = (input.customSections || []).filter(s => s.position === "after-tasks");
+  for (const cs of afterTasksSections) {
+    children.push(spacer(200));
+    children.push(sectionHeading(cs.title));
+    for (const para of cs.content.split("\n\n")) {
+      if (para.trim()) children.push(bodyParagraph(para.trim()));
+    }
   }
 
   // ─── ITEMIZED PRICING ─────────────────────────────────────────────
