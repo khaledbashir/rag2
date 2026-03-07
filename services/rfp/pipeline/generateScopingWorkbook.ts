@@ -34,6 +34,7 @@ import {
   getServiceMargin,
   getAllProducts,
   getProduct,
+  calculateHardwareCost,
   type ZoneClass,
   type InstallComplexity,
 } from "@/services/rfp/productCatalog";
@@ -252,14 +253,38 @@ function computeDisplays(
     const RATES = getBudgetRates();
     const BUNDLES = getSmartBundles();
 
-    // LED hardware cost: user override > priced > rate card pitch lookup > catalog constant
+    // LED hardware cost priority:
+    //   1. priced display (from RFP pricing engine)
+    //   2. user cost/sqft override
+    //   3. explicit product selection → product-specific cost/sqm
+    //   4. explicit product selection → use product's pitch for rate card lookup
+    //   5. rate card pitch lookup
+    //   6. catalog constant pitch lookup
     let ledHardwareCost = priced?.hardwareCost ?? 0;
-    if (!ledHardwareCost && spec.pixelPitchMm) {
+    const selectedProduct = spec.selectedProductId ? getProduct(spec.selectedProductId) : null;
+    if (!ledHardwareCost) {
       const overrideCostSqFt = (ov?.costPerSqFtOverride ?? 0) > 0 ? ov!.costPerSqFtOverride! : 0;
       if (overrideCostSqFt > 0) {
         ledHardwareCost = round2(areaSqFt * overrideCostSqFt);
-      } else {
-        // Rate card pitch key: "led_cost.X_Xmm" (e.g., "led_cost.4mm", "led_cost.2_5mm")
+      } else if (spec.selectedProductId) {
+        // Try product-specific cost/sqm from HARDWARE_COST_PER_SQM
+        const areaM2 = areaSqFt * 0.092903;
+        const productCost = calculateHardwareCost(areaM2, spec.selectedProductId);
+        if (productCost != null && productCost > 0) {
+          ledHardwareCost = round2(productCost);
+        } else {
+          // Product exists but no cost/sqm entry — use its pitch for rate lookup
+          const effectivePitch = selectedProduct?.pitchMm ?? spec.pixelPitchMm;
+          if (effectivePitch) {
+            const pitchKey = `led_cost.${String(effectivePitch).replace(".", "_")}mm`;
+            const rcRate = rc(pitchKey, 0);
+            const catalogRate = LED_COST_PER_SQFT_BY_PITCH[String(effectivePitch)];
+            const rate = rcRate > 0 ? rcRate : catalogRate;
+            if (rate) ledHardwareCost = round2(areaSqFt * rate);
+          }
+        }
+      } else if (spec.pixelPitchMm) {
+        // No explicit product — standard pitch-based lookup
         const pitchKey = `led_cost.${String(spec.pixelPitchMm).replace(".", "_")}mm`;
         const rcRate = rc(pitchKey, 0);
         const catalogRate = LED_COST_PER_SQFT_BY_PITCH[String(spec.pixelPitchMm)];
