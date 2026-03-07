@@ -242,7 +242,8 @@ async function callGemini(excelText: string): Promise<any> {
       }],
       generationConfig: {
         temperature: 0,
-        maxOutputTokens: 8000,
+        maxOutputTokens: 32000,
+        thinkingConfig: { thinkingBudget: 0 },
       },
     }),
   });
@@ -253,8 +254,14 @@ async function callGemini(excelText: string): Promise<any> {
   }
 
   const data = await res.json();
-  const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  console.log(`[AI IMPORT] Gemini response: ${reply.length} chars`);
+  const candidate = data.candidates?.[0];
+  const reply = candidate?.content?.parts?.[0]?.text || "";
+  const finishReason = candidate?.finishReason || "unknown";
+  const thoughtTokens = data.usageMetadata?.thoughtsTokenCount || 0;
+  console.log(`[AI IMPORT] Gemini: ${reply.length} chars, finish=${finishReason}, thinking=${thoughtTokens} tokens`);
+  if (finishReason === "MAX_TOKENS") {
+    console.warn("[AI IMPORT] Gemini hit token limit — response truncated");
+  }
   return extractJSON(reply);
 }
 
