@@ -535,29 +535,58 @@ export function buildPreviewSheets(answers: EstimatorAnswers, rates?: RateCard):
     // Use allCalcs/allDisplays for sheets that need alt rows, calcs for labor/services (no alts)
     const answersWithAlts = { ...answers, displays: allDisplays };
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CANONICAL TAB ORDER (matches exported workbook contract)
+    // 1 Project Overview | 2 Margin Analysis | 3 Budget Summary | 4 LED Cost
+    // 5 Tech Specs | 6 Install (per screen) | 7 Processor Count | 8 Bundle Equip
+    // 9 Travel | 10 CMS | 11 Scoring | 12 Resp Matrix | 13 P&L | 14 Cash Flow
+    // ═══════════════════════════════════════════════════════════════════════════
+
     const sheets: SheetTab[] = [
-        buildProjectInfo(answers, calcs),
-        buildBudgetSummary(answersWithAlts, allCalcs),
-        buildDisplayDetails(answersWithAlts, allCalcs),
-        buildLaborWorksheet(answers, calcs), // Labor doesn't change for alts
+        buildProjectInfo(answers, calcs),                              // 1. Project Overview
+        buildMarginAnalysisPreview(answers, calcs),                    // 2. Margin Analysis
+        buildBudgetSummary(answersWithAlts, allCalcs),                 // 3. Budget Summary
+        buildDisplayDetails(answersWithAlts, allCalcs),                // 4. LED Cost Sheet
+        buildTechSpecsPreview(answers, calcs),                         // 5. Tech Specs
     ];
 
-    // Add Cost Category Breakdown (3A-3G) in Detailed mode
-    if (answers.estimateDepth === "detailed" && calcs.length > 0) {
-        // Insert after Labor Worksheet (index 3)
-        sheets.splice(4, 0, buildCostCategoryBreakdown(answers, calcs, rates));
+    // 6. Install sheets (one per primary display)
+    for (let i = 0; i < calcs.length; i++) {
+        sheets.push(buildInstallPreview(answers, calcs[i], answers.displays[i], i));
     }
 
-    // Add Cabinet Layout sheet if any display has cabinet data
-    const hasCabinets = calcs.some((c) => c.cabinetLayout);
-    if (hasCabinets) {
-        sheets.splice(3, 0, buildCabinetLayout(answers, calcs));
-    }
+    // 7. Processor Count
+    sheets.push(buildProcessorCountPreview(calcs));
 
-    // Add Bundle Accessories sheet if any display has bundle items
+    // 8. Bundle Equipment
     const hasBundle = calcs.some((c) => c.bundleItems.length > 0);
     if (hasBundle) {
         sheets.push(buildBundleSheet(answers, calcs));
+    } else {
+        sheets.push(buildPlaceholderTab("Bundle Equipment", "#17A2B8", "Component breakdown will appear here when displays are configured."));
+    }
+
+    // 9-14. Supporting tabs (templates in export — show as labeled placeholders in preview)
+    sheets.push(buildPlaceholderTab("Travel", "#FFC107", "Hotel, airfare, car rental, and per diem estimates. Populated on export."));
+    if (answers.includeCms) {
+        sheets.push(buildPlaceholderTab("CMS", "#6610F2", "Content management system hardware. Populated on export."));
+    }
+    if (answers.includeScoring) {
+        sheets.push(buildPlaceholderTab("Scoring", "#059669", "Scoring system details. Populated on export."));
+    }
+    sheets.push(buildPlaceholderTab("Resp Matrix", "#6C757D", "ANC vs Purchaser responsibility grid. Populated on export."));
+    sheets.push(buildPlaceholderTab("P&L", "#FFC107", "Revenue, budgeted cost, and margin tracking. Populated on export."));
+    sheets.push(buildPlaceholderTab("Cash Flow", "#FFC107", "Monthly payment projection. Populated on export."));
+
+    // Add Cost Category Breakdown (3A-3G) in Detailed mode (bonus tab, not in canonical contract)
+    if (answers.estimateDepth === "detailed" && calcs.length > 0) {
+        sheets.push(buildCostCategoryBreakdown(answers, calcs, rates));
+    }
+
+    // Add Cabinet Layout sheet if any display has cabinet data (bonus tab)
+    const hasCabinets = calcs.some((c) => c.cabinetLayout);
+    if (hasCabinets) {
+        sheets.push(buildCabinetLayout(answers, calcs));
     }
 
     sheets[0].active = true;
@@ -660,7 +689,7 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
     }
 
     return {
-        name: "Project Info",
+        name: "Project Overview",
         color: "#6366F1",
         columns: ["FIELD", "VALUE"],
         rows,
@@ -1192,7 +1221,7 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
     }
 
     return {
-        name: "Display Details",
+        name: "LED Cost Sheet",
         color: "#FFC107",
         columns: ["DISPLAY", "TYPE", "W (ft)", "H (ft)", "SQ FT", "PITCH", "PIXELS", "$/SQFT", "LED COST", "SELL PRICE", "MARGIN %", "MARGIN $"],
         rows,
@@ -1324,6 +1353,365 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
         color: "#28A745",
         columns: ["DISPLAY", "STRUCTURAL", "INSTALL", "ELECTRICAL", "EQUIP/DATA", "PM / ENG", "SHIPPING", "TOTAL COST", "SALE PRICE", "MARGIN %", "MARGIN $"],
         rows,
+    };
+}
+
+// ============================================================================
+// CANONICAL PREVIEW TABS — Match the exported workbook contract
+// ============================================================================
+
+// --- Margin Analysis Preview (per-screen sections with category sub-lines) ---
+function buildMarginAnalysisPreview(answers: EstimatorAnswers, calcs: ScreenCalc[]): SheetTab {
+    const rows: SheetRow[] = [];
+    const COLS = 6;
+    const ledMarginPct = ((answers.ledMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
+    const svcMarginPct = ((answers.servicesMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
+    const bondRate = (answers.bondRate ?? 1.5) / 100;
+    const taxRate = (answers.salesTaxRate ?? 9.5) / 100;
+
+    rows.push({
+        cells: [{ value: `${answers.projectName || "PROJECT"} — Margin Analysis`, bold: true, header: true, span: COLS, align: "center" }],
+        isHeader: true,
+    });
+    rows.push({
+        cells: [
+            { value: `${answers.clientName || "Client"} | ${new Date().toLocaleDateString()} | ANC Proposal Engine`, span: COLS },
+        ],
+    });
+    rows.push({ cells: [{ value: "" }], isSeparator: true });
+    rows.push({
+        cells: [
+            { value: "ZONE / CATEGORY", bold: true, header: true },
+            { value: "COST", bold: true, header: true, align: "right" },
+            { value: "SELLING PRICE", bold: true, header: true, align: "right" },
+            { value: "MARGIN $", bold: true, header: true, align: "right" },
+            { value: "MARGIN %", bold: true, header: true, align: "center" },
+            { value: "", bold: true, header: true },
+        ],
+        isHeader: true,
+    });
+
+    let docCost = 0;
+    let docSell = 0;
+
+    for (const c of calcs) {
+        // Screen header
+        rows.push({
+            cells: [{ value: c.name, bold: true, header: true }, { value: "" }, { value: "Selling Price", bold: true, header: true, align: "right" }, { value: "" }, { value: "" }, { value: "" }],
+            isHeader: true,
+        });
+
+        // Category sub-lines
+        const categories: [string, number, number][] = [
+            ["LED Hardware", c.hardwareCost + c.spareParts, ledMarginPct],
+            ["Structural", c.structureCost, svcMarginPct],
+            ["Installation Labor", c.installCost, svcMarginPct],
+            ["Electrical & Data", c.electricalCost + c.dataCablingCost, svcMarginPct],
+            ["PM / Travel", c.pmCost + c.shippingCost, svcMarginPct],
+            ["Engineering", c.engineeringCost, svcMarginPct],
+        ];
+        if (c.equipmentCost > 0 || c.bundleCost > 0) {
+            categories.push(["Processor & Equipment", c.equipmentCost + c.bundleCost, ledMarginPct]);
+        }
+
+        let screenCost = 0;
+        let screenSell = 0;
+        for (const [label, cost, margin] of categories) {
+            if (cost <= 0) continue;
+            const sell = margin < 1 ? cost / (1 - margin) : cost;
+            screenCost += cost;
+            screenSell += sell;
+            rows.push({
+                cells: [
+                    { value: `    ${label}` },
+                    { value: cost, currency: true, align: "right" },
+                    { value: sell, currency: true, align: "right" },
+                    { value: sell - cost, currency: true, align: "right" },
+                    { value: margin, percent: true, align: "center" },
+                    { value: "" },
+                ],
+            });
+        }
+
+        // Subtotal
+        const screenMarginPct = screenSell > 0 ? 1 - (screenCost / screenSell) : 0;
+        rows.push({
+            cells: [
+                { value: "    SUBTOTAL", bold: true },
+                { value: screenCost, currency: true, align: "right", bold: true },
+                { value: screenSell, currency: true, align: "right", bold: true },
+                { value: screenSell - screenCost, currency: true, align: "right", bold: true },
+                { value: screenMarginPct, percent: true, align: "center", bold: true },
+                { value: "" },
+            ],
+        });
+
+        // Tax / Bond
+        const taxAmt = screenSell * taxRate;
+        const bondAmt = screenSell * bondRate;
+        rows.push({ cells: [{ value: `    TAX (${(taxRate * 100).toFixed(1)}%)` }, { value: "" }, { value: taxAmt, currency: true, align: "right" }, { value: "" }, { value: "" }, { value: "" }] });
+        rows.push({ cells: [{ value: `    BOND (${(bondRate * 100).toFixed(1)}%)` }, { value: "" }, { value: bondAmt, currency: true, align: "right" }, { value: "" }, { value: "" }, { value: "" }] });
+
+        // Grand total
+        const screenGrand = screenSell + taxAmt + bondAmt;
+        rows.push({
+            cells: [
+                { value: "    GRAND TOTAL", bold: true },
+                { value: screenCost, currency: true, align: "right", bold: true },
+                { value: screenGrand, currency: true, align: "right", bold: true },
+                { value: screenGrand - screenCost, currency: true, align: "right", bold: true },
+                { value: screenGrand > 0 ? 1 - (screenCost / screenGrand) : 0, percent: true, align: "center", bold: true },
+                { value: "" },
+            ],
+            isTotal: true,
+        });
+        rows.push({ cells: [{ value: "" }], isSeparator: true });
+        docCost += screenCost;
+        docSell += screenGrand;
+    }
+
+    // CMS / Scoring on MA
+    if (answers.includeCms && answers.cmsAllocation > 0) {
+        const cmsSell = svcMarginPct < 1 ? answers.cmsAllocation / (1 - svcMarginPct) : answers.cmsAllocation;
+        rows.push({ cells: [{ value: "CMS (Content Management)", bold: true }, { value: answers.cmsAllocation, currency: true, align: "right" }, { value: cmsSell, currency: true, align: "right" }, { value: cmsSell - answers.cmsAllocation, currency: true, align: "right" }, { value: "" }, { value: "" }] });
+        docCost += answers.cmsAllocation;
+        docSell += cmsSell;
+    }
+    if (answers.includeScoring && answers.scoringAllocation > 0) {
+        const scoreSell = svcMarginPct < 1 ? answers.scoringAllocation / (1 - svcMarginPct) : answers.scoringAllocation;
+        rows.push({ cells: [{ value: "Scoring System", bold: true }, { value: answers.scoringAllocation, currency: true, align: "right" }, { value: scoreSell, currency: true, align: "right" }, { value: scoreSell - answers.scoringAllocation, currency: true, align: "right" }, { value: "" }, { value: "" }] });
+        docCost += answers.scoringAllocation;
+        docSell += scoreSell;
+    }
+
+    // BASE BID GRAND TOTAL
+    rows.push({ cells: [{ value: "" }], isSeparator: true });
+    rows.push({
+        cells: [
+            { value: "BASE BID GRAND TOTAL", bold: true },
+            { value: docCost, currency: true, align: "right", bold: true },
+            { value: docSell, currency: true, align: "right", bold: true, highlight: true },
+            { value: docSell - docCost, currency: true, align: "right", bold: true },
+            { value: docSell > 0 ? 1 - (docCost / docSell) : 0, percent: true, align: "center", bold: true },
+            { value: "" },
+        ],
+        isTotal: true,
+    });
+
+    return {
+        name: "Margin Analysis",
+        color: "#0A52EF",
+        columns: ["ZONE / CATEGORY", "COST", "SELLING PRICE", "MARGIN $", "MARGIN %", ""],
+        rows,
+    };
+}
+
+// --- Tech Specs Preview (no pricing — for installers) ---
+function buildTechSpecsPreview(answers: EstimatorAnswers, calcs: ScreenCalc[]): SheetTab {
+    const rows: SheetRow[] = [];
+    rows.push({
+        cells: [{ value: "TECHNICAL SPECIFICATIONS — NO PRICING", bold: true, header: true, span: 10, align: "center" }],
+        isHeader: true,
+    });
+    rows.push({ cells: [{ value: "For installer/subcontractor use. No cost or margin data.", span: 10 }] });
+    rows.push({ cells: [{ value: "" }], isSeparator: true });
+    rows.push({
+        cells: [
+            { value: "DISPLAY", bold: true, header: true },
+            { value: "PITCH", bold: true, header: true, align: "center" },
+            { value: "H (ft)", bold: true, header: true, align: "center" },
+            { value: "W (ft)", bold: true, header: true, align: "center" },
+            { value: "SQ FT", bold: true, header: true, align: "center" },
+            { value: "PIXELS H", bold: true, header: true, align: "right" },
+            { value: "PIXELS W", bold: true, header: true, align: "right" },
+            { value: "NITS", bold: true, header: true, align: "center" },
+            { value: "WEIGHT (lbs)", bold: true, header: true, align: "right" },
+            { value: "POWER (W)", bold: true, header: true, align: "right" },
+        ],
+        isHeader: true,
+    });
+
+    for (const c of calcs) {
+        rows.push({
+            cells: [
+                { value: c.name },
+                { value: `${c.pixelPitch}mm`, align: "center" },
+                { value: c.heightFt, align: "center" },
+                { value: c.widthFt, align: "center" },
+                { value: Math.round(c.areaSqFt), align: "center" },
+                { value: c.pixelsH, align: "right" },
+                { value: c.pixelsW, align: "right" },
+                { value: "", align: "center" },
+                { value: Math.round(c.areaSqFt * 0.0929 * 45), align: "right" },
+                { value: "", align: "right" },
+            ],
+        });
+    }
+
+    return {
+        name: "Tech Specs",
+        color: "#6C757D",
+        columns: ["DISPLAY", "PITCH", "H (ft)", "W (ft)", "SQ FT", "PIXELS H", "PIXELS W", "NITS", "WEIGHT", "POWER"],
+        rows,
+    };
+}
+
+// --- Per-Screen Install Preview ---
+function buildInstallPreview(answers: EstimatorAnswers, c: ScreenCalc, d: DisplayAnswers, idx: number): SheetTab {
+    const rows: SheetRow[] = [];
+    const svcMarginPct = ((answers.servicesMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
+    const shortName = c.name.length > 20 ? c.name.substring(0, 20) + "…" : c.name;
+
+    rows.push({
+        cells: [{ value: `${c.name} — Install`, bold: true, header: true, span: 6, align: "center" }],
+        isHeader: true,
+    });
+    rows.push({
+        cells: [
+            { value: `${c.widthFt}×${c.heightFt} ft | ${Math.round(c.areaSqFt)} sqft | ${c.pixelPitch}mm | Complexity: ${d?.installComplexity || "standard"}`, span: 6 },
+        ],
+    });
+    rows.push({ cells: [{ value: "" }], isSeparator: true });
+    rows.push({
+        cells: [
+            { value: "SECTION", bold: true, header: true },
+            { value: "ITEM", bold: true, header: true },
+            { value: "COST", bold: true, header: true, align: "right" },
+            { value: "MARGIN %", bold: true, header: true, align: "center" },
+            { value: "SELLING PRICE", bold: true, header: true, align: "right" },
+            { value: "" },
+        ],
+        isHeader: true,
+    });
+
+    const sections: [string, [string, number][]][] = [
+        ["Structural Materials", [
+            ["Steel Fabrication", c.structureCost],
+        ]],
+        ["Structural Labor & LED Install", [
+            ["LED Installation", c.installCost],
+            ["Demolition", c.demolitionCost],
+        ]],
+        ["Electrical & Data", [
+            ["Electrical Materials", c.electricalCost],
+            ["Data Cabling", c.dataCablingCost],
+        ]],
+        ["Engineering & Permits", [
+            ["Engineering", c.engineeringCost],
+        ]],
+    ];
+
+    let totalCost = 0;
+    for (const [section, items] of sections) {
+        rows.push({ cells: [{ value: section, bold: true, header: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }], isHeader: true });
+        for (const [item, cost] of items) {
+            if (cost <= 0) continue;
+            const sell = svcMarginPct < 1 ? cost / (1 - svcMarginPct) : cost;
+            totalCost += cost;
+            rows.push({
+                cells: [
+                    { value: "" },
+                    { value: item },
+                    { value: cost, currency: true, align: "right" },
+                    { value: svcMarginPct, percent: true, align: "center" },
+                    { value: sell, currency: true, align: "right" },
+                    { value: "" },
+                ],
+            });
+        }
+    }
+
+    const totalSell = svcMarginPct < 1 ? totalCost / (1 - svcMarginPct) : totalCost;
+    rows.push({ cells: [{ value: "" }], isSeparator: true });
+    rows.push({
+        cells: [
+            { value: "ZONE TOTAL", bold: true },
+            { value: "" },
+            { value: totalCost, currency: true, align: "right", bold: true },
+            { value: svcMarginPct, percent: true, align: "center", bold: true },
+            { value: totalSell, currency: true, align: "right", bold: true },
+            { value: "" },
+        ],
+        isTotal: true,
+    });
+
+    return {
+        name: `${shortName} - Install`,
+        color: "#28A745",
+        columns: ["SECTION", "ITEM", "COST", "MARGIN %", "SELLING PRICE", ""],
+        rows,
+    };
+}
+
+// --- Processor Count Preview ---
+function buildProcessorCountPreview(calcs: ScreenCalc[]): SheetTab {
+    const rows: SheetRow[] = [];
+    rows.push({
+        cells: [{ value: "PROCESSOR & PORT COUNT", bold: true, header: true, span: 6, align: "center" }],
+        isHeader: true,
+    });
+    rows.push({ cells: [{ value: "" }], isSeparator: true });
+    rows.push({
+        cells: [
+            { value: "DISPLAY", bold: true, header: true },
+            { value: "PIXELS W", bold: true, header: true, align: "right" },
+            { value: "PIXELS H", bold: true, header: true, align: "right" },
+            { value: "TOTAL PIXELS", bold: true, header: true, align: "right" },
+            { value: "PORTS NEEDED", bold: true, header: true, align: "center" },
+            { value: "PROCESSORS", bold: true, header: true, align: "center" },
+        ],
+        isHeader: true,
+    });
+
+    let totalPorts = 0;
+    for (const c of calcs) {
+        const portsNeeded = c.totalPixels > 0 ? Math.ceil(c.totalPixels / 650000) : 0;
+        const processorsNeeded = Math.ceil(portsNeeded / 8); // NovaStar 660 Pro: 8 ports
+        totalPorts += portsNeeded;
+        rows.push({
+            cells: [
+                { value: c.name },
+                { value: c.pixelsW, align: "right" },
+                { value: c.pixelsH, align: "right" },
+                { value: c.totalPixels.toLocaleString(), align: "right" },
+                { value: portsNeeded, align: "center" },
+                { value: processorsNeeded, align: "center" },
+            ],
+        });
+    }
+
+    rows.push({ cells: [{ value: "" }], isSeparator: true });
+    rows.push({
+        cells: [
+            { value: "TOTAL", bold: true },
+            { value: "" },
+            { value: "" },
+            { value: calcs.reduce((s, c) => s + c.totalPixels, 0).toLocaleString(), align: "right", bold: true },
+            { value: totalPorts, align: "center", bold: true },
+            { value: Math.ceil(totalPorts / 8), align: "center", bold: true },
+        ],
+        isTotal: true,
+    });
+
+    return {
+        name: "Processor Count",
+        color: "#17A2B8",
+        columns: ["DISPLAY", "PIXELS W", "PIXELS H", "TOTAL PIXELS", "PORTS", "PROCESSORS"],
+        rows,
+    };
+}
+
+// --- Placeholder tab ---
+function buildPlaceholderTab(name: string, color: string, message: string): SheetTab {
+    return {
+        name,
+        color,
+        columns: ["", ""],
+        rows: [
+            { cells: [{ value: name.toUpperCase(), bold: true, header: true, span: 2, align: "center" }], isHeader: true },
+            { cells: [{ value: "" }], isSeparator: true },
+            { cells: [{ value: message, span: 2 }] },
+        ],
     };
 }
 
