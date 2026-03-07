@@ -7,7 +7,7 @@
 
 import type { EstimatorAnswers, DisplayAnswers } from "@/app/components/estimator/questions";
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "@/services/rfp/unified/types";
-import type { ScopingWorkbookOptions } from "./generateScopingWorkbook";
+import type { ScopingWorkbookOptions, FinancialOverrides } from "./generateScopingWorkbook";
 import type { InstallComplexity } from "@/services/rfp/productCatalog";
 
 // ---------------------------------------------------------------------------
@@ -89,32 +89,54 @@ function mapProject(answers: EstimatorAnswers): ExtractedProjectInfo {
 export function mapEstimatorToScoping(answers: EstimatorAnswers): ScopingWorkbookOptions {
   const env: "indoor" | "outdoor" = answers.isIndoor ? "indoor" : "outdoor";
 
-  // Map all displays (base + alt pitch variants)
-  const specs: ExtractedLEDSpec[] = [];
-  for (const d of answers.displays) {
-    specs.push(mapDisplay(d, env));
-    specs.push(...mapAltPitchVariants(d, env));
-  }
-
-  // Map install complexity from first display (or default)
-  const firstComplexity = answers.displays[0]?.installComplexity || "standard";
   const complexityMap: Record<string, InstallComplexity> = {
     simple: "simple",
     standard: "standard",
     complex: "complex",
     heavy: "heavy",
   };
-  const installComplexity: InstallComplexity = complexityMap[firstComplexity] || "standard";
+
+  // Map all displays (base + alt pitch variants)
+  const specs: ExtractedLEDSpec[] = [];
+  const perDisplayComplexity: InstallComplexity[] = [];
+  for (const d of answers.displays) {
+    specs.push(mapDisplay(d, env));
+    perDisplayComplexity.push(complexityMap[d.installComplexity] || "standard");
+    // Alt pitch variants inherit parent complexity
+    const alts = mapAltPitchVariants(d, env);
+    specs.push(...alts);
+    for (const _a of alts) {
+      perDisplayComplexity.push(complexityMap[d.installComplexity] || "standard");
+    }
+  }
+
+  // Default install complexity = first display (used for Install sheet section headers)
+  const firstComplexity = complexityMap[answers.displays[0]?.installComplexity || "standard"] || "standard";
+
+  // Financial overrides — carry user-configured settings into the workbook
+  const overrides: FinancialOverrides = {
+    ledMarginPct: answers.ledMargin != null ? answers.ledMargin / 100 : undefined,
+    servicesMarginPct: answers.servicesMargin != null ? answers.servicesMargin / 100 : undefined,
+    taxRate: answers.salesTaxRate != null ? answers.salesTaxRate / 100 : undefined,
+    bondRate: answers.bondRate != null ? answers.bondRate / 100 : undefined,
+    costPerSqFtOverride: (answers.costPerSqFtOverride ?? 0) > 0 ? answers.costPerSqFtOverride : undefined,
+    pmComplexity: (answers.pmComplexity as FinancialOverrides["pmComplexity"]) || undefined,
+    cmsAllocation: answers.includeCms ? (answers.cmsAllocation || 0) : undefined,
+    scoringAllocation: answers.includeScoring ? (answers.scoringAllocation || 0) : undefined,
+    isUnionLabor: answers.isUnion || undefined,
+    perDisplayComplexity,
+  };
 
   return {
     project: mapProject(answers),
     specs,
     requirements: [],
-    pricedDisplays: undefined, // Will be computed by generateScopingWorkbook from specs
+    pricedDisplays: undefined,
     zoneClass: undefined,
-    installComplexity,
-    includeBond: (answers.bondRate ?? 1.5) > 0,
+    installComplexity: firstComplexity,
+    includeBond: (answers.bondRate ?? 0) > 0,
     currency: answers.currency || "USD",
     paymentTerms: "Net 30",
+    overrides,
   };
 }

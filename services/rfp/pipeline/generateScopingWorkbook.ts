@@ -94,6 +94,21 @@ export interface ScopingWorkbookOptions {
   paymentTerms?: string;
   contractDate?: string;
   completionDate?: string;
+  /** Financial overrides — when set, these take priority over defaults/heuristics */
+  overrides?: FinancialOverrides;
+}
+
+export interface FinancialOverrides {
+  ledMarginPct?: number;          // 0-1, e.g. 0.38 for 38%
+  servicesMarginPct?: number;     // 0-1, e.g. 0.20 for 20%
+  taxRate?: number;               // 0-1, e.g. 0.095 for 9.5%
+  bondRate?: number;              // 0-1, e.g. 0.015 for 1.5%. 0 = no bond.
+  costPerSqFtOverride?: number;   // $/sqft override for LED hardware. 0 = use catalog.
+  pmComplexity?: "standard" | "complex" | "major";
+  cmsAllocation?: number;         // CMS cost in dollars
+  scoringAllocation?: number;     // Scoring cost in dollars
+  isUnionLabor?: boolean;         // 15% uplift on labor costs
+  perDisplayComplexity?: InstallComplexity[];  // parallel to specs array
 }
 
 interface ComputedDisplay {
@@ -209,6 +224,7 @@ function computeDisplays(
   specs: ExtractedLEDSpec[],
   pricedDisplays: PricedDisplay[] | undefined,
   installComplexity: InstallComplexity,
+  ov?: FinancialOverrides,
 ): ComputedDisplay[] {
   return specs.map((spec, idx) => {
     const priced = pricedDisplays?.[idx] ?? null;
@@ -216,12 +232,20 @@ function computeDisplays(
     const heightFt = spec.heightFt || 0;
     const areaSqFt = round2(widthFt * heightFt * (spec.quantity || 1));
 
-    // LED hardware cost
+    // Per-display install complexity: override > per-display array > global
+    const displayComplexity = ov?.perDisplayComplexity?.[idx] ?? installComplexity;
+
+    // LED hardware cost: user override > priced > catalog lookup
     let ledHardwareCost = priced?.hardwareCost ?? 0;
     if (!ledHardwareCost && spec.pixelPitchMm) {
-      const key = String(spec.pixelPitchMm);
-      const rate = LED_COST_PER_SQFT_BY_PITCH[key];
-      if (rate) ledHardwareCost = round2(areaSqFt * rate);
+      const overrideCostSqFt = (ov?.costPerSqFtOverride ?? 0) > 0 ? ov!.costPerSqFtOverride! : 0;
+      if (overrideCostSqFt > 0) {
+        ledHardwareCost = round2(areaSqFt * overrideCostSqFt);
+      } else {
+        const key = String(spec.pixelPitchMm);
+        const rate = LED_COST_PER_SQFT_BY_PITCH[key];
+        if (rate) ledHardwareCost = round2(areaSqFt * rate);
+      }
     }
 
     // Structural — use type heuristic
@@ -235,9 +259,13 @@ function computeDisplays(
     // Electrical
     const electricalCost = round2(areaSqFt * BUDGET_RATES.electricalPerSqFt);
 
-    // PM & Engineering
-    const pmCost = priced?.pmCost ?? round2(PM_BASE_FEE);
-    const engCost = priced?.engCost ?? round2(ENG_BASE_FEE);
+    // PM & Engineering — PM complexity multiplier from overrides
+    const pmMult = ov?.pmComplexity === "complex" ? 2 : ov?.pmComplexity === "major" ? 3 : 1;
+    const pmCost = priced?.pmCost ?? round2(PM_BASE_FEE * pmMult);
+    const engCost = priced?.engCost ?? round2(ENG_BASE_FEE * pmMult);
+
+    // Union labor: 15% uplift on labor-related costs
+    const unionMult = ov?.isUnionLabor ? 1.15 : 1.0;
 
     // Skip fixed costs if display has no dimensions (can't scope it)
     const hasDimensions = areaSqFt > 0;
@@ -254,14 +282,19 @@ function computeDisplays(
     const backupProcessorCost = areaSqFt > 300 ? SMART_BUNDLES.backupProcessor : 0;
     const weatherproofCost = spec.environment === "outdoor" ? round2(areaSqFt * SMART_BUNDLES.weatherproofPerSqFt) : 0;
 
+    // Apply union multiplier to labor-related costs
     const totalCost = round2(
-      ledHardwareCost + structuralMaterialsCost + structuralLaborCost +
-      electricalCost + pmCost + engCost + travelCost +
-      sendingCardCost + sparePartsCost + signalCableCost +
-      upsCost + backupProcessorCost + weatherproofCost
+      ledHardwareCost
+      + round2(structuralMaterialsCost * unionMult)
+      + round2(structuralLaborCost * unionMult)
+      + round2(electricalCost * unionMult)
+      + pmCost + engCost + travelCost
+      + sendingCardCost + sparePartsCost + signalCableCost
+      + upsCost + backupProcessorCost + weatherproofCost
     );
 
-    const marginPct = priced?.blendedMarginPct ?? 0.15;
+    // Margin: override > priced > default
+    const marginPct = ov?.ledMarginPct ?? priced?.blendedMarginPct ?? DEFAULT_MARGINS.ledHardware;
     const sellingPrice = totalCost > 0 ? round2(totalCost / (1 - marginPct)) : 0;
     const marginDollars = round2(sellingPrice - totalCost);
 
@@ -322,6 +355,7 @@ export async function generateScopingWorkbook(
     paymentTerms = "50/20/20/10",
     contractDate,
     completionDate,
+    overrides: ov,
   } = options;
 
   FMT_USD = excelCurrencyFmt(currency);
@@ -346,7 +380,7 @@ export async function generateScopingWorkbook(
     : undefined;
 
   // Compute base bid display data (used by all budget sheets)
-  const displays = computeDisplays(baseSpecs, basePricedDisplays, installComplexity);
+  const displays = computeDisplays(baseSpecs, basePricedDisplays, installComplexity, ov);
 
   // Compute alternate display data (for reference sheet only)
   const altPricedDisplays = allPricedDisplays
@@ -381,7 +415,7 @@ export async function generateScopingWorkbook(
   });
 
   // ─── Sheet 1: Margin Analysis ───────────────────────────────────────────
-  const maGrandTotalRow = buildMarginAnalysis(wb, projectName, clientName, today, displays, altDisplays, grandCost, grandSelling, grandMargin, grandMarginPct, includeBond);
+  const maGrandTotalRow = buildMarginAnalysis(wb, projectName, clientName, today, displays, altDisplays, grandCost, grandSelling, grandMargin, grandMarginPct, includeBond, ov);
 
   // Cross-sheet link: Project Overview document total → MA BASE BID GRAND TOTAL selling price
   const overviewSheet = wb.getWorksheet("Project Overview");
@@ -404,7 +438,7 @@ export async function generateScopingWorkbook(
   // ═══════════════════════════════════════════════════════════════════════════
 
   // 3. Budget Summary
-  buildBudgetSummary(wb, projectName, clientName, today, displays, grandCost, grandSelling, grandMargin, grandMarginPct);
+  buildBudgetSummary(wb, projectName, clientName, today, displays, grandCost, grandSelling, grandMargin, grandMarginPct, ov);
 
   // 4. LED Cost Sheet
   buildLedCostSheet(wb, projectName, displays);
@@ -622,6 +656,7 @@ function buildBudgetSummary(
   grandSelling: number,
   grandMargin: number,
   grandMarginPct: number,
+  ov?: FinancialOverrides,
 ): void {
   const ws = wb.addWorksheet("Budget Summary", {
     properties: { tabColor: { argb: C.GREEN_TAB } },
@@ -661,12 +696,12 @@ function buildBudgetSummary(
   const sellFormula = (r: number) => `IF(F${r}>=1,C${r},C${r}/(1-F${r}))`;
   const marginFormula = (r: number) => `D${r}-C${r}`;
 
-  // Weighted average margin from all displays (or default 25%)
+  // Margin priority: financial override > weighted average from displays > default
   const avgMargin = displays.length > 0
     ? displays.reduce((s, d) => s + d.marginPct, 0) / displays.length
     : 0.25;
-  const hwMargin = avgMargin > 0 ? avgMargin : DEFAULT_MARGINS.ledHardware;
-  const svcMargin = avgMargin > 0 ? Math.max(avgMargin * 0.67, 0.15) : DEFAULT_MARGINS.install;
+  const hwMargin = ov?.ledMarginPct ?? (avgMargin > 0 ? avgMargin : DEFAULT_MARGINS.ledHardware);
+  const svcMargin = ov?.servicesMarginPct ?? (avgMargin > 0 ? Math.max(avgMargin * 0.67, 0.15) : DEFAULT_MARGINS.install);
 
   // Category rows — each with cost, selling (formula), margin$, margin%
   const categories: [string, number, number][] = [
@@ -757,6 +792,7 @@ function buildMarginAnalysis(
   grandMargin: number,
   grandMarginPct: number,
   includeBond: boolean,
+  ov?: FinancialOverrides,
 ): number {
   const ws = wb.addWorksheet("Margin Analysis", {
     properties: { tabColor: { argb: C.ANC_BLUE } },
@@ -818,11 +854,11 @@ function buildMarginAnalysis(
     row++;
 
     // ─── Category rows — each with Cost | Selling | Margin$ | Margin% ───
-    // Use display's priced margin for hardware, default margins for services
+    // Margin priority: financial override > display priced > default
     const catStartRow = row;
     const ledHardwareWithSpares = d.ledHardwareCost + d.sparePartsCost;
-    const hwMargin = d.marginPct > 0 ? d.marginPct : DEFAULT_MARGINS.ledHardware;
-    const svcMargin = d.marginPct > 0 ? Math.max(d.marginPct * 0.67, 0.15) : DEFAULT_MARGINS.install;
+    const hwMargin = ov?.ledMarginPct ?? (d.marginPct > 0 ? d.marginPct : DEFAULT_MARGINS.ledHardware);
+    const svcMargin = ov?.servicesMarginPct ?? (d.marginPct > 0 ? Math.max(d.marginPct * 0.67, 0.15) : DEFAULT_MARGINS.install);
 
     writeCategory("LED Hardware", ledHardwareWithSpares, hwMargin);
     writeCategory("Structural Materials", d.structuralMaterialsCost, svcMargin);
@@ -857,18 +893,20 @@ function buildMarginAnalysis(
     const taxRow = row;
     const txR = ws.getRow(row);
     txR.getCell(2).value = "    TAX"; txR.getCell(2).font = subFont;
-    txR.getCell(4).value = { formula: `D${subtotalRow}*G${row}`, result: 0 };
+    const taxRateVal = ov?.taxRate ?? 0;
+    txR.getCell(4).value = { formula: `D${subtotalRow}*G${row}`, result: round2(d.sellingPrice * taxRateVal) };
     txR.getCell(4).numFmt = FMT_USD;
-    txR.getCell(7).value = 0; txR.getCell(7).numFmt = FMT_PCT; inputCell(txR.getCell(7));
+    txR.getCell(7).value = taxRateVal; txR.getCell(7).numFmt = FMT_PCT; inputCell(txR.getCell(7));
     row++;
 
     // ─── BOND — formula: =D{subtotal} * rate ───
     const bondRow = row;
     const bdR = ws.getRow(row);
     bdR.getCell(2).value = "    BOND"; bdR.getCell(2).font = subFont;
-    bdR.getCell(4).value = { formula: `D${subtotalRow}*G${row}`, result: includeBond ? round2(d.sellingPrice * BOND_RATE) : 0 };
+    const bondRateVal = ov?.bondRate ?? (includeBond ? BOND_RATE : 0);
+    bdR.getCell(4).value = { formula: `D${subtotalRow}*G${row}`, result: round2(d.sellingPrice * bondRateVal) };
     bdR.getCell(4).numFmt = FMT_USD;
-    bdR.getCell(7).value = includeBond ? BOND_RATE : 0; bdR.getCell(7).numFmt = FMT_PCT; inputCell(bdR.getCell(7));
+    bdR.getCell(7).value = bondRateVal; bdR.getCell(7).numFmt = FMT_PCT; inputCell(bdR.getCell(7));
     row++;
 
     // ─── TARIFF — formula: =D{subtotal} * rate ───
@@ -936,27 +974,29 @@ function buildMarginAnalysis(
   // ADDITIONAL SECTIONS (CMS, Scoring) — single-line placeholders
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // CMS placeholder
+  // CMS — use override allocation if set, otherwise editable $0 placeholder
+  const cmsCost = ov?.cmsAllocation ?? 0;
   const cmsRow = row;
   const cmsR = ws.getRow(row);
   cmsR.getCell(2).value = "CMS (Content Management System)";
   cmsR.getCell(2).font = { bold: true, name: "Calibri" };
-  cmsR.getCell(3).value = 0; cmsR.getCell(3).numFmt = FMT_USD; inputCell(cmsR.getCell(3));
+  cmsR.getCell(3).value = cmsCost; cmsR.getCell(3).numFmt = FMT_USD; inputCell(cmsR.getCell(3));
   cmsR.getCell(6).value = DEFAULT_MARGINS.cms; cmsR.getCell(6).numFmt = FMT_PCT; inputCell(cmsR.getCell(6));
-  cmsR.getCell(4).value = { formula: sellFormula(row), result: 0 }; cmsR.getCell(4).numFmt = FMT_USD;
-  cmsR.getCell(5).value = { formula: marginDollarFormula(row), result: 0 }; cmsR.getCell(5).numFmt = FMT_USD;
+  cmsR.getCell(4).value = { formula: sellFormula(row), result: cmsCost > 0 ? round2(cmsCost / (1 - DEFAULT_MARGINS.cms)) : 0 }; cmsR.getCell(4).numFmt = FMT_USD;
+  cmsR.getCell(5).value = { formula: marginDollarFormula(row), result: cmsCost > 0 ? round2(cmsCost / (1 - DEFAULT_MARGINS.cms) - cmsCost) : 0 }; cmsR.getCell(5).numFmt = FMT_USD;
   screenGrandTotalRows.push(cmsRow);
   row++;
 
-  // Scoring placeholder
+  // Scoring — use override allocation if set, otherwise editable $0 placeholder
+  const scoringCost = ov?.scoringAllocation ?? 0;
   const scoringRow = row;
   const scR = ws.getRow(row);
   scR.getCell(2).value = "Scoring System";
   scR.getCell(2).font = { bold: true, name: "Calibri" };
-  scR.getCell(3).value = 0; scR.getCell(3).numFmt = FMT_USD; inputCell(scR.getCell(3));
+  scR.getCell(3).value = scoringCost; scR.getCell(3).numFmt = FMT_USD; inputCell(scR.getCell(3));
   scR.getCell(6).value = DEFAULT_MARGINS.scoring; scR.getCell(6).numFmt = FMT_PCT; inputCell(scR.getCell(6));
-  scR.getCell(4).value = { formula: sellFormula(row), result: 0 }; scR.getCell(4).numFmt = FMT_USD;
-  scR.getCell(5).value = { formula: marginDollarFormula(row), result: 0 }; scR.getCell(5).numFmt = FMT_USD;
+  scR.getCell(4).value = { formula: sellFormula(row), result: scoringCost > 0 ? round2(scoringCost / (1 - DEFAULT_MARGINS.scoring)) : 0 }; scR.getCell(4).numFmt = FMT_USD;
+  scR.getCell(5).value = { formula: marginDollarFormula(row), result: scoringCost > 0 ? round2(scoringCost / (1 - DEFAULT_MARGINS.scoring) - scoringCost) : 0 }; scR.getCell(5).numFmt = FMT_USD;
   screenGrandTotalRows.push(scoringRow);
   row++;
   row++; // separator
