@@ -18,7 +18,7 @@ import { useRouter } from "next/navigation";
 import QuestionFlow from "./QuestionFlow";
 import ExcelPreview from "./ExcelPreview";
 import EstimatorCopilot from "./EstimatorCopilot";
-import { buildPreviewSheets, calculateDisplay, type ExcelPreviewData, type SheetTab, type ProductSpec } from "./EstimatorBridge";
+import { calculateDisplay, type ExcelPreviewData, type SheetTab, type ProductSpec } from "./EstimatorBridge";
 import { getDefaultAnswers, type EstimatorAnswers, type DisplayAnswers } from "./questions";
 import VendorDropZone from "./VendorDropZone";
 import BundlePanel from "./BundlePanel";
@@ -102,20 +102,16 @@ export default function EstimatorStudio({
     }, [answers, rates, productSpecs]);
 
     // WYSIWYG preview: call the same server-side generator that produces the export.
-    // Falls back to client-side preview while server is loading or if no displays yet.
+    // No fake preview. No client-side approximation. Loading state shown until ready.
     const { data: serverPreview, loading: serverPreviewLoading } = useServerPreview(answers);
 
-    // Client-side preview (instant, used as fallback while server generates)
-    const basePreviewData: ExcelPreviewData = useMemo(() => {
-        return buildPreviewSheets(answers, rates ?? undefined);
-    }, [answers, rates]);
+    // Preview data comes ONLY from the canonical server-side generator.
+    // null when no displays or server hasn't responded yet — ExcelPreview shows loading state.
+    const previewData: ExcelPreviewData | null = useMemo(() => {
+        if (!serverPreview) return null;
+        const allSheets = [...serverPreview.sheets, ...customSheets];
 
-    // Use server-generated preview when available (true WYSIWYG), fall back to client-side
-    const previewData: ExcelPreviewData = useMemo(() => {
-        const source = serverPreview || basePreviewData;
-        const allSheets = [...source.sheets, ...customSheets];
-
-        // Deep clone and apply overrides
+        // Apply cell overrides
         const sheets = allSheets.map((sheet, si) => ({
             ...sheet,
             rows: sheet.rows.map((row, ri) => ({
@@ -133,8 +129,8 @@ export default function EstimatorStudio({
             })),
         }));
 
-        return { ...source, sheets };
-    }, [serverPreview, basePreviewData, customSheets, cellOverrides]);
+        return { ...serverPreview, sheets };
+    }, [serverPreview, customSheets, cellOverrides]);
 
     const handleChange = useCallback((next: EstimatorAnswers) => {
         setAnswers(next);
@@ -147,9 +143,10 @@ export default function EstimatorStudio({
 
     const handleAddSheet = useCallback(() => {
         const idx = customSheets.length;
+        const sheetCount = (serverPreview?.sheets?.length ?? 0) + idx;
         const color = SHEET_COLORS[idx % SHEET_COLORS.length];
         const newSheet: SheetTab = {
-            name: `Sheet ${basePreviewData.sheets.length + idx + 1}`,
+            name: `Sheet ${sheetCount + 1}`,
             color,
             columns: ["A", "B", "C", "D", "E"],
             rows: Array.from({ length: 20 }, () => ({
@@ -157,10 +154,10 @@ export default function EstimatorStudio({
             })),
         };
         setCustomSheets(prev => [...prev, newSheet]);
-    }, [customSheets.length, basePreviewData.sheets.length]);
+    }, [customSheets.length, serverPreview]);
 
     const handleExport = useCallback(async () => {
-        if (previewData.sheets.length === 0) return;
+        if (!previewData || previewData.sheets.length === 0) return;
         setExporting(true);
         try {
             // Use unified server-side export (same generator as RFP path)
@@ -564,6 +561,7 @@ export default function EstimatorStudio({
                         editable={true}
                         onCellEdit={handleCellEdit}
                         onAddSheet={handleAddSheet}
+                        loading={serverPreviewLoading}
                     />
                     {/* Bundle panel overlay */}
                     {bundleOpen && (

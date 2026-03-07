@@ -10,31 +10,44 @@
 
 import React, { useState } from "react";
 import { cn } from "@/lib/utils";
-import { FileSpreadsheet, Download, Plus } from "lucide-react";
+import { FileSpreadsheet, Download, Plus, Loader2 } from "lucide-react";
 import type { ExcelPreviewData, SheetTab, SheetRow, SheetCell } from "./EstimatorBridge";
 
 interface ExcelPreviewProps {
-    data: ExcelPreviewData;
+    data: ExcelPreviewData | null;
     onExport?: () => void;
     exporting?: boolean;
     editable?: boolean;
     onCellEdit?: (sheetIndex: number, rowIndex: number, colIndex: number, newValue: string) => void;
     onAddSheet?: () => void;
+    loading?: boolean;
 }
 
-export default function ExcelPreview({ data, onExport, exporting, editable = false, onCellEdit, onAddSheet }: ExcelPreviewProps) {
+export default function ExcelPreview({ data, onExport, exporting, editable = false, onCellEdit, onAddSheet, loading }: ExcelPreviewProps) {
     const [activeTab, setActiveTab] = useState(0);
     const [editingCell, setEditingCell] = useState<{ row: number; col: number } | null>(null);
 
-    const activeSheet = data.sheets[activeTab] || data.sheets[0];
-    if (!activeSheet) {
+    // Loading state — server is generating the canonical workbook
+    if (!data || !data.sheets?.length) {
         return (
-            <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-3">
-                <FileSpreadsheet className="w-12 h-12 opacity-30" />
-                <p className="text-sm">Answer questions to see the preview</p>
+            <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-3 bg-white dark:bg-zinc-900 rounded-lg border border-border">
+                {loading ? (
+                    <>
+                        <Loader2 className="w-8 h-8 animate-spin opacity-40" />
+                        <p className="text-sm">Generating workbook...</p>
+                    </>
+                ) : (
+                    <>
+                        <FileSpreadsheet className="w-12 h-12 opacity-30" />
+                        <p className="text-sm">Add displays to generate the workbook</p>
+                    </>
+                )}
             </div>
         );
     }
+
+    const activeSheet = data.sheets[activeTab] || data.sheets[0];
+    if (!activeSheet) return null;
 
     return (
         <div className="h-full flex flex-col bg-white dark:bg-zinc-900 rounded-lg border border-border overflow-hidden shadow-sm">
