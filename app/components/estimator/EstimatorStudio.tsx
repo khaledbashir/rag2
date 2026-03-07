@@ -34,6 +34,7 @@ import { useProductSpecs } from "@/hooks/useProductSpecs";
 import { exportEstimatorExcel } from "./exportEstimatorExcel";
 import { useRateCard } from "@/hooks/useRateCard";
 import { useEstimatorAutoSave } from "@/hooks/useEstimatorAutoSave";
+import { useServerPreview } from "@/hooks/useServerPreview";
 
 const EstimatorVenuePanel = dynamic(() => import("./EstimatorVenuePanel"), { ssr: false });
 
@@ -100,14 +101,19 @@ export default function EstimatorStudio({
         });
     }, [answers, rates, productSpecs]);
 
-    // Build preview data reactively from answers + rate card
+    // WYSIWYG preview: call the same server-side generator that produces the export.
+    // Falls back to client-side preview while server is loading or if no displays yet.
+    const { data: serverPreview, loading: serverPreviewLoading } = useServerPreview(answers);
+
+    // Client-side preview (instant, used as fallback while server generates)
     const basePreviewData: ExcelPreviewData = useMemo(() => {
         return buildPreviewSheets(answers, rates ?? undefined);
     }, [answers, rates]);
 
-    // Merge computed data + custom sheets + cell overrides
+    // Use server-generated preview when available (true WYSIWYG), fall back to client-side
     const previewData: ExcelPreviewData = useMemo(() => {
-        const allSheets = [...basePreviewData.sheets, ...customSheets];
+        const source = serverPreview || basePreviewData;
+        const allSheets = [...source.sheets, ...customSheets];
 
         // Deep clone and apply overrides
         const sheets = allSheets.map((sheet, si) => ({
@@ -127,8 +133,8 @@ export default function EstimatorStudio({
             })),
         }));
 
-        return { ...basePreviewData, sheets };
-    }, [basePreviewData, customSheets, cellOverrides]);
+        return { ...source, sheets };
+    }, [serverPreview, basePreviewData, customSheets, cellOverrides]);
 
     const handleChange = useCallback((next: EstimatorAnswers) => {
         setAnswers(next);
