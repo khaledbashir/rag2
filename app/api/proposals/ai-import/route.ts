@@ -157,8 +157,20 @@ export async function POST(req: NextRequest) {
 
 // ─── AI Call ────────────────────────────────────────────────────────────────
 
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+
 async function callAI(excelText: string): Promise<any> {
-  // Try AnythingLLM first
+  // Primary: Gemini Flash — fast, reliable, no embeddings
+  if (GEMINI_API_KEY) {
+    try {
+      const result = await callGemini(excelText);
+      if (result) return result;
+    } catch (err: any) {
+      console.warn("[AI IMPORT] Gemini failed:", err.message);
+    }
+  }
+
+  // Fallback: AnythingLLM workspace
   if (ANYTHING_LLM_KEY) {
     try {
       const result = await callAnythingLLM(excelText);
@@ -168,19 +180,38 @@ async function callAI(excelText: string): Promise<any> {
     }
   }
 
-  // Fallback: try LiteLLM/OpenAI-compatible endpoint
-  const litellmBase = process.env.LITELLM_BASE_URL;
-  const litellmKey = process.env.LITELLM_API_KEY;
-  if (litellmBase && litellmKey) {
-    try {
-      const result = await callLiteLLM(excelText, litellmBase, litellmKey);
-      if (result) return result;
-    } catch (err: any) {
-      console.warn("[AI IMPORT] LiteLLM failed:", err.message);
-    }
+  return null;
+}
+
+async function callGemini(excelText: string): Promise<any> {
+  const model = "gemini-2.5-flash";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{
+        parts: [{
+          text: `${SYSTEM_PROMPT}\n\n--- SPREADSHEET DATA ---\n${excelText}`,
+        }],
+      }],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 8000,
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Gemini ${res.status}: ${errText.substring(0, 300)}`);
   }
 
-  return null;
+  const data = await res.json();
+  const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  console.log(`[AI IMPORT] Gemini response: ${reply.length} chars`);
+  return extractJSON(reply);
 }
 
 async function callAnythingLLM(excelText: string): Promise<any> {
@@ -205,33 +236,6 @@ async function callAnythingLLM(excelText: string): Promise<any> {
 
   const data = await res.json();
   const reply = data.textResponse || data.response || "";
-  return extractJSON(reply);
-}
-
-async function callLiteLLM(excelText: string, base: string, key: string): Promise<any> {
-  const res = await fetch(`${base.replace(/\/+$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
-    },
-    body: JSON.stringify({
-      model: process.env.LITELLM_MODEL || "gpt-4o-mini",
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `Extract pricing data from this spreadsheet:\n\n${excelText}` },
-      ],
-      temperature: 0,
-      max_tokens: 4000,
-    }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`LiteLLM ${res.status}: ${await res.text()}`);
-  }
-
-  const data = await res.json();
-  const reply = data.choices?.[0]?.message?.content || "";
   return extractJSON(reply);
 }
 
