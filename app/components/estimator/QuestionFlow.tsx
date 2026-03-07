@@ -42,7 +42,7 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
     const [phase, setPhase] = useState<"project" | "display" | "financial" | "complete">("project");
     const [displayIndex, setDisplayIndex] = useState(0);
     const [aiMode, setAiMode] = useState(false);
-    const [manualChosen, setManualChosen] = useState(false);
+    const [manualChosen, setManualChosen] = useState(true); // Manual-first: structured checklist is the default
     const [aiDescription, setAiDescription] = useState("");
     const [aiLoading, setAiLoading] = useState(false);
     const [aiError, setAiError] = useState("");
@@ -834,24 +834,17 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                         )}
                     </div>
                 ) : (
-                /* ===== STANDARD QUESTION FLOW ===== */
+                /* ===== STRUCTURED QUESTION FLOW ===== */
                 <div className="w-full max-w-lg animate-in fade-in slide-in-from-bottom-4 duration-300" key={`${phase}-${displayIndex}-${currentStep}`}>
-                    {/* Question number + inline Back */}
+                    {/* Section context + Back */}
                     <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-[#0A52EF]">
-                                {globalStep + 1}
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-[#0A52EF]/70">
+                                {phase === "project" ? "Project Info" : phase === "display" ? `Display ${displayIndex + 1} — ${getSectionLabel(currentQ?.id)}` : phase === "financial" ? `Financial — ${getFinancialSection(currentQ?.id)}` : "Review"}
                             </span>
-                            <ArrowRight className="w-3 h-3 text-[#0A52EF]" />
                         </div>
                         <button
-                            onClick={() => {
-                                if (phase === "project" && currentStep === 0 && manualChosen) {
-                                    setManualChosen(false);
-                                } else {
-                                    goBack();
-                                }
-                            }}
+                            onClick={goBack}
                             className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                         >
                             <ChevronUp className="w-3.5 h-3.5" />
@@ -859,12 +852,23 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                         </button>
                     </div>
 
+                    {/* AI pre-fill option — small, secondary, only on first project question */}
+                    {phase === "project" && currentStep === 0 && !aiMode && (
+                        <button
+                            onClick={() => setAiMode(true)}
+                            className="mb-4 flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-[#0A52EF] transition-colors"
+                        >
+                            <Wand2 className="w-3 h-3" />
+                            Pre-fill from project description
+                        </button>
+                    )}
+
                     {/* Question label */}
-                    <h2 className="text-2xl font-semibold text-foreground mb-1 leading-tight">
+                    <h2 className="text-xl font-semibold text-foreground mb-1 leading-tight">
                         {currentQ.label}
                     </h2>
                     {currentQ.subtitle && (
-                        <p className="text-sm text-muted-foreground mb-6">{currentQ.subtitle}</p>
+                        <p className="text-xs text-muted-foreground mb-5">{currentQ.subtitle}</p>
                     )}
 
                     {/* Input */}
@@ -920,19 +924,12 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                 )}
             </div>
 
-            {/* Bottom nav — hidden on landing screen */}
-            {!(phase === "project" && currentStep === 0 && !aiMode && !manualChosen) && (
+            {/* Bottom nav */}
+            {!aiMode && (
                 <div className="shrink-0 px-6 py-3 border-t border-border flex items-center justify-between">
                     <button
-                        onClick={() => {
-                            // If on first question in manual mode, go back to landing
-                            if (phase === "project" && currentStep === 0 && manualChosen) {
-                                setManualChosen(false);
-                            } else {
-                                goBack();
-                            }
-                        }}
-                        disabled={false}
+                        onClick={goBack}
+                        disabled={phase === "project" && currentStep === 0}
                         className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
                     >
                         <ChevronUp className="w-3.5 h-3.5" />
@@ -952,7 +949,37 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
 }
 
 // ============================================================================
-// LANDING SCREEN — AI-first hero with quick-start presets
+// SECTION LABEL HELPERS — Maps question IDs to human-readable section names
+// ============================================================================
+
+function getSectionLabel(questionId: string | undefined): string {
+    if (!questionId) return "Setup";
+    const SECTION_MAP: Record<string, string> = {
+        displayType: "Basics", displayName: "Basics", locationType: "Basics",
+        dimensions: "Specs", pixelPitch: "Specs", altPitches: "Specs", productId: "Specs",
+        installComplexity: "Structure", serviceType: "Structure", isReplacement: "Structure",
+        useExistingStructure: "Structure", steelScope: "Structure", liftType: "Structure",
+        powerDistance: "Electrical & Data", dataRunDistance: "Electrical & Data",
+        includeSpareParts: "Options", addAnother: "Options",
+    };
+    return SECTION_MAP[questionId] || "Setup";
+}
+
+function getFinancialSection(questionId: string | undefined): string {
+    if (!questionId) return "Settings";
+    const SECTION_MAP: Record<string, string> = {
+        marginTier: "Margins", ledMargin: "Margins", servicesMargin: "Margins", defaultMargin: "Margins",
+        bondRate: "Rates", salesTaxRate: "Rates", costPerSqFtOverride: "Rates",
+        pmComplexity: "Project Settings", targetPrice: "Project Settings",
+        includeCms: "Add-ons", cmsAllocation: "Add-ons",
+        includeScoring: "Add-ons", scoringAllocation: "Add-ons",
+        includeWarranty: "Add-ons", warrantyYears: "Add-ons", warrantyAllocation: "Add-ons",
+    };
+    return SECTION_MAP[questionId] || "Settings";
+}
+
+// ============================================================================
+// LANDING SCREEN — Secondary option (user must explicitly go back to see it)
 // ============================================================================
 
 const QUICK_START_SCENARIOS = [
