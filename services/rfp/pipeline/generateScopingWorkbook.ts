@@ -792,12 +792,10 @@ function buildMarginAnalysis(
   function writeCategory(label: string, cost: number, marginPct: number): void {
     const r = ws.getRow(row);
     r.getCell(2).value = `    ${label}`; r.getCell(2).font = subFont;
-    r.getCell(3).value = cost; r.getCell(3).numFmt = FMT_USD; r.getCell(3).font = subFont;
+    r.getCell(3).value = cost; r.getCell(3).numFmt = ";;;";
     r.getCell(4).value = { formula: sellFormula(row), result: cost > 0 ? round2(cost / (1 - marginPct)) : 0 };
     r.getCell(4).numFmt = FMT_USD; r.getCell(4).font = subFont;
-    r.getCell(5).value = { formula: marginDollarFormula(row), result: cost > 0 ? round2(cost / (1 - marginPct) - cost) : 0 };
-    r.getCell(5).numFmt = FMT_USD; r.getCell(5).font = subFont;
-    r.getCell(6).value = marginPct; r.getCell(6).numFmt = FMT_PCT; r.getCell(6).font = subFont;
+    r.getCell(6).value = marginPct; r.getCell(6).numFmt = ";;;";
     row++;
   }
 
