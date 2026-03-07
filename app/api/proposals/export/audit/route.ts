@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateAuditExcelBuffer } from "@/services/proposal/server/exportFormulaicExcel";
 import { generateMirrorUglySheetExcelBuffer } from "@/services/proposal/server/exportMirrorUglySheetExcel";
+import { generateScopingWorkbook } from "@/services/rfp/pipeline/generateScopingWorkbook";
+import { mapMirrorToScoping } from "@/services/rfp/pipeline/pricingDocumentToScopingMapper";
 
 export async function POST(req: NextRequest) {
   try {
@@ -104,8 +106,24 @@ export async function POST(req: NextRequest) {
       documentMode: ((proposal as any)?.documentMode || body.documentMode || "BUDGET").toString().toUpperCase(),
       displayCount: effectiveScreens.length,
     };
-    const buffer = effectiveMode === "MIRROR"
-      ? await generateMirrorUglySheetExcelBuffer({
+    let buffer: Buffer;
+    if (effectiveMode === "MIRROR" && pricingDocument?.tables?.length) {
+      // Primary Mirror export: canonical 14-tab workbook via generateScopingWorkbook
+      const scopingOptions = mapMirrorToScoping({
+        pricingDocument,
+        screens: effectiveScreens,
+        internalAudit,
+        currency,
+        clientName: receiverName || proposal?.clientName || body.clientName,
+        projectName: proposalName,
+        location: projectAddress || venue || null,
+      });
+      const result = await generateScopingWorkbook(scopingOptions);
+      buffer = result.buffer;
+    } else if (effectiveMode === "MIRROR") {
+      // Fallback: no pricingDocument — use legacy 5-tab generator
+      console.warn("[Audit Export] MIRROR mode missing pricingDocument — falling back to legacy 5-tab export");
+      buffer = await generateMirrorUglySheetExcelBuffer({
         clientName: proposal?.clientName || body.clientName,
         projectName: proposal?.clientName || body.projectName,
         screens: effectiveScreens,
@@ -113,8 +131,9 @@ export async function POST(req: NextRequest) {
         currency,
         pricingDocument,
         summaryInfo,
-      })
-      : await generateAuditExcelBuffer(screensWithAudit, {
+      });
+    } else {
+      buffer = await generateAuditExcelBuffer(screensWithAudit, {
         proposalName,
         clientName: proposal?.clientName,
         status: (proposal?.status as any) ?? "DRAFT",
@@ -130,6 +149,7 @@ export async function POST(req: NextRequest) {
         currency,
         summaryInfo,
       });
+    }
 
     return new Response(buffer as any, {
       status: 200,
