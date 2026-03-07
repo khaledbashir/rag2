@@ -78,7 +78,7 @@ function getPdfFingerprint(data: ProposalType): string {
 const PdfViewer = () => {
     const { watch } = useFormContext<ProposalType>();
     const formValues = watch();
-    const { generatePdf, proposalPdfLoading, pdfUrl, excelPreview } = useProposalContext();
+    const { generatePdf, proposalPdfLoading, pdfUrl, excelPreview, excelImportLoading } = useProposalContext();
     const [exactPdfPreview, setExactPdfPreview] = useState(false);
     const [zoomPct, setZoomPct] = useState(100);
     const [pageNumber, setPageNumber] = useState(1);
@@ -321,8 +321,18 @@ const PdfViewer = () => {
                         if (!excelPreview) {
                             return (
                                 <div className="flex flex-col items-center justify-center h-full text-center p-8 bg-muted/20 rounded-xl border border-dashed border-border">
-                                    <p className="text-sm font-medium text-foreground">Live Preview</p>
-                                    <p className="text-xs text-muted-foreground mt-2 max-w-[220px]">Upload an Excel file to see your proposal preview here.</p>
+                                    {excelImportLoading ? (
+                                        <>
+                                            <div className="w-8 h-8 border-2 border-brand-blue/30 border-t-brand-blue rounded-full animate-spin mb-4" />
+                                            <p className="text-sm font-medium text-foreground">Building Preview</p>
+                                            <p className="text-xs text-muted-foreground mt-2 max-w-[220px]">AI is reading your spreadsheet and extracting pricing data. This usually takes 10-15 seconds.</p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <p className="text-sm font-medium text-foreground">Live Preview</p>
+                                            <p className="text-xs text-muted-foreground mt-2 max-w-[220px]">Upload an Excel file to see your proposal preview here.</p>
+                                        </>
+                                    )}
                                 </div>
                             );
                         }

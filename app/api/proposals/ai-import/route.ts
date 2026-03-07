@@ -13,8 +13,9 @@ import * as xlsx from "xlsx";
 import crypto from "node:crypto";
 import { PricingTable, PricingDocument, createTableId } from "@/types/pricing";
 import { ANYTHING_LLM_BASE_URL, ANYTHING_LLM_KEY } from "@/lib/variables";
+import { parseRespMatrixDetailed } from "@/services/pricing/respMatrixParser";
 
-const SYSTEM_PROMPT = `You are an ANC Proposal Engine data extractor. You receive raw spreadsheet data (tab-separated) from an LED display project's Margin Analysis tab. Extract ALL pricing information into a JSON object.
+const SYSTEM_PROMPT = `You are an ANC Proposal Engine data extractor. You receive raw spreadsheet data (tab-separated) from an LED display project. Extract ALL data into a single JSON object.
 
 OUTPUT THIS EXACT JSON SCHEMA (no markdown, no explanation, ONLY the JSON):
 {
@@ -34,10 +35,22 @@ OUTPUT THIS EXACT JSON SCHEMA (no markdown, no explanation, ONLY the JSON):
       "grandTotal": number
     }
   ],
-  "documentTotal": number
+  "documentTotal": number,
+  "screens": [
+    {
+      "name": "string (display name, e.g. LED-C1-01 - LED Display)",
+      "heightFt": number,
+      "widthFt": number,
+      "pixelPitch": number,
+      "resolution": "string (e.g. 70 x 11368)",
+      "quantity": number,
+      "location": "string or empty",
+      "product": "string (manufacturer/model if listed)"
+    }
+  ]
 }
 
-RULES:
+PRICING RULES (from Margin Analysis sheet):
 - Extract EVERY line item with a selling price. Do not skip any.
 - "cost" is the cost/budget column. "sell" is the selling price/revenue column.
 - If only one numeric column exists, use it as "sell" and set cost to null.
@@ -51,6 +64,16 @@ RULES:
 - Do NOT include subtotal/tax/bond/tariff/grand total rows as line items.
 - If there are multiple sections (e.g. per-screen breakdowns), create separate tables for each.
 - If there's only one section, create one table.
+
+SCREEN RULES (from LED Cost Sheet or similar):
+- Extract every LED display/screen with its dimensions and specs.
+- heightFt/widthFt: display dimensions in feet (convert from inches if needed).
+- pixelPitch: in millimeters (e.g. 3.9, 10, 1.2).
+- resolution: columns x rows (e.g. "70 x 11368").
+- quantity: number of units (default 1).
+- If no LED sheet exists, set screens to empty array [].
+
+GENERAL:
 - Project name: look in the first few rows for a project name or title.
 - RESPOND WITH ONLY THE JSON. No text before or after.`;
 
@@ -65,24 +88,29 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const sourceWorkbookHash = crypto.createHash("sha256").update(buffer).digest("hex");
-
-    // Step 1: Convert Excel to text (dead simple — no parsing logic)
     const workbook = xlsx.read(buffer, { type: "buffer" });
-    const sheetTexts: { name: string; text: string }[] = [];
 
-    // Find Margin Analysis tab first, fall back to first sheet
+    // ── Step 1: Convert relevant sheets to text for AI ──
+    const sheetTexts: { name: string; text: string }[] = [];
     const maSheet = workbook.SheetNames.find(
       (n) => /margin.*analysis/i.test(n) && !/cms/i.test(n)
     );
-    const targetSheets = maSheet
-      ? [maSheet]
-      : workbook.SheetNames.slice(0, 3); // First 3 sheets as fallback
+    const ledSheet = workbook.SheetNames.find(
+      (n) => /led.*(?:cost|sheet)/i.test(n)
+    );
 
-    for (const sheetName of targetSheets) {
+    // Collect sheets: MA + LED + first 2 others as context
+    const sheetsToSend = new Set<string>();
+    if (maSheet) sheetsToSend.add(maSheet);
+    if (ledSheet) sheetsToSend.add(ledSheet);
+    // Add first few sheets as fallback context
+    for (const name of workbook.SheetNames.slice(0, 4)) {
+      if (sheetsToSend.size < 4) sheetsToSend.add(name);
+    }
+
+    for (const sheetName of sheetsToSend) {
       const sheet = workbook.Sheets[sheetName];
-      // Convert to CSV-like text (tab-separated for clarity)
       const text = xlsx.utils.sheet_to_csv(sheet, { FS: "\t", RS: "\n" });
-      // Trim to reasonable size (first 200 lines)
       const lines = text.split("\n").slice(0, 200);
       sheetTexts.push({ name: sheetName, text: lines.join("\n") });
     }
@@ -91,14 +119,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No readable sheets found" }, { status: 422 });
     }
 
-    // Step 2: Build the AI prompt
+    // ── Step 2: Extract Resp Matrix (structured parser — reliable, no AI needed) ──
+    let respMatrix: any = undefined;
+    try {
+      const rmResult = parseRespMatrixDetailed(workbook);
+      if (rmResult.matrix?.categories?.length) {
+        respMatrix = rmResult.matrix;
+        console.log(`[AI IMPORT] Resp Matrix: ${rmResult.matrix.categories.length} categories`);
+      }
+    } catch {}
+
+    // ── Step 3: Send to AI ──
     const excelText = sheetTexts
       .map((s) => `=== Sheet: ${s.name} ===\n${s.text}`)
       .join("\n\n");
 
     console.log(`[AI IMPORT] Sending ${excelText.length} chars from ${sheetTexts.length} sheet(s) to AI`);
 
-    // Step 3: Call AnythingLLM (non-streaming, simpler)
     const aiResult = await callAI(excelText);
 
     if (!aiResult) {
@@ -107,33 +144,40 @@ export async function POST(req: NextRequest) {
       }, { status: 500 });
     }
 
-    // Step 4: Convert AI JSON → PricingDocument
+    // ── Step 4: Build PricingDocument + Screens from AI result ──
     const pricingDocument = buildPricingDocument(aiResult, file.name, sourceWorkbookHash, maSheet || sheetTexts[0].name);
+    if (respMatrix) {
+      pricingDocument.respMatrix = respMatrix;
+    }
 
-    console.log(`[AI IMPORT] Success: ${pricingDocument.tables.length} tables, $${Math.round(pricingDocument.documentTotal)} total`);
+    const screens = buildScreens(aiResult);
 
-    // Step 5: Return in the same format as the standard import
-    const minimalData = {
+    console.log(`[AI IMPORT] Success: ${pricingDocument.tables.length} tables, ${screens.length} screens, $${Math.round(pricingDocument.documentTotal)} total`);
+
+    // ── Step 5: Return full proposal data ──
+    const validation = {
+      status: "PASS" as const,
+      strict: false,
+      errors: [] as string[],
+      warnings: ["Imported via AI extraction (BETA)"],
+      evidence: {
+        marginSheetDetected: maSheet || sheetTexts[0].name,
+        headerRowIndex: null,
+        sectionCount: pricingDocument.tables.length,
+        respMatrixSheetCandidates: [] as string[],
+        respMatrixSheetUsed: null,
+        respMatrixCategoryCount: respMatrix?.categories?.length || 0,
+      },
+    };
+
+    const responseData = {
       formData: {
         details: {
           proposalName: aiResult.projectName || file.name.replace(/\.(xlsx?|csv)$/i, ""),
-          screens: [],
+          screens,
           items: [],
           pricingDocument,
-          parserValidationReport: {
-            status: "PASS",
-            strict: false,
-            errors: [],
-            warnings: ["Imported via AI extraction (BETA)"],
-            evidence: {
-              marginSheetDetected: maSheet || sheetTexts[0].name,
-              headerRowIndex: null,
-              sectionCount: pricingDocument.tables.length,
-              respMatrixSheetCandidates: [],
-              respMatrixSheetUsed: null,
-              respMatrixCategoryCount: 0,
-            },
-          },
+          parserValidationReport: validation,
           parserStrictVersion: "2026.02.12.strict-v1",
           sourceWorkbookHash,
           calculationMode: "MIRROR",
@@ -143,12 +187,12 @@ export async function POST(req: NextRequest) {
           name: aiResult.clientName || aiResult.projectName || "",
         },
       },
-      validation: { status: "PASS", strict: false, errors: [], warnings: ["AI extraction (BETA)"] },
+      validation,
       mirrorModeOnly: true,
       aiImport: true,
     };
 
-    return NextResponse.json(minimalData);
+    return NextResponse.json(responseData);
   } catch (err: any) {
     console.error("[AI IMPORT] Error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -329,4 +373,25 @@ function buildPricingDocument(
       sourceWorkbookHash: hash,
     },
   };
+}
+
+// ─── Screen Builder ─────────────────────────────────────────────────────────
+
+function buildScreens(ai: any): any[] {
+  if (!Array.isArray(ai.screens) || ai.screens.length === 0) return [];
+
+  return ai.screens.map((s: any, idx: number) => ({
+    id: `ai-screen-${idx}`,
+    name: String(s.name || `Display ${idx + 1}`).trim(),
+    heightFt: Number(s.heightFt) || 0,
+    widthFt: Number(s.widthFt) || 0,
+    pixelPitch: Number(s.pixelPitch) || 0,
+    pitchMm: Number(s.pixelPitch) || 0,
+    resolution: String(s.resolution || ""),
+    quantity: Number(s.quantity) || 1,
+    location: String(s.location || ""),
+    product: String(s.product || ""),
+    brightness: 0,
+    brightnessNits: 0,
+  }));
 }
