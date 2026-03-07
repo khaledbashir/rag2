@@ -2,7 +2,7 @@
  * Installation SOW Generator — Produces Matt's subcontractor-facing DOCX.
  *
  * Pure template engine: no AI, no LLM calls. All data comes from the proposal.
- * Based on real ANC SOWs (Bilt HQ, Union Station Display Replacement).
+ * Based on real ANC SOWs (Bilt HQ, Union Station, Reverb Hotel).
  *
  * Output: .docx file matching Matt's exact format.
  */
@@ -16,23 +16,25 @@ import {
   TableCell,
   WidthType,
   AlignmentType,
-  HeadingLevel,
   BorderStyle,
   Packer,
   ShadingType,
   convertInchesToTwip,
   TableLayoutType,
+  Header,
+  ImageRun,
 } from "docx";
 import {
   INSTALL_TASKS,
-  DEFAULT_INCLUSIONS,
   DEFAULT_EXCLUSIONS,
   UNION_INCLUSIONS,
   NIGHT_WORK_INCLUSIONS,
   BOILERPLATE,
   STRUCTURE_TYPES,
-  type InstallTask,
+  estimateCabinets,
 } from "./installationSOWTemplates";
+import fs from "fs";
+import path from "path";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -56,15 +58,51 @@ export interface InstallSOWInput {
   venue: string;
   address?: string;
   date?: string;
+  revision?: number;
+  installStartDate?: string;
+  installEndDate?: string;
   installWeeks?: number;
   displays: InstallSOWDisplay[];
   isUnionLabor?: boolean;
   hasNightWork?: boolean;
   includeElectrical?: boolean;
   includeStructural?: boolean;
-  customInclusions?: string[];
   customExclusions?: string[];
+  bidDueDate?: string;
   currency?: string;
+  /** Per-section text overrides — key is section id, value is custom text */
+  sectionOverrides?: Record<string, string>;
+}
+
+/** Structured SOW data for the live preview UI */
+export interface InstallSOWPreview {
+  title: string;
+  subtitle: string;
+  projectName: string;
+  address: string;
+  date: string;
+  revision: number;
+  sections: SOWPreviewSection[];
+  displays: SOWPreviewDisplay[];
+  exclusions: string[];
+  pricingNote: string;
+  bidDueDate: string;
+}
+
+export interface SOWPreviewSection {
+  id: string;
+  title: string;
+  content: string;
+  editable: boolean;
+}
+
+export interface SOWPreviewDisplay {
+  name: string;
+  quantity: number;
+  specs: string;
+  cabinetInfo: string;
+  inclusions: string[];
+  tasks: string[];
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -86,24 +124,15 @@ function normal(text: string, size = 22): TextRun {
   return new TextRun({ text, size, font: "Calibri" });
 }
 
-function heading(text: string, level: (typeof HeadingLevel)[keyof typeof HeadingLevel] = HeadingLevel.HEADING_1): Paragraph {
-  return new Paragraph({
-    heading: level,
-    spacing: { before: 240, after: 120 },
-    children: [new TextRun({ text, bold: true, size: level === HeadingLevel.HEADING_1 ? 28 : 24, font: "Calibri" })],
-  });
+function underlineBold(text: string, size = 22): TextRun {
+  return new TextRun({ text, bold: true, underline: { type: "single" }, size, font: "Calibri" });
 }
 
-function bullet(text: string): Paragraph {
+function sectionHeading(text: string): Paragraph {
   return new Paragraph({
-    bullet: { level: 0 },
-    spacing: { after: 40 },
-    children: [normal(text)],
+    spacing: { before: 300, after: 100 },
+    children: [underlineBold(text, 22)],
   });
-}
-
-function spacer(): Paragraph {
-  return new Paragraph({ spacing: { before: 120, after: 120 }, children: [] });
 }
 
 function bodyParagraph(text: string): Paragraph {
@@ -113,311 +142,353 @@ function bodyParagraph(text: string): Paragraph {
   });
 }
 
-// ─── Table Builders ─────────────────────────────────────────────────────────
-
-const BORDER_THIN = {
-  top: { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" },
-  bottom: { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" },
-  left: { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" },
-  right: { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" },
-} as const;
-
-function headerCell(text: string, width?: number): TableCell {
-  return new TableCell({
-    children: [new Paragraph({ children: [bold(text, 20)], alignment: AlignmentType.CENTER })],
-    shading: { type: ShadingType.SOLID, color: "1F2937" },
-    borders: BORDER_THIN,
-    width: width ? { size: width, type: WidthType.DXA } : undefined,
-    verticalAlign: "center" as any,
-  });
-}
-
-function dataCell(text: string, align: (typeof AlignmentType)[keyof typeof AlignmentType] = AlignmentType.LEFT): TableCell {
-  return new TableCell({
-    children: [new Paragraph({ children: [normal(text, 20)], alignment: align })],
-    borders: BORDER_THIN,
-    verticalAlign: "center" as any,
-  });
-}
-
-function buildEquipmentTable(displays: InstallSOWDisplay[]): Table {
-  const headerRow = new TableRow({
-    tableHeader: true,
+function numberedItem(num: string, text: string, isBold = false): Paragraph {
+  return new Paragraph({
+    spacing: { after: 60 },
+    indent: { left: convertInchesToTwip(0.25) },
     children: [
-      headerCell("Display", 3500),
-      headerCell("Size", 2000),
-      headerCell("Pitch", 1200),
-      headerCell("Qty", 800),
-      headerCell("Environment", 1500),
+      isBold ? bold(`${num} `) : normal(`${num} `),
+      isBold ? underlineBold(text) : normal(text),
     ],
   });
+}
 
-  const rows = displays.map(
-    (d) =>
-      new TableRow({
-        children: [
-          dataCell(d.name),
-          dataCell(`${d.heightFt}' H x ${d.widthFt}' W`),
-          dataCell(`${d.pixelPitch}mm`),
-          dataCell(String(d.quantity), AlignmentType.CENTER),
-          dataCell(d.environment || "Indoor"),
-        ],
-      })
+function subItem(num: string, text: string): Paragraph {
+  return new Paragraph({
+    spacing: { after: 40 },
+    indent: { left: convertInchesToTwip(0.5) },
+    children: [normal(`${num}${text}`)],
+  });
+}
+
+function spacer(size = 120): Paragraph {
+  return new Paragraph({ spacing: { before: size, after: size }, children: [] });
+}
+
+// ─── Build Display Inclusion Block ──────────────────────────────────────────
+
+function buildDisplayInclusion(
+  d: InstallSOWDisplay,
+  displayNum: number
+): Paragraph[] {
+  const cab = estimateCabinets(d.widthFt, d.heightFt, d.pixelPitch);
+  const structLabel = STRUCTURE_TYPES[d.structureType || "wall"] || STRUCTURE_TYPES.custom;
+  const paragraphs: Paragraph[] = [];
+
+  // Display header: "1.1. Main Display including the following elements:"
+  paragraphs.push(
+    new Paragraph({
+      spacing: { before: 80, after: 40 },
+      indent: { left: convertInchesToTwip(0.25) },
+      children: [normal(`1.${displayNum}. ${d.name} including the following elements:`)],
+    })
   );
 
-  return new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    layout: TableLayoutType.FIXED,
-    rows: [headerRow, ...rows],
-  });
-}
+  // Demolition
+  if (d.hasDemolition) {
+    paragraphs.push(subItem(`1.${displayNum}.1.`, "Demolition and disposal of existing display."));
+  }
 
-function buildPricingTable(displays: InstallSOWDisplay[], currency: string): Table {
-  const headerRow = new TableRow({
-    tableHeader: true,
-    children: [
-      headerCell("Display", 5000),
-      headerCell("Qty", 1000),
-      headerCell("Install Price", 3000),
-    ],
-  });
+  // Structure
+  paragraphs.push(
+    subItem(
+      `1.${displayNum}.${d.hasDemolition ? 2 : 1}.`,
+      `Fabrication and installation of secondary structure consisting of ${structLabel}.`
+    )
+  );
 
-  let grandTotal = 0;
-  const rows = displays.map((d) => {
-    const lineTotal = (d.installPrice || 0) * d.quantity;
-    grandTotal += lineTotal;
-    return new TableRow({
-      children: [
-        dataCell(d.name),
-        dataCell(String(d.quantity), AlignmentType.CENTER),
-        dataCell(d.installPrice ? fmt(lineTotal, currency) : "TBD", AlignmentType.RIGHT),
-      ],
-    });
-  });
+  // Cabinet info
+  paragraphs.push(
+    subItem(
+      `1.${displayNum}.${d.hasDemolition ? 3 : 2}.`,
+      `LED cabinets (Approx ${cab.total} cabinets) (${cab.rows} Rows of ${cab.cols} Cabinets) per display (${d.heightFt}'h X ${d.widthFt}'W)`
+    )
+  );
 
-  const totalRow = new TableRow({
-    children: [
-      new TableCell({
-        children: [new Paragraph({ children: [bold("TOTAL", 20)], alignment: AlignmentType.RIGHT })],
-        borders: BORDER_THIN,
-        columnSpan: 2,
-      }),
-      new TableCell({
-        children: [
-          new Paragraph({
-            children: [bold(grandTotal > 0 ? fmt(grandTotal, currency) : "TBD", 20)],
-            alignment: AlignmentType.RIGHT,
-          }),
-        ],
-        borders: BORDER_THIN,
-        shading: { type: ShadingType.SOLID, color: "E8F5E9" },
-      }),
-    ],
-  });
-
-  return new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    layout: TableLayoutType.FIXED,
-    rows: [headerRow, ...rows, totalRow],
-  });
-}
-
-// ─── Per-Display Scope Builder ──────────────────────────────────────────────
-
-function buildDisplayScope(display: InstallSOWDisplay, input: InstallSOWInput): Paragraph[] {
-  const structureLabel =
-    STRUCTURE_TYPES[display.structureType || "wall"] || STRUCTURE_TYPES.custom;
-
-  const paragraphs: Paragraph[] = [
+  // Cables
+  paragraphs.push(
     new Paragraph({
-      heading: HeadingLevel.HEADING_3,
-      spacing: { before: 200, after: 80 },
-      children: [
-        bold(`${display.name}`, 22),
-        normal(
-          `  —  ${display.heightFt}' H x ${display.widthFt}' W, ${display.pixelPitch}mm, Qty ${display.quantity}`,
-          20
-        ),
-      ],
-    }),
-  ];
+      spacing: { before: 40, after: 40 },
+      indent: { left: convertInchesToTwip(0.25) },
+      children: [normal(`1.${displayNum + 1}. Power and low voltage cables for display.`)],
+    })
+  );
 
+  return paragraphs;
+}
+
+// ─── Build Per-Display Task List ────────────────────────────────────────────
+
+function buildDisplayTasks(
+  d: InstallSOWDisplay,
+  sectionNum: number,
+  input: InstallSOWInput
+): Paragraph[] {
+  const paragraphs: Paragraph[] = [];
+
+  // Section header: "2. Main Display – QTY 1:"
+  paragraphs.push(
+    numberedItem(
+      `${sectionNum}.`,
+      `${d.name} – QTY ${d.quantity}:`,
+      true
+    )
+  );
+
+  let taskNum = 1;
   for (const task of INSTALL_TASKS) {
-    if (task.condition === "hasDemolition" && !display.hasDemolition) continue;
+    if (task.condition === "hasDemolition" && !d.hasDemolition) continue;
     if (task.condition === "hasStructural" && input.includeStructural === false) continue;
     if (task.condition === "hasElectrical" && input.includeElectrical === false) continue;
 
     const text = task.template
-      .replace(/\{displayName\}/g, display.name)
-      .replace(/\{structureType\}/g, structureLabel)
-      .replace(/\{sqft\}/g, String(Math.round(display.widthFt * display.heightFt)));
+      .replace(/\{displayName\}/g, d.name);
 
-    paragraphs.push(bullet(text));
+    paragraphs.push(subItem(`${sectionNum}.${taskNum}. `, text));
+    taskNum++;
   }
 
   return paragraphs;
 }
 
-// ─── Main Generator ─────────────────────────────────────────────────────────
+// ─── Preview Data Builder (for UI) ──────────────────────────────────────────
+
+export function buildSOWPreview(input: InstallSOWInput): InstallSOWPreview {
+  const date = input.date || new Date().toISOString().split("T")[0];
+  const revision = input.revision || 1;
+
+  // Build installation line
+  let installLine = "";
+  if (input.installStartDate && input.installEndDate) {
+    installLine = `Installation is to take place between ${input.installStartDate} and ${input.installEndDate}.`;
+  } else if (input.installWeeks) {
+    installLine = `Estimated installation duration is ${input.installWeeks} weeks from receipt of Notice to Proceed.`;
+  }
+  installLine += " Installation of the LED video board included in the equipment list below and described within the SOW is to be part of this scope.";
+
+  // Objective
+  const displayCount = input.displays.reduce((s, d) => s + d.quantity, 0);
+  const hasDemolition = input.displays.some((d) => d.hasDemolition);
+  const objectiveParts: string[] = [];
+  if (hasDemolition) objectiveParts.push("Demolition");
+  objectiveParts.push("Installation");
+  const objectiveAction = objectiveParts.join(" and ");
+  const objective = input.sectionOverrides?.objective ||
+    `${objectiveAction} of the ${input.displays.length > 1 ? "displays" : "Main display"}${input.displays.length > 1 ? "s" : ""} for ${input.venue}.`;
+
+  const sections: SOWPreviewSection[] = [
+    { id: "overview", title: "PROJECT OVERVIEW", content: input.sectionOverrides?.overview || BOILERPLATE.PROJECT_OVERVIEW, editable: true },
+    { id: "objective", title: "Objective", content: objective, editable: true },
+    { id: "installation", title: "Installation", content: input.sectionOverrides?.installation || installLine, editable: true },
+    { id: "electrical", title: "Electrical Connection", content: input.sectionOverrides?.electrical || BOILERPLATE.ELECTRICAL_CONNECTION, editable: true },
+    { id: "testing", title: "Testing and Adjusting", content: input.sectionOverrides?.testing || BOILERPLATE.TESTING, editable: true },
+    { id: "signoff", title: "ANC Signoff", content: input.sectionOverrides?.signoff || BOILERPLATE.ANC_SIGNOFF, editable: true },
+  ];
+
+  const displays: SOWPreviewDisplay[] = input.displays.map((d) => {
+    const cab = estimateCabinets(d.widthFt, d.heightFt, d.pixelPitch);
+    const structLabel = STRUCTURE_TYPES[d.structureType || "wall"] || STRUCTURE_TYPES.custom;
+    const inclusions: string[] = [];
+    if (d.hasDemolition) inclusions.push("Demolition and disposal of existing display.");
+    inclusions.push(`Fabrication and installation of secondary structure consisting of ${structLabel}.`);
+    inclusions.push(`LED cabinets (Approx ${cab.total} cabinets) (${cab.rows} Rows of ${cab.cols} Cabinets) per display (${d.heightFt}'h X ${d.widthFt}'W)`);
+    inclusions.push("Power and low voltage cables for display.");
+
+    const tasks: string[] = [];
+    for (const task of INSTALL_TASKS) {
+      if (task.condition === "hasDemolition" && !d.hasDemolition) continue;
+      if (task.condition === "hasStructural" && input.includeStructural === false) continue;
+      if (task.condition === "hasElectrical" && input.includeElectrical === false) continue;
+      tasks.push(task.template.replace(/\{displayName\}/g, d.name));
+    }
+
+    return {
+      name: d.name,
+      quantity: d.quantity,
+      specs: `${d.heightFt}'H x ${d.widthFt}'W, ${d.pixelPitch}mm`,
+      cabinetInfo: `Approx ${cab.total} cabinets (${cab.rows} rows x ${cab.cols} cols)`,
+      inclusions,
+      tasks,
+    };
+  });
+
+  const exclusions = [...DEFAULT_EXCLUSIONS, ...(input.customExclusions || [])];
+  if (input.isUnionLabor) exclusions.push(...UNION_INCLUSIONS.map((i) => `[INCLUDED] ${i}`));
+
+  return {
+    title: "Scope of Work:",
+    subtitle: `${input.venue} – Display ${input.displays.some((d) => d.hasDemolition) ? "Replacement" : "Installation"}`,
+    projectName: input.projectName,
+    address: input.address || "",
+    date,
+    revision,
+    sections,
+    displays,
+    exclusions,
+    pricingNote: BOILERPLATE.ITEMIZED_PRICING,
+    bidDueDate: input.bidDueDate || "Please submit your bid via email to the ANC Contacts ASAP.",
+  };
+}
+
+// ─── DOCX Generator ─────────────────────────────────────────────────────────
 
 export async function generateInstallationSOW(input: InstallSOWInput): Promise<Buffer> {
   const date = input.date || new Date().toISOString().split("T")[0];
-  const installWeeks = input.installWeeks || 4;
+  const revision = input.revision || 1;
   const currency = input.currency || "USD";
+  const preview = buildSOWPreview(input);
 
-  // Build inclusions
-  const inclusions = [...DEFAULT_INCLUSIONS, ...(input.customInclusions || [])];
-  if (input.isUnionLabor) inclusions.push(...UNION_INCLUSIONS);
-  if (input.hasNightWork) inclusions.push(...NIGHT_WORK_INCLUSIONS);
+  const children: Paragraph[] = [];
 
-  // Build exclusions
-  const exclusions = [...DEFAULT_EXCLUSIONS, ...(input.customExclusions || [])];
-
-  // ─── Document Assembly ──────────────────────────────────────────────────
-
-  const children: (Paragraph | Table)[] = [];
-
-  // Title block
+  // ─── Title Block ──────────────────────────────────────────────────
   children.push(
     new Paragraph({
       alignment: AlignmentType.CENTER,
-      spacing: { after: 40 },
-      children: [bold("ANC SPORTS ENTERPRISES, LLC", 28)],
+      spacing: { after: 20 },
+      children: [bold("Scope of Work:", 28)],
     }),
     new Paragraph({
       alignment: AlignmentType.CENTER,
-      spacing: { after: 40 },
-      children: [bold("SCOPE OF WORK (INSTALLATION)", 24)],
-    }),
-    spacer(),
-    new Paragraph({
-      spacing: { after: 40 },
-      children: [bold("Project: "), normal(input.projectName)],
-    }),
-    new Paragraph({
-      spacing: { after: 40 },
-      children: [bold("Client: "), normal(input.clientName)],
-    }),
-    new Paragraph({
-      spacing: { after: 40 },
-      children: [bold("Venue: "), normal(input.venue)],
+      spacing: { after: 200 },
+      children: [normal(preview.subtitle, 24)],
     })
   );
 
-  if (input.address) {
-    children.push(
+  // Project info block
+  children.push(
+    new Paragraph({
+      spacing: { after: 20 },
+      children: [
+        new TextRun({ text: "PROJECT NAME: ", bold: true, size: 20, font: "Courier New" }),
+        new TextRun({ text: input.projectName, size: 20, font: "Courier New" }),
+      ],
+    }),
+    new Paragraph({
+      spacing: { after: 20 },
+      children: [
+        new TextRun({ text: "ADDRESS: ", bold: true, size: 20, font: "Courier New" }),
+        new TextRun({ text: input.address || "", size: 20, font: "Courier New" }),
+      ],
+    }),
+    new Paragraph({
+      spacing: { after: 100 },
+      children: [
+        new TextRun({ text: "DATE: ", bold: true, size: 20, font: "Courier New" }),
+        new TextRun({ text: date, size: 20, font: "Courier New" }),
+        new TextRun({ text: `    Revision #${revision}`, size: 20, font: "Courier New" }),
+      ],
+    })
+  );
+
+  // ─── Boilerplate Sections ─────────────────────────────────────────
+  for (const section of preview.sections) {
+    if (section.id === "overview") {
+      // Special: large heading
+      children.push(
+        new Paragraph({
+          spacing: { before: 200, after: 100 },
+          children: [new TextRun({ text: "PROJECT OVERVIEW", size: 22, font: "Courier New" })],
+        })
+      );
+    } else {
+      children.push(sectionHeading(section.title));
+    }
+    // Split on newlines for multi-paragraph sections
+    for (const para of section.content.split("\n\n")) {
+      children.push(bodyParagraph(para.trim()));
+    }
+  }
+
+  // ─── SCOPE OF WORK ────────────────────────────────────────────────
+  children.push(
+    new Paragraph({
+      spacing: { before: 300, after: 100 },
+      children: [new TextRun({ text: "SCOPE OF WORK", size: 24, font: "Courier New" })],
+    })
+  );
+
+  // 1. General Inclusions
+  children.push(numberedItem("1.", "General Inclusions:", true));
+  for (const display of input.displays) {
+    children.push(...buildDisplayInclusion(display, input.displays.indexOf(display) + 1));
+  }
+
+  // 2. General Exclusions
+  children.push(spacer(200));
+  children.push(numberedItem("2.", "General Exclusions:", true));
+  const exclusions = [...DEFAULT_EXCLUSIONS, ...(input.customExclusions || [])];
+  exclusions.forEach((ex, i) => {
+    children.push(subItem(`2.${i + 1}. `, ex));
+  });
+
+  // Per-display detailed tasks
+  let sectionNum = 2;
+  for (const display of input.displays) {
+    sectionNum++;
+    children.push(spacer(200));
+    children.push(...buildDisplayTasks(display, sectionNum, input));
+  }
+
+  // ─── ITEMIZED PRICING ─────────────────────────────────────────────
+  children.push(spacer(300));
+  children.push(
+    new Paragraph({
+      spacing: { before: 200, after: 100 },
+      children: [new TextRun({ text: "ITEMIZED PRICING", size: 24, font: "Courier New" })],
+    })
+  );
+  children.push(bodyParagraph(preview.pricingNote));
+
+  // ─── BID DUE DATE ─────────────────────────────────────────────────
+  children.push(spacer(200));
+  children.push(
+    new Paragraph({
+      spacing: { after: 100 },
+      children: [
+        bold("BID DUE DATE: ", 22),
+        normal(preview.bidDueDate, 22),
+      ],
+    })
+  );
+
+  // ─── Build Document ───────────────────────────────────────────────
+
+  // Try to load ANC logo for header
+  let logoImage: ImageRun | null = null;
+  try {
+    const logoPath = path.join(process.cwd(), "public", "anc-logo.png");
+    if (fs.existsSync(logoPath)) {
+      const logoData = fs.readFileSync(logoPath);
+      logoImage = new ImageRun({
+        data: logoData,
+        transformation: { width: 120, height: 50 },
+        type: "png",
+      });
+    }
+  } catch {}
+
+  const headerChildren: Paragraph[] = [];
+  if (logoImage) {
+    headerChildren.push(
+      new Paragraph({ alignment: AlignmentType.CENTER, children: [logoImage] })
+    );
+  } else {
+    headerChildren.push(
       new Paragraph({
-        spacing: { after: 40 },
-        children: [bold("Address: "), normal(input.address)],
+        alignment: AlignmentType.CENTER,
+        children: [bold("anc", 32)],
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: "www.anc.com", size: 16, font: "Calibri", color: "666666" })],
       })
     );
   }
 
-  children.push(
-    new Paragraph({
-      spacing: { after: 40 },
-      children: [bold("Date: "), normal(date)],
-    }),
-    spacer()
-  );
-
-  // 1. Project Overview
-  children.push(heading("1. PROJECT OVERVIEW"));
-  children.push(bodyParagraph(BOILERPLATE.PROJECT_OVERVIEW));
-
-  // 2. Objective
-  children.push(heading("2. OBJECTIVE"));
-  const displayCount = input.displays.reduce((s, d) => s + d.quantity, 0);
-  children.push(
-    bodyParagraph(
-      `ANC will furnish all labor, materials, and equipment necessary to install ${displayCount} LED display system${displayCount !== 1 ? "s" : ""} at ${input.venue} as described in this Scope of Work.`
-    )
-  );
-
-  // 3. Installation Timeline
-  children.push(heading("3. INSTALLATION TIMELINE"));
-  children.push(
-    bodyParagraph(
-      `Estimated installation duration is ${installWeeks} weeks from receipt of Notice to Proceed. A detailed installation schedule will be provided within 5 business days of contract execution. The schedule is contingent upon timely access to all display locations and completion of prerequisite work by others.`
-    )
-  );
-
-  // 4. Electrical Connection
-  children.push(heading("4. ELECTRICAL CONNECTION"));
-  children.push(bodyParagraph(BOILERPLATE.ELECTRICAL_CONNECTION));
-
-  // 5. Testing
-  children.push(heading("5. TESTING & COMMISSIONING"));
-  children.push(bodyParagraph(BOILERPLATE.TESTING));
-
-  // 6. ANC Signoff
-  children.push(heading("6. ANC SIGNOFF"));
-  children.push(bodyParagraph(BOILERPLATE.ANC_SIGNOFF));
-
-  // 7. Reference Equipment
-  children.push(heading("7. REFERENCE EQUIPMENT"));
-  children.push(
-    bodyParagraph("The following LED display systems are included in this Scope of Work:")
-  );
-  children.push(spacer());
-  children.push(buildEquipmentTable(input.displays));
-  children.push(spacer());
-
-  // 8. Scope of Work
-  children.push(heading("8. SCOPE OF WORK"));
-
-  // 8a. General Inclusions
-  children.push(heading("8.1 General Inclusions", HeadingLevel.HEADING_2));
-  children.push(
-    bodyParagraph("The following items are included for all displays in this project:")
-  );
-  for (const item of inclusions) {
-    children.push(bullet(item));
-  }
-
-  // 8b. General Exclusions
-  children.push(heading("8.2 General Exclusions", HeadingLevel.HEADING_2));
-  children.push(
-    bodyParagraph(
-      "The following items are excluded from ANC's scope and are the responsibility of the owner or owner's contractor:"
-    )
-  );
-  for (const item of exclusions) {
-    children.push(bullet(item));
-  }
-
-  // 8c. Per-Display Scope
-  children.push(heading("8.3 Per-Display Scope of Work", HeadingLevel.HEADING_2));
-  for (const display of input.displays) {
-    children.push(...buildDisplayScope(display, input));
-  }
-
-  // 9. Itemized Pricing
-  children.push(spacer());
-  children.push(heading("9. ITEMIZED PRICING"));
-  children.push(spacer());
-  children.push(buildPricingTable(input.displays, currency));
-
-  // ─── Create Document ────────────────────────────────────────────────────
-
   const doc = new Document({
     styles: {
       default: {
-        document: {
-          run: { font: "Calibri", size: 22 },
-        },
-        heading1: {
-          run: { font: "Calibri", size: 28, bold: true, color: "1F2937" },
-          paragraph: { spacing: { before: 360, after: 120 } },
-        },
-        heading2: {
-          run: { font: "Calibri", size: 24, bold: true, color: "374151" },
-          paragraph: { spacing: { before: 240, after: 100 } },
-        },
-        heading3: {
-          run: { font: "Calibri", size: 22, bold: true, color: "4B5563" },
-          paragraph: { spacing: { before: 200, after: 80 } },
-        },
+        document: { run: { font: "Calibri", size: 22 } },
       },
     },
     sections: [
@@ -425,12 +496,15 @@ export async function generateInstallationSOW(input: InstallSOWInput): Promise<B
         properties: {
           page: {
             margin: {
-              top: convertInchesToTwip(1),
-              bottom: convertInchesToTwip(1),
+              top: convertInchesToTwip(1.2),
+              bottom: convertInchesToTwip(0.8),
               left: convertInchesToTwip(1),
               right: convertInchesToTwip(1),
             },
           },
+        },
+        headers: {
+          default: new Header({ children: headerChildren }),
         },
         children,
       },

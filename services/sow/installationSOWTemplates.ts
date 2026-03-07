@@ -1,7 +1,7 @@
 /**
  * Installation SOW Templates — Fixed text blocks for Matt's subcontractor SOW format.
  *
- * Based on real ANC SOWs: Bilt HQ and Union Station Display Replacement.
+ * Based on real ANC SOWs: Bilt HQ, Union Station, Reverb Hotel.
  * Every section is deterministic — no AI. Data-driven from proposal screens + pricing.
  */
 
@@ -10,7 +10,7 @@
 export interface InstallTask {
   id: string;
   label: string;
-  /** Template string. Placeholders: {displayName}, {cabinetCount}, {structureType}, {sqft} */
+  /** Template string. Placeholders: {displayName}, {cabinetCount}, {cabinetLayout}, {structureType}, {sqft}, {sectionDims} */
   template: string;
   /** When to include this task */
   condition: "always" | "hasDemolition" | "hasStructural" | "hasElectrical";
@@ -18,71 +18,116 @@ export interface InstallTask {
 
 export const INSTALL_TASKS: InstallTask[] = [
   {
-    id: "unload",
-    label: "Unload / Receive / Stage",
-    template: "Unload, receive, and stage all LED display components for {displayName}",
-    condition: "always",
-  },
-  {
     id: "demolition",
     label: "Demolition & Disposal",
-    template: "Demolish and dispose of existing display system at {displayName} location",
+    template:
+      "Removal and disposal of existing displays, and secondary steel (as needed)",
     condition: "hasDemolition",
+  },
+  {
+    id: "unload-structural",
+    label: "Unload / Receive / Stage Structural",
+    template:
+      "Unload, receive, inspect and stage all structural components in pre-arranged staging locations (locations will be coordinated by ANC and Owner)",
+    condition: "hasStructural",
   },
   {
     id: "structural",
     label: "Structural Installation",
-    template: "Install structural support system ({structureType}) for {displayName}",
+    template:
+      "Provide manpower and equipment for structural installation of displays and any necessary sub structure",
     condition: "hasStructural",
+  },
+  {
+    id: "floor-protection",
+    label: "Floor Protection",
+    template:
+      "Provide floor protection as required by the project / general contractor / engineers",
+    condition: "always",
+  },
+  {
+    id: "unload-led",
+    label: "Unload / Receive / Stage LED",
+    template:
+      "Unload, receive, inspect, and stage LED video panels",
+    condition: "always",
   },
   {
     id: "led-install",
     label: "LED Cabinet Installation",
     template:
-      "Install LED cabinets for {displayName}, connect power and data cabling to all modules",
+      "Uncrate and install LED video panel sections for {displayName}",
     condition: "always",
   },
   {
-    id: "cabling",
-    label: "Signal & Power Cabling",
-    template: "Route and terminate all signal and power cabling for {displayName}",
+    id: "trim-flashing",
+    label: "Trim & Flashing",
+    template:
+      "Provide manpower and equipment for structural installation of trim and flashing",
+    condition: "hasStructural",
+  },
+  {
+    id: "crate-disposal",
+    label: "Crate Disposal",
+    template:
+      "Breakdown and dispose of crates as they are unloaded. Disposal is part of this scope of work",
     condition: "always",
   },
   {
     id: "electrical",
     label: "Electrical Connections",
     template:
-      "Electrical jumps from owner-provided power source to {displayName} display location",
-    condition: "hasElectrical",
-  },
-  {
-    id: "crate-disposal",
-    label: "Crate Disposal",
-    template: "Dispose of all shipping crates and packaging material for {displayName}",
+      "Complete all electrical power and low voltage data jumps between assembled LED",
     condition: "always",
   },
 ];
 
-// ─── General Inclusions & Exclusions ────────────────────────────────────────
+// ─── Cabinet Estimation ─────────────────────────────────────────────────────
 
-export const DEFAULT_INCLUSIONS = [
-  "Travel and accommodations for ANC installation crew",
-  "Project management and on-site supervision",
-  "Engineering and shop drawings",
-  "Logistics coordination and freight to job site",
-  "Testing, calibration, and commissioning of all displays",
-  "Training for venue operations staff",
-  "As-built documentation package",
-];
+/** Estimate cabinet count from display dimensions and pixel pitch */
+export function estimateCabinets(
+  widthFt: number,
+  heightFt: number,
+  pitchMm: number
+): { rows: number; cols: number; total: number; cabinetSizeMm: string } {
+  // Common cabinet sizes by pitch range
+  let cabWidthMm: number;
+  let cabHeightMm: number;
+
+  if (pitchMm <= 2.0) {
+    cabWidthMm = 600; cabHeightMm = 337.5; // Fine pitch: 600x337.5mm
+  } else if (pitchMm <= 4.0) {
+    cabWidthMm = 500; cabHeightMm = 500; // Mid pitch: 500x500mm
+  } else if (pitchMm <= 8.0) {
+    cabWidthMm = 500; cabHeightMm = 1000; // Large pitch: 500x1000mm
+  } else {
+    cabWidthMm = 960; cabHeightMm = 960; // Outdoor: 960x960mm
+  }
+
+  const cabWidthFt = cabWidthMm / 304.8;
+  const cabHeightFt = cabHeightMm / 304.8;
+
+  const cols = Math.ceil(widthFt / cabWidthFt);
+  const rows = Math.ceil(heightFt / cabHeightFt);
+  const total = rows * cols;
+
+  return {
+    rows,
+    cols,
+    total,
+    cabinetSizeMm: `${cabWidthMm}x${cabHeightMm}mm`,
+  };
+}
+
+// ─── General Exclusions (from Reverb Hotel — standard list) ─────────────────
 
 export const DEFAULT_EXCLUSIONS = [
-  "Electrical permits and inspections (by owner)",
-  "Primary electrical service to display locations (by owner)",
-  "Structural engineering certification (if required by jurisdiction)",
-  "Content creation and media management software",
-  "After-hours security or escort (if required by venue)",
-  "Fire alarm / suppression modifications",
-  "Patching, painting, or finishing of surrounding surfaces",
+  "Temporary power",
+  "Site security",
+  "Structural and Electrical engineering",
+  "Building permits",
+  "Sidewalk / Lane Closures",
+  "LED Disposal",
 ];
 
 export const UNION_INCLUSIONS = [
@@ -95,22 +140,24 @@ export const NIGHT_WORK_INCLUSIONS = [
   "After-hours coordination with venue operations",
 ];
 
-// ─── Boilerplate Sections ───────────────────────────────────────────────────
+// ─── Boilerplate Sections (from Reverb Hotel — Matt's exact wording) ────────
 
 export const BOILERPLATE = {
-  PROJECT_OVERVIEW: `ANC is the nation's leading in-venue technology company, providing end-to-end solutions including LED displays, digital signage, and content management systems for sports and entertainment venues. ANC designs, engineers, manufactures, installs, and maintains large-format LED display systems for professional and collegiate sports venues across North America.`,
+  PROJECT_OVERVIEW: `The following Scope of Work is intended to be general in nature. The intention is to have the successful Subcontractor perform all related work shown on the Contract Documents other than those items specifically indicated below to be excluded.\n\nThis Scope of Work takes precedence over the Drawings and Specifications in the event of a conflict in trade assignment or responsibility. By accepting this Scope of Work, the Subcontractor is verifying that the Drawings and Specifications clearly identify the Subcontractor's work.`,
 
-  ELECTRICAL_CONNECTION: `All LED display systems require dedicated electrical circuits provided to within 10 feet of each display location. ANC will make final electrical connections ("jumps") from the owner-provided power source to the display. Primary electrical service, panel installation, and branch circuit wiring to the display location are the responsibility of the owner's electrical contractor unless otherwise specified.`,
+  ELECTRICAL_CONNECTION: `Electrical connections between LED panels (jumps) will be included as part of this scope of work. "Jumps" refers to both high voltage power and low voltage data connections between ALL LED panels.`,
 
-  TESTING: `Upon completion of installation, ANC will perform comprehensive system testing including full power-on verification, pixel-level calibration for uniform brightness and color accuracy, content playback testing across all display zones, and integration verification with the venue's content management system. A minimum 72-hour burn-in period will be conducted prior to final acceptance.`,
+  TESTING: `Sub-contractor will adjust the displays to ensure the best quality installation possible and will work with ANC to complete and make any necessary changes.`,
 
-  ANC_SIGNOFF: `ANC will conduct a formal walkthrough with the owner's representative upon completion of all installation and testing activities. A punch list will be generated and addressed prior to final acceptance. ANC will provide a signed Certificate of Completion upon satisfactory resolution of all punch list items.`,
+  ANC_SIGNOFF: `Each display will be reviewed to confirm that equipment has been installed per the SOW and to the satisfaction of the ANC project manager and the customer.`,
+
+  ITEMIZED_PRICING: `The itemized pricing for the above Scope of Work should be provided in the format below as requested in the RFP documents. If you have any questions, please do not hesitate to send over.`,
 };
 
 // ─── Structure Type Labels ──────────────────────────────────────────────────
 
 export const STRUCTURE_TYPES: Record<string, string> = {
-  wall: "wall-mounted steel structure",
+  wall: "aluminum channel for LED mounting",
   flown: "flown/rigged steel structure from existing building steel",
   ground: "ground-supported steel structure",
   ceiling: "ceiling-mounted steel structure",
