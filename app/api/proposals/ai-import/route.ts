@@ -200,22 +200,28 @@ export async function POST(req: NextRequest) {
       }, { status: 500 });
     }
 
-    // ── Step 4: Build PricingDocument + Screens from AI result ──
-    const pricingDocument = buildPricingDocument(aiResult, file.name, sourceWorkbookHash, maSheet || sheetTexts[0].name);
+    // ── Step 3.5: Verify AI output against actual Excel cell values ──
+    const verified = verifyAndCorrectAiResult(aiResult, workbook, maSheet);
+
+    // ── Step 4: Build PricingDocument + Screens from VERIFIED result ──
+    const pricingDocument = buildPricingDocument(verified.result, file.name, sourceWorkbookHash, maSheet || sheetTexts[0].name);
     if (respMatrix) {
       pricingDocument.respMatrix = respMatrix;
     }
 
-    const screens = buildScreens(aiResult);
+    const screens = buildScreens(verified.result);
 
-    console.log(`[AI IMPORT] Success: ${pricingDocument.tables.length} tables, ${screens.length} screens, $${Math.round(pricingDocument.documentTotal)} total`);
+    console.log(`[AI IMPORT] Success: ${pricingDocument.tables.length} tables, ${screens.length} screens, $${Math.round(pricingDocument.documentTotal)} total, corrections=${verified.corrections}, confidence=${verified.confidence}%`);
 
     // ── Step 5: Return full proposal data ──
     const validation = {
       status: "PASS" as const,
       strict: false,
       errors: [] as string[],
-      warnings: ["Imported via AI extraction (BETA)"],
+      warnings: [
+        "Imported via AI extraction (BETA)",
+        ...verified.warnings,
+      ].filter(Boolean),
       evidence: {
         marginSheetDetected: maSheet || sheetTexts[0].name,
         headerRowIndex: null,
@@ -223,6 +229,11 @@ export async function POST(req: NextRequest) {
         respMatrixSheetCandidates: [] as string[],
         respMatrixSheetUsed: null,
         respMatrixCategoryCount: respMatrix?.categories?.length || 0,
+        aiVerification: {
+          confidence: verified.confidence,
+          corrections: verified.corrections,
+          details: verified.details,
+        },
       },
     };
 
@@ -467,4 +478,142 @@ function trimTrailingEmptyRows(lines: string[]): string[] {
     end--;
   }
   return lines.slice(0, end);
+}
+
+// ─── Post-AI Verification ────────────────────────────────────────────────────
+// Trust AI for structure (which columns, where sections start/end).
+// Verify every dollar against actual Excel cell values.
+
+interface VerificationResult {
+  result: any;        // corrected AI result
+  confidence: number; // 0-100
+  corrections: number;
+  warnings: string[];
+  details: string[];
+}
+
+function verifyAndCorrectAiResult(
+  aiResult: any,
+  workbook: xlsx.WorkBook,
+  maSheetName: string | undefined
+): VerificationResult {
+  const warnings: string[] = [];
+  const details: string[] = [];
+  let corrections = 0;
+  const result = JSON.parse(JSON.stringify(aiResult)); // deep clone
+
+  // 1. Find real numbers from the actual MA sheet
+  const sheetName = maSheetName || workbook.SheetNames.find(n => /margin.*analysis/i.test(n));
+  if (!sheetName || !workbook.Sheets[sheetName]) {
+    // No MA sheet — AI is on its own. Trust it but warn.
+    warnings.push("No Margin Analysis sheet found — AI extracted from available sheets without verification.");
+    return { result, confidence: 60, corrections: 0, warnings, details };
+  }
+
+  const sheet = workbook.Sheets[sheetName];
+  const rows: any[][] = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+
+  // 2. Scan for total/subtotal rows and collect real values
+  const realTotals: { label: string; row: number; values: number[] }[] = [];
+  const TOTAL_PATTERNS = /^\s*(sub\s*total|grand\s*total|total|sub\s*total\s*\(bid\s*form\)|base\s*bid|document\s*total|project\s*total)/i;
+  const TAX_PATTERNS = /^\s*(tax|hst|gst|sales\s*tax)/i;
+  const BOND_PATTERNS = /^\s*(bond|performance\s*bond)/i;
+
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r];
+    const firstCell = String(row[0] || "").trim();
+    if (TOTAL_PATTERNS.test(firstCell)) {
+      const nums = row.slice(1).map((v: any) => typeof v === "number" ? v : parseFloat(String(v).replace(/[,$]/g, ""))).filter((n: number) => !isNaN(n) && n > 0);
+      realTotals.push({ label: firstCell, row: r, values: nums });
+    }
+  }
+
+  // 3. Find the document-level grand total (largest total value in the sheet)
+  let realDocumentTotal = 0;
+  for (const t of realTotals) {
+    const maxVal = Math.max(...t.values, 0);
+    if (maxVal > realDocumentTotal) realDocumentTotal = maxVal;
+  }
+
+  // 4. Compare AI's documentTotal to the real one
+  const aiDocTotal = Number(result.documentTotal) || 0;
+  if (realDocumentTotal > 0 && aiDocTotal > 0) {
+    const diff = Math.abs(aiDocTotal - realDocumentTotal);
+    const pctDiff = (diff / realDocumentTotal) * 100;
+
+    if (pctDiff < 0.1) {
+      details.push(`Document total verified: $${Math.round(aiDocTotal)} matches Excel ($${Math.round(realDocumentTotal)})`);
+    } else if (pctDiff < 5) {
+      // Close enough — likely rounding. Use real value.
+      details.push(`Document total corrected: AI=$${Math.round(aiDocTotal)} → Excel=$${Math.round(realDocumentTotal)} (${pctDiff.toFixed(1)}% off)`);
+      result.documentTotal = realDocumentTotal;
+      corrections++;
+    } else {
+      // Major discrepancy — use real value, warn
+      warnings.push(`Document total mismatch: AI reported $${Math.round(aiDocTotal)} but Excel shows $${Math.round(realDocumentTotal)} — using Excel value.`);
+      result.documentTotal = realDocumentTotal;
+      corrections++;
+    }
+  } else if (realDocumentTotal > 0 && aiDocTotal === 0) {
+    // AI missed the total entirely
+    result.documentTotal = realDocumentTotal;
+    corrections++;
+    warnings.push(`AI missed document total — recovered $${Math.round(realDocumentTotal)} from Excel.`);
+  }
+
+  // 5. Per-table verification: check each table's grandTotal against real totals
+  if (Array.isArray(result.tables)) {
+    for (const table of result.tables) {
+      const aiGT = Number(table.grandTotal) || 0;
+      if (aiGT <= 0) continue;
+
+      // Try to find a matching real total by proximity (within 5%)
+      const match = realTotals.find(rt =>
+        rt.values.some(v => {
+          const d = Math.abs(v - aiGT);
+          return d < 1 || (d / Math.max(v, 1)) < 0.05;
+        })
+      );
+
+      if (match) {
+        // Find the closest value
+        const closest = match.values.reduce((best, v) =>
+          Math.abs(v - aiGT) < Math.abs(best - aiGT) ? v : best
+        , match.values[0]);
+
+        if (Math.abs(closest - aiGT) > 1 && Math.abs(closest - aiGT) / closest < 0.05) {
+          table.grandTotal = closest;
+          corrections++;
+          details.push(`Table "${table.name}": grand total corrected $${Math.round(aiGT)} → $${Math.round(closest)}`);
+        }
+      }
+
+      // Verify subtotal = sum of items
+      const itemSum = (table.items || []).reduce((s: number, i: any) => s + (Number(i.sell) || 0), 0);
+      const aiSubtotal = Number(table.subtotal) || 0;
+      if (itemSum > 0 && aiSubtotal > 0 && Math.abs(itemSum - aiSubtotal) > 1) {
+        // Items don't sum to subtotal — use item sum (more granular = more reliable)
+        const pct = Math.abs(itemSum - aiSubtotal) / Math.max(aiSubtotal, 1) * 100;
+        if (pct > 1) {
+          details.push(`Table "${table.name}": subtotal adjusted $${Math.round(aiSubtotal)} → $${Math.round(itemSum)} (item sum)`);
+          table.subtotal = itemSum;
+          corrections++;
+        }
+      }
+    }
+  }
+
+  // 6. Confidence score
+  const tableCount = (result.tables || []).length;
+  const hasScreens = Array.isArray(result.screens) && result.screens.length > 0;
+  let confidence = 90; // start high
+  if (corrections > 0) confidence -= Math.min(corrections * 5, 25);
+  if (tableCount === 0) confidence -= 30;
+  if (!hasScreens) confidence -= 10;
+  if (warnings.length > 0) confidence -= warnings.length * 3;
+  confidence = Math.max(confidence, 30);
+
+  details.push(`Verified ${tableCount} tables, ${corrections} corrections, ${warnings.length} warnings`);
+
+  return { result, confidence, corrections, warnings, details };
 }
