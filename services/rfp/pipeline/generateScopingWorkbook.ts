@@ -38,7 +38,7 @@ import {
   type InstallComplexity,
 } from "@/services/rfp/productCatalog";
 import { ProductMatcher, type MatchedSolution } from "@/services/catalog/productMatcher";
-import { preloadRateCard } from "@/services/rfp/rateCardLoader";
+import { preloadRateCard, getRateSync } from "@/services/rfp/rateCardLoader";
 
 // ─── Colors ─────────────────────────────────────────────────────────────────
 
@@ -63,23 +63,33 @@ let FMT_USD = '"$"#,##0';
 const FMT_PCT = "0.0%";
 const FMT_INT = "#,##0";
 
-// ─── ANC Budget Logic (reverse-engineered from agent) ──────────────────────
+// ─── ANC Budget Logic ────────────────────────────────────────────────────────
+// Values resolved from DB rate card when available, hardcoded fallback otherwise.
+// Call preloadRateCard() before using these helpers.
 
-const SMART_BUNDLES = {
-  sendingCard: 450,
-  sparePartsPct: 0.02,
-  signalCablePerSqFt25: 15, // $15 × (sqft / 25)
-  upsBattery: 2500,          // for scoreboards/center hung
-  backupProcessor: 12000,    // for displays > 300 sqft
-  weatherproofPerSqFt: 12,   // outdoor surcharge
-};
+function rc(key: string, fallback: number): number {
+  try { return getRateSync(key); } catch { return fallback; }
+}
 
-const BUDGET_RATES = {
-  installPerSqFt: 289,
-  electricalPerSqFt: 145,
-  structuralWallPerSqFt: 30,
-  structuralCeilingPerSqFt: 60,
-};
+function getSmartBundles() {
+  return {
+    sendingCard: 450,                                          // no rate card key
+    sparePartsPct: rc("spare_parts.led_pct", 0.05),            // rate card: 5%
+    signalCablePerSqFt25: 15,                                  // no rate card key
+    upsBattery: 2500,                                          // no rate card key
+    backupProcessor: 12000,                                    // no rate card key
+    weatherproofPerSqFt: 12,                                   // no rate card key
+  };
+}
+
+function getBudgetRates() {
+  return {
+    installPerSqFt: 289,                                       // composite budget rate — no single rate card key
+    electricalPerSqFt: rc("electrical.materials_per_sqft", 125),// rate card: electrical materials
+    structuralWallPerSqFt: 30,                                 // no rate card key (budget heuristic)
+    structuralCeilingPerSqFt: 60,                              // no rate card key (budget heuristic)
+  };
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -238,34 +248,44 @@ function computeDisplays(
     // Per-display install complexity: override > per-display array > global
     const displayComplexity = ov?.perDisplayComplexity?.[idx] ?? installComplexity;
 
-    // LED hardware cost: user override > priced > catalog lookup
+    // Resolve rates from DB rate card (preloaded), hardcoded fallbacks
+    const RATES = getBudgetRates();
+    const BUNDLES = getSmartBundles();
+
+    // LED hardware cost: user override > priced > rate card pitch lookup > catalog constant
     let ledHardwareCost = priced?.hardwareCost ?? 0;
     if (!ledHardwareCost && spec.pixelPitchMm) {
       const overrideCostSqFt = (ov?.costPerSqFtOverride ?? 0) > 0 ? ov!.costPerSqFtOverride! : 0;
       if (overrideCostSqFt > 0) {
         ledHardwareCost = round2(areaSqFt * overrideCostSqFt);
       } else {
-        const key = String(spec.pixelPitchMm);
-        const rate = LED_COST_PER_SQFT_BY_PITCH[key];
+        // Rate card pitch key: "led_cost.X_Xmm" (e.g., "led_cost.4mm", "led_cost.2_5mm")
+        const pitchKey = `led_cost.${String(spec.pixelPitchMm).replace(".", "_")}mm`;
+        const rcRate = rc(pitchKey, 0);
+        const catalogRate = LED_COST_PER_SQFT_BY_PITCH[String(spec.pixelPitchMm)];
+        const rate = rcRate > 0 ? rcRate : catalogRate;
         if (rate) ledHardwareCost = round2(areaSqFt * rate);
       }
     }
 
     // Structural — use type heuristic
     const isCeiling = /center.?hung|scoreboard|hanging|ribbon|fascia/i.test(spec.name + " " + (spec.mountingType || ""));
-    const structRate = isCeiling ? BUDGET_RATES.structuralCeilingPerSqFt : BUDGET_RATES.structuralWallPerSqFt;
+    const structRate = isCeiling ? RATES.structuralCeilingPerSqFt : RATES.structuralWallPerSqFt;
     const structuralMaterialsCost = round2(areaSqFt * structRate);
 
     // Labor
-    const structuralLaborCost = round2(areaSqFt * BUDGET_RATES.installPerSqFt);
+    const structuralLaborCost = round2(areaSqFt * RATES.installPerSqFt);
 
-    // Electrical
-    const electricalCost = round2(areaSqFt * BUDGET_RATES.electricalPerSqFt);
+    // Electrical — rate card backed
+    const electricalCost = round2(areaSqFt * RATES.electricalPerSqFt);
 
-    // PM & Engineering — PM complexity multiplier from overrides
+    // PM & Engineering — rate card backed, with complexity multiplier
+    const complexMod = rc("other.complex_modifier", 1.2);
     const pmMult = ov?.pmComplexity === "complex" ? 2 : ov?.pmComplexity === "major" ? 3 : 1;
-    const pmCost = priced?.pmCost ?? round2(PM_BASE_FEE * pmMult);
-    const engCost = priced?.engCost ?? round2(ENG_BASE_FEE * pmMult);
+    const pmBase = rc("other.pm_base_fee", PM_BASE_FEE);
+    const engBase = rc("other.eng_base_fee", ENG_BASE_FEE);
+    const pmCost = priced?.pmCost ?? round2(pmBase * pmMult);
+    const engCost = priced?.engCost ?? round2(engBase * pmMult);
 
     // Union labor: 15% uplift on labor-related costs
     const unionMult = ov?.isUnionLabor ? 1.15 : 1.0;
@@ -276,14 +296,14 @@ function computeDisplays(
     // Travel (estimate)
     const travelCost = hasDimensions ? 15000 : 0;
 
-    // Smart bundles
-    const sendingCardCost = hasDimensions ? SMART_BUNDLES.sendingCard : 0;
-    const sparePartsCost = round2(ledHardwareCost * SMART_BUNDLES.sparePartsPct);
-    const signalCableCost = round2(SMART_BUNDLES.signalCablePerSqFt25 * (areaSqFt / 25));
+    // Smart bundles — spare parts from rate card
+    const sendingCardCost = hasDimensions ? BUNDLES.sendingCard : 0;
+    const sparePartsCost = round2(ledHardwareCost * BUNDLES.sparePartsPct);
+    const signalCableCost = round2(BUNDLES.signalCablePerSqFt25 * (areaSqFt / 25));
     const isScoreboard = isCeiling;
-    const upsCost = isScoreboard ? SMART_BUNDLES.upsBattery : 0;
-    const backupProcessorCost = areaSqFt > 300 ? SMART_BUNDLES.backupProcessor : 0;
-    const weatherproofCost = spec.environment === "outdoor" ? round2(areaSqFt * SMART_BUNDLES.weatherproofPerSqFt) : 0;
+    const upsCost = isScoreboard ? BUNDLES.upsBattery : 0;
+    const backupProcessorCost = areaSqFt > 300 ? BUNDLES.backupProcessor : 0;
+    const weatherproofCost = spec.environment === "outdoor" ? round2(areaSqFt * BUNDLES.weatherproofPerSqFt) : 0;
 
     // Apply union multiplier to labor-related costs
     const totalCost = round2(
@@ -574,7 +594,7 @@ function buildProjectOverview(wb: ExcelJS.Workbook, data: ProjectOverviewData): 
     ["Engineering Margin", `${(DEFAULT_MARGINS.engineering * 100).toFixed(0)}%`],
     ["Equipment Margin", `${(DEFAULT_MARGINS.equipment * 100).toFixed(0)}%`],
     ["CMS Margin", `${(DEFAULT_MARGINS.cms * 100).toFixed(0)}%`],
-    ["Bond Rate", data.bondRequired ? `${(BOND_RATE * 100).toFixed(1)}%` : "N/A"],
+    ["Bond Rate", data.bondRequired ? `${(rc("bond_tax.bond_rate", BOND_RATE) * 100).toFixed(1)}%` : "N/A"],
     ["Tax Rate", "Per zone (editable on MA)"],
     ["Tariff Rate", "Per zone (editable on MA)"],
   ];
@@ -907,7 +927,7 @@ function buildMarginAnalysis(
     const bondRow = row;
     const bdR = ws.getRow(row);
     bdR.getCell(2).value = "    BOND"; bdR.getCell(2).font = subFont;
-    const bondRateVal = ov?.bondRate ?? (includeBond ? BOND_RATE : 0);
+    const bondRateVal = ov?.bondRate ?? (includeBond ? rc("bond_tax.bond_rate", BOND_RATE) : 0);
     bdR.getCell(4).value = { formula: `D${subtotalRow}*G${row}`, result: round2(d.sellingPrice * bondRateVal) };
     bdR.getCell(4).numFmt = FMT_USD;
     bdR.getCell(7).value = bondRateVal; bdR.getCell(7).numFmt = FMT_PCT; inputCell(bdR.getCell(7));
