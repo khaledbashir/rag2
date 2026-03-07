@@ -495,7 +495,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
 
       // Bond row — formula-driven: =SUBTOTAL * bondRate (rate in hidden col F)
       const bondAmount = table.bond || 0;
-      let bondRate = bondAmount > 0 && sectionSellSum > 0 ? bondAmount / sectionSellSum : 0.015;
+      let bondRate = bondAmount > 0 && sectionSellSum > 0 ? bondAmount / sectionSellSum : 0;
       // Sanity clamp: bond rate should never exceed 10%
       if (bondRate > 0.10) {
         console.warn(`[UniverSpreadsheet] Bond rate ${bondRate} exceeds 10% for "${table.name}" — clamped to 1.5%`);
