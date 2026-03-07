@@ -293,19 +293,30 @@ function computeDisplays(
       }
     }
 
-    // Structural — use type heuristic
+    // Structural / Labor / Electrical: use priced data when available (Mirror path),
+    // otherwise compute from budget rates (Estimator/RFP path).
     const isCeiling = /center.?hung|scoreboard|hanging|ribbon|fascia/i.test(spec.name + " " + (spec.mountingType || ""));
-    const structRate = isCeiling ? RATES.structuralCeilingPerSqFt : RATES.structuralWallPerSqFt;
-    const structuralMaterialsCost = round2(areaSqFt * structRate);
+    let structuralMaterialsCost: number;
+    let structuralLaborCost: number;
+    let electricalCost: number;
 
-    // Labor
-    const structuralLaborCost = round2(areaSqFt * RATES.installPerSqFt);
-
-    // Electrical — rate card backed
-    const electricalCost = round2(areaSqFt * RATES.electricalPerSqFt);
+    if (priced && priced.installCost > 0) {
+      // Priced data available (Mirror/RFP) — distribute combined installCost
+      // across structural/labor/electrical proportionally using budget rate ratios
+      const structRate = isCeiling ? RATES.structuralCeilingPerSqFt : RATES.structuralWallPerSqFt;
+      const totalRate = structRate + RATES.installPerSqFt + RATES.electricalPerSqFt;
+      structuralMaterialsCost = round2(priced.installCost * (structRate / totalRate));
+      structuralLaborCost = round2(priced.installCost * (RATES.installPerSqFt / totalRate));
+      electricalCost = round2(priced.installCost * (RATES.electricalPerSqFt / totalRate));
+    } else {
+      // No priced data — compute from budget rates
+      const structRate = isCeiling ? RATES.structuralCeilingPerSqFt : RATES.structuralWallPerSqFt;
+      structuralMaterialsCost = round2(areaSqFt * structRate);
+      structuralLaborCost = round2(areaSqFt * RATES.installPerSqFt);
+      electricalCost = round2(areaSqFt * RATES.electricalPerSqFt);
+    }
 
     // PM & Engineering — rate card backed, with complexity multiplier
-    const complexMod = rc("other.complex_modifier", 1.2);
     const pmMult = ov?.pmComplexity === "complex" ? 2 : ov?.pmComplexity === "major" ? 3 : 1;
     const pmBase = rc("other.pm_base_fee", PM_BASE_FEE);
     const engBase = rc("other.eng_base_fee", ENG_BASE_FEE);
