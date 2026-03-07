@@ -35,7 +35,7 @@ export const INSTALL_TASKS: InstallTask[] = [
     id: "structural",
     label: "Structural Installation",
     template:
-      "Provide manpower and equipment for structural installation of displays and any necessary sub structure",
+      "Provide manpower and equipment for structural installation {structureDetail}",
     condition: "hasStructural",
   },
   {
@@ -56,7 +56,7 @@ export const INSTALL_TASKS: InstallTask[] = [
     id: "led-install",
     label: "LED Cabinet Installation",
     template:
-      "Uncrate and install LED video panel sections for {displayName}",
+      "Uncrate and install LED video panels",
     condition: "always",
   },
   {
@@ -158,6 +158,7 @@ export const BOILERPLATE = {
 
 export const STRUCTURE_TYPES: Record<string, string> = {
   wall: "aluminum channel for LED mounting",
+  "wall-plywood": '¾" plywood for LED mounting',
   flown: "flown/rigged steel structure from existing building steel",
   ground: "ground-supported steel structure",
   ceiling: "ceiling-mounted steel structure",

@@ -67,6 +67,9 @@ export interface InstallSOWInput {
   hasNightWork?: boolean;
   includeElectrical?: boolean;
   includeStructural?: boolean;
+  /** Include "Reference Documents, Equipment List and Description" section (like Bilt HQ) */
+  includeReferenceDocuments?: boolean;
+  referenceDrawings?: string[];
   customExclusions?: string[];
   bidDueDate?: string;
   currency?: string;
@@ -169,48 +172,55 @@ function spacer(size = 120): Paragraph {
 
 function buildDisplayInclusion(
   d: InstallSOWDisplay,
-  displayNum: number
+  displayNum: number,
+  parentSectionNum: number = 1
 ): Paragraph[] {
   const cab = estimateCabinets(d.widthFt, d.heightFt, d.pixelPitch);
   const structLabel = STRUCTURE_TYPES[d.structureType || "wall"] || STRUCTURE_TYPES.custom;
   const paragraphs: Paragraph[] = [];
+  const p = parentSectionNum; // shorthand
 
-  // Display header: "1.1. Main Display including the following elements:"
+  // Display header: "3.1. Main Display (Qty 2) including the following elements:"
+  const qtyLabel = d.quantity > 1 ? ` (Qty ${d.quantity})` : "";
   paragraphs.push(
     new Paragraph({
       spacing: { before: 80, after: 40 },
       indent: { left: convertInchesToTwip(0.25) },
-      children: [normal(`1.${displayNum}. ${d.name} including the following elements:`)],
+      children: [normal(`${p}.${displayNum}. ${d.name}${qtyLabel} including the following elements:`)],
     })
   );
 
+  let subNum = 1;
+
   // Demolition
   if (d.hasDemolition) {
-    paragraphs.push(subItem(`1.${displayNum}.1.`, "Demolition and disposal of existing display."));
+    paragraphs.push(subItem(`${p}.${displayNum}.${subNum}.`, "Demolition and disposal of existing display."));
+    subNum++;
   }
 
   // Structure
   paragraphs.push(
     subItem(
-      `1.${displayNum}.${d.hasDemolition ? 2 : 1}.`,
+      `${p}.${displayNum}.${subNum}.`,
       `Fabrication and installation of secondary structure consisting of ${structLabel}.`
     )
   );
+  subNum++;
 
   // Cabinet info
   paragraphs.push(
     subItem(
-      `1.${displayNum}.${d.hasDemolition ? 3 : 2}.`,
+      `${p}.${displayNum}.${subNum}.`,
       `LED cabinets (Approx ${cab.total} cabinets) (${cab.rows} Rows of ${cab.cols} Cabinets) per display (${d.heightFt}'h X ${d.widthFt}'W)`
     )
   );
 
-  // Cables
+  // Cables (separate numbered item under parent)
   paragraphs.push(
     new Paragraph({
       spacing: { before: 40, after: 40 },
       indent: { left: convertInchesToTwip(0.25) },
-      children: [normal(`1.${displayNum + 1}. Power and low voltage cables for display.`)],
+      children: [normal(`${p}.${displayNum + 1}. Power and low voltage cables for display.`)],
     })
   );
 
@@ -225,8 +235,16 @@ function buildDisplayTasks(
   input: InstallSOWInput
 ): Paragraph[] {
   const paragraphs: Paragraph[] = [];
+  const structLabel = STRUCTURE_TYPES[d.structureType || "wall"] || STRUCTURE_TYPES.custom;
 
-  // Section header: "2. Main Display – QTY 1:"
+  // Structure detail: specific (Bilt HQ style) or generic (Union Station style)
+  // If wall/plywood → specific: "of ¾" Plywood for mounting display's cabinets"
+  // Otherwise → generic: "displays and any necessary sub structure"
+  const structureDetail = (d.structureType === "wall" || d.structureType === "wall-plywood")
+    ? `of ${structLabel} for mounting display's cabinets`
+    : "displays and any necessary sub structure";
+
+  // Section header: "3. Main Display – QTY 1:"
   paragraphs.push(
     numberedItem(
       `${sectionNum}.`,
@@ -242,7 +260,8 @@ function buildDisplayTasks(
     if (task.condition === "hasElectrical" && input.includeElectrical === false) continue;
 
     const text = task.template
-      .replace(/\{displayName\}/g, d.name);
+      .replace(/\{displayName\}/g, d.name)
+      .replace(/\{structureDetail\}/g, structureDetail);
 
     paragraphs.push(subItem(`${sectionNum}.${taskNum}. `, text));
     taskNum++;
@@ -265,6 +284,13 @@ export function buildSOWPreview(input: InstallSOWInput): InstallSOWPreview {
     installLine = `Estimated installation duration is ${input.installWeeks} weeks from receipt of Notice to Proceed.`;
   }
   installLine += " Installation of the LED video board included in the equipment list below and described within the SOW is to be part of this scope.";
+  // Union Station pattern: append union/night work requirements
+  if (input.hasNightWork) {
+    installLine += " All work to be performed during off hours / night work.";
+  }
+  if (input.isUnionLabor) {
+    installLine += " All work to be union labor.";
+  }
 
   // Objective
   const displayCount = input.displays.reduce((s, d) => s + d.quantity, 0);
@@ -294,12 +320,18 @@ export function buildSOWPreview(input: InstallSOWInput): InstallSOWPreview {
     inclusions.push(`LED cabinets (Approx ${cab.total} cabinets) (${cab.rows} Rows of ${cab.cols} Cabinets) per display (${d.heightFt}'h X ${d.widthFt}'W)`);
     inclusions.push("Power and low voltage cables for display.");
 
+    const structureDetail = (d.structureType === "wall" || d.structureType === "wall-plywood")
+      ? `of ${structLabel} for mounting display's cabinets`
+      : "displays and any necessary sub structure";
+
     const tasks: string[] = [];
     for (const task of INSTALL_TASKS) {
       if (task.condition === "hasDemolition" && !d.hasDemolition) continue;
       if (task.condition === "hasStructural" && input.includeStructural === false) continue;
       if (task.condition === "hasElectrical" && input.includeElectrical === false) continue;
-      tasks.push(task.template.replace(/\{displayName\}/g, d.name));
+      tasks.push(task.template
+        .replace(/\{displayName\}/g, d.name)
+        .replace(/\{structureDetail\}/g, structureDetail));
     }
 
     return {
@@ -399,6 +431,31 @@ export async function generateInstallationSOW(input: InstallSOWInput): Promise<B
     }
   }
 
+  // ─── REFERENCE DOCUMENTS (optional — Bilt HQ pattern) ────────────
+  let nextSectionNum = 1;
+  if (input.includeReferenceDocuments) {
+    children.push(
+      new Paragraph({
+        spacing: { before: 300, after: 100 },
+        children: [new TextRun({ text: "REFERENCE DOCUMENTS, EQUIPMENT LIST AND DESCRIPTION", size: 22, font: "Courier New" })],
+      })
+    );
+
+    // 1. Reference Drawings
+    children.push(numberedItem(`${nextSectionNum}.`, "Reference Drawings (see attached):", true));
+    const drawings = input.referenceDrawings?.length ? input.referenceDrawings : ["Photos of Existing wall"];
+    drawings.forEach((drawing, i) => {
+      children.push(subItem(`${nextSectionNum}.${i + 1}. `, drawing));
+    });
+    nextSectionNum++;
+
+    // 2. Equipment
+    children.push(spacer(100));
+    children.push(numberedItem(`${nextSectionNum}.`, "Equipment:", true));
+    children.push(subItem(`${nextSectionNum}.1. `, "LED Panels/Detail"));
+    nextSectionNum++;
+  }
+
   // ─── SCOPE OF WORK ────────────────────────────────────────────────
   children.push(
     new Paragraph({
@@ -407,26 +464,27 @@ export async function generateInstallationSOW(input: InstallSOWInput): Promise<B
     })
   );
 
-  // 1. General Inclusions
-  children.push(numberedItem("1.", "General Inclusions:", true));
+  // General Inclusions (numbered from where we left off)
+  children.push(numberedItem(`${nextSectionNum}.`, "General Inclusions:", true));
   for (const display of input.displays) {
-    children.push(...buildDisplayInclusion(display, input.displays.indexOf(display) + 1));
+    children.push(...buildDisplayInclusion(display, input.displays.indexOf(display) + 1, nextSectionNum));
   }
+  nextSectionNum++;
 
-  // 2. General Exclusions
+  // General Exclusions
   children.push(spacer(200));
-  children.push(numberedItem("2.", "General Exclusions:", true));
+  children.push(numberedItem(`${nextSectionNum}.`, "General Exclusions:", true));
   const exclusions = [...DEFAULT_EXCLUSIONS, ...(input.customExclusions || [])];
   exclusions.forEach((ex, i) => {
-    children.push(subItem(`2.${i + 1}. `, ex));
+    children.push(subItem(`${nextSectionNum}.${i + 1}. `, ex));
   });
+  nextSectionNum++;
 
   // Per-display detailed tasks
-  let sectionNum = 2;
   for (const display of input.displays) {
-    sectionNum++;
     children.push(spacer(200));
-    children.push(...buildDisplayTasks(display, sectionNum, input));
+    children.push(...buildDisplayTasks(display, nextSectionNum, input));
+    nextSectionNum++;
   }
 
   // ─── ITEMIZED PRICING ─────────────────────────────────────────────
@@ -456,8 +514,14 @@ export async function generateInstallationSOW(input: InstallSOWInput): Promise<B
   // Try to load ANC logo for header
   let logoImage: ImageRun | null = null;
   try {
-    const logoPath = path.join(process.cwd(), "public", "anc-logo.png");
-    if (fs.existsSync(logoPath)) {
+    // Try blue logo first (matches SOW format), fall back to other variants
+    const logoCandidates = ["anc-logo-blue.png", "anc-logo-blue-2023.png", "anc-logo.png"];
+    let logoPath = "";
+    for (const candidate of logoCandidates) {
+      const p = path.join(process.cwd(), "public", candidate);
+      if (fs.existsSync(p)) { logoPath = p; break; }
+    }
+    if (logoPath) {
       const logoData = fs.readFileSync(logoPath);
       logoImage = new ImageRun({
         data: logoData,

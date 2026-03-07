@@ -77,6 +77,7 @@ function estimateCabinets(wFt: number, hFt: number, pitch: number) {
 
 const STRUCTURE_LABELS: Record<string, string> = {
   wall: "aluminum channel for LED mounting",
+  "wall-plywood": '¾" plywood for LED mounting',
   flown: "flown/rigged steel structure",
   ceiling: "ceiling-mounted steel structure",
   ground: "ground-supported steel structure",
@@ -96,10 +97,10 @@ const DEFAULT_EXCLUSIONS = [
 const TASK_TEMPLATES = [
   { text: "Removal and disposal of existing displays, and secondary steel (as needed)", condition: "demo" },
   { text: "Unload, receive, inspect and stage all structural components in pre-arranged staging locations", condition: "always" },
-  { text: "Provide manpower and equipment for structural installation of displays and any necessary sub structure", condition: "always" },
+  { text: "Provide manpower and equipment for structural installation {structureDetail}", condition: "always" },
   { text: "Provide floor protection as required by the project / general contractor / engineers", condition: "always" },
   { text: "Unload, receive, inspect, and stage LED video panels", condition: "always" },
-  { text: "Uncrate and install LED video panel sections", condition: "always" },
+  { text: "Uncrate and install LED video panels", condition: "always" },
   { text: "Provide manpower and equipment for structural installation of trim and flashing", condition: "always" },
   { text: "Breakdown and dispose of crates as they are unloaded. Disposal is part of this scope of work", condition: "always" },
   { text: "Complete all electrical power and low voltage data jumps between assembled LED", condition: "always" },
@@ -240,9 +241,11 @@ export default function SOWGeneratorPage() {
     {
       id: "installation",
       title: "Installation",
-      content: installStart && installEnd
+      content: (installStart && installEnd
         ? `Installation is to take place between ${installStart} and ${installEnd}. Installation of the LED video board included in the equipment list below and described within the SOW is to be part of this scope.`
-        : "Installation timeline to be determined. Installation of the LED video board included in the equipment list below and described within the SOW is to be part of this scope.",
+        : "Installation timeline to be determined. Installation of the LED video board included in the equipment list below and described within the SOW is to be part of this scope.")
+        + (hasNightWork ? " All work to be performed during off hours / night work." : "")
+        + (isUnionLabor ? " All work to be union labor." : ""),
     },
     {
       id: "electrical",
@@ -380,9 +383,9 @@ export default function SOWGeneratorPage() {
           ══════════════════════════════════════════════════════════════════ */}
       <div className="bg-white dark:bg-zinc-900 rounded-xl border border-border shadow-sm overflow-hidden">
         {/* ANC Header */}
-        <div className="border-b-2 border-red-500 px-8 py-4 text-center">
-          <div className="text-2xl font-black tracking-wider text-foreground">anc</div>
-          <div className="text-[10px] text-muted-foreground">www.anc.com</div>
+        <div className="border-b-2 border-red-500 px-8 py-4 flex flex-col items-center">
+          <img src="/anc-logo-blue.png" alt="ANC" className="h-10 object-contain" />
+          <div className="text-[10px] text-muted-foreground mt-0.5">www.anc.com</div>
         </div>
 
         <div className="px-8 py-6 space-y-1">
@@ -496,7 +499,8 @@ export default function SOWGeneratorPage() {
                     <div>
                       <label className="text-[10px] text-muted-foreground">Structure</label>
                       <select value={d.structureType} onChange={(e) => updateDisplay(d.id, "structureType", e.target.value)} className={inputSm + " w-full"}>
-                        <option value="wall">Wall Mount</option>
+                        <option value="wall">Wall (Aluminum Channel)</option>
+                        <option value="wall-plywood">Wall (Plywood)</option>
                         <option value="flown">Flown</option>
                         <option value="ceiling">Ceiling</option>
                         <option value="ground">Ground</option>
@@ -542,13 +546,17 @@ export default function SOWGeneratorPage() {
 
             {/* Per-display task lists */}
             {validDisplays.map((d, di) => {
+              const structLabel = STRUCTURE_LABELS[d.structureType] || STRUCTURE_LABELS.custom;
+              const structureDetail = (d.structureType === "wall" || d.structureType === "wall-plywood")
+                ? `of ${structLabel} for mounting display's cabinets`
+                : "displays and any necessary sub structure";
               const tasks = TASK_TEMPLATES.filter((t) => t.condition === "always" || (t.condition === "demo" && d.hasDemolition));
               return (
                 <div key={d.id} className="mt-4">
                   <p className="text-xs font-bold text-foreground mb-1">{di + 3}. <span className="underline">{d.name || `Display ${di + 1}`} – QTY {d.quantity || 1}:</span></p>
                   <div className="ml-6 space-y-0.5">
                     {tasks.map((t, ti) => (
-                      <p key={ti} className="text-[11px] text-foreground/80">{di + 3}.{ti + 1}. {t.text}</p>
+                      <p key={ti} className="text-[11px] text-foreground/80">{di + 3}.{ti + 1}. {t.text.replace(/\{structureDetail\}/g, structureDetail)}</p>
                     ))}
                   </div>
                 </div>
