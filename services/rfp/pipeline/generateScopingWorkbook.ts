@@ -792,12 +792,17 @@ function buildMarginAnalysis(
   function writeCategory(label: string, cost: number, marginPct: number): void {
     const r = ws.getRow(row);
     r.getCell(2).value = `    ${label}`; r.getCell(2).font = subFont;
+    // Cost & margin on line items — keep values for formulas but use light font so
+    // they visually recede. Subtotal/Grand Total rows show them prominently.
     r.getCell(3).value = cost; r.getCell(3).numFmt = FMT_USD; inputCell(r.getCell(3));
+    r.getCell(3).font = { ...subFont, color: { argb: "FFCCCCCC" } }; // light gray — de-emphasized
     r.getCell(4).value = { formula: sellFormula(row), result: cost > 0 ? round2(cost / (1 - marginPct)) : 0 };
     r.getCell(4).numFmt = FMT_USD;
     r.getCell(5).value = { formula: marginDollarFormula(row), result: cost > 0 ? round2(cost / (1 - marginPct) - cost) : 0 };
     r.getCell(5).numFmt = FMT_USD;
+    r.getCell(5).font = { ...subFont, color: { argb: "FFCCCCCC" } }; // light gray
     r.getCell(6).value = marginPct; r.getCell(6).numFmt = FMT_PCT; inputCell(r.getCell(6));
+    r.getCell(6).font = { ...subFont, color: { argb: "FFCCCCCC" } }; // light gray
     row++;
   }
 
@@ -1002,8 +1007,8 @@ function buildLedCostSheet(
   });
 
   // Full format matching the online version — includes electrical, pricing, margins
-  const COLS = 20;
-  const colWidths = [36, 18, 14, 10, 10, 10, 10, 10, 8, 12, 10, 10, 12, 12, 14, 14, 14, 14, 12, 16];
+  const COLS = 23;
+  const colWidths = [36, 18, 14, 10, 10, 10, 10, 10, 8, 12, 10, 10, 12, 12, 14, 14, 14, 14, 12, 16, 12, 14, 12];
   colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
   setTitle(ws, "T", `${projectName} — LED Cost Sheet`);
@@ -1018,6 +1023,7 @@ function buildLedCostSheet(
     "NITs", "Service",
     "$/SqFt", "Display Cost", "Processor", "Shipping", "Total Cost",
     "Margin %", "Selling Price", "ANC Margin",
+    "Weight (lbs)", "Total Power (W)", "BTU/hr",
   ];
   hdrLabels.forEach((h, i) => {
     const cell = ws.getCell(row, i + 1);
@@ -1088,6 +1094,22 @@ function buildLedCostSheet(
     dr.getCell(20).value = { formula: `S${row}-Q${row}`, result: d.marginDollars };
     dr.getCell(20).numFmt = FMT_USD;
 
+    // Weight & Power — look up product catalog by pitch for density constants
+    const areaM2 = d.areaSqFt * 0.092903;
+    const pitch = d.spec.pixelPitchMm ?? 0;
+    const catalogMatch = pitch > 0
+      ? getAllProducts().find((p) => Math.abs(p.pitchMm - pitch) < 0.5)
+      : null;
+    const weight = catalogMatch
+      ? Math.round(areaM2 * catalogMatch.weightDensityLbm2)
+      : Math.round(d.areaSqFt * 5); // fallback ~5 lbs/sqft
+    const power = catalogMatch
+      ? Math.round(areaM2 * catalogMatch.powerDensityWm2)
+      : 0;
+    if (weight > 0) { dr.getCell(21).value = weight; dr.getCell(21).numFmt = "#,##0"; }
+    if (power > 0) { dr.getCell(22).value = power; dr.getCell(22).numFmt = "#,##0"; }
+    if (power > 0) { dr.getCell(23).value = { formula: `V${row}*3.412`, result: Math.round(power * 3.412) }; dr.getCell(23).numFmt = "#,##0"; }
+
     stripe(dr, COLS, idx % 2 === 0);
     row++;
   });
@@ -1111,6 +1133,12 @@ function buildLedCostSheet(
   gtR.getCell(19).numFmt = FMT_USD;
   gtR.getCell(20).value = { formula: `SUM(T${dataStartRow}:T${row - 2})`, result: displays.reduce((s, d) => s + d.marginDollars, 0) };
   gtR.getCell(20).numFmt = FMT_USD;
+  gtR.getCell(21).value = { formula: `SUM(U${dataStartRow}:U${row - 2})`, result: 0 };
+  gtR.getCell(21).numFmt = "#,##0";
+  gtR.getCell(22).value = { formula: `SUM(V${dataStartRow}:V${row - 2})`, result: 0 };
+  gtR.getCell(22).numFmt = "#,##0";
+  gtR.getCell(23).value = { formula: `SUM(W${dataStartRow}:W${row - 2})`, result: 0 };
+  gtR.getCell(23).numFmt = "#,##0";
   totalStyle(gtR, COLS, C.GREEN_BG);
 }
 
@@ -2276,29 +2304,13 @@ function buildTechSpecsSheet(
     r.getCell(10).value = { formula: `'LED Cost Sheet'!L${ledRow}` };
     r.getCell(11).value = d.spec.environment || "indoor";
 
-    // Weight & Power — look up product catalog by pitch for density constants
-    const areaM2 = d.areaSqFt * 0.092903;
-    const pitch = d.spec.pixelPitchMm ?? 0;
-    const catalogProducts = getAllProducts();
-    const catalogMatch = pitch > 0
-      ? catalogProducts.find((p) => Math.abs(p.pitchMm - pitch) < 0.5)
-      : null;
-    const weight = catalogMatch
-      ? Math.round(areaM2 * catalogMatch.weightDensityLbm2)
-      : Math.round(d.areaSqFt * 5); // fallback ~5 lbs/sqft
-    const power = catalogMatch
-      ? Math.round(areaM2 * catalogMatch.powerDensityWm2)
-      : 0;
-
-    r.getCell(12).value = weight > 0 ? weight : null;
+    // Weight & Power & BTU — cross-sheet refs to LED Cost Sheet (cols U, V, W)
+    r.getCell(12).value = { formula: `'LED Cost Sheet'!U${ledRow}` };
     r.getCell(12).numFmt = "#,##0";
-    r.getCell(13).value = power > 0 ? power : null;
+    r.getCell(13).value = { formula: `'LED Cost Sheet'!V${ledRow}` };
     r.getCell(13).numFmt = "#,##0";
-    // BTU/hr: =M{row}*3.412
-    if (power > 0) {
-      r.getCell(14).value = { formula: `M${row}*3.412`, result: Math.round(power * 3.412) };
-      r.getCell(14).numFmt = "#,##0";
-    }
+    r.getCell(14).value = { formula: `'LED Cost Sheet'!W${ledRow}` };
+    r.getCell(14).numFmt = "#,##0";
 
     stripe(r, 14, idx % 2 === 0);
     row++;
