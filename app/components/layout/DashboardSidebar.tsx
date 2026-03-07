@@ -72,7 +72,7 @@ const toolsMenuItems: NavItem[] = [
             { label: "History", href: "/tools/rfp-analyzer/history", icon: History },
         ],
     },
-    { icon: FileSignature, label: "SOW Generator", href: "/tools/sow-generator", allowedRoles: null },
+    { icon: FileSignature, label: "SOW Builder", href: "/tools/sow-generator", allowedRoles: null },
     { icon: FileSpreadsheet, label: "Spec Generator", href: "/tools/spec-generator", allowedRoles: null, hidden: true },
     { icon: Calculator, label: "Estimator", href: "/estimator", allowedRoles: null },
 ];

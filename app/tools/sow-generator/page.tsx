@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   FileSignature,
   Plus,
@@ -10,8 +10,13 @@ import {
   HardHat,
   Moon,
   Wrench,
+  FolderOpen,
+  Sparkles,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 interface DisplayEntry {
   id: string;
@@ -24,6 +29,17 @@ interface DisplayEntry {
   structureType: string;
   hasDemolition: boolean;
   installPrice: string;
+  manufacturer: string;
+  suggestedPrice: number | null;
+}
+
+interface ProjectSummary {
+  id: string;
+  clientName: string;
+  venue: string | null;
+  screenCount: number;
+  totalAmount: number;
+  updatedAt: string;
 }
 
 function makeDisplay(): DisplayEntry {
@@ -38,10 +54,22 @@ function makeDisplay(): DisplayEntry {
     structureType: "wall",
     hasDemolition: false,
     installPrice: "",
+    manufacturer: "",
+    suggestedPrice: null,
   };
 }
 
+// ─── Component ──────────────────────────────────────────────────────────────
+
 export default function SOWGeneratorPage() {
+  // Source selection
+  const [source, setSource] = useState<"new" | "project">("new");
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [loadingProject, setLoadingProject] = useState(false);
+
+  // Form state
   const [projectName, setProjectName] = useState("");
   const [clientName, setClientName] = useState("");
   const [venue, setVenue] = useState("");
@@ -53,6 +81,102 @@ export default function SOWGeneratorPage() {
   const [displays, setDisplays] = useState<DisplayEntry[]>([makeDisplay()]);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [autoFilled, setAutoFilled] = useState(false);
+
+  // Load project list on mount
+  useEffect(() => {
+    setProjectsLoading(true);
+    fetch("/api/projects?limit=100")
+      .then((r) => r.json())
+      .then((data) => {
+        const list = (data.projects || []).map((p: any) => ({
+          id: p.id,
+          clientName: p.clientName || "Untitled",
+          venue: p.venue,
+          screenCount: p.screenCount || p.screens?.length || 0,
+          totalAmount: p.totalAmount || 0,
+          updatedAt: p.updatedAt,
+        }));
+        setProjects(list);
+      })
+      .catch(() => {})
+      .finally(() => setProjectsLoading(false));
+  }, []);
+
+  // Load full project data when selected
+  const loadProject = async (projectId: string) => {
+    if (!projectId) return;
+    setLoadingProject(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}`);
+      if (!res.ok) throw new Error("Failed to load project");
+      const data = await res.json();
+      const project = data.project;
+
+      // Fill project details
+      setProjectName(project.clientName || "Untitled Project");
+      setClientName(project.clientName || "");
+      setVenue(project.venue || "");
+      setAddress(
+        [project.clientAddress, project.clientCity, project.clientZip]
+          .filter(Boolean)
+          .join(", ")
+      );
+
+      // Get pricing document
+      const pDoc = project.pricingDocument as any;
+      const tables = pDoc?.tables || [];
+      setCurrency(pDoc?.currency || "USD");
+
+      // Build displays from screens
+      const screens = project.screens || [];
+      if (screens.length > 0) {
+        const newDisplays: DisplayEntry[] = screens.map(
+          (s: any, i: number) => {
+            const table =
+              tables[i] ||
+              tables.find(
+                (t: any) =>
+                  t.name &&
+                  s.name &&
+                  t.name.toLowerCase().includes(s.name.toLowerCase())
+              );
+            const grandTotal = table?.grandTotal || 0;
+            const sqft =
+              (Number(s.width || s.widthFt || 0)) *
+              (Number(s.height || s.heightFt || 0));
+            // Suggest install price: $289/sqft if no pricing data
+            const suggested = sqft > 0 ? Math.round(sqft * 289) : null;
+
+            return {
+              id: crypto.randomUUID(),
+              name: s.name || `Display ${i + 1}`,
+              widthFt: String(s.width || s.widthFt || ""),
+              heightFt: String(s.height || s.heightFt || ""),
+              pixelPitch: String(s.pixelPitch || s.pitchMm || ""),
+              quantity: String(s.quantity || 1),
+              environment: (s.environment === "Outdoor"
+                ? "Outdoor"
+                : "Indoor") as "Indoor" | "Outdoor",
+              structureType: s.structureType || "wall",
+              hasDemolition: false,
+              installPrice: grandTotal > 0 ? String(grandTotal) : "",
+              manufacturer: s.manufacturer || "",
+              suggestedPrice: grandTotal > 0 ? null : suggested,
+            };
+          }
+        );
+        setDisplays(newDisplays);
+      }
+
+      setAutoFilled(true);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoadingProject(false);
+    }
+  };
 
   const addDisplay = () => setDisplays((prev) => [...prev, makeDisplay()]);
 
@@ -61,15 +185,42 @@ export default function SOWGeneratorPage() {
     setDisplays((prev) => prev.filter((d) => d.id !== id));
   };
 
-  const updateDisplay = (id: string, field: keyof DisplayEntry, value: any) => {
+  const updateDisplay = (
+    id: string,
+    field: keyof DisplayEntry,
+    value: any
+  ) => {
     setDisplays((prev) =>
       prev.map((d) => (d.id === id ? { ...d, [field]: value } : d))
     );
   };
 
-  const canGenerate =
-    projectName.trim() &&
-    displays.some((d) => d.name.trim());
+  const applySuggested = (id: string, price: number) => {
+    setDisplays((prev) =>
+      prev.map((d) =>
+        d.id === id
+          ? { ...d, installPrice: String(price), suggestedPrice: null }
+          : d
+      )
+    );
+  };
+
+  const resetForm = () => {
+    setProjectName("");
+    setClientName("");
+    setVenue("");
+    setAddress("");
+    setInstallWeeks("4");
+    setIsUnionLabor(false);
+    setHasNightWork(false);
+    setCurrency("USD");
+    setDisplays([makeDisplay()]);
+    setSelectedProjectId("");
+    setAutoFilled(false);
+    setError(null);
+  };
+
+  const canGenerate = projectName.trim() && displays.some((d) => d.name.trim());
 
   const handleGenerate = async () => {
     if (!canGenerate) return;
@@ -99,6 +250,7 @@ export default function SOWGeneratorPage() {
             structureType: d.structureType,
             hasDemolition: d.hasDemolition,
             installPrice: parseFloat(d.installPrice) || 0,
+            manufacturer: d.manufacturer || undefined,
           })),
       };
 
@@ -133,6 +285,13 @@ export default function SOWGeneratorPage() {
   const selectClass =
     "px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue transition-colors";
 
+  const fmt = (n: number) =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 0,
+    }).format(n);
+
   return (
     <div className="max-w-5xl mx-auto px-6 py-10">
       {/* Header */}
@@ -142,12 +301,140 @@ export default function SOWGeneratorPage() {
         </div>
         <div>
           <h1 className="text-xl font-bold text-foreground">
-            Installation SOW Generator
+            SOW Builder
           </h1>
           <p className="text-xs text-muted-foreground">
-            Generate a subcontractor-ready Scope of Work document (DOCX)
+            Generate a subcontractor-ready Installation Scope of Work (DOCX)
           </p>
         </div>
+      </div>
+
+      {/* Source Selector */}
+      <div className="rounded-xl border border-border bg-card p-6 mb-6">
+        <h2 className="text-sm font-bold text-foreground mb-4">
+          Start From
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+          <button
+            type="button"
+            onClick={() => {
+              setSource("project");
+              setAutoFilled(false);
+            }}
+            className={cn(
+              "flex items-center gap-3 p-4 rounded-lg border-2 transition-all text-left",
+              source === "project"
+                ? "border-brand-blue bg-brand-blue/5"
+                : "border-border hover:border-border/80"
+            )}
+          >
+            <FolderOpen
+              className={cn(
+                "w-5 h-5",
+                source === "project"
+                  ? "text-brand-blue"
+                  : "text-muted-foreground"
+              )}
+            />
+            <div>
+              <div className="text-sm font-semibold text-foreground">
+                Existing Project
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                Auto-fill from a saved project's screens and pricing
+              </div>
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSource("new");
+              resetForm();
+            }}
+            className={cn(
+              "flex items-center gap-3 p-4 rounded-lg border-2 transition-all text-left",
+              source === "new"
+                ? "border-brand-blue bg-brand-blue/5"
+                : "border-border hover:border-border/80"
+            )}
+          >
+            <Plus
+              className={cn(
+                "w-5 h-5",
+                source === "new"
+                  ? "text-brand-blue"
+                  : "text-muted-foreground"
+              )}
+            />
+            <div>
+              <div className="text-sm font-semibold text-foreground">
+                Start Fresh
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                Enter project details and displays manually
+              </div>
+            </div>
+          </button>
+        </div>
+
+        {/* Project Picker */}
+        {source === "project" && (
+          <div className="flex items-end gap-3">
+            <div className="flex-1">
+              <label className={labelClass}>Select Project</label>
+              <div className="relative">
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  disabled={projectsLoading}
+                  className={selectClass + " w-full appearance-none pr-8"}
+                >
+                  <option value="">
+                    {projectsLoading
+                      ? "Loading projects..."
+                      : "Choose a project..."}
+                  </option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.clientName}
+                      {p.venue ? ` — ${p.venue}` : ""}
+                      {p.screenCount > 0
+                        ? ` (${p.screenCount} screens)`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              </div>
+            </div>
+            <button
+              onClick={() => loadProject(selectedProjectId)}
+              disabled={!selectedProjectId || loadingProject}
+              className={cn(
+                "px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2",
+                selectedProjectId && !loadingProject
+                  ? "bg-brand-blue text-white hover:bg-brand-blue/90"
+                  : "bg-muted text-muted-foreground cursor-not-allowed"
+              )}
+            >
+              {loadingProject ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4" />
+              )}
+              {loadingProject ? "Loading..." : "Auto-Fill"}
+            </button>
+          </div>
+        )}
+
+        {autoFilled && (
+          <div className="mt-3 px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800">
+            <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+              Auto-filled from project. Review the details below and adjust as
+              needed.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Project Details */}
@@ -275,9 +562,16 @@ export default function SOWGeneratorPage() {
               className="rounded-lg border border-border bg-background p-4"
             >
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-bold text-muted-foreground">
-                  Display {idx + 1}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-muted-foreground">
+                    Display {idx + 1}
+                  </span>
+                  {d.manufacturer && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                      {d.manufacturer}
+                    </span>
+                  )}
+                </div>
                 {displays.length > 1 && (
                   <button
                     onClick={() => removeDisplay(d.id)}
@@ -387,16 +681,29 @@ export default function SOWGeneratorPage() {
               <div className="flex items-center gap-6 mt-3 pt-3 border-t border-border/50">
                 <div className="flex-1">
                   <label className={labelClass}>Install Price ($)</label>
-                  <input
-                    type="number"
-                    value={d.installPrice}
-                    onChange={(e) =>
-                      updateDisplay(d.id, "installPrice", e.target.value)
-                    }
-                    placeholder="0"
-                    step="100"
-                    className={inputClass}
-                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={d.installPrice}
+                      onChange={(e) =>
+                        updateDisplay(d.id, "installPrice", e.target.value)
+                      }
+                      placeholder="0"
+                      step="100"
+                      className={inputClass}
+                    />
+                    {d.suggestedPrice && !d.installPrice && (
+                      <button
+                        onClick={() =>
+                          applySuggested(d.id, d.suggestedPrice!)
+                        }
+                        className="shrink-0 px-2 py-1.5 text-[10px] font-semibold rounded-md bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors"
+                        title="Suggested based on $289/sqft install rate"
+                      >
+                        Suggest: {fmt(d.suggestedPrice)}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <label className="flex items-center gap-2 cursor-pointer group pt-4">
                   <input
@@ -409,7 +716,7 @@ export default function SOWGeneratorPage() {
                   />
                   <Wrench className="w-3.5 h-3.5 text-muted-foreground" />
                   <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground">
-                    Includes Demolition
+                    Demolition
                   </span>
                 </label>
               </div>
