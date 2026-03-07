@@ -69,7 +69,7 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 	const pricingDocument = (body.details as any)?.pricingDocument || (body as any)?.pricingDocument;
 	const documentMode = (body.details as any)?.documentMode;
 	const isMirrorMode = (body.details as any)?.mirrorMode === true || (body.details as any)?.calculationMode === "MIRROR" || !!pricingDocument;
-	const validation = pricingDocument?.metadata?.validation;
+	const validation = pricingDocument?.metadata?.validation || (body.details as any)?.parserValidationReport;
 	const parserStrictVersion = (body.details as any)?.parserStrictVersion || pricingDocument?.metadata?.parserStrictVersion;
 	const preflightError = (error: string, guidance: string[]) =>
 		new NextResponse(JSON.stringify({ error, guidance }), {
