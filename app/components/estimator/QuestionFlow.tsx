@@ -1556,7 +1556,7 @@ function QuestionInput({
                                 } else {
                                     onChange(preset.value);
                                 }
-                                setTimeout(onNext, 200);
+                                requestAnimationFrame(() => onNext());
                             }}
                             className={cn(
                                 "text-left px-4 py-3 rounded-lg border-2 transition-all",
@@ -1620,7 +1620,7 @@ function ProductSelectInput({
         }
         setBrowserOpen(false);
         if (productId) {
-            setTimeout(onNext, 200);
+            requestAnimationFrame(() => onNext());
         }
     }, [setDisplayFields, onNext]);
 
