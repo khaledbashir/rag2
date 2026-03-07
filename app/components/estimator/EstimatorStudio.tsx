@@ -185,7 +185,7 @@ export default function EstimatorStudio({
         } finally {
             setExporting(false);
         }
-    }, [answers, previewData]);
+    }, [answers, previewData, showAlert]);
 
     const handleComplete = useCallback(() => {
         setQuestionsComplete(true);
@@ -252,7 +252,7 @@ export default function EstimatorStudio({
         } finally {
             setConverting(false);
         }
-    }, [projectId, converting, router]);
+    }, [projectId, converting, router, confirm, showAlert]);
 
     const handleAutoRfpApply = useCallback((rfpAnswers: EstimatorAnswers) => {
         setAnswers(rfpAnswers);
@@ -279,7 +279,7 @@ export default function EstimatorStudio({
         } finally {
             setDuplicating(false);
         }
-    }, [projectId, duplicating, router]);
+    }, [projectId, duplicating, router, showAlert]);
 
     return (
         <div className="h-[100dvh] w-full min-w-0 overflow-hidden flex flex-col bg-background text-foreground">

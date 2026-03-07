@@ -455,7 +455,25 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
 
     return (
         <div ref={containerRef} className="h-full flex flex-col">
-            {/* Stage indicator — hidden on landing screen */}
+            {/* Quick-test scenarios — one-click to fill a full project for fast testing */}
+            {phase === "project" && currentStep === 0 && !aiMode && (
+                <div className="shrink-0 px-4 pt-3 pb-1">
+                    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1">
+                        <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50 whitespace-nowrap mr-1">Quick Test:</span>
+                        {QUICK_START_SCENARIOS.map((scenario) => (
+                            <button
+                                key={scenario.label}
+                                onClick={() => { setAiDescription(scenario.prompt); setAiMode(true); }}
+                                className="px-2 py-1 rounded-md border border-border text-[10px] text-muted-foreground hover:text-foreground hover:border-[#0A52EF]/40 hover:bg-[#0A52EF]/5 transition-colors whitespace-nowrap shrink-0"
+                            >
+                                {scenario.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Stage indicator */}
             {!(phase === "project" && currentStep === 0 && !aiMode && !manualChosen) && (
                 <div className="shrink-0 px-6 pt-4 pb-2">
                     <StageIndicator
