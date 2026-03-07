@@ -792,15 +792,12 @@ function buildMarginAnalysis(
   function writeCategory(label: string, cost: number, marginPct: number): void {
     const r = ws.getRow(row);
     r.getCell(2).value = `    ${label}`; r.getCell(2).font = subFont;
-    // Line items: show ONLY description + selling price.
-    // Cost (C) and Margin % (F) kept with ';;;' hidden format for formula integrity:
-    //   - Subtotal SUM(C{start}:C{end}) needs C values
-    //   - Selling formula IF(F>=1,C,C/(1-F)) needs both C and F
-    // Margin $ (E) omitted entirely on line items — only on subtotal/grand total.
-    r.getCell(3).value = cost; r.getCell(3).numFmt = ";;;"; // hidden — preserved for SUM formulas
+    r.getCell(3).value = cost; r.getCell(3).numFmt = FMT_USD; r.getCell(3).font = subFont;
     r.getCell(4).value = { formula: sellFormula(row), result: cost > 0 ? round2(cost / (1 - marginPct)) : 0 };
-    r.getCell(4).numFmt = FMT_USD;
-    r.getCell(6).value = marginPct; r.getCell(6).numFmt = ";;;"; // hidden — preserved for selling formula
+    r.getCell(4).numFmt = FMT_USD; r.getCell(4).font = subFont;
+    r.getCell(5).value = { formula: marginDollarFormula(row), result: cost > 0 ? round2(cost / (1 - marginPct) - cost) : 0 };
+    r.getCell(5).numFmt = FMT_USD; r.getCell(5).font = subFont;
+    r.getCell(6).value = marginPct; r.getCell(6).numFmt = FMT_PCT; r.getCell(6).font = subFont;
     row++;
   }
 
