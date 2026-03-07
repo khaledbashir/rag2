@@ -15,7 +15,7 @@ import { PricingTable, PricingDocument, createTableId } from "@/types/pricing";
 import { ANYTHING_LLM_BASE_URL, ANYTHING_LLM_KEY } from "@/lib/variables";
 import { parseRespMatrixDetailed } from "@/services/pricing/respMatrixParser";
 
-const SYSTEM_PROMPT = `You are an ANC Proposal Engine data extractor. You receive raw spreadsheet data (tab-separated) from an LED display project. Extract ALL data into a single JSON object.
+const SYSTEM_PROMPT = `You are an ANC Proposal Engine data extractor. You receive raw spreadsheet data (tab-separated) from LED display projects. These projects can have 1 screen or 50+ screens. You MUST extract ALL of them.
 
 OUTPUT THIS EXACT JSON SCHEMA (no markdown, no explanation, ONLY the JSON):
 {
@@ -24,7 +24,7 @@ OUTPUT THIS EXACT JSON SCHEMA (no markdown, no explanation, ONLY the JSON):
   "currency": "USD",
   "tables": [
     {
-      "name": "string (section/screen name)",
+      "name": "string — the EXACT section header from the spreadsheet (e.g. 'LED-C1-01 - LED Display (2026) - 9\\' H x 16\\' W - 1.2mm (Indoor)')",
       "items": [
         { "description": "string", "cost": number_or_null, "sell": number }
       ],
@@ -42,7 +42,7 @@ OUTPUT THIS EXACT JSON SCHEMA (no markdown, no explanation, ONLY the JSON):
       "heightFt": number,
       "widthFt": number,
       "pixelPitch": number,
-      "resolution": "string (e.g. 70 x 11368)",
+      "resolution": "string (WxH e.g. '11368 x 70')",
       "quantity": number,
       "location": "string or empty",
       "product": "string (manufacturer/model if listed)"
@@ -50,31 +50,39 @@ OUTPUT THIS EXACT JSON SCHEMA (no markdown, no explanation, ONLY the JSON):
   ]
 }
 
-PRICING RULES (from Margin Analysis sheet):
-- Extract EVERY line item with a selling price. Do not skip any.
+CRITICAL — TABLE EXTRACTION:
+- The Margin Analysis sheet has SECTIONS. Each section starts with a header row (bold text like "LED-C1-01 - LED Display (2026) - 9' H x 16' W - 1.2mm (Indoor)") followed by line items, then subtotal/tax/bond/grand total rows.
+- Create ONE table per section. If there are 40 sections, create 40 tables. NEVER merge sections.
+- The table "name" must be the EXACT section header text from the spreadsheet.
+- Within each section, extract every line item row between the header and the subtotal/grand total.
 - "cost" is the cost/budget column. "sell" is the selling price/revenue column.
 - If only one numeric column exists, use it as "sell" and set cost to null.
-- Subtotal = sum of item selling prices (before tax/bond).
-- Tax: extract rate (as decimal 0-1) and dollar amount. Label is the tax name (Tax, HST, GST, etc).
+- Items labeled "Included", "N/A", or "$0" → include them with sell: 0.
+- Do NOT include subtotal/tax/bond/tariff/grand total rows as line items.
+- Subtotal = sum of selling prices (before tax/bond).
+- Tax: extract the rate (as decimal 0-1) and dollar amount. Label is the tax name (Tax, HST, GST, etc).
 - Bond: performance/P&P bond amount. 0 if none.
 - Tariff: tariff amount. 0 if none.
-- Grand Total: the final total including tax, bond, tariff.
-- Document Total: the overall project total (sum of all table grand totals, or BASE BID GRAND TOTAL if present).
-- Items labeled "Included", "N/A", or with $0 → include them with sell: 0.
-- Do NOT include subtotal/tax/bond/tariff/grand total rows as line items.
-- If there are multiple sections (e.g. per-screen breakdowns), create separate tables for each.
-- If there's only one section, create one table.
+- Grand Total: the final total for this section including tax, bond, tariff.
+- Document Total: the overall project total (sum of all table grand totals, or "BASE BID GRAND TOTAL" / "SUB TOTAL (BID FORM)" row if present).
 
-SCREEN RULES (from LED Cost Sheet or similar):
-- Extract every LED display/screen with its dimensions and specs.
-- heightFt/widthFt: display dimensions in feet (convert from inches if needed).
+CRITICAL — ALTERNATES:
+- Some sections are labeled "Alternates" or "Alternate - Add/Deduct". These are separate tables with their own items. Extract them as separate tables too.
+- Alternate items may have negative prices (deductions).
+
+CRITICAL — SCREEN EXTRACTION:
+- Extract EVERY LED display/screen with its physical specs.
+- Look in the LED Cost Sheet first. If no LED sheet, extract from the Margin Analysis section headers.
+- Section headers often contain specs: "LED-C1-01 - LED Display (2026) - 9' H x 16' W - 1.2mm (Indoor)" → heightFt=9, widthFt=16, pixelPitch=1.2
+- heightFt/widthFt: dimensions in feet (convert from inches if needed, 12in = 1ft).
 - pixelPitch: in millimeters (e.g. 3.9, 10, 1.2).
-- resolution: columns x rows (e.g. "70 x 11368").
+- resolution: from the LED sheet if available (columns x rows).
 - quantity: number of units (default 1).
-- If no LED sheet exists, set screens to empty array [].
+- There must be ONE screen entry for each pricing table/section.
 
 GENERAL:
-- Project name: look in the first few rows for a project name or title.
+- Project name: look in the first few rows or sheet headers for a project name/title.
+- Currency: detect from sheet name ("CAD" → CAD) or symbols ($ = USD, £ = GBP, € = EUR).
 - RESPOND WITH ONLY THE JSON. No text before or after.`;
 
 export async function POST(req: NextRequest) {
@@ -90,7 +98,8 @@ export async function POST(req: NextRequest) {
     const sourceWorkbookHash = crypto.createHash("sha256").update(buffer).digest("hex");
     const workbook = xlsx.read(buffer, { type: "buffer" });
 
-    // ── Step 1: Convert relevant sheets to text for AI ──
+    // ── Step 1: Convert ALL relevant sheets to text for AI ──
+    // Gemini has 1M context — send everything so it extracts ALL screens
     const sheetTexts: { name: string; text: string }[] = [];
     const maSheet = workbook.SheetNames.find(
       (n) => /margin.*analysis/i.test(n) && !/cms/i.test(n)
@@ -99,20 +108,46 @@ export async function POST(req: NextRequest) {
       (n) => /led.*(?:cost|sheet)/i.test(n)
     );
 
-    // Collect sheets: MA + LED + first 2 others as context
-    const sheetsToSend = new Set<string>();
-    if (maSheet) sheetsToSend.add(maSheet);
-    if (ledSheet) sheetsToSend.add(ledSheet);
-    // Add first few sheets as fallback context
-    for (const name of workbook.SheetNames.slice(0, 4)) {
-      if (sheetsToSend.size < 4) sheetsToSend.add(name);
+    // Priority sheets get ALL rows (no truncation)
+    const prioritySheets = new Set<string>();
+    if (maSheet) prioritySheets.add(maSheet);
+    if (ledSheet) prioritySheets.add(ledSheet);
+
+    // Also grab budget, overview, install, and any pricing-related sheets
+    for (const name of workbook.SheetNames) {
+      if (/budget|overview|summary|install|pricing|cost|bid/i.test(name) && !/cms/i.test(name)) {
+        prioritySheets.add(name);
+      }
     }
 
-    for (const sheetName of sheetsToSend) {
+    // Send priority sheets with ALL rows
+    for (const sheetName of prioritySheets) {
       const sheet = workbook.Sheets[sheetName];
       const text = xlsx.utils.sheet_to_csv(sheet, { FS: "\t", RS: "\n" });
-      const lines = text.split("\n").slice(0, 200);
-      sheetTexts.push({ name: sheetName, text: lines.join("\n") });
+      // Strip trailing empty rows but keep ALL data rows
+      const lines = text.split("\n");
+      const trimmed = trimTrailingEmptyRows(lines);
+      sheetTexts.push({ name: sheetName, text: trimmed.join("\n") });
+    }
+
+    // Add remaining sheets (first 500 rows each) for additional context
+    for (const name of workbook.SheetNames) {
+      if (!prioritySheets.has(name)) {
+        const sheet = workbook.Sheets[name];
+        const text = xlsx.utils.sheet_to_csv(sheet, { FS: "\t", RS: "\n" });
+        const lines = text.split("\n").slice(0, 500);
+        const trimmed = trimTrailingEmptyRows(lines);
+        if (trimmed.length > 2) { // skip near-empty sheets
+          sheetTexts.push({ name, text: trimmed.join("\n") });
+        }
+      }
+    }
+
+    // Cap total payload at ~800K chars to leave room for prompt + output
+    let totalChars = sheetTexts.reduce((s, t) => s + t.text.length, 0);
+    while (totalChars > 800_000 && sheetTexts.length > prioritySheets.size) {
+      const removed = sheetTexts.pop()!;
+      totalChars -= removed.text.length;
     }
 
     if (sheetTexts.length === 0) {
@@ -134,7 +169,7 @@ export async function POST(req: NextRequest) {
       .map((s) => `=== Sheet: ${s.name} ===\n${s.text}`)
       .join("\n\n");
 
-    console.log(`[AI IMPORT] Sending ${excelText.length} chars from ${sheetTexts.length} sheet(s) to AI`);
+    console.log(`[AI IMPORT] Sending ${excelText.length} chars from ${sheetTexts.length} sheet(s) to AI: ${sheetTexts.map(s => `${s.name}(${s.text.split('\n').length} rows)`).join(', ')}`);
 
     const aiResult = await callAI(excelText);
 
@@ -401,4 +436,14 @@ function buildScreens(ai: any): any[] {
     brightness: 0,
     brightnessNits: 0,
   }));
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function trimTrailingEmptyRows(lines: string[]): string[] {
+  let end = lines.length;
+  while (end > 0 && lines[end - 1].replace(/\t/g, "").trim() === "") {
+    end--;
+  }
+  return lines.slice(0, end);
 }
