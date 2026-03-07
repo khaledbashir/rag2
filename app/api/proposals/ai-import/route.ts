@@ -242,7 +242,7 @@ async function callGemini(excelText: string): Promise<any> {
       }],
       generationConfig: {
         temperature: 0,
-        maxOutputTokens: 32000,
+        maxOutputTokens: 65536,
         thinkingConfig: { thinkingBudget: 0 },
       },
     }),
