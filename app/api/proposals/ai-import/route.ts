@@ -50,25 +50,40 @@ OUTPUT THIS EXACT JSON SCHEMA (no markdown, no explanation, ONLY the JSON):
   ]
 }
 
-CRITICAL — TABLE EXTRACTION:
-- The Margin Analysis sheet has SECTIONS. Each section starts with a header row (bold text like "LED-C1-01 - LED Display (2026) - 9' H x 16' W - 1.2mm (Indoor)") followed by line items, then subtotal/tax/bond/grand total rows.
+CRITICAL — DATA SOURCE RULE:
+- ALL pricing data (items, costs, sell prices, tax, bond, totals) must come ONLY from the Margin Analysis sheet.
+- Do NOT pull pricing, tax, bond, or totals from Budget Summary, Budget, P&L, or any other sheet.
+- Other sheets (LED Cost Sheet, Install, Budget Summary, etc.) are ONLY used for screen specs (dimensions, pixel pitch, resolution).
+- If the Margin Analysis sheet has no TAX row, set tax to null. Do NOT import tax from another sheet.
+- If the Margin Analysis sheet has no BOND row, set bond to 0. Do NOT import bond from another sheet.
+
+CRITICAL — COLUMN IDENTIFICATION (Margin Analysis sheet only):
+- You must identify exactly THREE columns from the Margin Analysis header row:
+  1. LABEL column: "Display", "Description", or the first text column
+  2. COST column: labeled "Cost" or "Total Cost"
+  3. SELL column: labeled "Selling Price" or "Sell Price"
+- IGNORE ALL OTHER COLUMNS. Columns like "Bond", "Final Total", "Margin $", "Margin %" must be completely ignored.
+- Every numeric value you extract (item sell, item cost, subtotal, grand total) must come from ONLY the Cost or Sell columns.
+- The grandTotal for each table = the value in the SELL column on the subtotal/total row. NOT from a "Final Total" column.
+
+CRITICAL — TABLE EXTRACTION (Margin Analysis sheet only):
+- The sheet has SECTIONS. Each section starts with a header row (bold text like "LED-C1-01 - LED Display (2026) - 9' H x 16' W - 1.2mm (Indoor)") followed by line items, then subtotal/tax/bond/grand total rows.
 - Create ONE table per section. If there are 40 sections, create 40 tables. NEVER merge sections.
 - The table "name" must be the EXACT section header text from the spreadsheet.
 - Within each section, extract every line item row between the header and the subtotal/grand total.
-- "cost" is the cost/budget column. "sell" is the selling price/revenue column.
-- If only one numeric column exists, use it as "sell" and set cost to null.
-- Items labeled "Included", "N/A", or "$0" → include them with sell: 0.
-- Do NOT include subtotal/tax/bond/tariff/grand total rows as line items.
-- Subtotal = sum of selling prices (before tax/bond).
-- Tax: extract the rate (as decimal 0-1) and dollar amount. Label is the tax name (Tax, HST, GST, etc).
-- Bond: performance/P&P bond amount. 0 if none.
-- Tariff: tariff amount. 0 if none.
-- Grand Total: the final total for this section including tax, bond, tariff.
-- Document Total: the overall project total (sum of all table grand totals, or "BASE BID GRAND TOTAL" / "SUB TOTAL (BID FORM)" row if present).
+- Items with sell=$0 or labeled "Included", "N/A" → include them with sell: 0.
+- Do NOT include subtotal/tax/bond/tariff/grand total ROWS as line items. Also do NOT include "PROJECT TOTAL" or "SUB TOTAL" rows as line items.
+- Subtotal = sum of item sell values (before tax/bond).
+- Tax: look for ROWS labeled "TAX", "HST", "GST" in the Margin Analysis sheet ONLY. Extract the rate (as decimal 0-1) and dollar amount. If tax rate is 0% and amount is $0, set tax to null.
+- Bond: look for ROWS labeled "BOND" in the Margin Analysis sheet ONLY. Extract the dollar amount. If 0% and $0, set bond to 0.
+- Tariff: look for ROWS labeled "TARIFF". 0 if none.
+- Grand Total: from the "SUB TOTAL (BID FORM)" or "GRAND TOTAL" row's Selling Price column value. Or if no such row exists, grandTotal = subtotal (just the sell prices, no tax/bond from other sheets).
+- Document Total: the SUM of ALL table grandTotals (including alternates). This must include every table.
 
 CRITICAL — ALTERNATES:
 - Some sections are labeled "Alternates" or "Alternate - Add/Deduct". These are separate tables with their own items. Extract them as separate tables too.
 - Alternate items may have negative prices (deductions).
+- Alternate table grandTotals MUST be included in the documentTotal sum.
 
 CRITICAL — SCREEN EXTRACTION:
 - Extract EVERY LED display/screen with its physical specs.
@@ -165,8 +180,14 @@ export async function POST(req: NextRequest) {
     } catch {}
 
     // ── Step 3: Send to AI ──
+    // Label sheets clearly so AI knows which one is the pricing source
+    const maSheetName = maSheet || "";
     const excelText = sheetTexts
-      .map((s) => `=== Sheet: ${s.name} ===\n${s.text}`)
+      .map((s) => {
+        const isMA = s.name === maSheetName;
+        const tag = isMA ? " [USE THIS FOR ALL PRICING DATA]" : " [SCREEN SPECS / CONTEXT ONLY — DO NOT USE FOR PRICING]";
+        return `=== Sheet: ${s.name}${tag} ===\n${s.text}`;
+      })
       .join("\n\n");
 
     console.log(`[AI IMPORT] Sending ${excelText.length} chars from ${sheetTexts.length} sheet(s) to AI: ${sheetTexts.map(s => `${s.name}(${s.text.split('\n').length} rows)`).join(', ')}`);
