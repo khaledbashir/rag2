@@ -45,6 +45,7 @@ interface NavItem {
     allowedRoles: UserRole[] | null;
     soon?: boolean;
     beta?: boolean;
+    devOnly?: boolean;
     demoPhase?: string;
     hidden?: boolean;
     children?: NavChild[];
@@ -62,7 +63,7 @@ const mainMenuItems: NavItem[] = [
 ];
 
 const toolsMenuItems: NavItem[] = [
-    { icon: MessageSquare, label: "Chat", href: "/chat", allowedRoles: null },
+    { icon: MessageSquare, label: "Chat", href: "/chat", allowedRoles: null, devOnly: true },
     {
         icon: Scan,
         label: "RFP Analyzer",
@@ -472,6 +473,7 @@ function NavItemRow({ item, expanded, isActive, isParentActive, canAccess, isGro
                     <span className="truncate">{item.label}</span>
                     {item.soon && <span className="text-[10px] uppercase tracking-wider text-muted-foreground ml-auto">Soon</span>}
                     {item.beta && <span className="text-[10px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded ml-auto">BETA</span>}
+                    {item.devOnly && <span className="text-[10px] bg-slate-500/20 text-slate-500 px-1.5 py-0.5 rounded ml-auto">Dev Only</span>}
                 </Link>
                 {hasChildren && !isRestricted && (
                     <button
