@@ -45,6 +45,8 @@ function mapDisplay(d: DisplayAnswers, env: "indoor" | "outdoor"): ExtractedLEDS
     citation: "Budget Estimator",
     notes: null,
     isAlternate: false,
+    selectedProductId: d.productId || null,
+    selectedProductName: d.productName || null,
   };
 }
 

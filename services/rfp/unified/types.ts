@@ -104,6 +104,10 @@ export interface ExtractedLEDSpec {
   alternateId?: string | null;
   /** Description of what this alternate changes */
   alternateDescription?: string | null;
+  /** Explicit product selection from user (e.g. estimator catalog browser) */
+  selectedProductId?: string | null;
+  /** Cached display name of selected product */
+  selectedProductName?: string | null;
 }
 
 // ============================================================================

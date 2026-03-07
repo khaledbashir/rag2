@@ -33,6 +33,7 @@ import {
   ENG_BASE_FEE,
   getServiceMargin,
   getAllProducts,
+  getProduct,
   type ZoneClass,
   type InstallComplexity,
 } from "@/services/rfp/productCatalog";
@@ -118,6 +119,8 @@ interface ComputedDisplay {
   areaSqFt: number;
   widthFt: number;
   heightFt: number;
+  // Per-display settings
+  installComplexity: InstallComplexity;
   // Cost breakdown
   ledHardwareCost: number;
   structuralMaterialsCost: number;
@@ -313,6 +316,7 @@ function computeDisplays(
       areaSqFt,
       widthFt,
       heightFt,
+      installComplexity: displayComplexity,
       ledHardwareCost,
       structuralMaterialsCost,
       structuralLaborCost,
@@ -446,9 +450,9 @@ export async function generateScopingWorkbook(
   // 5. Tech Specs (no pricing — for installers/subs)
   buildTechSpecsSheet(wb, projectName, displays);
 
-  // 6. Install sheets (one per screen)
+  // 6. Install sheets (one per screen) — uses per-display complexity
   displays.forEach((d) => {
-    buildInstallSheet(wb, projectName, today, d, installComplexity);
+    buildInstallSheet(wb, projectName, today, d, d.installComplexity);
   });
 
   // 7. Processor Count
@@ -1073,12 +1077,18 @@ function buildLedCostSheet(
     const dr = ws.getRow(row);
     dr.getCell(1).value = d.spec.name + (d.spec.location ? ` — ${d.spec.location}` : "");
     dr.getCell(1).font = { bold: true, name: "Calibri" };
-    // Vendor
-    dr.getCell(2).value = d.match?.module?.manufacturer
-      ? `${d.match.module.manufacturer} ${d.match.module.name || ""}`.trim()
-      : (d.spec.environment === "outdoor" ? "Yaham" : "LG/Yaham");
+    // Vendor — honor explicit product selection > priced match > fallback
+    const selectedProduct = d.spec.selectedProductId ? getProduct(d.spec.selectedProductId) : null;
+    dr.getCell(2).value = selectedProduct
+      ? `${selectedProduct.manufacturer} ${selectedProduct.displayName || ""}`.trim()
+      : d.match?.module?.manufacturer
+        ? `${d.match.module.manufacturer} ${d.match.module.name || ""}`.trim()
+        : (d.spec.environment === "outdoor" ? "Yaham" : "LG/Yaham");
     // Product
-    dr.getCell(3).value = d.match?.module?.name || "—";
+    dr.getCell(3).value = selectedProduct?.displayName
+      || d.spec.selectedProductName
+      || d.match?.module?.name
+      || "—";
     // Pitch
     dr.getCell(4).value = d.spec.pixelPitchMm ? `${d.spec.pixelPitchMm}mm` : "—";
     dr.getCell(4).alignment = { horizontal: "center" };
@@ -1127,12 +1137,11 @@ function buildLedCostSheet(
     dr.getCell(20).value = { formula: `S${row}-Q${row}`, result: d.marginDollars };
     dr.getCell(20).numFmt = FMT_USD;
 
-    // Weight & Power — look up product catalog by pitch for density constants
+    // Weight & Power — honor selected product > pitch-based catalog lookup
     const areaM2 = d.areaSqFt * 0.092903;
     const pitch = d.spec.pixelPitchMm ?? 0;
-    const catalogMatch = pitch > 0
-      ? getAllProducts().find((p) => Math.abs(p.pitchMm - pitch) < 0.5)
-      : null;
+    const catalogMatch = selectedProduct
+      ?? (pitch > 0 ? getAllProducts().find((p) => Math.abs(p.pitchMm - pitch) < 0.5) : null);
     const weight = catalogMatch
       ? Math.round(areaM2 * catalogMatch.weightDensityLbm2)
       : Math.round(d.areaSqFt * 5); // fallback ~5 lbs/sqft
