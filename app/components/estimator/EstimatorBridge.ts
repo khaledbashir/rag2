@@ -1944,7 +1944,7 @@ function buildBundleSheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
     });
 
     return {
-        name: "Bundle Accessories",
+        name: "Bundle Equipment",
         color: "#F97316",
         columns: ["ITEM", "CATEGORY", "QTY", "UNIT COST", "TOTAL", "TRIGGER"],
         rows,
