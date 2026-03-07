@@ -184,7 +184,7 @@ async function callAI(excelText: string): Promise<any> {
 }
 
 async function callGemini(excelText: string): Promise<any> {
-  const model = "gemini-2.5-flash";
+  const model = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
 
   const res = await fetch(url, {
