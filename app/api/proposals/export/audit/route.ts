@@ -107,9 +107,10 @@ export async function POST(req: NextRequest) {
       documentMode: ((proposal as any)?.documentMode || body.documentMode || "BUDGET").toString().toUpperCase(),
       displayCount: effectiveScreens.length,
     };
+    // All paths converge on generateScopingWorkbook — one MA structure, one workbook contract.
     let buffer: Buffer;
     if (effectiveMode === "MIRROR" && pricingDocument?.tables?.length) {
-      // Primary Mirror export: canonical 14-tab workbook via generateScopingWorkbook
+      // Mirror with pricingDocument: map uploaded Excel pricing → canonical workbook
       const scopingOptions = mapMirrorToScoping({
         pricingDocument,
         screens: effectiveScreens,
@@ -122,19 +123,22 @@ export async function POST(req: NextRequest) {
       const result = await generateScopingWorkbook(scopingOptions);
       buffer = result.buffer;
     } else if (effectiveMode === "MIRROR") {
-      // Fallback: no pricingDocument — use legacy 5-tab generator
-      console.warn("[Audit Export] MIRROR mode missing pricingDocument — falling back to legacy 5-tab export");
-      buffer = await generateMirrorUglySheetExcelBuffer({
-        clientName: proposal?.clientName || body.clientName,
-        projectName: proposal?.clientName || body.projectName,
-        screens: effectiveScreens,
-        internalAudit,
+      // Mirror without pricingDocument: use screens + internalAudit → canonical workbook
+      // (same path as Intelligence — screens have dims/pitch, generator computes costs)
+      console.warn("[Audit Export] MIRROR mode missing pricingDocument — generating canonical workbook from screen data");
+      const scopingOptions = mapIntelligenceToScoping({
+        screens: screensWithAudit,
         currency,
-        pricingDocument,
-        summaryInfo,
+        proposalName,
+        clientName: receiverName || proposal?.clientName || body.clientName,
+        location: projectAddress || venue || null,
+        bondRateOverride: body.bondRateOverride ?? (proposal?.bondRateOverride ? Number(proposal.bondRateOverride) : undefined),
+        taxRateOverride: body.taxRateOverride ?? (proposal?.taxRateOverride ? Number(proposal.taxRateOverride) : undefined),
       });
+      const result = await generateScopingWorkbook(scopingOptions);
+      buffer = result.buffer;
     } else {
-      // Intelligence/Manual Mode: canonical workbook via generateScopingWorkbook
+      // Intelligence/Manual Mode: map screen audit data → canonical workbook
       const scopingOptions = mapIntelligenceToScoping({
         screens: screensWithAudit,
         currency,
