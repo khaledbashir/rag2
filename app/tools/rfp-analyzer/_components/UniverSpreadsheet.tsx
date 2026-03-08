@@ -105,6 +105,14 @@ const PERCENT_FMT = { n: { pattern: '0.0%' } };
 const NUMBER_FMT = { n: { pattern: '#,##0' } };
 const NUMBER_FMT_2 = { n: { pattern: '#,##0.00' } };
 
+function guardedDivisionFormula(numerator: string, denominator: string, decimals = 2): string {
+  return `=ROUND(((${numerator})*(${denominator}<>0))/(((${denominator})+(${denominator}=0))),${decimals})`;
+}
+
+function guardedSellingFormula(costRef: string, marginRef: string, decimals = 2): string {
+  return `=ROUND(${costRef}/((((1-${marginRef})*(${marginRef}<1))+(${marginRef}>=1))),${decimals})`;
+}
+
 // ---------------------------------------------------------------------------
 // Build IWorkbookData from props — matches exportMirrorUglySheetExcel.ts layout
 // ---------------------------------------------------------------------------
@@ -332,7 +340,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       16: { v: pd?.shippingCost ?? 0, s: "currency" },
       17: { f: `=ROUND(O${row + 1}+P${row + 1}+Q${row + 1},2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } },
       18: { v: marginPct, s: getMarginStyle(marginPct) },
-      19: { f: `=ROUND(IF(S${row + 1}>0,R${row + 1}/(1-S${row + 1}),R${row + 1}),2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } },
+      19: { f: guardedSellingFormula(`R${row + 1}`, `S${row + 1}`), s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } },
       20: { v: weight, s: "number" },
       21: { v: power, s: "number" },
       22: { f: `=ROUND(V${row + 1}*3.412,0)`, s: "number" },
@@ -354,7 +362,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     15: { f: screens.length > 0 ? `=ROUND(SUM(P${firstDataRow}:P${lastDataRow}),2)` : "=0", s: "totalCurrency" },
     16: { f: screens.length > 0 ? `=ROUND(SUM(Q${firstDataRow}:Q${lastDataRow}),2)` : "=0", s: "totalCurrency" },
     17: { f: screens.length > 0 ? `=ROUND(SUM(R${firstDataRow}:R${lastDataRow}),2)` : "=0", s: "totalCurrency" },
-    18: { f: screens.length > 0 ? `=ROUND(IF(T${totalRowIdx + 1}>0,(T${totalRowIdx + 1}-R${totalRowIdx + 1})/T${totalRowIdx + 1},0),4)` : "=0", s: "totalPercent" },
+    18: { f: screens.length > 0 ? guardedDivisionFormula(`T${totalRowIdx + 1}-R${totalRowIdx + 1}`, `T${totalRowIdx + 1}`, 4) : "=0", s: "totalPercent" },
     19: { f: screens.length > 0 ? `=ROUND(SUM(T${firstDataRow}:T${lastDataRow}),2)` : "=0", s: "totalCurrency" },
     20: { f: screens.length > 0 ? `=ROUND(SUM(U${firstDataRow}:U${lastDataRow}),0)` : "=0", s: "totalNumber" },
     21: { f: screens.length > 0 ? `=ROUND(SUM(V${firstDataRow}:V${lastDataRow}),0)` : "=0", s: "totalNumber" },
@@ -410,7 +418,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     //   Col B (1) = Selling Price per item (static) / Cost subtotal (formula)
     //   Col C (2) = Selling totals (SUBTOTAL/TAX/BOND/GRAND TOTAL formulas)
     //   Col D (3) = Margin $ (=C-B when cost data exists)
-    //   Col E (4) = Margin % (=IF(C=0,0,D/C))
+    //   Col E (4) = Margin % (zero-safe arithmetic, no IF)
     //   Col F (5) = Hidden: per-item cost / tax rate / bond rate
     // ══════════════════════════════════════════════════════════════════════
     for (const table of pricingTables) {
@@ -471,7 +479,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         1: hasCostData ? { f: `=SUM(F${firstItemRow + 1}:F${lastItemRow + 1})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
         2: { f: `=SUM(B${firstItemRow + 1}:B${lastItemRow + 1})`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
         3: hasCostData ? { f: `=C${sr}-B${sr}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
-        4: hasCostData ? { f: `=IF(C${sr}=0,0,D${sr}/C${sr})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
+        4: hasCostData ? { f: guardedDivisionFormula(`D${sr}`, `C${sr}`, 4), s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
       };
       maRow++;
 
@@ -517,7 +525,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         1: hasCostData ? { f: `=B${sr}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
         2: { f: `=C${sr}+C${taxIdx + 1}+C${bondIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
         3: hasCostData ? { f: `=C${gr}-B${gr}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
-        4: hasCostData ? { f: `=IF(C${gr}=0,0,D${gr}/C${gr})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
+        4: hasCostData ? { f: guardedDivisionFormula(`D${gr}`, `C${gr}`, 4), s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
       };
       // Track for cross-sheet LED → MA linking
       if (table.name) {
@@ -575,7 +583,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         1: subtotalCostRows.length > 0 ? { f: "=" + subtotalCostRows.map(r => `B${r + 1}`).join("+"), s: { bl: 1, ...CURRENCY_FMT } } : undefined,
         2: { f: `=${sellFormula}`, s: { bl: 1, ...CURRENCY_FMT } },
         3: { f: `=C${dr}-B${dr}`, s: { bl: 1, ...CURRENCY_FMT } },
-        4: { f: `=IF(C${dr}=0,0,D${dr}/C${dr})`, s: { bl: 1, ...PERCENT_FMT } },
+        4: { f: guardedDivisionFormula(`D${dr}`, `C${dr}`, 4), s: { bl: 1, ...PERCENT_FMT } },
       };
     }
   } else {
@@ -599,7 +607,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       maCellData[maRow] = {
         0: { v: d.name, s: "bold" },
         1: { v: cost, s: "currency" },
-        2: { f: `=IF(E${r}>=1,B${r},B${r}/(1-E${r}))`, s: "currency" },
+        2: { f: guardedSellingFormula(`B${r}`, `E${r}`), s: "currency" },
         3: { f: `=C${r}-B${r}`, s: "currency" },
         4: { v: marginPct, s: getMarginStyle(marginPct) },
       };
@@ -612,7 +620,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       1: { f: `=SUM(B${displayStartRow + 1}:B${lastDataRow + 1})`, s: "totalCurrency" },
       2: { f: `=SUM(C${displayStartRow + 1}:C${lastDataRow + 1})`, s: "totalCurrency" },
       3: { f: `=SUM(D${displayStartRow + 1}:D${lastDataRow + 1})`, s: "totalCurrency" },
-      4: { f: `=IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: "totalPercent" },
+      4: { f: guardedDivisionFormula(`D${maRow + 1}`, `C${maRow + 1}`, 4), s: "totalPercent" },
     };
     maRow++;
 
@@ -639,7 +647,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       1: { f: `=B${fbTotalsIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
       2: { f: `=C${fbTotalsIdx + 1}+C${fbTaxIdx + 1}+C${fbBondIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
       3: { f: `=C${maRow + 1}-B${maRow + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
-      4: { f: `=IF(C${maRow + 1}=0,0,D${maRow + 1}/C${maRow + 1})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } },
+      4: { f: guardedDivisionFormula(`D${maRow + 1}`, `C${maRow + 1}`, 4), s: { ...BOLD_STYLE, ...PERCENT_FMT } },
     };
   }
 
@@ -877,7 +885,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         5: { v: 0, s: "currency" },
         6: { f: `=ROUND(SUM(C${installRow + 1}:F${installRow + 1}),2)`, s: "currency" },
         7: { v: margin, s: "percent" },
-        8: { f: `=ROUND(IF(H${installRow + 1}>=1,G${installRow + 1},G${installRow + 1}/(1-H${installRow + 1})),2)`, s: "currency" },
+        8: { f: guardedSellingFormula(`G${installRow + 1}`, `H${installRow + 1}`), s: "currency" },
       };
       installRow++;
     });
@@ -894,7 +902,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         5: { v: 0, s: "currency" },
         6: { f: `=ROUND(SUM(C${installRow + 1}:F${installRow + 1}),2)`, s: "currency" },
         7: { v: margin, s: "percent" },
-        8: { f: `=ROUND(IF(H${installRow + 1}>=1,G${installRow + 1},G${installRow + 1}/(1-H${installRow + 1})),2)`, s: "currency" },
+        8: { f: guardedSellingFormula(`G${installRow + 1}`, `H${installRow + 1}`), s: "currency" },
       };
       installRow++;
     });
@@ -911,7 +919,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         5: { v: 0, s: "currency" },
         6: { f: `=ROUND(SUM(C${installRow + 1}:F${installRow + 1}),2)`, s: "currency" },
         7: { v: margin, s: "percent" },
-        8: { f: `=ROUND(IF(H${installRow + 1}>=1,G${installRow + 1},G${installRow + 1}/(1-H${installRow + 1})),2)`, s: "currency" },
+        8: { f: guardedSellingFormula(`G${installRow + 1}`, `H${installRow + 1}`), s: "currency" },
       };
       installRow++;
     });
@@ -928,7 +936,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         5: { v: 0, s: "currency" },
         6: { f: `=ROUND(SUM(C${installRow + 1}:F${installRow + 1}),2)`, s: "currency" },
         7: { v: margin, s: "percent" },
-        8: { f: `=ROUND(IF(H${installRow + 1}>=1,G${installRow + 1},G${installRow + 1}/(1-H${installRow + 1})),2)`, s: "currency" },
+        8: { f: guardedSellingFormula(`G${installRow + 1}`, `H${installRow + 1}`), s: "currency" },
       };
       installRow++;
     });
@@ -1112,14 +1120,12 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     ["PM/Gen Conditions", totalPmCost, 0.20],
   ];
 
-  const pricingFirstData = 4; // 1-based row where data starts
-  const pricingLastData = pricingFirstData + pricingItems.length - 1; // last data row (1-based)
   pricingItems.forEach(([cat, cost, margin], i) => {
     const r1 = i + 4; // 1-based row
     pricingCellData[i + 3] = {
       0: { v: cat },
       1: { v: cost, s: "currency" },
-      2: { f: `=ROUND(IF(D${r1}=0,B${r1},B${r1}/(1-D${r1})),2)`, s: "currency" },
+      2: { f: guardedSellingFormula(`B${r1}`, `D${r1}`), s: "currency" },
       3: { v: margin, s: "percent" },
     };
   });
@@ -1131,7 +1137,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     0: { v: "TOTAL", s: "total" },
     1: { f: `=ROUND(SUM(B4:B${pTotalR - 1}),2)`, s: "totalCurrency" },
     2: { f: `=ROUND(SUM(C4:C${pTotalR - 1}),2)`, s: "totalCurrency" },
-    3: { f: `=ROUND(IF(C${pTotalR}=0,0,(C${pTotalR}-B${pTotalR})/C${pTotalR}),4)`, s: "totalPercent" },
+    3: { f: guardedDivisionFormula(`C${pTotalR}-B${pTotalR}`, `C${pTotalR}`, 4), s: "totalPercent" },
   };
 
   sheets["pricing"] = {
@@ -1314,7 +1320,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     cmsCellData[i + 3] = {
       0: { v: item },
       1: { v: cost, s: "currency" },
-      2: { f: `=ROUND(IF(E${r}>=1,B${r},B${r}/(1-E${r})),2)`, s: "currency" },  // Selling Price = Cost/(1-Margin%)
+      2: { f: guardedSellingFormula(`B${r}`, `E${r}`), s: "currency" },  // Selling Price = Cost/(1-Margin%)
       3: { f: `=ROUND(C${r}-B${r},2)`, s: "currency" },                           // Margin$ = Sell - Cost
       4: { v: margin, s: "percent" },
     };
@@ -1327,7 +1333,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     1: { f: `=ROUND(SUM(B3:B${cmsTotalRow}),2)`, s: "totalCurrency" },
     2: { f: `=ROUND(SUM(C3:C${cmsTotalRow}),2)`, s: "totalCurrency" },
     3: { f: `=ROUND(C${cmsTotalRow + 1}-B${cmsTotalRow + 1},2)`, s: "totalCurrency" },
-    4: { f: `=ROUND(IF(C${cmsTotalRow + 1}=0,0,D${cmsTotalRow + 1}/C${cmsTotalRow + 1}),4)`, s: "totalPercent" },
+    4: { f: guardedDivisionFormula(`D${cmsTotalRow + 1}`, `C${cmsTotalRow + 1}`, 4), s: "totalPercent" },
   };
 
   sheets["margin-analysis-cms"] = {
@@ -1542,7 +1548,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     1: { v: grandSell, s: "currency" },
     2: { v: grandCost, s: "currency" },
     3: { f: `=ROUND(B11-C11,2)`, s: "currency" },                     // Gross Profit = Revenue - Expenses
-    4: { f: `=ROUND(IF(B11=0,0,D11/B11),4)`, s: "percent" },          // Gross Profit % = Profit/Revenue
+    4: { f: guardedDivisionFormula("D11", "B11", 4), s: "percent" },          // Gross Profit % = Profit/Revenue
     5: { v: 0, s: "currency" },
   };
 
@@ -1673,7 +1679,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     bsCellData[r] = {
       1: { v: label },
       2: { v: cost, s: "currency" },
-      3: { f: `=ROUND(IF(F${r1}>=1,C${r1},C${r1}/(1-F${r1})),2)`, s: "currency" },
+      3: { f: guardedSellingFormula(`C${r1}`, `F${r1}`), s: "currency" },
       4: { f: `=ROUND(D${r1}-C${r1},2)`, s: "currency" },
       5: { v: margin, s: "percent" },
     };
@@ -1688,7 +1694,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     2: { f: `=ROUND(SUM(C${bsFirstR}:C${bsLastR}),2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
     3: { f: `=ROUND(SUM(D${bsFirstR}:D${bsLastR}),2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
     4: { f: `=ROUND(D${bsTotalR}-C${bsTotalR},2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
-    5: { f: `=IF(D${bsTotalR}=0,0,E${bsTotalR}/D${bsTotalR})`, s: { ...BOLD_STYLE, ...PERCENT_FMT } },
+    5: { f: guardedDivisionFormula(`E${bsTotalR}`, `D${bsTotalR}`, 4), s: { ...BOLD_STYLE, ...PERCENT_FMT } },
   };
 
   sheets["budget-summary"] = {
@@ -1723,7 +1729,6 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   };
 
   screens.forEach((spec, si) => {
-    const pd = pricingDisplays.find((d) => d.name === spec.name);
     const wPx = spec.widthPx ?? (spec.pixelPitchMm && spec.widthFt ? Math.round(spec.widthFt * 304.8 / spec.pixelPitchMm) : 0);
     const hPx = spec.heightPx ?? (spec.pixelPitchMm && spec.heightFt ? Math.round(spec.heightFt * 304.8 / spec.pixelPitchMm) : 0);
     const qty = spec.quantity ?? 1;
@@ -1777,7 +1782,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     scoreCellData[i + 3] = {
       0: { v: item },
       1: { v: 0, s: "currency" },
-      2: { f: `=ROUND(IF(E${r}>=1,B${r},B${r}/(1-E${r})),2)`, s: "currency" },
+      2: { f: guardedSellingFormula(`B${r}`, `E${r}`), s: "currency" },
       3: { f: `=ROUND(C${r}-B${r},2)`, s: "currency" },
       4: { v: 0.10, s: "percent" },
     };
@@ -1790,7 +1795,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     1: { f: `=ROUND(SUM(B4:B${scoreTotalR - 1}),2)`, s: "totalCurrency" },
     2: { f: `=ROUND(SUM(C4:C${scoreTotalR - 1}),2)`, s: "totalCurrency" },
     3: { f: `=ROUND(C${scoreTotalR}-B${scoreTotalR},2)`, s: "totalCurrency" },
-    4: { f: `=IF(C${scoreTotalR}=0,0,D${scoreTotalR}/C${scoreTotalR})`, s: "totalPercent" },
+    4: { f: guardedDivisionFormula(`D${scoreTotalR}`, `C${scoreTotalR}`, 4), s: "totalPercent" },
   };
 
   sheets["scoring"] = {

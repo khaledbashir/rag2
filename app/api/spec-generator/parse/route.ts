@@ -775,11 +775,11 @@ async function fillDisplay(
   const vpsMapped = vendorSpecs || {};
 
   // Get cabinet specs for calculations — DB > vendor PDF > rate card defaults
-  const cabWidthMm = dbMatch?.cabinetWidthMm ?? (vpsMapped.vendorCabWidthMm as number | undefined) ?? (display.isOutdoor ? getRateSync("spec.cabinet.outdoor_width_mm") : getRateSync("spec.cabinet.indoor_width_mm"));
-  const cabHeightMm = dbMatch?.cabinetHeightMm ?? (vpsMapped.vendorCabHeightMm as number | undefined) ?? (display.isOutdoor ? getRateSync("spec.cabinet.outdoor_height_mm") : getRateSync("spec.cabinet.indoor_height_mm"));
-  const maxWPerCab = dbMatch?.maxPowerWattsPerCab ?? (vpsMapped.vendorMaxPowerWPerCab as number | undefined) ?? (display.isOutdoor ? getRateSync("spec.cabinet.outdoor_max_power_w") : getRateSync("spec.cabinet.indoor_max_power_w"));
-  const avgWPerCab = dbMatch?.typicalPowerWattsPerCab ?? (vpsMapped.vendorTypPowerWPerCab as number | undefined) ?? maxWPerCab * getRateSync("spec.power_avg_ratio");
-  const kgPerCab = dbMatch?.weightKgPerCabinet ?? (vpsMapped.vendorWeightKgPerCab as number | undefined) ?? (display.isOutdoor ? getRateSync("spec.cabinet.outdoor_weight_kg") : getRateSync("spec.cabinet.indoor_weight_kg"));
+  const cabWidthMm = dbMatch?.cabinetWidthMm ?? (typeof vpsMapped.vendorCabWidthMm === "number" ? vpsMapped.vendorCabWidthMm : undefined) ?? (display.isOutdoor ? getRateSync("spec.cabinet.outdoor_width_mm") : getRateSync("spec.cabinet.indoor_width_mm"));
+  const cabHeightMm = dbMatch?.cabinetHeightMm ?? (typeof vpsMapped.vendorCabHeightMm === "number" ? vpsMapped.vendorCabHeightMm : undefined) ?? (display.isOutdoor ? getRateSync("spec.cabinet.outdoor_height_mm") : getRateSync("spec.cabinet.indoor_height_mm"));
+  const maxWPerCab = dbMatch?.maxPowerWattsPerCab ?? (typeof vpsMapped.vendorMaxPowerWPerCab === "number" ? vpsMapped.vendorMaxPowerWPerCab : undefined) ?? (display.isOutdoor ? getRateSync("spec.cabinet.outdoor_max_power_w") : getRateSync("spec.cabinet.indoor_max_power_w"));
+  const avgWPerCab = dbMatch?.typicalPowerWattsPerCab ?? (typeof vpsMapped.vendorTypPowerWPerCab === "number" ? vpsMapped.vendorTypPowerWPerCab : undefined) ?? maxWPerCab * getRateSync("spec.power_avg_ratio");
+  const kgPerCab = dbMatch?.weightKgPerCabinet ?? (typeof vpsMapped.vendorWeightKgPerCab === "number" ? vpsMapped.vendorWeightKgPerCab : undefined) ?? (display.isOutdoor ? getRateSync("spec.cabinet.outdoor_weight_kg") : getRateSync("spec.cabinet.indoor_weight_kg"));
 
   if (!dbMatch) {
     warnings.push(`${display.shortId}: No product match in catalog — using estimated cabinet defaults for power/weight`);

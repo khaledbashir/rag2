@@ -4724,9 +4724,12 @@ export const ProposalContextProvider = ({
 
             {/* Diagnostic overlay placed in provider so it can block the whole app */}
             {typeof window !== "undefined"
-                ? // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                // @ts-ignore - dynamic require to avoid SSR issues
-                require("@/app/components/DiagnosticOverlay").default()
+                ? (() => {
+                    try {
+                      const Overlay = require("@/app/components/DiagnosticOverlay").default;
+                      return Overlay ? <Overlay /> : null;
+                    } catch { return null; }
+                  })()
                 : null}
         </ProposalContext.Provider>
     );

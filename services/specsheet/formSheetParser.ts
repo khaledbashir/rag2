@@ -386,13 +386,15 @@ export function parseFormSheet(workbook: xlsx.WorkBook): FormSheetResult {
           const raw = resolveValue(row[colIdx]);
           if (rule.type === "number") {
             const num = toNum(raw);
-            if (num !== null) {
-              (displays[d] as any)[rule.field] = num;
+            if (num !== null && rule.field in displays[d]) {
+              (displays[d] as Record<string, any>)[rule.field] = num;
+            } else if (num !== null) {
+              (displays[d] as Record<string, any>)[rule.field] = num;
             }
           } else {
             const str = toStr(raw);
             if (str) {
-              (displays[d] as any)[rule.field] = str;
+              (displays[d] as Record<string, any>)[rule.field] = str;
             }
           }
         }

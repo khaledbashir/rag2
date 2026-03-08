@@ -8,22 +8,29 @@ type RadioGroupProps = React.PropsWithChildren<{
   className?: string;
 }>;
 
+interface RadioGroupItemProps {
+  value: string;
+  children?: React.ReactNode;
+  checked?: boolean;
+  onChange?: (v: string) => void;
+  className?: string;
+}
+
 export function RadioGroup({ value, onValueChange, children, className }: RadioGroupProps) {
   return (
     <div role="radiogroup" aria-label="Radio group" className={className}>
-      {React.Children.map(children, (child: any) => {
-        if (!React.isValidElement(child)) return null;
-        const childProps = child.props as any;
+      {React.Children.map(children, (child) => {
+        if (!React.isValidElement<RadioGroupItemProps>(child)) return null;
         return React.cloneElement(child, {
-          checked: childProps.value === value,
-          onChange: onValueChange
-        } as any);
+          checked: child.props.value === value,
+          onChange: onValueChange,
+        });
       })}
     </div>
   );
 }
 
-export function RadioGroupItem({ value, children, checked, onChange, className, ...props }: any) {
+export function RadioGroupItem({ value, children, checked, onChange, className, ...props }: RadioGroupItemProps & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       role="radio"

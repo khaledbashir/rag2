@@ -55,13 +55,14 @@ interface DisplayCalc {
 
 // ── Calculate one display (server-side mirror of EstimatorBridge) ──────────
 
-function calcDisplay(d: any, answers: any): DisplayCalc {
-  const w = d.widthFt || 0;
-  const h = d.heightFt || 0;
+function calcDisplay(d: Record<string, any>, answers: Record<string, any>): DisplayCalc {
+  const w = Number(d.widthFt) || 0;
+  const h = Number(d.heightFt) || 0;
   const area = w * h;
   const pitch = parseFloat(d.pixelPitch) || 4;
-  const costPerSqFt = answers.costPerSqFtOverride > 0
-    ? answers.costPerSqFtOverride
+  const override = Number(answers.costPerSqFtOverride);
+  const costPerSqFt = override > 0
+    ? override
     : DEFAULT_COST_PER_SQFT[d.pixelPitch] || 120;
 
   const hardwareBase = area * costPerSqFt;
@@ -158,8 +159,8 @@ export async function POST(req: NextRequest) {
 
     // ── Extract estimator data ─────────────────────────────────────────
 
-    const answers = (project.estimatorAnswers as any) || {};
-    const displays: any[] = Array.isArray(answers.displays) ? answers.displays : [];
+    const answers: Record<string, any> = (project.estimatorAnswers as Record<string, any>) || {};
+    const displays: Record<string, any>[] = Array.isArray(answers.displays) ? answers.displays : [];
 
     if (displays.length === 0) {
       return NextResponse.json(
@@ -306,7 +307,7 @@ export async function POST(req: NextRequest) {
         estimatorDepth: answers.estimateDepth || "rom",
         clientName: answers.clientName || project.clientName || "Client",
         venue: answers.projectName || project.venue || null,
-        documentMode: documentMode as any,
+        documentMode: documentMode as "BUDGET" | "PROPOSAL" | "LOI",
         pricingDocument,
         pricingMode: "STANDARD",
         mirrorMode: false,

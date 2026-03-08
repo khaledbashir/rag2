@@ -278,8 +278,8 @@ export async function POST(req: NextRequest) {
               serviceType: product.service_type ? true : false,
               productType: product.product_name ? true : false,
               brightnessNits: product.max_nits, // Corrected field name
-              ipRating: (product as any).ip_rating, // Optional field might not exist
-              isTransparent: (product as any).transparent || false,
+              ipRating: (product as Record<string, any>).ip_rating ?? null,
+              isTransparent: (product as Record<string, any>).transparent ?? false,
             };
 
             // Try to fetch RFP requirements from workspace if available

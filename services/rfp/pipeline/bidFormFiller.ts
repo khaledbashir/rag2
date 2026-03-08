@@ -731,9 +731,12 @@ function getCellText(cell: ExcelJS.Cell): string {
     return String((cell.value as any).result ?? "");
   }
   if (typeof cell.value === "object" && "richText" in cell.value) {
-    return (cell.value as any).richText
-      .map((rt: any) => rt.text)
-      .join("");
+    const richText = (cell.value as any).richText;
+    if (Array.isArray(richText)) {
+      return richText
+        .map((rt: any) => rt?.text ?? "")
+        .join("");
+    }
   }
   return String(cell.value);
 }

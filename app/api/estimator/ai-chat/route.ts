@@ -197,8 +197,9 @@ export async function POST(req: NextRequest) {
                     }
 
                     send({ type: "done" });
-                } catch (err: any) {
-                    send({ type: "error", message: err.message || "Stream failed" });
+                } catch (err: unknown) {
+                    const message = err instanceof Error ? err.message : "Stream failed";
+                    send({ type: "error", message });
                 } finally {
                     reader.releaseLock();
                     controller.close();
@@ -213,10 +214,11 @@ export async function POST(req: NextRequest) {
                 Connection: "keep-alive",
             },
         });
-    } catch (error: any) {
-        console.error("[ai-chat] Error:", error);
+    } catch (error: unknown) {
+        const errMsg = error instanceof Error ? error.message : "Unknown error";
+        console.error("[ai-chat] Error:", errMsg);
         return new Response(
-            JSON.stringify({ error: error.message }),
+            JSON.stringify({ error: errMsg }),
             { status: 500, headers: { "Content-Type": "application/json" } }
         );
     }

@@ -85,7 +85,7 @@ const INTENT_PATTERNS: IntentPattern[] = [
             if (pitchMatch) result.pixelPitch = pitchMatch[1];
             // Extract name (everything after add/create/new that isn't dimensions or pitch)
             const nameMatch = message.match(/(?:add|create|new)\s+(?:a\s+)?(?:\d+(?:\.\d+)?\s*(?:x|by|×)\s*\d+(?:\.\d+)?\s*(?:ft|feet|')?\s+)?(.+?)(?:\s+(?:at|@)\s*\d+|\s+\d+(?:\.\d+)?\s*(?:x|by|×)|\s*$)/i);
-            if (nameMatch) {
+            if (nameMatch && nameMatch[1]) {
                 let name = nameMatch[1].replace(/\b(?:display|screen|panel|board)\b/i, "").trim();
                 if (name.length > 1) result.displayName = name;
             }

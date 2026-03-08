@@ -271,7 +271,7 @@ export async function autoFillForDisplay(
     let filledCount = 0;
 
     for (const fieldKey of MANUAL_ONLY_FIELDS) {
-        const existing = (display as any)[fieldKey];
+        const existing = (display as Record<string, any>)[fieldKey];
         if (existing && String(existing).trim()) continue;
 
         // Priority 1: DB memory (user-verified from previous project)

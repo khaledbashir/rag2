@@ -217,8 +217,9 @@ export async function extractLEDSpecs(
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
+    const rawScreens = Array.isArray(parsed.screens) ? parsed.screens : [];
 
-    const screens: ExtractedLEDSpec[] = (parsed.screens || []).map(
+    const screens: ExtractedLEDSpec[] = rawScreens.map(
       (s: any): ExtractedLEDSpec => ({
         name: s.name || "Unknown Display",
         location: s.location || "",

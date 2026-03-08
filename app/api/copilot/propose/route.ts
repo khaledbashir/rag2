@@ -438,6 +438,9 @@ async function llmGuidedFlow(
                                 collected.bondRate = c.value;
                                 actions.push({ type: "set_bond", data: { rate: c.value } });
                                 break;
+                            default:
+                                console.warn(`[Copilot/Propose] Unknown correction field: ${c.field}`);
+                                break;
                         }
                     }
                 }

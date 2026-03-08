@@ -40,9 +40,9 @@ export const authConfig = {
     },
     session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id as string;
-        (session.user as { role?: string }).role = token.role as string;
-        (session.user as { authRole?: string }).authRole = token.authRole as string;
+        session.user.id = (token.id as string) ?? "";
+        (session.user as { role?: string }).role = (token.role as string) ?? "VIEWER";
+        (session.user as { authRole?: string }).authRole = (token.authRole as string) ?? "";
       }
       return session;
     },
