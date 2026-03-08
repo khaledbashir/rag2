@@ -684,7 +684,7 @@ const Step3Math = () => {
                                         <div key={idx} className="flex items-center justify-between p-3 rounded-xl border border-border bg-card/30">
                                             <div className="min-w-0">
                                                 <div className="text-sm font-semibold text-foreground truncate">
-                                                    {screens[idx]?.externalName || screens[idx]?.name || screen.name}
+                                                    {(idx < screens.length ? (screens[idx]?.externalName || screens[idx]?.name) : null) || screen.name}
                                                 </div>
                                                 <div className="text-[10px] text-muted-foreground">
                                                     Qty {screen.quantity} | {Number(screen.areaSqFt).toFixed(1)} sqft

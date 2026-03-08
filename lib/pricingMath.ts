@@ -20,7 +20,7 @@ import { CURRENCY_FORMAT } from "@/services/rfp/productCatalog";
 // DISPLAY-PRECISION ROUNDING
 // ============================================================================
 
-const DISPLAY_SCALE = 10 ** CURRENCY_FORMAT.decimals;          // 1 when decimals=0
+const DISPLAY_SCALE = 10 ** (CURRENCY_FORMAT.decimals ?? 0);   // 1 when decimals=0
 
 /**
  * Round a raw number to the precision actually shown on the PDF.
@@ -167,7 +167,7 @@ export function computeTableTotals(
     // Natalia's rule: "whatever is here is what your engine will show" — no recalculation.
     // Excel's grandTotal was set from the actual total row in the spreadsheet.
     // Only fall back to calculated when Excel had no grand total row (grandTotal === 0).
-    const grandTotal = (Number.isFinite(table.grandTotal) && table.grandTotal > 0)
+    const grandTotal = (Number.isFinite(table.grandTotal) && table.grandTotal !== 0)
         ? roundToDisplay(table.grandTotal)
         : (subtotal + tax + bond + tariff);
 
@@ -193,7 +193,7 @@ export function computeDocumentTotal(
     // "Excel-Match" Strategy:
     // If the Excel parser found a total row, trust it implicitly.
     // Natalia prioritizes matching the source file over internal consistency.
-    if (document.documentTotal && document.documentTotal > 0) {
+    if (Number.isFinite(document.documentTotal) && document.documentTotal !== 0) {
         return document.documentTotal;
     }
 

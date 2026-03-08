@@ -456,8 +456,8 @@ const Step4Export = () => {
                 estimatedRows,
             };
         });
-        const largest = evaluated.reduce((top, current) => current.estimatedRows > top.estimatedRows ? current : top, evaluated[0]);
-        if (!largest) return null;
+        if (evaluated.length === 0) return null;
+        const largest = evaluated.reduce((top, current) => current.estimatedRows > top.estimatedRows ? current : top);
         return {
             ...largest,
             threshold: tableSplitThreshold,
