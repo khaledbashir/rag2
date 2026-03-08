@@ -69,12 +69,17 @@ export function GapFillSidebar() {
                 if (match) {
                     const [, index, field] = match;
                     const screens = watch("details.screens") || [];
-                    const updatedScreens = [...screens];
-                    updatedScreens[parseInt(index)] = {
-                        ...updatedScreens[parseInt(index)],
-                        [field]: fieldValue,
-                    };
-                    setValue("details.screens", updatedScreens);
+                    const idx = parseInt(index);
+                    if (idx < 0 || idx >= screens.length) {
+                        console.warn("[GapFill] Screen index out of bounds:", idx, "screens:", screens.length);
+                    } else {
+                        const updatedScreens = [...screens];
+                        updatedScreens[idx] = {
+                            ...updatedScreens[idx],
+                            [field]: fieldValue,
+                        };
+                        setValue("details.screens", updatedScreens);
+                    }
                 }
             } else {
                 // Top-level field

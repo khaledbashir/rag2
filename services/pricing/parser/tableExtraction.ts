@@ -65,7 +65,10 @@ export function extractTable(
       const rawRate = rateCellIdx >= 0 ? (parseNumber(row.cells[rateCellIdx]) || 0) : 0;
       let computedRate = rawRate > 1 ? rawRate / 100 : rawRate;
       // Sanity clamp: tax rates above 50% are clearly misparsed dollar amounts
-      if (computedRate > 0.50) computedRate = 0;
+      if (computedRate > 0.50) {
+        console.warn(`[Pricing Parser] Implausible tax rate ${(computedRate * 100).toFixed(1)}% detected in "${row.label}", treating as 0`);
+        computedRate = 0;
+      }
       tax = {
         label: row.label || "Tax",
         rate: computedRate,
@@ -175,14 +178,14 @@ export function extractTable(
     }
   }
 
-  // If no subtotal found, calculate it
-  if (subtotal === 0) {
-    subtotal = items.reduce((sum, item) => sum + item.sellingPrice, 0);
+  // If no subtotal found, calculate it — guard against NaN
+  if (subtotal === 0 || !Number.isFinite(subtotal)) {
+    subtotal = items.reduce((sum, item) => sum + (Number.isFinite(item.sellingPrice) ? item.sellingPrice : 0), 0);
   }
 
-  // If no grand total found, calculate it
-  if (grandTotal === 0) {
-    grandTotal = subtotal + (tax?.amount || 0) + bond + tariff;
+  // If no grand total found, calculate it — guard against NaN
+  if (grandTotal === 0 || !Number.isFinite(grandTotal)) {
+    grandTotal = subtotal + (Number.isFinite(tax?.amount) ? tax!.amount : 0) + (Number.isFinite(bond) ? bond : 0) + (Number.isFinite(tariff) ? tariff : 0);
   }
 
   // If grandTotal equals subtotal exactly but tax/bond/tariff exist separately,
@@ -233,16 +236,18 @@ export function prependSyntheticRollupTable(
     isIncluded: false,
   }));
   const summarySubtotal = summaryItems.reduce((sum, item) => sum + item.sellingPrice, 0);
+  // Use globalTotal for consistency; if it disagrees with summarySubtotal, trust Excel's total
+  const effectiveGrandTotal = Number.isFinite(globalTotal) ? globalTotal as number : summarySubtotal;
   const summaryTable: PricingTable = {
     id: createTableId("Project Grand Total", 0),
     name: "Project Grand Total",
     currency,
     items: summaryItems,
-    subtotal: summarySubtotal,
+    subtotal: effectiveGrandTotal,
     tax: null,
     bond: 0,
     tariff: 0,
-    grandTotal: globalTotal as number,
+    grandTotal: effectiveGrandTotal,
     alternates: [],
     sourceStartRow: -1,
     sourceEndRow: -1,

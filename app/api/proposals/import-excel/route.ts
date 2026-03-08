@@ -6,6 +6,8 @@ import { normalizeExcel } from "@/services/import/excelNormalizer";
 import * as xlsx from "xlsx";
 import crypto from "node:crypto";
 
+export const maxDuration = 120;
+
 export async function POST(req: NextRequest) {
     try {
         const formData = await req.formData();

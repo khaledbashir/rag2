@@ -48,7 +48,7 @@ const splitDisplayNameAndSpecs = (value: string) => {
 
 const formatPitchMm = (value: any): string => {
     const corrected = normalizePitch(value);
-    if (corrected <= 0) return "";
+    if (!Number.isFinite(corrected) || corrected <= 0) return "";
     return corrected < 2 ? corrected.toFixed(2) : corrected.toFixed(corrected % 1 === 0 ? 0 : 2);
 };
 
@@ -58,7 +58,7 @@ const buildDescription = (screen: any) => {
     const pitchMm = screen?.pitchMm ?? screen?.pixelPitch;
     const brightness = screen?.brightnessNits ?? screen?.brightness;
     const parts: string[] = [];
-    if (heightFt && widthFt && Number(heightFt) > 0 && Number(widthFt) > 0) {
+    if (heightFt && widthFt && Number.isFinite(Number(heightFt)) && Number(heightFt) > 0 && Number.isFinite(Number(widthFt)) && Number(widthFt) > 0) {
         parts.push(`${Number(heightFt).toFixed(1)}' × ${Number(widthFt).toFixed(1)}'`);
     }
     const formattedPitch = formatPitchMm(pitchMm);
