@@ -753,7 +753,7 @@ function buildBudgetSummary(
       + d.backupProcessorCost + d.weatherproofCost;
   }
 
-  const sellFormula = (r: number) => `IF(F${r}>=1,C${r},C${r}/(1-F${r}))`;
+  const sellFormula = (r: number) => `C${r}/(1-F${r})`;
   const marginFormula = (r: number) => `D${r}-C${r}`;
 
   // Margin priority: financial override > weighted average from displays > default
@@ -802,7 +802,7 @@ function buildBudgetSummary(
   stR.getCell(4).numFmt = FMT_USD;
   stR.getCell(5).value = { formula: `D${row}-C${row}`, result: grandMargin };
   stR.getCell(5).numFmt = FMT_USD;
-  stR.getCell(6).value = { formula: `IF(D${row}=0,0,1-C${row}/D${row})`, result: grandMarginPct };
+  stR.getCell(6).value = { formula: `1-C${row}/D${row}`, result: grandMarginPct };
   stR.getCell(6).numFmt = FMT_PCT;
   totalStyle(stR, 6, C.MEDIUM_GRAY);
   row++;
@@ -881,9 +881,9 @@ function buildMarginAnalysis(
   // Helpers for sub-line rows
   const subFont = { name: "Calibri", color: { argb: "FF666666" }, size: 10 };
   const subFontBold = { name: "Calibri", bold: true, size: 10 };
-  const sellFormula = (r: number) => `IF(F${r}>=1,C${r},C${r}/(1-F${r}))`;
+  const sellFormula = (r: number) => `C${r}/(1-F${r})`;
   const marginDollarFormula = (r: number) => `D${r}-C${r}`;
-  const blendedMarginFormula = (r: number) => `IF(D${r}=0,0,1-C${r}/D${r})`;
+  const blendedMarginFormula = (r: number) => `1-C${r}/D${r}`;
 
   function writeCategory(label: string, cost: number, marginPct: number): void {
     const r = ws.getRow(row);
@@ -988,7 +988,7 @@ function buildMarginAnalysis(
     grR.getCell(4).numFmt = FMT_USD; grR.getCell(4).font = { bold: true, name: "Calibri" };
     grR.getCell(5).value = { formula: `D${grandRow}-C${grandRow}`, result: d.marginDollars };
     grR.getCell(5).numFmt = FMT_USD; grR.getCell(5).font = { bold: true, name: "Calibri" };
-    grR.getCell(6).value = { formula: `IF(D${grandRow}=0,0,1-C${grandRow}/D${grandRow})`, result: d.marginPct };
+    grR.getCell(6).value = { formula: `1-C${grandRow}/D${grandRow}`, result: d.marginPct };
     grR.getCell(6).numFmt = FMT_PCT; grR.getCell(6).font = { bold: true, name: "Calibri" };
     // Light bottom border to separate from next section
     for (let c = 2; c <= 6; c++) {
@@ -1076,7 +1076,7 @@ function buildMarginAnalysis(
   bbR.getCell(4).numFmt = FMT_USD;
   bbR.getCell(5).value = { formula: `D${baseBidRow}-C${baseBidRow}`, result: grandMargin };
   bbR.getCell(5).numFmt = FMT_USD;
-  bbR.getCell(6).value = { formula: `IF(D${baseBidRow}=0,0,1-C${baseBidRow}/D${baseBidRow})`, result: grandMarginPct };
+  bbR.getCell(6).value = { formula: `1-C${baseBidRow}/D${baseBidRow}`, result: grandMarginPct };
   bbR.getCell(6).numFmt = FMT_PCT;
   totalStyle(bbR, 6, C.ANC_BLUE);
   for (let c = 2; c <= 6; c++) {
@@ -1171,7 +1171,7 @@ function buildLedCostSheet(
     // $/SqFt = Display Cost / Total SqFt
     const ledWithSpares = d.ledHardwareCost + d.sparePartsCost;
     const costPerSqFt = d.areaSqFt > 0 ? round2(ledWithSpares / d.areaSqFt) : 0;
-    dr.getCell(13).value = { formula: `IF(J${row}=0,0,N${row}/J${row})`, result: costPerSqFt };
+    dr.getCell(13).value = { formula: `N${row}/J${row}`, result: costPerSqFt };
     dr.getCell(13).numFmt = FMT_USD;
     // Display Cost (LED hardware + spare parts rolled in)
     dr.getCell(14).value = d.ledHardwareCost + d.sparePartsCost; dr.getCell(14).numFmt = FMT_USD;
@@ -1186,7 +1186,7 @@ function buildLedCostSheet(
     // Margin %
     dr.getCell(18).value = d.marginPct; dr.getCell(18).numFmt = FMT_PCT;
     // Selling Price = Total Cost / (1 - Margin%)
-    dr.getCell(19).value = { formula: `IF(R${row}>=1,Q${row},Q${row}/(1-R${row}))`, result: d.sellingPrice };
+    dr.getCell(19).value = { formula: `Q${row}/(1-R${row})`, result: d.sellingPrice };
     dr.getCell(19).numFmt = FMT_USD;
     dr.getCell(19).font = { bold: true, name: "Calibri" };
     // ANC Margin = Selling - Cost
@@ -1344,7 +1344,7 @@ function buildInstallSheet(
     // Column J: linked to Install Margin assignment at top
     r.getCell(10).value = { formula: `$D$${marginRows.install}`, result: svcMargin };
     r.getCell(10).numFmt = FMT_PCT;
-    r.getCell(11).value = { formula: `IF(J${row}>=1,I${row},I${row}/(1-J${row}))`, result: cost > 0 ? round2(cost / (1 - svcMargin)) : 0 };
+    r.getCell(11).value = { formula: `I${row}/(1-J${row})`, result: cost > 0 ? round2(cost / (1 - svcMargin)) : 0 };
     r.getCell(11).numFmt = FMT_USD;
     stripe(r, 11, i % 2 === 0);
     row++;
@@ -1398,7 +1398,7 @@ function buildInstallSheet(
     // Column J: linked to Install Margin assignment at top
     r.getCell(10).value = { formula: `$D$${marginRows.install}`, result: svcMargin };
     r.getCell(10).numFmt = FMT_PCT;
-    r.getCell(11).value = { formula: `IF(J${row}>=1,I${row},I${row}/(1-J${row}))`, result: cost > 0 ? round2(cost / (1 - svcMargin)) : 0 };
+    r.getCell(11).value = { formula: `I${row}/(1-J${row})`, result: cost > 0 ? round2(cost / (1 - svcMargin)) : 0 };
     r.getCell(11).numFmt = FMT_USD;
     stripe(r, 11, i % 2 === 0);
     row++;
@@ -1448,7 +1448,7 @@ function buildInstallSheet(
     // Column J: linked to Electrical Margin assignment at top
     r.getCell(10).value = { formula: `$D$${marginRows.electrical}`, result: svcMargin };
     r.getCell(10).numFmt = FMT_PCT;
-    r.getCell(11).value = { formula: `IF(J${row}>=1,I${row},I${row}/(1-J${row}))`, result: cost > 0 ? round2(cost / (1 - svcMargin)) : 0 };
+    r.getCell(11).value = { formula: `I${row}/(1-J${row})`, result: cost > 0 ? round2(cost / (1 - svcMargin)) : 0 };
     r.getCell(11).numFmt = FMT_USD;
     stripe(r, 11, i % 2 === 0);
     row++;
@@ -1499,7 +1499,7 @@ function buildInstallSheet(
     // Column J: linked to Engineering and Permits margin assignment at top
     r.getCell(10).value = { formula: `$D$${marginRows.engineering}`, result: svcMargin };
     r.getCell(10).numFmt = FMT_PCT;
-    r.getCell(11).value = { formula: `IF(J${row}>=1,I${row},I${row}/(1-J${row}))`, result: cost > 0 ? round2(cost / (1 - svcMargin)) : 0 };
+    r.getCell(11).value = { formula: `I${row}/(1-J${row})`, result: cost > 0 ? round2(cost / (1 - svcMargin)) : 0 };
     r.getCell(11).numFmt = FMT_USD;
     stripe(r, 11, i % 2 === 0);
     row++;
