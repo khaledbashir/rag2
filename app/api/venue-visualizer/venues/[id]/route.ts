@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 // GET /api/venue-visualizer/venues/[id] — venue detail with photos + hotspots
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const venue = await prisma.venue.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         photos: {
           where: { isActive: true },
@@ -24,9 +25,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 }
 
 // DELETE /api/venue-visualizer/venues/[id]
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await prisma.venue.delete({ where: { id: params.id } });
+    const { id } = await params;
+    await prisma.venue.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });

@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
     const closedWithDates = won.filter((p) => p.signatureAuditTrail.length > 0);
     if (closedWithDates.length > 0) {
       const totalDays = closedWithDates.reduce((s, p) => {
-        const signedAt = p.signatureAuditTrail[0].signedAt.getTime();
+        const signedAt = p.signatureAuditTrail[0]?.signedAt?.getTime() ?? p.createdAt.getTime();
         const createdAt = p.createdAt.getTime();
         return s + (signedAt - createdAt) / 86400000;
       }, 0);

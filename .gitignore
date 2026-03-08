@@ -102,3 +102,21 @@ anuthingapidoc.md
 docs/PHASE1_HANDOVER.md
 docs/Toyota Center - Houston Rockets - Technology Scoping - JSR, DC & JB - 2026-01-09 (1).xlsx
 .data
+
+# Test Excel files and dev docs (local only)
+docs/*.xlsx
+docs/*.docx
+docs/*.png
+docs/CODEBASE-AUDIT-USER-EXPECTATIONS.md
+docs/ESTIMATOR-UX-PLAN.md
+docs/FINAL-IMPLEMENTATION-AUDIT.md
+docs/IMPLEMENTATION-PLAN.md
+docs/VERIFICATION-RECORDING-SCRIPT.md
+docs/test-guides/
+
+# Debug/test scripts (prefixed with _ or one-off generators)
+scripts/_*.ts
+scripts/generate-lulah-hills-pdf.ts
+
+# Test fixtures in services
+services/rfp/pipeline/*.xlsx

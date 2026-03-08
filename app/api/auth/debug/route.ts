@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { auth } from "@/auth";
+import { isPlatformOwner } from "@/lib/platformOwner";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,14 +10,18 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/auth/debug
  * Diagnostic endpoint — tests user lookup and password verification.
- * Returns detailed failure reason without exposing password hashes.
- * 
+ * ADMIN ONLY — requires platform owner authentication.
+ *
  * Body: { email: string, password: string }
- * 
- * REMOVE OR PROTECT THIS ENDPOINT AFTER DEBUGGING.
  */
 export async function POST(req: NextRequest) {
   try {
+    // Auth gate: platform owner only
+    const session = await auth();
+    if (!isPlatformOwner(session?.user?.email)) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
     const { email, password } = await req.json();
     const steps: string[] = [];
 
@@ -49,18 +55,13 @@ export async function POST(req: NextRequest) {
     });
 
     if (!user) {
-      const allUsers = await prisma.user.findMany({
-        select: { email: true, role: true },
-        orderBy: { email: "asc" },
-      });
       steps.push(`User NOT FOUND for "${normalizedEmail}"`);
-      steps.push(`Existing users: ${allUsers.map(u => u.email).join(", ") || "(none)"}`);
       return NextResponse.json({ error: "User not found", steps });
     }
 
     steps.push(`User found: ${user.email} (role: ${user.role}, name: ${user.name || "none"})`);
     steps.push(`Last login: ${user.lastLoginAt?.toISOString() || "never"}`);
-    steps.push(`Has passwordHash: ${!!user.passwordHash} (length: ${user.passwordHash?.length || 0})`);
+    steps.push(`Has passwordHash: ${!!user.passwordHash}`);
 
     if (!user.passwordHash) {
       steps.push("FAIL: No passwordHash stored — this user was created without a password (OAuth only?)");
@@ -76,10 +77,6 @@ export async function POST(req: NextRequest) {
       steps.push(`bcrypt.compare result: ${match}`);
 
       if (!match) {
-        // Test if the hash is valid bcrypt format
-        const isValidHash = /^\$2[aby]?\$\d{1,2}\$.{53}$/.test(user.passwordHash);
-        steps.push(`Hash format valid: ${isValidHash}`);
-        steps.push(`Hash prefix: ${user.passwordHash.slice(0, 7)}...`);
         return NextResponse.json({ error: "Password does not match", steps });
       }
     } catch (bcryptErr: any) {
@@ -91,41 +88,29 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, steps });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message, stack: err.stack?.split("\n").slice(0, 5) }, { status: 500 });
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }
 
 /**
  * GET /api/auth/debug
- * Quick diagnostic — lists users (no passwords) and DB status.
+ * Quick diagnostic — DB status and user count.
+ * ADMIN ONLY — requires platform owner authentication.
  */
 export async function GET() {
   try {
+    const session = await auth();
+    if (!isPlatformOwner(session?.user?.email)) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
     await prisma.$queryRaw`SELECT 1`;
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        authRole: true,
-        lastLoginAt: true,
-        passwordHash: false,
-      },
-      orderBy: { email: "asc" },
-    });
+    const userCount = await prisma.user.count();
 
     return NextResponse.json({
       database: "connected",
-      userCount: users.length,
-      users: users.map(u => ({
-        email: u.email,
-        name: u.name,
-        role: u.role,
-        authRole: u.authRole,
-        lastLogin: u.lastLoginAt?.toISOString() || "never",
-      })),
-      authSecret: process.env.AUTH_SECRET ? `set (${process.env.AUTH_SECRET.length} chars)` : "MISSING",
+      userCount,
+      authSecret: process.env.AUTH_SECRET ? "set" : "MISSING",
     });
   } catch (err: any) {
     return NextResponse.json({ database: "FAILED", error: err.message }, { status: 500 });

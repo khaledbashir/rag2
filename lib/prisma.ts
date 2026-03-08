@@ -46,6 +46,17 @@ function createPrisma(): PrismaClient {
   return client
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrisma()
+// We only create the PrismaClient when it's first accessed
+let prismaClientInstance: PrismaClient | undefined;
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+export const prisma = new Proxy({} as PrismaClient, {
+  get(target, prop) {
+    if (!prismaClientInstance) {
+      prismaClientInstance = globalForPrisma.prisma ?? createPrisma();
+      if (process.env.NODE_ENV !== 'production') {
+        globalForPrisma.prisma = prismaClientInstance;
+      }
+    }
+    return (prismaClientInstance as any)[prop];
+  }
+});

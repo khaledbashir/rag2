@@ -88,11 +88,11 @@ const SingleScreen = ({
     const hasWarning = hasLowMargin || isMissingDimensions;
 
     useEffect(() => {
-        if (width != undefined && height != undefined) {
+        if (width !== undefined && height !== undefined) {
             const area = calculateArea(Number(width), Number(height));
             setValue(`${name}[${index}].areaSqFt`, area);
         }
-        if (width != undefined && height != undefined && pitch != undefined) {
+        if (width !== undefined && height !== undefined && pitch !== undefined) {
             const pitchFeet = Number(pitch) / 304.8;
             const pixelsHeight = Number(height) / pitchFeet;
             const pixelsWidth = Number(width) / pitchFeet;

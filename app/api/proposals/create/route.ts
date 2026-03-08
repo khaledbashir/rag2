@@ -133,14 +133,14 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Log project creation (fire-and-forget)
+    // Log project creation
     logActivity(
       proposal.id,
       "created",
       `Project created for ${body.clientName} with ${body.screens.length} screen(s)`,
       null,
       { clientName: body.clientName, screenCount: body.screens.length },
-    );
+    ).catch((err) => console.error("[Proposals/Create] Activity log failed:", err));
 
     // Provision dedicated AnythingLLM workspace (non-blocking)
     provisionProjectWorkspace(body.clientName, proposal.id).then(async (slug) => {

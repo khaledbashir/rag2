@@ -43,7 +43,7 @@ const MasterTableSelector = () => {
     useEffect(() => {
         const fieldState = getFieldState("details.masterTableIndex" as any, formState);
         if (fieldState.isDirty) return;
-        if (tables.length > 0 && masterTableIndex == null) {
+        if (tables.length > 0 && masterTableIndex === undefined) {
             const rollUpRegex = /\b(total|roll.?up|summary|project\s+grand|grand\s+total|project\s+total|cost\s+summary|pricing\s+summary|roll.?up\s+summary)\b/i;
             const matchIdx = tables.findIndex((t: any) => rollUpRegex.test(((t as any)?.name || "").toString()));
             if (matchIdx >= 0) {
@@ -64,7 +64,7 @@ const MasterTableSelector = () => {
         return opts;
     }, [tables]);
 
-    const currentValue = masterTableIndex != null ? String(masterTableIndex) : "-1";
+    const currentValue = masterTableIndex !== null && masterTableIndex !== undefined ? String(masterTableIndex) : "-1";
 
     return (
         <div className="flex flex-col gap-1">

@@ -11,7 +11,7 @@ export default async function ProposalRoute({ params }: { params: Promise<{ id: 
   return (
     <div className="min-h-screen bg-background">
       {/* Client-side initializer: set localStorage with ai metadata before rendering Commander */}
-      <script dangerouslySetInnerHTML={{ __html: `localStorage.setItem('aiWorkspaceSlug','${proposal.workspace?.aiWorkspaceSlug ?? ''}'); localStorage.setItem('aiThreadId','${proposal.aiThreadId ?? ''}'); localStorage.setItem('loadingProposalId','${proposal.id}');` }} />
+      <script dangerouslySetInnerHTML={{ __html: `localStorage.setItem('aiWorkspaceSlug',${JSON.stringify(proposal.workspace?.aiWorkspaceSlug ?? '')}); localStorage.setItem('aiThreadId',${JSON.stringify(proposal.aiThreadId ?? '')}); localStorage.setItem('loadingProposalId',${JSON.stringify(proposal.id)});` }} />
       {/* Render the standard ProposalPage which will pick up the loadingProposalId as needed */}
       <ProposalPage />
     </div>

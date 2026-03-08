@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
     }
     // ---------------------------------------------------
 
-    // Log data export activity (fire-and-forget)
+    // Log data export activity
     if (proposalId && proposalId !== "new") {
       logActivity(
         proposalId,
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
         `Exported proposal as ${format}`,
         null,
         { format, isInternal: isInternalExport },
-      );
+      ).catch((err) => console.error("[Export] Activity log failed:", err));
     }
 
     // REQ-125: Sanitize data unless explicitly marked as internal export

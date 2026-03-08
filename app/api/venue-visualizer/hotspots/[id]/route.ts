@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 // PUT /api/venue-visualizer/hotspots/[id] — update a hotspot
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
+export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const body = await req.json();
     const { zoneType, label, leftPct, topPct, widthPct, heightPct, cssTransform, sortOrder } = body;
     const hotspot = await prisma.screenHotspot.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         ...(zoneType !== undefined && { zoneType }),
         ...(label !== undefined && { label }),
@@ -26,9 +27,10 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 }
 
 // DELETE /api/venue-visualizer/hotspots/[id]
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await prisma.screenHotspot.delete({ where: { id: params.id } });
+    const { id } = await params;
+    await prisma.screenHotspot.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });

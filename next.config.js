@@ -14,12 +14,6 @@ const nextConfig = {
         },
         middlewareClientMaxBodySize: "2000mb",
     },
-    api: {
-        responseLimit: false,
-        bodyParser: {
-            sizeLimit: "2000mb",
-        },
-    },
     transpilePackages: [
         "react-markdown",
         "remark-gfm",

@@ -118,24 +118,24 @@ export const ChargesContextProvider = ({ children }: ChargesContextProps) => {
             setShippingSwitch(true);
         }
 
-        if (discount?.amountType == "amount") {
+        if (discount?.amountType === "amount") {
             setDiscountType("amount");
         } else {
             setDiscountType("percentage");
         }
 
-        if (tax?.amountType == "amount") {
+        if (tax?.amountType === "amount") {
             setTaxType("amount");
         } else {
             setTaxType("percentage");
         }
 
-        if (shipping?.costType == "amount") {
+        if (shipping?.costType === "amount") {
             setShippingType("amount");
         } else {
             setShippingType("percentage");
         }
-    }, [discount?.amount, tax?.amount, shipping?.cost]);
+    }, [discount?.amount, discount?.amountType, tax?.amount, tax?.amountType, shipping?.cost, shipping?.costType]);
 
     // Check switches, if off set values to zero
     useEffect(() => {
@@ -194,7 +194,7 @@ export const ChargesContextProvider = ({ children }: ChargesContextProps) => {
         let total: number = totalSum;
 
         if (!isNaN(discountAmount)) {
-            if (discountType == "amount") {
+            if (discountType === "amount") {
                 total -= discountAmount;
                 discountAmountType = "amount";
             } else {
@@ -205,7 +205,7 @@ export const ChargesContextProvider = ({ children }: ChargesContextProps) => {
         }
 
         if (!isNaN(taxAmount)) {
-            if (taxType == "amount") {
+            if (taxType === "amount") {
                 total += taxAmount;
                 taxAmountType = "amount";
             } else {
@@ -216,7 +216,7 @@ export const ChargesContextProvider = ({ children }: ChargesContextProps) => {
         }
 
         if (!isNaN(shippingCost)) {
-            if (shippingType == "amount") {
+            if (shippingType === "amount") {
                 total += shippingCost;
                 shippingCostType = "amount";
             } else {

@@ -38,11 +38,13 @@ export async function POST(req: NextRequest) {
             messages.push({ role: "system", content: systemPrompt });
         }
 
-        // Add conversation history
+        // Add conversation history (cap at 50 messages, 10K chars each to prevent DoS)
         if (history && Array.isArray(history)) {
-            for (const h of history) {
+            const MAX_HISTORY = 50;
+            const MAX_MSG_LEN = 10000;
+            for (const h of history.slice(-MAX_HISTORY)) {
                 if (h.role && h.content) {
-                    messages.push({ role: h.role, content: h.content });
+                    messages.push({ role: h.role, content: String(h.content).slice(0, MAX_MSG_LEN) });
                 }
             }
         }

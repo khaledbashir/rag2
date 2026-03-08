@@ -52,12 +52,25 @@ export async function DELETE(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    // File size guard (100MB max)
+    const contentLength = parseInt(req.headers.get("content-length") || "0", 10);
+    if (contentLength > 100 * 1024 * 1024) {
+      return NextResponse.json({ ok: false, error: "File too large (100MB max)" }, { status: 413 });
+    }
+
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const proposalId = formData.get("proposalId") as string | null;
 
     if (!file) {
       return NextResponse.json({ ok: false, error: "No file provided" }, { status: 400 });
+    }
+
+    // File type validation
+    const allowedExtensions = [".pdf", ".xlsx", ".xls", ".csv", ".docx"];
+    const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+    if (!allowedExtensions.includes(ext)) {
+      return NextResponse.json({ ok: false, error: `Unsupported file type: ${ext}` }, { status: 400 });
     }
 
     const warnings: string[] = [];

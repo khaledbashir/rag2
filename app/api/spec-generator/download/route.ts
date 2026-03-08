@@ -473,7 +473,7 @@ export async function POST(request: NextRequest) {
           const sheetIdx = parseInt(parts[0]);
           const rowIdx = parseInt(parts[1]);
           const displayIdx = sheetIdx - 1;
-          if (displayIdx >= 0 && displayIdx < displays.length && templateFields?.length > 0) {
+          if (displayIdx >= 0 && displayIdx < displays.length && templateFields?.length > 0 && rowIdx >= 0 && rowIdx < templateFields.length) {
             const field = templateFields[rowIdx];
             if (field?.fieldKey) {
               displays[displayIdx].specs[field.fieldKey] = value;

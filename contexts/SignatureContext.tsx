@@ -97,7 +97,7 @@ export const SignatureContextProvider = ({
             setSignatureData("");
             setValue("details.signature", "");
         }
-    }, []);
+    }, [setValue]);
 
     /**
      * Fires every time canvas drawing stops
@@ -160,10 +160,10 @@ export const SignatureContextProvider = ({
     /**
      * Clears typed signature
      */
-    const clearTypedSignature = () => {
+    const clearTypedSignature = useCallback(() => {
         setTypedSignature("");
         setValue("details.signature", "");
-    };
+    }, [setValue]);
 
     /**
      * * UPLOAD SIGNATURE
