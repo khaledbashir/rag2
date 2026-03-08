@@ -83,6 +83,7 @@ interface AnalysisResult {
     projectName: string | null;
     venue: string | null;
     location: string | null;
+    documentMode?: string | null;
     isOutdoor: boolean;
     isUnionLabor: boolean;
     bondRequired: boolean;
@@ -124,6 +125,8 @@ interface AnalysisResult {
     }>;
     totals?: any;
   };
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface PricingPreview {
@@ -391,6 +394,7 @@ export default function RfpAnalyzerClient() {
             projectName: project.projectName ?? null,
             venue: project.venue ?? null,
             location: project.location ?? null,
+            documentMode: project.documentMode ?? null,
             isOutdoor: project.isOutdoor ?? false,
             isUnionLabor: project.isUnionLabor ?? false,
             bondRequired: project.bondRequired ?? false,
@@ -409,6 +413,8 @@ export default function RfpAnalyzerClient() {
           aiWorkspaceSlug: data.aiWorkspaceSlug ?? null,
           pricingDocument: pricingDoc,
           mirrorModePricing: mirrorPricing,
+          createdAt: data.createdAt ?? undefined,
+          updatedAt: data.updatedAt ?? undefined,
         };
 
         setResult(loaded);
@@ -680,17 +686,25 @@ export default function RfpAnalyzerClient() {
     if (!name?.trim()) return;
     const newSpec: ExtractedLEDSpec = {
       name: name.trim(),
+      location: "",
       pixelPitchMm: null,
       widthFt: 0,
       heightFt: 0,
       widthPx: null,
       heightPx: null,
-      quantity: 1,
-      location: "",
-      serviceType: null,
       brightnessNits: null,
+      environment: "indoor",
+      quantity: 1,
+      serviceType: null,
+      mountingType: null,
+      maxPowerW: null,
+      weightLbs: null,
+      specialRequirements: [],
       sourcePages: [],
       confidence: 1,
+      sourceType: "text",
+      citation: "Manually added",
+      notes: null,
     };
     // Add to result.screens + editableSpecs
     setResult(prev => {
@@ -798,7 +812,7 @@ export default function RfpAnalyzerClient() {
             name: spec.name,
             location: spec.location,
             pixelPitch: spec.pixelPitchMm,
-            areaSqFt: (spec.widthFt ?? 0) * (spec.heightFt ?? 0) * (spec.quantity || 1),
+            areaSqFt: (spec.widthFt ?? 0) * (spec.heightFt ?? 0),
             quantity: spec.quantity || 1,
             hardwareCost: cost,
             installCost: 0,
@@ -2543,7 +2557,9 @@ export default function RfpAnalyzerClient() {
                     )}
                   </div>
                   <span className="text-muted-foreground">
-                    {result.screens.length} displays • {pricingPreview?.summary?.grandTotal ? `$${pricingPreview.summary.grandTotal.toLocaleString()}` : "—"}
+                    {result.screens.length} displays • {typeof (result.pricingDocument?.documentTotal ?? pricingPreview?.summary?.totalSellingPrice) === "number"
+                      ? `$${(result.pricingDocument?.documentTotal ?? pricingPreview?.summary?.totalSellingPrice ?? 0).toLocaleString()}`
+                      : "—"}
                   </span>
                 </div>
               ) : (
