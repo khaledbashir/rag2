@@ -115,10 +115,10 @@ export function extractTable(
         continue;
       }
       // If no explicit alternates section, still preserve alternates
-      if (boundary.alternatesStartRow === null && row.label && Number.isFinite(row.sell)) {
+      if (boundary.alternatesStartRow === null && row.label && (Number.isFinite(row.sell) || Number.isFinite(row.cost))) {
         alternates.push({
           description: row.label,
-          priceDifference: row.sell,
+          priceDifference: Number.isFinite(row.sell) ? row.sell : row.cost,
           sourceRow: row.rowIndex,
         });
       }

@@ -62,7 +62,6 @@ const MARGIN_PCT_EXACT = new Set([
   "margin %",
   "margin percent",
   "margin pct",
-  "%",
   "gm%",
   "gm %",
 ]);

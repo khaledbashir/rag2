@@ -148,7 +148,7 @@ export function computeTableTotals(
     let taxLabel = "";
     if (table.tax) {
         taxLabel = table.tax.label || "Tax";
-        if (typeof table.tax.amount === "number" && table.tax.amount > 0) {
+        if (typeof table.tax.amount === "number" && table.tax.amount !== 0) {
             // Excel provided the tax amount — use it directly (Mirror Mode)
             tax = roundToDisplay(table.tax.amount);
         } else if (table.tax.rate > 0 && table.tax.rate <= 1) {
