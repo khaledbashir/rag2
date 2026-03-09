@@ -98,6 +98,7 @@ const modeLabels: Record<string, string> = {
   BUDGET: "Budget",
   PROPOSAL: "Proposal",
   LOI: "LOI",
+  CONTRACT: "Contract",
 };
 
 const PHASE2_POSSIBILITIES = [
@@ -333,7 +334,7 @@ export default function PipelineKanban({ initialCards }: Props) {
                       </div>
                       <span className={cn(
                         "shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase",
-                        card.documentMode === "LOI" ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400" :
+                        (card.documentMode === "LOI" || card.documentMode === "CONTRACT") ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400" :
                         card.documentMode === "PROPOSAL" ? "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" :
                         "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
                       )}>

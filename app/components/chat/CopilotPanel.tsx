@@ -114,10 +114,10 @@ const COPILOT_TO_PATCH: Record<string, { target: "top" | "receiver" | "sender"; 
     senderPhone: { target: "sender", key: "phone" },
 };
 
-function normalizeDocumentMode(value: unknown): "BUDGET" | "PROPOSAL" | "LOI" | null {
+function normalizeDocumentMode(value: unknown): "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT" | null {
     if (typeof value !== "string") return null;
     const normalized = value.trim().toUpperCase();
-    if (normalized === "BUDGET" || normalized === "PROPOSAL" || normalized === "LOI") return normalized;
+    if (normalized === "BUDGET" || normalized === "PROPOSAL" || normalized === "LOI" || normalized === "CONTRACT") return normalized;
     return null;
 }
 

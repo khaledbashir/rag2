@@ -20,7 +20,7 @@ export interface ProjectCardData {
     clientCity: string | null;
     clientAddress: string | null;
     venue: string | null;
-    documentMode: "BUDGET" | "PROPOSAL" | "LOI";
+    documentMode: "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT";
     mirrorMode: boolean;
     calculationMode: string;
     currency: string;

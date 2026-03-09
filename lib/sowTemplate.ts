@@ -22,6 +22,11 @@ export const DOCUMENT_HEADERS = {
         title: "BUDGET ESTIMATE",
         subtitle: "ROM (Rough Order of Magnitude)",
         disclaimer: "This Budget Estimate is provided for planning purposes and represents a ROM (±15%) based on preliminary specifications. Final pricing requires complete design documentation."
+    },
+    CONTRACT: {
+        title: "CONTRACT",
+        subtitle: "Binding Agreement",
+        disclaimer: "This Contract constitutes a binding agreement between the parties. All terms, conditions, and pricing are final and subject to the terms and conditions attached hereto."
     }
 };
 

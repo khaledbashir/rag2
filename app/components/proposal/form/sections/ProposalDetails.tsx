@@ -107,8 +107,8 @@ const ProposalDetails = () => {
         setValue("details.documentMode", newMode, { shouldDirty: true });
         const currentDetails = getValues("details") as any;
         const updated = forceDocumentModeDefaults(newMode, currentDetails);
-        const desiredDocumentType = newMode === "LOI" ? "LOI" : "First Round";
-        const desiredPricingType = newMode === "PROPOSAL" ? "Hard Quoted" : "Budget";
+        const desiredDocumentType = (newMode === "LOI" || newMode === "CONTRACT") ? "LOI" : "First Round";
+        const desiredPricingType = (newMode === "PROPOSAL" || newMode === "CONTRACT") ? "Hard Quoted" : "Budget";
 
         if (currentDetails?.documentType !== desiredDocumentType) {
             setValue("details.documentType", desiredDocumentType as any, { shouldDirty: true });
@@ -129,8 +129,8 @@ const ProposalDetails = () => {
         const isHydrating = !currentDetails?.documentMode;
         const setOpts = isHydrating ? { shouldDirty: false } : { shouldDirty: true };
         const updated = applyDocumentModeDefaults(nextMode, currentDetails);
-        const desiredDocumentType = nextMode === "LOI" ? "LOI" : "First Round";
-        const desiredPricingType = nextMode === "PROPOSAL" ? "Hard Quoted" : "Budget";
+        const desiredDocumentType = (nextMode === "LOI" || nextMode === "CONTRACT") ? "LOI" : "First Round";
+        const desiredPricingType = (nextMode === "PROPOSAL" || nextMode === "CONTRACT") ? "Hard Quoted" : "Budget";
 
         if (currentDetails?.documentMode !== nextMode) {
             setValue("details.documentMode", nextMode, setOpts);
@@ -217,6 +217,7 @@ const ProposalDetails = () => {
                                 <SelectItem value="BUDGET" className="focus:bg-accent focus:text-accent-foreground">Budget</SelectItem>
                                 <SelectItem value="PROPOSAL" className="focus:bg-accent focus:text-accent-foreground">Proposal</SelectItem>
                                 <SelectItem value="LOI" className="focus:bg-accent focus:text-accent-foreground">LOI</SelectItem>
+                                <SelectItem value="CONTRACT" className="focus:bg-accent focus:text-accent-foreground">Contract</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -230,13 +231,22 @@ const ProposalDetails = () => {
                                 Promote to Proposal
                             </BaseButton>
                         )}
-                        {mode !== "LOI" && (
+                        {mode !== "LOI" && mode !== "CONTRACT" && (
                             <BaseButton
                                 variant="default"
                                 size="sm"
                                 onClick={() => handleModeChange("LOI")}
                             >
                                 Promote to LOI
+                            </BaseButton>
+                        )}
+                        {mode !== "CONTRACT" && (
+                            <BaseButton
+                                variant="default"
+                                size="sm"
+                                onClick={() => handleModeChange("CONTRACT")}
+                            >
+                                Promote to Contract
                             </BaseButton>
                         )}
                     </div>

@@ -998,7 +998,7 @@ export function getInstallSizeCategory(panelCount: number): 'small' | 'medium' |
 // DOCUMENT MODES
 // ============================================================================
 
-export type DocumentMode = 'budget' | 'proposal' | 'loi';
+export type DocumentMode = 'budget' | 'proposal' | 'loi' | 'contract';
 
 export const DOCUMENT_MODES: Record<DocumentMode, {
     headerText: string;
@@ -1026,6 +1026,14 @@ export const DOCUMENT_MODES: Record<DocumentMode, {
     },
     loi: {
         headerText: 'LETTER OF INTENT',
+        includeSignatures: true,
+        includePaymentTerms: true,
+        includeLegalIntro: true,
+        includeProjectSummaryFirst: true,
+        includeResponsibilityMatrix: true,
+    },
+    contract: {
+        headerText: 'CONTRACT',
         includeSignatures: true,
         includePaymentTerms: true,
         includeLegalIntro: true,

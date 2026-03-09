@@ -141,7 +141,7 @@ export function TextEditorPanel() {
                     </div>
 
                     {/* Purchaser Legal Name (LOI only) - Prompt 42 */}
-                    {documentMode === "LOI" && (
+                    {(documentMode === "LOI" || documentMode === "CONTRACT") && (
                         <div className="space-y-2 border-t border-border/40 pt-6">
                             <Label htmlFor="purchaserLegalName" className="text-xs font-semibold text-foreground flex items-center gap-2">
                                 <FileText className="w-3.5 h-3.5 text-indigo-500" />

@@ -89,7 +89,7 @@ export async function POST(
         // 3. Create Sanitized Snapshot (The "Ferrari" View)
         // Map DB project to ProposalType structure
         const cfg = ((project as any).documentConfig || {}) as any;
-        const modeFromDb = (project as any).documentMode as ("BUDGET" | "PROPOSAL" | "LOI") | undefined;
+        const modeFromDb = (project as any).documentMode as ("BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT") | undefined;
         const modeFromSummary =
             clientSummary?.documentType === "LOI"
                 ? "LOI"
@@ -180,11 +180,11 @@ export async function POST(
                 showBaseBidTable: cfg.showBaseBidTable ?? false,
                 showSpecifications: cfg.showSpecifications ?? true,
                 showCompanyFooter: cfg.showCompanyFooter ?? true,
-                showPaymentTerms: documentMode === "LOI" ? (cfg.showPaymentTerms ?? true) : false,
-                showSignatureBlock: documentMode === "LOI" ? (cfg.showSignatureBlock ?? true) : false,
+                showPaymentTerms: (documentMode === "LOI" || documentMode === "CONTRACT") ? (cfg.showPaymentTerms ?? true) : false,
+                showSignatureBlock: (documentMode === "LOI" || documentMode === "CONTRACT") ? (cfg.showSignatureBlock ?? true) : false,
                 showAssumptions: false,
                 showExhibitA: cfg.showExhibitA ?? false,
-                showExhibitB: documentMode === "LOI" ? (cfg.showExhibitB ?? false) : false,
+                showExhibitB: (documentMode === "LOI" || documentMode === "CONTRACT") ? (cfg.showExhibitB ?? false) : false,
                 // Universal toggles for Hybrid Template
                 showNotes: cfg.showNotes ?? true,
                 showScopeOfWork: cfg.showScopeOfWork ?? false,

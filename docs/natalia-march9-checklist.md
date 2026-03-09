@@ -39,37 +39,37 @@
 - [ ] **3b.** Create user via `/api/admin/users` endpoint or admin panel
 - [ ] **3c.** Share credentials with Natalia
 
-## 4. Budget → Proposal → LOI → Contract Document Flow (FLAG: BIG)
+## 4. Budget → Proposal → LOI → Contract Document Flow
 > "there will be CO to do 'budget-proposal-LOI-CONTRACT'"
+> Natalia: "All same fields as LOI, nothing new. We will add another exhibit when you click Contract."
 
-**What exists:** DocumentMode enum has BUDGET, PROPOSAL, LOI already.
-**What's new:** CONTRACT mode + "one pre other legal page that have slight variations"
+- [x] **4a.** Add `CONTRACT` to `DocumentMode` enum in Prisma schema
+- [x] **4b.** Add CONTRACT mode defaults in `lib/documentMode.ts`
+- [x] **4c.** Add CONTRACT template behavior in `ProposalTemplate5.tsx` (uses LOI skeleton)
+- [x] **4d.** Add CONTRACT to all 18+ files that reference DocumentMode
+- [x] **4e.** UI: Document type selector includes CONTRACT in estimator + proposal editor
+- [x] **4f.** "Promote to Contract" button on proposal details page
+- [x] **4g.** Pipeline kanban badge + label for CONTRACT
+- [x] **4h.** PDF filename uses "Contract" label
+- [ ] **4i.** T&C Exhibit — appears only when mode = CONTRACT (see Item 5)
 
-- [ ] **4a.** Add `CONTRACT` to `DocumentMode` enum in Prisma schema
-- [ ] **4b.** Add CONTRACT mode defaults in `lib/documentMode.ts`
-- [ ] **4c.** Add CONTRACT template behavior in `ProposalTemplate5.tsx`
-- [ ] **4d.** Legal pre-page (T&C page) that varies by document type
-- [ ] **4e.** UI: Document type selector includes CONTRACT option
-
-## 5. Terms & Conditions Template System (FLAG: BIG)
-> "this thing but header has to update per what CLIENT says and there are couple types"
+## 5. Terms & Conditions Exhibit (CONTRACT mode only)
+> Natalia: "That exhibit is just word doc/pdf, just text and it has couple spots we need to change, we can toggle the text on/off"
 
 **Reference:** Dodgers T&C PDF (3 pages, 8 sections: IP, Ownership, Warranty, Indemnification, Force Majeure, COVID, Misc)
+**Simpler than expected:** It's just a text exhibit with toggleable sections, not a full template engine.
 
-**Variations Natalia listed:**
+**Variations:**
 - With labor warranty / Without
 - Labor and materials / Labor only
 - With CMS / Without CMS
 - With graphics / Without graphics
 
-- [ ] **5a.** Create T&C template data model (store base template + variation toggles)
-- [ ] **5b.** Build T&C section registry (8 sections from Dodgers PDF as baseline)
-- [ ] **5c.** Dynamic header: client name, project name, entity names swap per deal
-- [ ] **5d.** Conditional sections toggle: CMS, graphics, labor warranty, materials
-- [ ] **5e.** Warranty terms configuration (duration, scope, exclusions)
-- [ ] **5f.** T&C PDF rendering via existing Browserless pipeline
-- [ ] **5g.** UI: T&C configuration panel in proposal editor
-- [ ] **5h.** T&C attaches to proposal as appendix page(s)
+- [ ] **5a.** Build T&C exhibit component (text sections from Dodgers PDF)
+- [ ] **5b.** Dynamic header: client name, entity names swap per deal
+- [ ] **5c.** Toggle switches for each section (CMS, graphics, labor warranty, materials)
+- [ ] **5d.** T&C exhibit renders as final pages when mode = CONTRACT
+- [ ] **5e.** UI: T&C section toggles visible in proposal editor when CONTRACT selected
 
 ---
 
@@ -80,8 +80,8 @@
 | 1 | Courtside & Stanchion products in DB | Medium | No | DONE |
 | 2 | Quick Budget shortcuts | Small | No | DONE |
 | 3 | Add user login | Small | No | Waiting on user info |
-| 4 | Contract document mode + legal page | Big | **Yes — new document type + template** | Pending CO |
-| 5 | T&C template system with variations | Big | **Yes — template engine** | Pending CO |
+| 4 | Contract document mode | Medium | CO candidate | DONE (mode + all 18 files) |
+| 5 | T&C Exhibit (toggleable sections) | Medium | CO candidate | Next up |
 
 ---
 

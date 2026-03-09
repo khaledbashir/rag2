@@ -272,7 +272,7 @@ function setBondRate(ctx: FormFillContext, rate: number) {
     ctx.setValue("details.bondRateOverride", rate, { shouldDirty: true });
 }
 
-function setDocumentType(ctx: FormFillContext, docType: "BUDGET" | "PROPOSAL" | "LOI") {
+function setDocumentType(ctx: FormFillContext, docType: "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT") {
     ctx.setValue("details.documentMode", docType, { shouldDirty: true });
 
     if (docType === "BUDGET") {
@@ -281,7 +281,7 @@ function setDocumentType(ctx: FormFillContext, docType: "BUDGET" | "PROPOSAL" | 
     } else if (docType === "PROPOSAL") {
         ctx.setValue("details.documentType", "First Round", { shouldDirty: true });
         ctx.setValue("details.pricingType", "Hard Quoted", { shouldDirty: true });
-    } else if (docType === "LOI") {
+    } else if (docType === "LOI" || docType === "CONTRACT") {
         ctx.setValue("details.documentType", "LOI", { shouldDirty: true });
         ctx.setValue("details.pricingType", "Hard Quoted", { shouldDirty: true });
     }
@@ -500,8 +500,8 @@ export function executeScreenActions(
             }
 
             case "set_document_mode": {
-                const mode = String(sa.value).toUpperCase() as "BUDGET" | "PROPOSAL" | "LOI";
-                if (["BUDGET", "PROPOSAL", "LOI"].includes(mode)) {
+                const mode = String(sa.value).toUpperCase() as "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT";
+                if (["BUDGET", "PROPOSAL", "LOI", "CONTRACT"].includes(mode)) {
                     setDocumentType(ctx, mode);
                     log.push(`Switched document type to ${mode}`);
                 }

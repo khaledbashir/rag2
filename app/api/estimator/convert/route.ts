@@ -307,7 +307,7 @@ export async function POST(req: NextRequest) {
         estimatorDepth: answers.estimateDepth || "rom",
         clientName: answers.clientName || project.clientName || "Client",
         venue: answers.projectName || project.venue || null,
-        documentMode: documentMode as "BUDGET" | "PROPOSAL" | "LOI",
+        documentMode: documentMode as "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT",
         pricingDocument,
         pricingMode: "STANDARD",
         mirrorMode: false,

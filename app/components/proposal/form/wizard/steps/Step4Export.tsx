@@ -1146,7 +1146,7 @@ const Step4Export = () => {
                                     <p className="text-xs text-muted-foreground text-center">
                                         PDF sections are controlled by the <span className="text-foreground font-semibold">Document Mode</span> switcher in the toolbar above.
                                         <br />
-                                        <span className="text-[10px]">Budget = estimate only • Proposal = formal quote • LOI = contract with signatures</span>
+                                        <span className="text-[10px]">Budget = estimate only • Proposal = formal quote • LOI = binding letter with signatures • Contract = full agreement with T&C</span>
                                     </p>
 
                                     {/* AI-Generated SOW Toggle - Intelligence Mode only */}

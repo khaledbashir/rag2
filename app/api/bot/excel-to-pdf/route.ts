@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     let buffer: Buffer;
     let filename: string;
-    let documentMode: "BUDGET" | "PROPOSAL" | "LOI" = "BUDGET";
+    let documentMode: "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT" = "BUDGET";
     let returnFormat: "pdf" | "url" = "pdf";
 
     try {
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
             }
             buffer = Buffer.from(await file.arrayBuffer());
             filename = file.name;
-            documentMode = (formData.get("document_mode") as "BUDGET" | "PROPOSAL" | "LOI") || "BUDGET";
+            documentMode = (formData.get("document_mode") as "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT") || "BUDGET";
             returnFormat = (formData.get("return_format") as "pdf" | "url") || "pdf";
         } else if (contentType.includes("application/json")) {
             const body = await req.json();

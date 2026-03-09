@@ -28,7 +28,7 @@ export interface ScreenContext {
 
     // Mode detection
     isMirrorMode: boolean;
-    documentMode: "BUDGET" | "PROPOSAL" | "LOI";
+    documentMode: "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT";
     calculationMode: "MIRROR" | "INTELLIGENCE";
 
     // Pricing tables from Excel (Mirror Mode)
@@ -85,7 +85,7 @@ export function getScreenContext(
 
     // Mode detection
     const mirrorMode = g("details.mirrorMode") === true;
-    const documentMode = (g("details.documentMode") || "BUDGET") as "BUDGET" | "PROPOSAL" | "LOI";
+    const documentMode = (g("details.documentMode") || "BUDGET") as "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT";
     const calculationMode = (g("details.calculationMode") || "INTELLIGENCE") as "MIRROR" | "INTELLIGENCE";
 
     // Pricing sections from PricingDocument (Mirror Mode)

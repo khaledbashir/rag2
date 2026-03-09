@@ -106,7 +106,7 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 	}
 	const hadRespMatrixCandidates = Array.isArray(validation?.evidence?.respMatrixSheetCandidates) && validation.evidence.respMatrixSheetCandidates.length > 0;
 	const hasParsedRespMatrix = !!(pricingDocument?.respMatrix?.categories?.length);
-	if (isMirrorMode && documentMode === "LOI" && hadRespMatrixCandidates && !hasParsedRespMatrix) {
+	if (isMirrorMode && (documentMode === "LOI" || documentMode === "CONTRACT") && hadRespMatrixCandidates && !hasParsedRespMatrix) {
 		return preflightError(
 			"We couldn't find a usable Responsibility Matrix in this Excel.",
 			[
@@ -166,7 +166,7 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 		// Build a descriptive document title for PDF metadata (shows in browser tab & Properties)
 		const clientName = ((body.details as any)?.clientName || (body.details as any)?.proposalName || "Proposal").toString()
 			.replace(/[/\\:*?"<>|]/g, "").replace(/\s+/g, "_").trim().slice(0, 50) || "Proposal";
-		const docTypeLabel = documentMode === "LOI" ? "Letter_of_Intent" : documentMode === "PROPOSAL" ? "Proposal" : "Budget_Estimate";
+		const docTypeLabel = documentMode === "LOI" ? "Letter_of_Intent" : documentMode === "CONTRACT" ? "Contract" : documentMode === "PROPOSAL" ? "Proposal" : "Budget_Estimate";
 		const dateStr = new Date().toISOString().slice(0, 10);
 		const pdfTitle = `ANC_${clientName}_${docTypeLabel}_${dateStr}`;
 

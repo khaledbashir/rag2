@@ -1,14 +1,15 @@
 import { DOCUMENT_MODES } from "@/services/rfp/productCatalog";
 import type { DocumentMode as CatalogDocumentMode } from "@/services/rfp/productCatalog";
 
-export type DocumentMode = "BUDGET" | "PROPOSAL" | "LOI";
+export type DocumentMode = "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT";
 
 export function resolveDocumentMode(details: any): DocumentMode {
   const explicit = details?.documentMode;
-  if (explicit === "BUDGET" || explicit === "PROPOSAL" || explicit === "LOI") return explicit;
+  if (explicit === "BUDGET" || explicit === "PROPOSAL" || explicit === "LOI" || explicit === "CONTRACT") return explicit;
 
   const documentType = details?.documentType;
   if (documentType === "LOI") return "LOI";
+  if (documentType === "CONTRACT") return "CONTRACT";
 
   const pricingType = details?.pricingType;
   if (pricingType === "Hard Quoted") return "PROPOSAL";
@@ -18,11 +19,11 @@ export function resolveDocumentMode(details: any): DocumentMode {
 
 /**
  * Apply document mode defaults - HYBRID TEMPLATE APPROACH
- * 
+ *
  * Derives defaults from DOCUMENT_MODES config in productCatalog.ts (single source of truth).
  * In the Hybrid Template, Notes, Scope of Work, and Signatures are
- * OPTIONAL for ALL document types (Budget, Proposal, LOI).
- * 
+ * OPTIONAL for ALL document types (Budget, Proposal, LOI, Contract).
+ *
  * We only set defaults if the values are undefined - we don't force
  * them based on document type anymore. Users can toggle any section
  * regardless of document mode.
@@ -41,7 +42,7 @@ export function applyDocumentModeDefaults(mode: DocumentMode, current: any) {
   if (base.showNotes === undefined) base.showNotes = true;
   if (base.showScopeOfWork === undefined) base.showScopeOfWork = false;
 
-  if (mode === "LOI") {
+  if (mode === "LOI" || mode === "CONTRACT") {
     if (base.showExhibitA === undefined) base.showExhibitA = true;
     if (base.showExhibitB === undefined) base.showExhibitB = true;
     if (base.showSpecifications === undefined) base.showSpecifications = false;

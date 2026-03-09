@@ -56,7 +56,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const catalogMode = documentMode.toLowerCase() as CatalogDocumentMode;
     const docModeConfig = DOCUMENT_MODES[catalogMode] || DOCUMENT_MODES.proposal;
     const docLabel = docModeConfig.headerText;
-    const isLOI = documentMode === "LOI";
+    const isLOI = documentMode === "LOI" || documentMode === "CONTRACT";
 
     // Guard against raw numbers (e.g., project IDs mistakenly used as names)
     const rawPurchaserName = receiver?.name || "";

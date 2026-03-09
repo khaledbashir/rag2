@@ -43,6 +43,7 @@ enum DocumentMode {
   BUDGET
   PROPOSAL
   LOI
+  CONTRACT
 }
 
 enum ChangeRequestStatus {

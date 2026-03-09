@@ -138,7 +138,7 @@ export function transformProposalToJsreport(
     const catalogMode = documentMode.toLowerCase() as CatalogDocumentMode;
     const docModeConfig = DOCUMENT_MODES[catalogMode] || DOCUMENT_MODES.proposal;
     const docLabel = docModeConfig.headerText;
-    const isLOI = documentMode === "LOI";
+    const isLOI = documentMode === "LOI" || documentMode === "CONTRACT";
 
     const pricingDocument = details?.pricingDocument || (data as any)?.pricingDocument;
     const currency: string = pricingDocument?.currency || "USD";

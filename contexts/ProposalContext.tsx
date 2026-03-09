@@ -624,7 +624,7 @@ export const ProposalContextProvider = ({
             });
 
             // Apply mode-specific defaults for PDF sections
-            if (next === "LOI") {
+            if (next === "LOI" || next === "CONTRACT") {
                 setValue("details.documentType", "LOI", {
                     shouldValidate: true,
                     shouldDirty: true,
@@ -1593,7 +1593,7 @@ export const ProposalContextProvider = ({
                     total,
                     label: `${modeLabel} ${templateLabel}`,
                 });
-                const isLOI = mode === "LOI";
+                const isLOI = mode === "LOI" || mode === "CONTRACT";
                 const payload = {
                     ...data,
                     details: {
@@ -1748,7 +1748,7 @@ export const ProposalContextProvider = ({
         for (const { mode, label: modeLabel } of MODES) {
             current += 1;
             setPdfBatchProgress({ current, total, label: modeLabel });
-            const isLOI = mode === "LOI";
+            const isLOI = mode === "LOI" || mode === "CONTRACT";
             const payload = {
                 ...data,
                 details: {
@@ -1776,7 +1776,7 @@ export const ProposalContextProvider = ({
                 const blob = await res.blob();
                 if (blob.size === 0) continue;
 
-                const bundleDocType = mode === "LOI" ? "LOI" : mode === "PROPOSAL" ? "Proposal" : "Budget_Estimate";
+                const bundleDocType = mode === "LOI" ? "LOI" : mode === "CONTRACT" ? "Contract" : mode === "PROPOSAL" ? "Proposal" : "Budget_Estimate";
                 const fileName = `ANC_${safeUnderscored(clientName)}_${bundleDocType}_${bundleDateStr}.pdf`;
 
                 triggerDownload(blob, fileName);

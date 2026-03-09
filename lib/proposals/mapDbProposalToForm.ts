@@ -6,9 +6,9 @@ import { FORM_DEFAULT_VALUES } from "@/lib/variables";
  */
 export function mapDbProposalToFormSchema(dbProject: any) {
     const cfg = (dbProject.documentConfig || {}) as any;
-    const documentMode = (dbProject.documentMode || "BUDGET") as "BUDGET" | "PROPOSAL" | "LOI";
-    const documentType = documentMode === "LOI" ? "LOI" : "First Round";
-    const pricingType = documentMode === "PROPOSAL" ? "Hard Quoted" : "Budget";
+    const documentMode = (dbProject.documentMode || "BUDGET") as "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT";
+    const documentType = (documentMode === "LOI" || documentMode === "CONTRACT") ? "LOI" : "First Round";
+    const pricingType = (documentMode === "PROPOSAL" || documentMode === "CONTRACT") ? "Hard Quoted" : "Budget";
 
     return {
         sender: FORM_DEFAULT_VALUES.sender,

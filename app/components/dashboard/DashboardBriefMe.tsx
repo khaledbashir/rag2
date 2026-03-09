@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 type BriefProject = {
     id: string;
     clientName?: string;
-    documentMode?: "BUDGET" | "PROPOSAL" | "LOI";
+    documentMode?: "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT";
     updatedAt?: string;
     additionalNotes?: string | null;
     paymentTerms?: string | null;

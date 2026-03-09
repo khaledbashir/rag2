@@ -42,7 +42,7 @@ export interface CollectedData {
     services: ParsedServiceItem[];
     taxRate?: number;
     bondRate?: number;
-    documentType?: "BUDGET" | "PROPOSAL" | "LOI";
+    documentType?: "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT";
     /** Tracks consecutive parse failures per stage for escalating help */
     retryCount?: number;
 }
