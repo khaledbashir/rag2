@@ -64,7 +64,30 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
     const templateConfig = ((details as any)?.templateConfig || {}) as Record<string, any>;
     const exhibitAHeaderGapRaw = Number(templateConfig?.exhibitAHeaderGap ?? 24);
     const exhibitAHeaderGap = Number.isFinite(exhibitAHeaderGapRaw) ? Math.min(72, Math.max(8, exhibitAHeaderGapRaw)) : 24;
-    const screens = (details?.screens || []).filter((s: any) => !s?.hiddenFromSpecs);
+    // Build set of table names where ALL items are hidden (fully-hidden pricing tables)
+    const pricingTables = ((details as any)?.pricingDocument?.tables || []) as any[];
+    const showHiddenRows = (details as any)?.showHiddenRows === true;
+    const fullyHiddenTableNames = new Set<string>();
+    if (!showHiddenRows) {
+        for (const table of pricingTables) {
+            const items = (table?.items || []) as any[];
+            const visibleItems = items.filter((item: any) => !item.isHidden);
+            if (items.length > 0 && visibleItems.length === 0) {
+                const name = (table?.name || "").toString().toLowerCase().replace(/\s+/g, "").trim();
+                if (name) fullyHiddenTableNames.add(name);
+            }
+        }
+    }
+    const screens = (details?.screens || []).filter((s: any) => {
+        if (s?.hiddenFromSpecs) return false;
+        // Also exclude screens whose pricing table is fully hidden
+        if (fullyHiddenTableNames.size > 0) {
+            const screenName = (s?.name || "").toString().toLowerCase().replace(/\s+/g, "").trim();
+            const screenGroup = (s?.group || "").toString().toLowerCase().replace(/\s+/g, "").trim();
+            if (fullyHiddenTableNames.has(screenName) || fullyHiddenTableNames.has(screenGroup)) return false;
+        }
+        return true;
+    });
     const sowText = (details as any)?.scopeOfWorkText;
     const hasSOWContent = showSOW && sowText && sowText.trim().length > 0;
     const specsDisplayMode: "condensed" | "extended" = (details as any)?.specsDisplayMode || "extended";

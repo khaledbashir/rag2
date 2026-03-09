@@ -111,11 +111,23 @@ const PdfPricingTables = ({
             const alternates = ((table?.alternates || []) as any[]).filter((alt: any) => {
                 const desc = (alt?.description || "").toString().trim();
                 const price = Number(alt?.priceDifference ?? alt?.price ?? 0);
+                // Also filter out hidden alternates
+                if (!showHiddenRows && alt?.isHidden) return false;
                 return desc.length > 0 && Math.abs(price) >= 0.01;
             });
             // Centralized round-then-sum via pricingMath.ts
             const detailTotals = computeTableTotals(table as PricingTable, priceOverrides, descriptionOverrides);
             const { subtotal, taxLabel, tax: taxAmount, bond, grandTotal } = detailTotals;
+
+            // Skip entire table if ALL items + alternates are hidden
+            if (!showHiddenRows) {
+                const visibleItems = items.filter((item: any) => {
+                    if (item.isHidden) return false;
+                    const itemPrice = detailTotals.items.find((ri: any) => ri.originalIndex === items.indexOf(item));
+                    return !!itemPrice;
+                });
+                if (visibleItems.length === 0 && alternates.length === 0) return null;
+            }
 
             return (
                 <div data-preview-section="pricing" key={tableId || `table-${origIdx}`} className="break-inside-avoid" style={{ pageBreakInside: 'avoid', breakInside: 'avoid', marginTop: `${pricingTableGap}px` }}>
