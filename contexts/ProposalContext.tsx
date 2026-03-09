@@ -192,8 +192,8 @@ const defaultProposalContext = {
     setRulesDetected: (rules: any) => { },
     // Core State
     proposal: null as any,
-    headerType: "PROPOSAL" as "LOI" | "PROPOSAL" | "BUDGET",
-    setHeaderType: (type: "LOI" | "PROPOSAL" | "BUDGET") => { },
+    headerType: "PROPOSAL" as "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT",
+    setHeaderType: (type: "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT") => { },
     calculationMode: "MIRROR" as "MIRROR" | "INTELLIGENCE",
     setCalculationMode: (mode: "MIRROR" | "INTELLIGENCE") => { },
     risks: [] as RiskItem[],
@@ -617,7 +617,7 @@ export const ProposalContextProvider = ({
     const mirrorMode = watch("details.mirrorMode") || false;
 
     const setHeaderType = useCallback(
-        (next: "LOI" | "PROPOSAL" | "BUDGET") => {
+        (next: "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT") => {
             setValue("details.documentMode", next, {
                 shouldValidate: true,
                 shouldDirty: true,

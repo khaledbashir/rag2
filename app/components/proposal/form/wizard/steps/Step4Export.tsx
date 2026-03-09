@@ -982,7 +982,7 @@ const Step4Export = () => {
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="pt-0">
-                                <div className="grid grid-cols-3 gap-2">
+                                <div className="grid grid-cols-4 gap-2">
                                     <button
                                         type="button"
                                         onClick={() => setHeaderType("BUDGET")}
@@ -1021,6 +1021,19 @@ const Step4Export = () => {
                                     >
                                         <FileSignature className="w-3.5 h-3.5" />
                                         LOI
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setHeaderType("CONTRACT")}
+                                        className={cn(
+                                            "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors",
+                                            headerType === "CONTRACT"
+                                                ? "border-indigo-500/50 bg-indigo-500/10 text-indigo-700 dark:text-indigo-200"
+                                                : "border-border bg-card/40 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                                        )}
+                                    >
+                                        <Shield className="w-3.5 h-3.5" />
+                                        Contract
                                     </button>
                                 </div>
                             </CardContent>
