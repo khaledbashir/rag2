@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 export async function POST(
     req: NextRequest,
@@ -49,7 +50,7 @@ export async function POST(
         });
 
     } catch (error) {
-        console.error("[VERIFY_API_ERROR]", error);
+        log.error("[VERIFY_API_ERROR]", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

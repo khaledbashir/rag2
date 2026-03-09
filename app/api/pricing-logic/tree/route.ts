@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   try {
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(tree);
   } catch (error) {
-    console.error("Error fetching pricing logic tree:", error);
+    log.error("Error fetching pricing logic tree:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

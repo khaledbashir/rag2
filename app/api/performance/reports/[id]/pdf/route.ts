@@ -4,6 +4,7 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { JSREPORT_URL, JSREPORT_USER, JSREPORT_PASSWORD } from "@/lib/variables";
+import { log } from "@/lib/logger";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -320,7 +321,7 @@ export async function GET(
       },
     };
 
-    console.log(`[performance/pdf] Rendering report ${id} via jsreport...`);
+    log.info(`[performance/pdf] Rendering report ${id} via jsreport...`);
 
     const response = await fetch(`${JSREPORT_URL}/api/report`, {
       method: "POST",
@@ -330,7 +331,7 @@ export async function GET(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("[performance/pdf] jsreport error:", response.status, errorText);
+      log.error("[performance/pdf] jsreport error:", response.status, errorText);
       return NextResponse.json(
         { error: "PDF generation failed", details: errorText },
         { status: 502 },
@@ -342,7 +343,7 @@ export async function GET(
       return NextResponse.json({ error: "jsreport returned empty PDF" }, { status: 502 });
     }
 
-    console.log(`[performance/pdf] PDF generated: ${pdfBuffer.byteLength} bytes`);
+    log.info(`[performance/pdf] PDF generated: ${pdfBuffer.byteLength} bytes`);
 
     const safeName = data.sponsor.name.replace(/[^a-zA-Z0-9]/g, "_");
     const safeVenue = data.venue.name.split(" ").map((w: string) => w[0]).join("").toUpperCase();
@@ -358,7 +359,7 @@ export async function GET(
       status: 200,
     });
   } catch (error: any) {
-    console.error("[performance/pdf] Error:", error);
+    log.error("[performance/pdf] Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

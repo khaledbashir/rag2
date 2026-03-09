@@ -10,9 +10,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { invalidateRateCardCache } from "@/services/rfp/rateCardLoader";
+import { requireAuth } from "@/lib/apiAuth";
 
 export async function GET(request: NextRequest) {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const { searchParams } = new URL(request.url);
         const category = searchParams.get("category");
         const activeOnly = searchParams.get("active") !== "false";
@@ -44,6 +47,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const body = await request.json();
         const { category, key, label, value, unit, provenance, confidence } = body;
 
@@ -82,6 +87,8 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const body = await request.json();
         const { id, ...data } = body;
 
@@ -119,6 +126,8 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const { searchParams } = new URL(request.url);
         const id = searchParams.get("id");
 

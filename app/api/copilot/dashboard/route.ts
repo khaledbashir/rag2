@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ANYTHING_LLM_BASE_URL, ANYTHING_LLM_KEY } from "@/lib/variables";
+import { log } from "@/lib/logger";
 
 const DASHBOARD_WORKSPACE_SLUG = process.env.ANYTHING_LLM_WORKSPACE || "ancdashboard";
 
@@ -39,7 +40,7 @@ Never guess or estimate project-specific numbers you don't have. It is better to
 
         const chatUrl = `${ANYTHING_LLM_BASE_URL}/workspace/${DASHBOARD_WORKSPACE_SLUG}/chat`;
 
-        console.log(`[Dashboard Copilot] → workspace "${DASHBOARD_WORKSPACE_SLUG}"`);
+        log.info(`[Dashboard Copilot] → workspace "${DASHBOARD_WORKSPACE_SLUG}"`);
 
         const response = await fetch(chatUrl, {
             method: "POST",
@@ -56,7 +57,7 @@ Never guess or estimate project-specific numbers you don't have. It is better to
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error(`[Dashboard Copilot] AnythingLLM error (${response.status}):`, errorText);
+            log.error(`[Dashboard Copilot] AnythingLLM error (${response.status}):`, errorText);
             return NextResponse.json({
                 error: `AnythingLLM returned ${response.status}`,
                 response: `AI workspace error: ${errorText}`,
@@ -71,7 +72,7 @@ Never guess or estimate project-specific numbers you don't have. It is better to
             sources: data.sources || [],
         });
     } catch (error: any) {
-        console.error("[Dashboard Copilot] Error:", error);
+        log.error("[Dashboard Copilot] Error:", error);
         return NextResponse.json({
             error: error.message,
             response: `Dashboard Copilot error: ${error.message}`,

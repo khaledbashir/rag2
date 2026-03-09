@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { mapDbProposalToFormSchema } from "@/lib/proposals/mapDbProposalToForm";
 import { generateProposalPdfServiceV2 } from "@/services/proposal/server/generateProposalPdfServiceV2";
+import { log } from "@/lib/logger";
 
 function safeFilenamePart(value: string): string {
     return value
@@ -46,7 +47,7 @@ export async function POST(
         // Check if the response is an error (non-200 status or JSON content type)
         if (pdfResponse.status !== 200) {
             const errorBody = await pdfResponse.json().catch(() => ({ error: "Unknown error" }));
-            console.error("PDF generation failed:", errorBody);
+            log.error("PDF generation failed:", errorBody);
             return NextResponse.json(
                 {
                     error: typeof errorBody?.error === "string" ? errorBody.error : "We couldn't generate this PDF right now.",
@@ -81,7 +82,7 @@ export async function POST(
             },
         });
     } catch (error: any) {
-        console.error("POST /api/projects/[id]/pdf error:", error);
+        log.error("POST /api/projects/[id]/pdf error:", error);
         return NextResponse.json(
             { error: "Failed to export PDF", details: error?.message || String(error) },
             { status: 500 }

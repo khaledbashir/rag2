@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/specsheet/recall
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ memories });
     } catch (err: any) {
-        console.error("[specsheet/recall] Error:", err);
+        log.error("[specsheet/recall] Error:", err);
         return NextResponse.json({ error: err.message || String(err) }, { status: 500 });
     }
 }

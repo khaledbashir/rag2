@@ -25,6 +25,7 @@ import { mkdir, appendFile, stat as fsStat } from "fs/promises";
 import { existsSync } from "fs";
 import { randomUUID } from "crypto";
 import path from "path";
+import { log } from "@/lib/logger";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest) {
       status: "complete",
     });
   } catch (err) {
-    console.error("[/api/rfp/analyze/upload] Error:", err);
+    log.error("[/api/rfp/analyze/upload] Error:", err);
     return NextResponse.json(
       { error: `Upload failed: ${err instanceof Error ? err.message : String(err)}` },
       { status: 500 },

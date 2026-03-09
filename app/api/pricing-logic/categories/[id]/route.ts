@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 // PUT update category
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -21,7 +22,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 		if (error?.code === "P2002") {
 			return NextResponse.json({ error: "Category name already exists" }, { status: 409 });
 		}
-		console.error("Error updating category:", error);
+		log.error("Error updating category:", error);
 		return NextResponse.json({ error: "Failed to update category" }, { status: 500 });
 	}
 }
@@ -36,7 +37,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 		if (error?.code === "P2025") {
 			return NextResponse.json({ error: "Category not found" }, { status: 404 });
 		}
-		console.error("Error deleting category:", error);
+		log.error("Error deleting category:", error);
 		return NextResponse.json({ error: "Failed to delete category" }, { status: 500 });
 	}
 }

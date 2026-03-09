@@ -5,7 +5,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { JSREPORT_URL, JSREPORT_USER, JSREPORT_PASSWORD, TAILWIND_CDN } from "@/lib/variables";
 import { getProposalTemplate } from "@/lib/helpers";
 import { sanitizeForClient } from "@/lib/security/sanitizeForClient";
+import { requireAuth } from "@/lib/apiAuth";
 import type { ProposalType } from "@/types";
+import { log } from "@/lib/logger";
 
 let tailwindCssCache: string | null = null;
 
@@ -55,6 +57,8 @@ async function getTailwindCss(): Promise<string> {
  */
 export async function POST(req: NextRequest) {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const body = (await req.json()) as ProposalType;
         const ReactDOMServer = (await import("react-dom/server")).default;
 
@@ -120,7 +124,7 @@ export async function POST(req: NextRequest) {
             },
         };
 
-        console.log(`[jsreport] Sending request to ${JSREPORT_URL}/api/report (engine=none, recipe=chrome-pdf, inline-content=true)`);
+        log.info(`[jsreport] Sending request to ${JSREPORT_URL}/api/report (engine=none, recipe=chrome-pdf, inline-content=true)`);
 
         const headers: Record<string, string> = {
             "Content-Type": "application/json",
@@ -140,7 +144,7 @@ export async function POST(req: NextRequest) {
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error("[jsreport] Error response:", response.status, errorText);
+            log.error("[jsreport] Error response:", response.status, errorText);
             return NextResponse.json(
                 {
                     error: "jsreport PDF generation failed",
@@ -160,7 +164,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        console.log(`[jsreport] PDF generated: ${pdfBuffer.byteLength} bytes`);
+        log.info(`[jsreport] PDF generated: ${pdfBuffer.byteLength} bytes`);
 
         return new NextResponse(pdfBuffer, {
             headers: {
@@ -175,7 +179,7 @@ export async function POST(req: NextRequest) {
             status: 200,
         });
     } catch (error: any) {
-        console.error("[jsreport] Unhandled error:", error);
+        log.error("[jsreport] Unhandled error:", error);
         return NextResponse.json(
             {
                 error: "Failed to generate PDF via jsreport",

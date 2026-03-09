@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateSubcontractorExcel } from "@/services/rfp/pipeline/generateSubcontractorExcel";
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "@/services/rfp/unified/types";
+import { log } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   try {
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (err: any) {
-    console.error("[subcontractor-excel] Error:", err);
+    log.error("[subcontractor-excel] Error:", err);
     return NextResponse.json({ error: err.message || "Failed to generate Excel" }, { status: 500 });
   }
 }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ANYTHING_LLM_BASE_URL, ANYTHING_LLM_KEY } from "@/lib/variables";
 import { updateWorkspaceSettings } from "@/lib/anything-llm";
+import { requireAuth } from "@/lib/apiAuth";
+import { log } from "@/lib/logger";
 
 /**
  * Dashboard Chat API Route - Intelligence Core
@@ -10,6 +12,8 @@ import { updateWorkspaceSettings } from "@/lib/anything-llm";
  */
 export async function POST(req: NextRequest) {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const { message, workspace, useAgent } = await req.json();
 
         if (!message) {
@@ -36,7 +40,7 @@ Never guess or estimate project-specific numbers you don't have. It is better to
 
         const guardedMessage = `${SYSTEM_GUARD}\n\n[USER QUESTION]\n${message}`;
 
-        console.log(`[Intelligence Core] Querying workspace: ${targetWorkspace} (Agent: ${useAgent ? 'YES' : 'NO'})`);
+        log.info(`[Intelligence Core] Querying workspace: ${targetWorkspace} (Agent: ${useAgent ? 'YES' : 'NO'})`);
 
         let response = await fetch(`${ANYTHING_LLM_BASE_URL}/workspace/${targetWorkspace}/chat`, {
             method: "POST",
@@ -55,7 +59,7 @@ Never guess or estimate project-specific numbers you don't have. It is better to
         if (response.status === 404 || response.status === 400) {
             const errorText = await response.text();
             if (errorText.includes("not a valid workspace") || errorText.includes("not found")) {
-                console.log(`[Intelligence Core] Workspace ${targetWorkspace} not found, creating...`);
+                log.info(`[Intelligence Core] Workspace ${targetWorkspace} not found, creating...`);
                 
                 // Create the workspace
                 const createRes = await fetch(`${ANYTHING_LLM_BASE_URL}/workspace/new`, {
@@ -79,7 +83,7 @@ Never guess or estimate project-specific numbers you don't have. It is better to
                     // inherits the system default from AnythingLLM admin UI.
                     await updateWorkspaceSettings(newSlug, {
                         chatMode: "chat",
-                    }).catch(e => console.error("[Intelligence Core] Settings update failed:", e));
+                    }).catch(e => log.error("[Intelligence Core] Settings update failed:", e));
 
                     // Retry the chat call
                     response = await fetch(`${ANYTHING_LLM_BASE_URL}/workspace/${newSlug}/chat`, {
@@ -95,14 +99,14 @@ Never guess or estimate project-specific numbers you don't have. It is better to
                         }),
                     });
                 } else {
-                    console.error("[Intelligence Core] Failed to create workspace:", await createRes.text());
+                    log.error("[Intelligence Core] Failed to create workspace:", await createRes.text());
                 }
             }
         }
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error("AnythingLLM error:", errorText);
+            log.error("AnythingLLM error:", errorText);
             return NextResponse.json({
                 error: "Failed to get response from AI",
                 response: `AnythingLLM error (${response.status}): ${errorText.slice(0, 200)}`
@@ -120,7 +124,7 @@ Never guess or estimate project-specific numbers you don't have. It is better to
         });
 
     } catch (error: any) {
-        console.error("Dashboard chat error:", error);
+        log.error("Dashboard chat error:", error);
         return NextResponse.json({
             error: error.message,
             response: `Dashboard chat error: ${error.message}`

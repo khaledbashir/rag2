@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { importScopingWorkbook } from "@/services/rfp/pipeline/scopingWorkbookImporter";
 import type { ExtractedLEDSpec } from "@/services/rfp/unified/types";
+import { log } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   try {
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to import scoping workbook";
-    console.error("[import-scoping-workbook] Error:", err);
+    log.error("[import-scoping-workbook] Error:", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 // Phase 2 completion criteria items
 const PHASE2_ITEMS = [
@@ -75,7 +76,7 @@ export async function GET() {
     return NextResponse.json({ items, activity });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to load tracker";
-    console.error("[tracker] GET error:", err);
+    log.error("[tracker] GET error:", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -137,7 +138,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed";
-    console.error("[tracker] POST error:", err);
+    log.error("[tracker] POST error:", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { log } from "@/lib/logger";
 
 const PROMPT_DIR = path.join(process.cwd(), ".data");
 const PROMPT_FILE = path.join(PROMPT_DIR, "chat-system-prompt.txt");
@@ -14,7 +15,7 @@ export async function GET() {
         const prompt = await readFile(PROMPT_FILE, "utf-8").catch(() => "");
         return NextResponse.json({ prompt });
     } catch (error: any) {
-        console.error("[Chat/SystemPrompt] GET error:", error);
+        log.error("[Chat/SystemPrompt] GET error:", error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
@@ -35,10 +36,10 @@ export async function POST(req: NextRequest) {
         await mkdir(PROMPT_DIR, { recursive: true });
         await writeFile(PROMPT_FILE, prompt, "utf-8");
 
-        console.log(`[Chat/SystemPrompt] Saved system prompt (${prompt.length} chars)`);
+        log.info(`[Chat/SystemPrompt] Saved system prompt (${prompt.length} chars)`);
         return NextResponse.json({ success: true });
     } catch (error: any) {
-        console.error("[Chat/SystemPrompt] POST error:", error);
+        log.error("[Chat/SystemPrompt] POST error:", error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

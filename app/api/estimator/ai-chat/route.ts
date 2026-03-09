@@ -13,6 +13,7 @@
  */
 
 import { NextRequest } from "next/server";
+import { log } from "@/lib/logger";
 
 const PRIMARY_WORKSPACE = process.env.ANYTHING_LLM_REASONING_WORKSPACE || process.env.ANYTHING_LLM_WORKSPACE || "ancdashboard";
 
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
 
         if (!upstreamRes.ok) {
             const errText = await upstreamRes.text();
-            console.error(`[ai-chat] Stream error (${upstreamRes.status}):`, errText);
+            log.error(`[ai-chat] Stream error (${upstreamRes.status}):`, errText);
             return new Response(
                 JSON.stringify({ error: "AI chat failed" }),
                 { status: 502, headers: { "Content-Type": "application/json" } }
@@ -216,7 +217,7 @@ export async function POST(req: NextRequest) {
         });
     } catch (error: unknown) {
         const errMsg = error instanceof Error ? error.message : "Unknown error";
-        console.error("[ai-chat] Error:", errMsg);
+        log.error("[ai-chat] Error:", errMsg);
         return new Response(
             JSON.stringify({ error: errMsg }),
             { status: 500, headers: { "Content-Type": "application/json" } }

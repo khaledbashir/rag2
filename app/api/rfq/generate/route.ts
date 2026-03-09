@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateRfq } from "@/services/rfq/rfqGenerator";
+import { log } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
     try {
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ rfq });
     } catch (error) {
-        console.error("[rfq/generate] POST error:", error);
+        log.error("[rfq/generate] POST error:", error);
         return NextResponse.json(
             { error: "Failed to generate RFQ" },
             { status: 500 }

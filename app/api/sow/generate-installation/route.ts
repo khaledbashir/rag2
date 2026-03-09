@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateInstallationSOW, type InstallSOWInput } from "@/services/sow/installationSOWGenerator";
+import { log } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("[sow/generate-installation] POST error:", error);
+    log.error("[sow/generate-installation] POST error:", error);
     return NextResponse.json(
       { error: "Failed to generate Installation SOW" },
       { status: 500 }

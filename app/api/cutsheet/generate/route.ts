@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { generateCutSheets, cutSheetToText, type CutSheetInput } from "@/services/cutsheet/cutSheetGenerator";
+import { log } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   try {
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
       textSheets,
     });
   } catch (err: any) {
-    console.error("[CUTSHEET GENERATE]", err);
+    log.error("[CUTSHEET GENERATE]", err);
     return NextResponse.json(
       { error: err.message || "Failed to generate cut sheet" },
       { status: 500 }

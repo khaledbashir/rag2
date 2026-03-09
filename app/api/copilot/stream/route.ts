@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ANYTHING_LLM_BASE_URL, ANYTHING_LLM_KEY } from "@/lib/variables";
+import { requireAuth } from "@/lib/apiAuth";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/copilot/stream
@@ -13,6 +15,8 @@ import { ANYTHING_LLM_BASE_URL, ANYTHING_LLM_KEY } from "@/lib/variables";
  */
 export async function POST(req: NextRequest) {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const { projectId, message, useAgent } = await req.json();
 
         if (!message || !projectId) {
@@ -57,7 +61,7 @@ export async function POST(req: NextRequest) {
             ? `${ANYTHING_LLM_BASE_URL}/workspace/${workspaceSlug}/thread/${threadSlug}/stream-chat`
             : `${ANYTHING_LLM_BASE_URL}/workspace/${workspaceSlug}/stream-chat`;
 
-        console.log(`[Copilot/Stream] Project ${projectId} → ${streamPath}`);
+        log.info(`[Copilot/Stream] Project ${projectId} → ${streamPath}`);
 
         // Call AnythingLLM stream-chat (60s timeout to prevent hanging)
         const controller = new AbortController();
@@ -80,7 +84,7 @@ export async function POST(req: NextRequest) {
         } catch (fetchErr: any) {
             clearTimeout(timeout);
             const isTimeout = fetchErr?.name === "AbortError";
-            console.error(`[Copilot/Stream] ${isTimeout ? "Timeout" : "Fetch error"}:`, fetchErr?.message);
+            log.error(`[Copilot/Stream] ${isTimeout ? "Timeout" : "Fetch error"}:`, fetchErr?.message);
             return new Response(
                 JSON.stringify({ error: isTimeout ? "AI took too long to respond. Try a simpler question." : "AI service unavailable" }),
                 { status: 504, headers: { "Content-Type": "application/json" } }
@@ -90,7 +94,7 @@ export async function POST(req: NextRequest) {
 
         if (!upstreamRes.ok) {
             const errorText = await upstreamRes.text();
-            console.error(`[Copilot/Stream] AnythingLLM error (${upstreamRes.status}):`, errorText);
+            log.error(`[Copilot/Stream] AnythingLLM error (${upstreamRes.status}):`, errorText);
             return new Response(
                 JSON.stringify({ error: "AI workspace error", details: errorText }),
                 { status: upstreamRes.status, headers: { "Content-Type": "application/json" } }
@@ -118,7 +122,7 @@ export async function POST(req: NextRequest) {
                     while (true) {
                         const { done, value } = await reader.read();
                         if (done) {
-                            console.log(`[Copilot/Stream] Stream ended. Total chunks forwarded: ${chunkCount}`);
+                            log.info(`[Copilot/Stream] Stream ended. Total chunks forwarded: ${chunkCount}`);
                             break;
                         }
 
@@ -127,7 +131,7 @@ export async function POST(req: NextRequest) {
 
                         // Log first chunk for debugging
                         if (chunkCount === 0) {
-                            console.log(`[Copilot/Stream] First raw chunk: ${rawText.slice(0, 200)}`);
+                            log.info(`[Copilot/Stream] First raw chunk: ${rawText.slice(0, 200)}`);
                         }
 
                         // Process complete lines from the buffer
@@ -155,13 +159,13 @@ export async function POST(req: NextRequest) {
                                 chunkCount++;
 
                                 if (chunk.close) {
-                                    console.log(`[Copilot/Stream] Close chunk received after ${chunkCount} chunks`);
+                                    log.info(`[Copilot/Stream] Close chunk received after ${chunkCount} chunks`);
                                     break;
                                 }
                             } catch {
                                 // Not valid JSON — could be SSE comment or partial data
                                 if (chunkCount === 0) {
-                                    console.log(`[Copilot/Stream] Non-JSON line: ${trimmed.slice(0, 100)}`);
+                                    log.info(`[Copilot/Stream] Non-JSON line: ${trimmed.slice(0, 100)}`);
                                 }
                             }
                         }
@@ -170,7 +174,7 @@ export async function POST(req: NextRequest) {
                     // If we got zero chunks, forward the actual error
                     if (chunkCount === 0) {
                         const remainder = buffer.slice(0, 500);
-                        console.error("[Copilot/Stream] No chunks parsed from upstream. Buffer remainder:", remainder);
+                        log.error("[Copilot/Stream] No chunks parsed from upstream. Buffer remainder:", remainder);
                         controller.enqueue(
                             encoder.encode(`data: ${JSON.stringify({
                                 type: "textResponseChunk",
@@ -182,7 +186,7 @@ export async function POST(req: NextRequest) {
                         );
                     }
                 } catch (err: any) {
-                    console.error("[Copilot/Stream] Stream error:", err);
+                    log.error("[Copilot/Stream] Stream error:", err);
                     controller.enqueue(
                         encoder.encode(`data: ${JSON.stringify({ type: "error", textResponse: "", error: `Stream error: ${err?.message || String(err)}`, close: true })}\n\n`)
                     );
@@ -201,7 +205,7 @@ export async function POST(req: NextRequest) {
             },
         });
     } catch (error: any) {
-        console.error("[Copilot/Stream] Error:", error);
+        log.error("[Copilot/Stream] Error:", error);
         return new Response(
             JSON.stringify({ error: error.message }),
             { status: 500, headers: { "Content-Type": "application/json" } }

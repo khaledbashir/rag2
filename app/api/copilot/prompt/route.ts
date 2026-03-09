@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ANYTHING_LLM_BASE_URL, ANYTHING_LLM_KEY } from "@/lib/variables";
 import { getPromptById, ANC_SYSTEM_PROMPT } from "@/lib/ai-prompts";
+import { requireAuth } from "@/lib/apiAuth";
+import { log } from "@/lib/logger";
 
 const DASHBOARD_WORKSPACE_SLUG = process.env.ANYTHING_LLM_WORKSPACE || "ancdashboard";
 
@@ -12,6 +14,8 @@ const DASHBOARD_WORKSPACE_SLUG = process.env.ANYTHING_LLM_WORKSPACE || "ancdashb
  */
 export async function POST(req: NextRequest) {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const { promptId, userInput, pipelineContext } = await req.json();
 
         if (!promptId) {
@@ -48,7 +52,7 @@ export async function POST(req: NextRequest) {
 
         const chatUrl = `${ANYTHING_LLM_BASE_URL}/workspace/${DASHBOARD_WORKSPACE_SLUG}/chat`;
 
-        console.log(`[Prompt API] Running "${prompt.id}" → workspace "${DASHBOARD_WORKSPACE_SLUG}"`);
+        log.info(`[Prompt API] Running "${prompt.id}" → workspace "${DASHBOARD_WORKSPACE_SLUG}"`);
 
         const response = await fetch(chatUrl, {
             method: "POST",
@@ -65,7 +69,7 @@ export async function POST(req: NextRequest) {
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error(`[Prompt API] AnythingLLM error (${response.status}):`, errorText);
+            log.error(`[Prompt API] AnythingLLM error (${response.status}):`, errorText);
             return NextResponse.json({
                 error: `AnythingLLM returned ${response.status}`,
                 response: `AI error: ${errorText}`,
@@ -82,7 +86,7 @@ export async function POST(req: NextRequest) {
             sources: data.sources || [],
         });
     } catch (error: any) {
-        console.error("[Prompt API] Error:", error);
+        log.error("[Prompt API] Error:", error);
         return NextResponse.json({
             error: error.message,
             response: `Prompt execution error: ${error.message}`,

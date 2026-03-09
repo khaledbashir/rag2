@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/performance/reports/generate
@@ -164,7 +165,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ report });
   } catch (error: any) {
-    console.error("[performance/reports/generate] Error:", error);
+    log.error("[performance/reports/generate] Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DrawingService } from '@/services/vision/drawing-service';
+import { log } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
     try {
@@ -19,13 +20,13 @@ export async function POST(req: NextRequest) {
         const service = new DrawingService();
         
         // Process
-        console.log("Processing image with Z AI...");
+        log.info("Processing image with Z AI...");
         const results = await service.processDrawingPage(base64Image);
 
         return NextResponse.json({ success: true, results });
 
     } catch (error: any) {
-        console.error("Vision API Error:", error);
+        log.error("Vision API Error:", error);
         return NextResponse.json(
             { error: error.message || "Internal Server Error" }, 
             { status: 500 }

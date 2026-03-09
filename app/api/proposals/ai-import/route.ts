@@ -13,6 +13,7 @@ import * as xlsx from "xlsx";
 import crypto from "node:crypto";
 import { PricingTable, PricingDocument, createTableId } from "@/types/pricing";
 import { ANYTHING_LLM_BASE_URL, ANYTHING_LLM_KEY } from "@/lib/variables";
+import { log } from "@/lib/logger";
 import { parseRespMatrixDetailed } from "@/services/pricing/respMatrixParser";
 
 const SYSTEM_PROMPT = `You are an ANC Proposal Engine data extractor. You receive raw spreadsheet data (tab-separated) from LED display projects. These projects can have 1 screen or 50+ screens. You MUST extract ALL of them.
@@ -175,7 +176,7 @@ export async function POST(req: NextRequest) {
       const rmResult = parseRespMatrixDetailed(workbook);
       if (rmResult.matrix?.categories?.length) {
         respMatrix = rmResult.matrix;
-        console.log(`[AI IMPORT] Resp Matrix: ${rmResult.matrix.categories.length} categories`);
+        log.info(`[AI IMPORT] Resp Matrix: ${rmResult.matrix.categories.length} categories`);
       }
     } catch {}
 
@@ -190,7 +191,7 @@ export async function POST(req: NextRequest) {
       })
       .join("\n\n");
 
-    console.log(`[AI IMPORT] Sending ${excelText.length} chars from ${sheetTexts.length} sheet(s) to AI: ${sheetTexts.map(s => `${s.name}(${s.text.split('\n').length} rows)`).join(', ')}`);
+    log.info(`[AI IMPORT] Sending ${excelText.length} chars from ${sheetTexts.length} sheet(s) to AI: ${sheetTexts.map(s => `${s.name}(${s.text.split('\n').length} rows)`).join(', ')}`);
 
     const aiResult = await callAI(excelText);
 
@@ -211,7 +212,7 @@ export async function POST(req: NextRequest) {
 
     const screens = buildScreens(verified.result);
 
-    console.log(`[AI IMPORT] Success: ${pricingDocument.tables.length} tables, ${screens.length} screens, $${Math.round(pricingDocument.documentTotal)} total, corrections=${verified.corrections}, confidence=${verified.confidence}%`);
+    log.info(`[AI IMPORT] Success: ${pricingDocument.tables.length} tables, ${screens.length} screens, $${Math.round(pricingDocument.documentTotal)} total, corrections=${verified.corrections}, confidence=${verified.confidence}%`);
 
     // ── Step 5: Return full proposal data ──
     const validation = {
@@ -261,7 +262,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(responseData);
   } catch (err: any) {
-    console.error("[AI IMPORT] Error:", err);
+    log.error("[AI IMPORT] Error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
@@ -277,7 +278,7 @@ async function callAI(excelText: string): Promise<any> {
       const result = await callGemini(excelText);
       if (result) return result;
     } catch (err: any) {
-      console.warn("[AI IMPORT] Gemini failed:", err.message);
+      log.warn("[AI IMPORT] Gemini failed:", err.message);
     }
   }
 
@@ -287,7 +288,7 @@ async function callAI(excelText: string): Promise<any> {
       const result = await callAnythingLLM(excelText);
       if (result) return result;
     } catch (err: any) {
-      console.warn("[AI IMPORT] AnythingLLM failed:", err.message);
+      log.warn("[AI IMPORT] AnythingLLM failed:", err.message);
     }
   }
 
@@ -325,9 +326,9 @@ async function callGemini(excelText: string): Promise<any> {
   const reply = candidate?.content?.parts?.[0]?.text || "";
   const finishReason = candidate?.finishReason || "unknown";
   const thoughtTokens = data.usageMetadata?.thoughtsTokenCount || 0;
-  console.log(`[AI IMPORT] Gemini: ${reply.length} chars, finish=${finishReason}, thinking=${thoughtTokens} tokens`);
+  log.info(`[AI IMPORT] Gemini: ${reply.length} chars, finish=${finishReason}, thinking=${thoughtTokens} tokens`);
   if (finishReason === "MAX_TOKENS") {
-    console.warn("[AI IMPORT] Gemini hit token limit — response truncated");
+    log.warn("[AI IMPORT] Gemini hit token limit — response truncated");
   }
   return extractJSON(reply);
 }
@@ -382,7 +383,7 @@ function extractJSON(text: string): any {
     } catch {}
   }
 
-  console.error("[AI IMPORT] Could not extract JSON from AI response:", cleaned.substring(0, 500));
+  log.error("[AI IMPORT] Could not extract JSON from AI response:", cleaned.substring(0, 500));
   return null;
 }
 

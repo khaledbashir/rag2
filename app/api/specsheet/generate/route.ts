@@ -7,6 +7,7 @@ import * as xlsx from "xlsx";
 import { parseFormSheet } from "@/services/specsheet/formSheetParser";
 import { renderSpecSheetHtml } from "@/services/specsheet/specSheetRenderer";
 import { renderPerformanceStandardsHtml, type SpecSheetProjectMeta } from "@/services/specsheet/specSheetFormRenderer";
+import { log } from "@/lib/logger";
 
 function getRequestOrigin(req: NextRequest): string {
     const xfProto = req.headers.get("x-forwarded-proto");
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
                     }
                 }
             } catch {
-                console.warn("[SPEC SHEET] Failed to parse overrides JSON");
+                log.warn("[SPEC SHEET] Failed to parse overrides JSON");
             }
         }
 
@@ -97,20 +98,20 @@ export async function POST(req: NextRequest) {
         const ENV = process.env.NODE_ENV;
 
         try {
-            console.log(`[SPEC SHEET] Attempting internal Browserless: ${internalUrl.slice(0, 50)}...`);
+            log.info(`[SPEC SHEET] Attempting internal Browserless: ${internalUrl.slice(0, 50)}...`);
             browser = await puppeteer.connect({ browserWSEndpoint: internalUrl });
-            console.log("[SPEC SHEET] Browserless connected via internal network!");
+            log.info("[SPEC SHEET] Browserless connected via internal network!");
         } catch (e) {
-            console.log(`[SPEC SHEET] Internal Browserless unavailable: ${e instanceof Error ? e.message : String(e)}`);
+            log.info(`[SPEC SHEET] Internal Browserless unavailable: ${e instanceof Error ? e.message : String(e)}`);
         }
 
         if (!browser && externalUrl) {
             try {
-                console.log(`[SPEC SHEET] Attempting external Browserless: ${externalUrl.slice(0, 50)}...`);
+                log.info(`[SPEC SHEET] Attempting external Browserless: ${externalUrl.slice(0, 50)}...`);
                 browser = await puppeteer.connect({ browserWSEndpoint: externalUrl });
-                console.log("[SPEC SHEET] Browserless connected via external URL!");
+                log.info("[SPEC SHEET] Browserless connected via external URL!");
             } catch (e) {
-                console.error(`[SPEC SHEET] External Browserless connect failed: ${e instanceof Error ? e.message : String(e)}`);
+                log.error(`[SPEC SHEET] External Browserless connect failed: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
 
@@ -176,7 +177,7 @@ export async function POST(req: NextRequest) {
         });
     } catch (error: any) {
         Sentry.captureException(error, { tags: { area: "specsheet-generation" } });
-        console.error("[SPEC SHEET] Generation error:", error);
+        log.error("[SPEC SHEET] Generation error:", error);
         return NextResponse.json({ error: "Failed to generate spec sheets", message: String(error?.message || error) }, { status: 500 });
     } finally {
         if (page) try { await page.close(); } catch {}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { isPlatformOwner } from "@/lib/platformOwner";
+import { log } from "@/lib/logger";
 
 /**
  * GET /api/admin/ops/pipeline
@@ -165,7 +166,7 @@ export async function GET(request: NextRequest) {
       })),
     });
   } catch (error) {
-    console.error("[GET /api/admin/ops/pipeline] Error:", error);
+    log.error("[GET /api/admin/ops/pipeline] Error:", error);
     return NextResponse.json({ error: "Failed to fetch pipeline data" }, { status: 500 });
   }
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { isPlatformOwner } from "@/lib/platformOwner";
+import { log } from "@/lib/logger";
 
 /**
  * GET /api/admin/ops/activity-feed
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ feed, nextCursor });
   } catch (error) {
-    console.error("[GET /api/admin/ops/activity-feed] Error:", error);
+    log.error("[GET /api/admin/ops/activity-feed] Error:", error);
     return NextResponse.json({ error: "Failed to fetch activity feed" }, { status: 500 });
   }
 }

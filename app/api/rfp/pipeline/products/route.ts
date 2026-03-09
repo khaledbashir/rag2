@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ProductMatcher } from "@/services/catalog/productMatcher";
+import { log } from "@/lib/logger";
 
 /**
  * GET /api/rfp/pipeline/products?environment=indoor|outdoor
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
       })),
     });
   } catch (err: any) {
-    console.error("[products] Error:", err);
+    log.error("[products] Error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

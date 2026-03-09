@@ -7,11 +7,15 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { requireAuth } from "@/lib/apiAuth";
+import { log } from "@/lib/logger";
 
 const prisma = new PrismaClient();
 
 export async function GET(request: NextRequest) {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const { searchParams } = new URL(request.url);
 
         // Filtering params
@@ -62,13 +66,15 @@ export async function GET(request: NextRequest) {
             manufacturers: manufacturers.map((m) => m.manufacturer),
         });
     } catch (error) {
-        console.error("[products] GET error:", error);
+        log.error("[products] GET error:", error);
         return NextResponse.json({ error: "Failed to fetch products" }, { status: 500 });
     }
 }
 
 export async function POST(request: NextRequest) {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const body = await request.json();
 
         // Required fields
@@ -115,7 +121,7 @@ export async function POST(request: NextRequest) {
         if (error?.code === "P2002") {
             return NextResponse.json({ error: "A product with this model number already exists" }, { status: 409 });
         }
-        console.error("[products] POST error:", error);
+        log.error("[products] POST error:", error);
         return NextResponse.json({ error: "Failed to create product" }, { status: 500 });
     }
 }

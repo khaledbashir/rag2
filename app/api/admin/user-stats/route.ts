@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import type { UserRole } from "@/lib/rbac";
+import { log } from "@/lib/logger";
 
 /**
  * GET /api/admin/user-stats
@@ -118,7 +119,7 @@ export async function GET() {
 
     return NextResponse.json({ users: userStats, totals });
   } catch (error) {
-    console.error("[GET /api/admin/user-stats] Error:", error);
+    log.error("[GET /api/admin/user-stats] Error:", error);
     return NextResponse.json({ error: "Failed to fetch user stats" }, { status: 500 });
   }
 }

@@ -34,6 +34,7 @@ import type {
   ExtractedLEDSpec,
   PageCategory,
 } from "@/services/rfp/unified/types";
+import { log } from "@/lib/logger";
 
 export const maxDuration = 600;
 export const dynamic = "force-dynamic";
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest) {
     try {
       await execFileAsync("pdfunite", [...inputPaths, mergedPath], { timeout: 120_000 });
     } catch (err) {
-      console.error("[/api/rfp/analyze] pdfunite merge failed:", err);
+      log.error("[/api/rfp/analyze] pdfunite merge failed:", err);
       return new Response(JSON.stringify({ error: "Failed to merge uploaded PDFs" }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
@@ -215,7 +216,7 @@ export async function POST(request: NextRequest) {
           }
         } catch (bulkErr: any) {
           // Fallback: per-page extraction if bulk fails (e.g., corrupt PDF)
-          console.warn("[Pipeline] Bulk pdftotext failed, falling back to per-page:", bulkErr.message);
+          log.warn("[Pipeline] Bulk pdftotext failed, falling back to per-page:", bulkErr.message);
           for (let p = 1; p <= totalPages; p++) {
             try {
               const { stdout: pageText } = await execFileAsync(
@@ -280,9 +281,9 @@ export async function POST(request: NextRequest) {
             const match = line.trim().match(/^\s*(\d+)/);
             if (match) pagesWithImages.add(parseInt(match[1], 10));
           }
-          console.log(`[Pipeline] pdfimages found images on ${pagesWithImages.size} pages`);
+          log.info(`[Pipeline] pdfimages found images on ${pagesWithImages.size} pages`);
         } catch (err: any) {
-          console.warn("[Pipeline] pdfimages failed (non-fatal):", err.message);
+          log.warn("[Pipeline] pdfimages failed (non-fatal):", err.message);
         }
 
         // 3b: Drawing sheet regex — matches AV2.04, TL2.04, E5.01, etc.
@@ -473,7 +474,7 @@ export async function POST(request: NextRequest) {
                   classifiedBy: "mistral-ocr" as const,
                 });
               } catch (err: any) {
-                console.error(`[Pipeline] Drawing page ${rp.pageNumber} vision failed:`, err.message);
+                log.error(`[Pipeline] Drawing page ${rp.pageNumber} vision failed:`, err.message);
                 // Fallback: use whatever pdftotext got (probably sparse but better than nothing)
                 analyzedPages.push({
                   index: textPages.length + i,
@@ -612,7 +613,7 @@ export async function POST(request: NextRequest) {
 
           // PDF is already in persistent storage (UPLOAD_DIR = /rfp-data/rfp-uploads)
           persistentPdfPath = filePath;
-          console.log(`[Pipeline] PDF persisted at ${persistentPdfPath}`);
+          log.info(`[Pipeline] PDF persisted at ${persistentPdfPath}`);
 
           const saved = await prisma.rfpAnalysis.create({
             data: {
@@ -641,7 +642,7 @@ export async function POST(request: NextRequest) {
           });
           analysisId = saved.id;
         } catch (dbErr: any) {
-          console.error("[Pipeline] Failed to save to DB:", dbErr.message);
+          log.error("[Pipeline] Failed to save to DB:", dbErr.message);
         }
 
         // =============================================================
@@ -674,7 +675,7 @@ export async function POST(request: NextRequest) {
               });
             }
           } catch (wsErr: any) {
-            console.error("[Pipeline] Workspace provisioning failed:", wsErr.message);
+            log.error("[Pipeline] Workspace provisioning failed:", wsErr.message);
           }
         }
 

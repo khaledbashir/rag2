@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 // GET /api/venue-visualizer/venues — list all venues with photo counts
 export async function GET() {
@@ -19,7 +20,7 @@ export async function GET() {
     });
     return NextResponse.json({ venues });
   } catch (err) {
-    console.error("[venue-visualizer] GET venues error:", err);
+    log.error("[venue-visualizer] GET venues error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ venue });
   } catch (err) {
-    console.error("[venue-visualizer] POST venue error:", err);
+    log.error("[venue-visualizer] POST venue error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

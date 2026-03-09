@@ -10,6 +10,7 @@ import { DrawingService } from "@/services/vision/drawing-service";
 import { analyzeTTEContent, TonnageResult } from "@/services/ingest/tonnage-extractor";
 import { parseStandardExcel, generateANCProposal, isStandardFormat } from "@/services/pricing/convert-standard-excel";
 import { extractJson } from "@/lib/json-utils";
+import { log } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
   try {
@@ -115,13 +116,13 @@ export async function POST(req: NextRequest) {
           } else {
             const text = await res.text();
             const msg = `AnythingLLM workspace creation failed (${res.status}): ${text.slice(0, 200)}`;
-            console.warn(`[RFP Upload] ${msg}`);
+            log.warn(`[RFP Upload] ${msg}`);
             warnings.push(msg);
           }
         }
       } catch (e) {
         const msg = `Failed to resolve per-project workspace: ${e instanceof Error ? e.message : String(e)}`;
-        console.warn(`[RFP Upload] ${msg}`);
+        log.warn(`[RFP Upload] ${msg}`);
         warnings.push(msg);
       }
     }
@@ -136,7 +137,7 @@ export async function POST(req: NextRequest) {
 
     // 0. Handle Excel files (Natalia's proposals)
     if (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
-      console.log(`[RFP Upload] Excel file detected: ${file.name}`);
+      log.info(`[RFP Upload] Excel file detected: ${file.name}`);
       try {
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
@@ -147,11 +148,11 @@ export async function POST(req: NextRequest) {
         
         // Check if standard format
         if (isStandardFormat(workbook)) {
-          console.log('[RFP Upload] Standard Excel format detected, parsing...');
+          log.info('[RFP Upload] Standard Excel format detected, parsing...');
           const standardProposal = parseStandardExcel(buffer);
           excelExtractedData = generateANCProposal(standardProposal);
           
-          console.log(`[RFP Upload] Excel parsed: ${excelExtractedData.screens.length} screens, $${excelExtractedData.pricing.grandTotal} total`);
+          log.info(`[RFP Upload] Excel parsed: ${excelExtractedData.screens.length} screens, $${excelExtractedData.pricing.grandTotal} total`);
           
           // Create a text summary for embedding
           const summaryText = `
@@ -170,12 +171,12 @@ ${excelExtractedData.lineItems.map((li: any) => `- ${li.description}: $${li.sell
           fileToEmbed = Buffer.from(summaryText);
           filenameToEmbed = file.name.replace(/\.xlsx?$/i, '_extracted.txt');
         } else {
-          console.log('[RFP Upload] Non-standard Excel format, skipping auto-parse');
+          log.info('[RFP Upload] Non-standard Excel format, skipping auto-parse');
           // Fall through to normal upload
         }
       } catch (excelErr) {
         const msg = `Excel parsing failed: ${excelErr instanceof Error ? excelErr.message : String(excelErr)}`;
-        console.warn(`[RFP Upload] ${msg}`);
+        log.warn(`[RFP Upload] ${msg}`);
         warnings.push(msg);
         // Continue with normal upload
       }
@@ -183,7 +184,7 @@ ${excelExtractedData.lineItems.map((li: any) => `- ${li.description}: $${li.sell
 
     // 0. Pre-process if PDF
     if (file.name.toLowerCase().endsWith(".pdf")) {
-      console.log(`[RFP Upload] Smart Filtering PDF: ${file.name}`);
+      log.info(`[RFP Upload] Smart Filtering PDF: ${file.name}`);
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
@@ -194,19 +195,19 @@ ${excelExtractedData.lineItems.map((li: any) => `- ${li.description}: $${li.sell
         
         let filterResult;
         if (shouldUseStreaming(totalPages)) {
-          console.log(`[RFP Upload] Using STREAMING filter for ${totalPages} pages`);
+          log.info(`[RFP Upload] Using STREAMING filter for ${totalPages} pages`);
           filterResult = await smartFilterStreaming(buffer, totalPages, {
             chunkSize: 300,
             topPerChunk: 50,
             finalMaxPages: 150
           });
         } else {
-          console.log(`[RFP Upload] Using STANDARD filter for ${totalPages} pages`);
+          log.info(`[RFP Upload] Using STANDARD filter for ${totalPages} pages`);
           filterResult = await smartFilterPdf(buffer);
         }
         
         fullTextForTTE = filterResult.fullText || ""; // Save for TTE extraction
-        console.log(`[RFP Upload] Filtered ${filterResult.totalPages} pages down to ${filterResult.retainedPages} signal pages.`);
+        log.info(`[RFP Upload] Filtered ${filterResult.totalPages} pages down to ${filterResult.retainedPages} signal pages.`);
 
         // --- AUTO-VISION: AV/A sheets, Elevation, Structural Attachment (8–10 pages) ---
         const MAX_DRAWING_PAGES_TO_SCAN = 10;
@@ -215,13 +216,13 @@ ${excelExtractedData.lineItems.map((li: any) => `- ${li.description}: $${li.sell
 
         if (filterResult.drawingCandidates.length > 0) {
           if (visionConfigured) {
-            console.log(`[RFP Upload] Found ${filterResult.drawingCandidates.length} potential drawings. Scanning up to ${MAX_DRAWING_PAGES_TO_SCAN}...`);
+            log.info(`[RFP Upload] Found ${filterResult.drawingCandidates.length} potential drawings. Scanning up to ${MAX_DRAWING_PAGES_TO_SCAN}...`);
             const drawingService = new DrawingService();
             const pagesToScan = filterResult.drawingCandidates.slice(0, MAX_DRAWING_PAGES_TO_SCAN);
             let visionContext = "\n\n=== VISION (Drawings — searchable) ===\n";
             for (const pageNum of pagesToScan) {
               try {
-                console.log(`[RFP Upload] Vision scanning page ${pageNum}...`);
+                log.info(`[RFP Upload] Vision scanning page ${pageNum}...`);
                 const screenshot = await screenshotPdfPage(buffer, pageNum);
                 if (screenshot) {
                   const base64 = `data:image/png;base64,${screenshot.toString('base64')}`;
@@ -233,14 +234,14 @@ ${excelExtractedData.lineItems.map((li: any) => `- ${li.description}: $${li.sell
                   }
                 }
               } catch (vErr) {
-                console.error(`[RFP Upload] Vision failed for page ${pageNum}`, vErr);
+                log.error(`[RFP Upload] Vision failed for page ${pageNum}`, vErr);
               }
             }
             filterResult.filteredText += visionContext;
-            console.log(`[RFP Upload] Added vision descriptions to embedding (${pagesToScan.length} pages).`);
+            log.info(`[RFP Upload] Added vision descriptions to embedding (${pagesToScan.length} pages).`);
           } else {
             visionDisabled = true;
-            console.log(`[RFP Upload] Vision skipped (Z_AI not configured). Drawing candidates: ${filterResult.drawingCandidates.length}`);
+            log.info(`[RFP Upload] Vision skipped (Z_AI not configured). Drawing candidates: ${filterResult.drawingCandidates.length}`);
           }
         }
 
@@ -259,11 +260,11 @@ ${excelExtractedData.lineItems.map((li: any) => `- ${li.description}: $${li.sell
         const originalUpload = await uploadDocument(file, file.name, { folderName: "archive" });
         if (originalUpload.success && originalUpload.data?.documents?.[0]) {
           originalDocPath = originalUpload.data.documents[0].location;
-          console.log(`[RFP Upload] Original archived at ${originalDocPath}`);
+          log.info(`[RFP Upload] Original archived at ${originalDocPath}`);
         }
 
       } catch (e) {
-        console.error("[RFP Upload] Smart Filter failed, falling back to full upload", e);
+        log.error("[RFP Upload] Smart Filter failed, falling back to full upload", e);
         // Fallback: Embed the original file
         fileToEmbed = file;
         filenameToEmbed = file.name;
@@ -279,7 +280,7 @@ ${excelExtractedData.lineItems.map((li: any) => `- ${li.description}: $${li.sell
       targetWorkspaces.push(masterWorkspace);
     }
 
-    console.log(`[RFP Upload] Uploading and syncing to: ${targetWorkspaces.join(", ")}`);
+    log.info(`[RFP Upload] Uploading and syncing to: ${targetWorkspaces.join(", ")}`);
 
     // addToWorkspaces handles multi-workspace embedding automatically
     const uploadRes = await uploadDocument(fileToEmbed, filenameToEmbed, {
@@ -287,12 +288,12 @@ ${excelExtractedData.lineItems.map((li: any) => `- ${li.description}: $${li.sell
     });
 
     if (!uploadRes.success || !uploadRes.data?.documents?.[0]) {
-      console.error("[RFP Upload] Upload failed", uploadRes);
+      log.error("[RFP Upload] Upload failed", uploadRes);
       return NextResponse.json({ ok: false, error: "Failed to upload to storage" }, { status: 500 });
     }
 
     const docPath = uploadRes.data.documents[0].location;
-    console.log(`[RFP Upload] File uploaded to ${docPath}`);
+    log.info(`[RFP Upload] File uploaded to ${docPath}`);
 
     // 2. Persist to Database (Vault)
     // We prefer to link to the ORIGINAL PDF if available, otherwise the uploaded file
@@ -307,9 +308,9 @@ ${excelExtractedData.lineItems.map((li: any) => `- ${li.description}: $${li.sell
             proposalId: proposalId
           }
         });
-        console.log(`[RFP Vault] Saved document record for proposal ${proposalId}`);
+        log.info(`[RFP Vault] Saved document record for proposal ${proposalId}`);
       } catch (e) {
-        console.error("[RFP Vault] Failed to save DB record:", e);
+        log.error("[RFP Vault] Failed to save DB record:", e);
       }
     }
 
@@ -317,20 +318,20 @@ ${excelExtractedData.lineItems.map((li: any) => `- ${li.description}: $${li.sell
     // We force the project workspace to "focus" on this doc by pinning it.
     // We do NOT pin it in the master vault (RAG only).
     if (workspaceSlug) {
-      console.log(`[RFP Upload] Pinning document in project workspace: ${workspaceSlug}`);
+      log.info(`[RFP Upload] Pinning document in project workspace: ${workspaceSlug}`);
       const { updatePin } = await import("@/lib/anything-llm");
       try {
         await updatePin(workspaceSlug, docPath, true);
       } catch (pinErr) {
         const pinMsg = `Document pinning failed for ${workspaceSlug}: ${pinErr instanceof Error ? pinErr.message : String(pinErr)}`;
-        console.warn(`[RFP Upload] ${pinMsg}`);
+        log.warn(`[RFP Upload] ${pinMsg}`);
         warnings.push(pinMsg);
       }
     }
 
     // 4. Extract Data (AI Analysis) — Boss-level: Division 11 priority, citations, 20-field targets
     // Running against FILTERED signal-only context for speed and accuracy
-    console.log(`[RFP Upload] Analyzing document for extraction (Division 11 + citations)...`);
+    log.info(`[RFP Upload] Analyzing document for extraction (Division 11 + citations)...`);
     const extractionPrompt = `
 You are the ANC Digital Signage Expert AI. Analyze the RFP content and extract Equipment (EQ) and Quantities. Follow the 17/20 Rule: extract what you can; for the rest return null and the system will Gap Fill.
 
@@ -380,7 +381,7 @@ Include extractionSummary with totalFields, extractedFields, completionRate, hig
     let extractedData = null;
     try {
       const aiResponse = await queryVault(workspaceSlug, extractionPrompt, "chat");
-      console.log(`[RFP Upload] AI Response Length: ${aiResponse.length}`);
+      log.info(`[RFP Upload] AI Response Length: ${aiResponse.length}`);
 
       const jsonText = extractJson(aiResponse);
       if (jsonText) {
@@ -388,7 +389,7 @@ Include extractionSummary with totalFields, extractedFields, completionRate, hig
           extractedData = JSON.parse(jsonText);
         } catch (parseErr) {
           const parseMsg = `AI extraction JSON parse failed: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`;
-          console.warn(`[RFP Upload] ${parseMsg}`);
+          log.warn(`[RFP Upload] ${parseMsg}`);
           warnings.push(parseMsg);
           // Try to repair common JSON issues if needed, or just proceed without data
           // Attempt simple repair for truncated JSON
@@ -398,7 +399,7 @@ Include extractionSummary with totalFields, extractedFields, completionRate, hig
         }
       }
     } catch (e) {
-      console.error("[RFP Upload] AI Extraction failed", e);
+      log.error("[RFP Upload] AI Extraction failed", e);
     }
 
     // 5. TTE Tonnage Extraction (separate from AI extraction for reliability)
@@ -408,7 +409,7 @@ Include extractionSummary with totalFields, extractedFields, completionRate, hig
       tonnageData = analyzeTTEContent(fullTextForTTE);
       
       if (tonnageData.hasTTE) {
-        console.log(`[RFP Upload] TTE Report detected: ${tonnageData.totalTons} tons, $${tonnageData.steelCost} steel cost`);
+        log.info(`[RFP Upload] TTE Report detected: ${tonnageData.totalTons} tons, $${tonnageData.steelCost} steel cost`);
         
         // Merge tonnage into extractedData
         if (extractedData) {
@@ -431,11 +432,11 @@ Include extractionSummary with totalFields, extractedFields, completionRate, hig
           };
         }
       } else {
-        console.log("[RFP Upload] No TTE report detected in upload");
+        log.info("[RFP Upload] No TTE report detected in upload");
       }
     } catch (tteErr) {
       const tteMsg = `TTE extraction failed: ${tteErr instanceof Error ? tteErr.message : String(tteErr)}`;
-      console.warn(`[RFP Upload] ${tteMsg}`);
+      log.warn(`[RFP Upload] ${tteMsg}`);
       warnings.push(tteMsg);
     }
 
@@ -443,7 +444,7 @@ Include extractionSummary with totalFields, extractedFields, completionRate, hig
     const finalExtractedData = excelExtractedData || extractedData;
     
     if (excelExtractedData) {
-      console.log('[RFP Upload] Using Excel-extracted data (not AI)');
+      log.info('[RFP Upload] Using Excel-extracted data (not AI)');
     }
 
     return NextResponse.json({
@@ -464,7 +465,7 @@ Include extractionSummary with totalFields, extractedFields, completionRate, hig
     });
 
   } catch (error: any) {
-    console.error("[RFP Upload] Critical error:", error);
+    log.error("[RFP Upload] Critical error:", error);
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 }

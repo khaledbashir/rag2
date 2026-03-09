@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/mcp
@@ -153,7 +154,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(jsonrpcError(id, -32601, `Method not found: ${method}`));
     }
   } catch (error) {
-    console.error("[MCP] Error:", error);
+    log.error("[MCP] Error:", error);
     return NextResponse.json(
       jsonrpcError(null, -32000, error instanceof Error ? error.message : "Internal error"),
       { status: 500 }

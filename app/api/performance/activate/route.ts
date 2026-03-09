@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/performance/activate
@@ -142,7 +143,7 @@ export async function POST(req: Request) {
       message: `Activated ${venue.name} with ${installedScreens.length} screens for performance tracking.`,
     });
   } catch (error: any) {
-    console.error("[performance/activate] Error:", error);
+    log.error("[performance/activate] Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

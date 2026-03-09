@@ -15,6 +15,7 @@ import type {
   ExtractedProjectInfo,
   ExtractedRequirement,
 } from "@/services/rfp/unified/types";
+import { log } from "@/lib/logger";
 
 const INTERNAL_ALM_URL = "http://basheer_anything-llm:3001/api/v1";
 const PAGES_PER_DOC = 25;
@@ -171,7 +172,7 @@ export async function POST(request: NextRequest) {
       categories: categoryBreakdown,
     });
   } catch (err: any) {
-    console.error("[re-embed] Error:", err);
+    log.error("[re-embed] Error:", err);
     return NextResponse.json({ error: err.message || "Re-embed failed" }, { status: 500 });
   }
 }

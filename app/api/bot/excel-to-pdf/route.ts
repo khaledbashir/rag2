@@ -6,6 +6,7 @@ import { mapDbProposalToFormSchema } from "@/lib/proposals/mapDbProposalToForm";
 import { generateProposalPdfServiceV2 } from "@/services/proposal/server/generateProposalPdfServiceV2";
 import * as xlsx from "xlsx";
 import crypto from "node:crypto";
+import { log } from "@/lib/logger";
 
 function safeFilenamePart(value: string): string {
     return value
@@ -150,7 +151,7 @@ export async function POST(req: NextRequest) {
             },
         });
 
-        console.log(`[BOT] Created proposal ${proposal.id} for "${clientName}" — ${pricingDocument.tables.length} tables, $${grandTotal.toLocaleString()}`);
+        log.info(`[BOT] Created proposal ${proposal.id} for "${clientName}" — ${pricingDocument.tables.length} tables, $${grandTotal.toLocaleString()}`);
 
         if (returnFormat === "url") {
             const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://basheer-natalia.prd42b.easypanel.host";
@@ -223,7 +224,7 @@ export async function POST(req: NextRequest) {
         });
 
     } catch (error: any) {
-        console.error("[BOT] excel-to-pdf error:", error);
+        log.error("[BOT] excel-to-pdf error:", error);
         return NextResponse.json({
             error: "Failed to process Excel file",
             details: error?.message || String(error),

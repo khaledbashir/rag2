@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import * as XLSX from "xlsx";
 import { Builder as XMLBuilder } from "xml2js";
 import { logActivity } from "@/services/proposal/server/activityLogService";
+import { log } from "@/lib/logger";
 
 // REQ-125: Sanitization Denylist - fields that must NEVER appear in client exports
 const SANITIZATION_DENYLIST = [
@@ -93,7 +94,7 @@ export async function POST(req: NextRequest) {
         `Exported proposal as ${format}`,
         null,
         { format, isInternal: isInternalExport },
-      ).catch((err) => console.error("[Export] Activity log failed:", err));
+      ).catch((err) => log.error("[Export] Activity log failed:", err));
     }
 
     // REQ-125: Sanitize data unless explicitly marked as internal export
@@ -171,7 +172,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ error: "Unsupported format" }, { status: 400 });
   } catch (err) {
-    console.error("Export error:", err);
+    log.error("Export error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

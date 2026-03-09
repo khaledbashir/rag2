@@ -3,6 +3,7 @@ import ExcelJS from "exceljs";
 import { randomUUID } from "crypto";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/agent-skill/generate-excel
@@ -406,7 +407,7 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://basheer-therag2.prd42b.easypanel.host";
     const downloadUrl = `${baseUrl}/api/agent-skill/download-excel?file=${encodeURIComponent(filename)}`;
 
-    console.log(`[AGENT-SKILL] Generated Excel: ${filename} for "${projectName}"`);
+    log.info(`[AGENT-SKILL] Generated Excel: ${filename} for "${projectName}"`);
 
     return NextResponse.json(
       {
@@ -425,7 +426,7 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    console.error("[AGENT-SKILL] Generate Excel failed:", error);
+    log.error("[AGENT-SKILL] Generate Excel failed:", error);
     return NextResponse.json(
       {
         error: "Failed to generate Excel",

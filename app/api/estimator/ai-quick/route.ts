@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { queryVault } from "@/lib/anything-llm";
+import { log } from "@/lib/logger";
 
 const WORKSPACE = "anc-estimator";
 
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
         const response = await queryVault(WORKSPACE, description.trim(), "chat");
 
         if (!response || response.startsWith("Error")) {
-            console.error("[ai-quick] AnythingLLM error:", response);
+            log.error("[ai-quick] AnythingLLM error:", response);
             return NextResponse.json(
                 { error: "AI service unavailable. Please try again." },
                 { status: 502 }
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
 
         return parseAndRespond(response);
     } catch (error) {
-        console.error("[ai-quick] Error:", error);
+        log.error("[ai-quick] Error:", error);
         return NextResponse.json(
             { error: "Failed to process description" },
             { status: 500 }
@@ -58,7 +59,7 @@ function parseAndRespond(rawResponse: string): NextResponse {
         // Extract JSON object from response
         const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
-            console.error("[ai-quick] No JSON found in response:", rawResponse.slice(0, 500));
+            log.error("[ai-quick] No JSON found in response:", rawResponse.slice(0, 500));
             return NextResponse.json(
                 { error: "AI couldn't extract project data. Try being more specific." },
                 { status: 422 }
@@ -105,7 +106,7 @@ function parseAndRespond(rawResponse: string): NextResponse {
             fieldsExtracted: Object.keys(answers).length + displays.length,
         });
     } catch (parseError) {
-        console.error("[ai-quick] JSON parse error:", parseError, "Raw:", rawResponse.slice(0, 500));
+        log.error("[ai-quick] JSON parse error:", parseError, "Raw:", rawResponse.slice(0, 500));
         return NextResponse.json(
             { error: "AI returned invalid data. Try rephrasing your description." },
             { status: 422 }

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getFullRateCard } from "@/services/rfp/rateCardLoader";
+import { requireAuth } from "@/lib/apiAuth";
+import { log } from "@/lib/logger";
 
 /**
  * GET /api/estimator/rates
@@ -8,10 +10,12 @@ import { getFullRateCard } from "@/services/rfp/rateCardLoader";
  */
 export async function GET() {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const rates = await getFullRateCard();
         return NextResponse.json({ rates });
     } catch (error) {
-        console.error("GET /api/estimator/rates error:", error);
+        log.error("GET /api/estimator/rates error:", error);
         return NextResponse.json(
             { error: "Failed to load rate card" },
             { status: 500 }

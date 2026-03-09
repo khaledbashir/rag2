@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateRateCardExcel } from "@/services/rfp/pipeline/generateRateCardExcel";
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "@/services/rfp/unified/types";
+import { log } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   try {
@@ -80,7 +81,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (err: any) {
-    console.error("[rate-card-excel] Error:", err);
+    log.error("[rate-card-excel] Error:", err);
     return NextResponse.json({ error: err.message || "Failed to generate rate card" }, { status: 500 });
   }
 }

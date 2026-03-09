@@ -20,6 +20,7 @@ import { extractSinglePage } from "@/services/rfp/unified/mistralOcrClient";
 import { convertPageToImage } from "@/services/rfp/unified/pdfToImages";
 import { prisma } from "@/lib/prisma";
 import { ANYTHING_LLM_BASE_URL, ANYTHING_LLM_KEY } from "@/lib/variables";
+import { log } from "@/lib/logger";
 
 const execFileAsync = promisify(execFile);
 
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
           const ocrResult = await extractSinglePage(imagePath, p);
           pages.push({ pageNumber: p, markdown: ocrResult.markdown, tables: ocrResult.tables });
         } catch (err: any) {
-          console.error(`[Drawings] Page ${p} OCR failed:`, err.message);
+          log.error(`[Drawings] Page ${p} OCR failed:`, err.message);
         }
       }
     }
@@ -129,7 +130,7 @@ export async function POST(request: NextRequest) {
           }
         }
       } catch (err: any) {
-        console.error("[Drawings] Workspace embedding failed:", err.message);
+        log.error("[Drawings] Workspace embedding failed:", err.message);
       }
     }
 
@@ -146,7 +147,7 @@ export async function POST(request: NextRequest) {
       addedToWorkspace: !!analysis.aiWorkspaceSlug,
     });
   } catch (err: any) {
-    console.error("[Drawings] Error:", err);
+    log.error("[Drawings] Error:", err);
     if (tempDir) try { await rm(tempDir, { recursive: true, force: true }); } catch {}
     return NextResponse.json({ error: err.message || "Drawing upload failed" }, { status: 500 });
   }

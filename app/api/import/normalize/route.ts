@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { normalizeExcel } from "@/services/import/excelNormalizer";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/import/normalize
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(result);
     } catch (err) {
         Sentry.captureException(err, { tags: { area: "excelNormalizer" } });
-        console.error("[NORMALIZE] Error:", err);
+        log.error("[NORMALIZE] Error:", err);
         return NextResponse.json(
             { error: String(err) },
             { status: 500 },

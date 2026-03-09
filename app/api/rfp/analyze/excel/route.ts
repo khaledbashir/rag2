@@ -14,6 +14,7 @@ import ExcelJS from "exceljs";
 import * as xlsx from "xlsx";
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "@/services/rfp/unified/types";
 import { parsePricingTablesWithValidation } from "@/services/pricing/pricingTableParser";
+import { log } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
       const pricingResult = parsePricingTablesWithValidation(xlsxWorkbook, file.name, { strict: false });
       pricingDocument = pricingResult.document;
       if (pricingDocument?.tables?.length > 0) {
-        console.log(`[analyze-excel] Found ${pricingDocument.tables.length} pricing tables, document total: ${pricingDocument.documentTotal}`);
+        log.info(`[analyze-excel] Found ${pricingDocument.tables.length} pricing tables, document total: ${pricingDocument.documentTotal}`);
         // Extract per-display pricing from tables
         for (const table of pricingDocument.tables) {
           for (const item of (table.items || [])) {
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
         }
       }
     } catch (pricingErr) {
-      console.warn("[analyze-excel] Pricing table parse failed:", pricingErr);
+      log.warn("[analyze-excel] Pricing table parse failed:", pricingErr);
     }
 
     // Extract project info from Project Info sheet if available
@@ -162,12 +163,12 @@ export async function POST(request: NextRequest) {
       mirrorModePricing,
     };
 
-    console.log(`[analyze-excel] Parsed ${screens.length} displays from ${file.name} in ${Date.now() - startTime}ms`);
+    log.info(`[analyze-excel] Parsed ${screens.length} displays from ${file.name} in ${Date.now() - startTime}ms`);
 
     return NextResponse.json({ result });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to analyze Excel";
-    console.error("[analyze-excel] Error:", err);
+    log.error("[analyze-excel] Error:", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

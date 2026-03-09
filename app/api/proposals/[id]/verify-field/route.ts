@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 export async function POST(
     req: NextRequest,
@@ -107,7 +108,7 @@ export async function POST(
             },
         });
     } catch (error: any) {
-        console.error("[Verify Field] Error:", error);
+        log.error("[Verify Field] Error:", error);
         return NextResponse.json(
             { error: error?.message || "Failed to verify field" },
             { status: 500 }

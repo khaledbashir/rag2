@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 const SEED_DATA = [
   {
@@ -119,7 +120,7 @@ export async function POST() {
       hotspotsCreated,
     });
   } catch (err) {
-    console.error("[venue-visualizer] Seed error:", err);
+    log.error("[venue-visualizer] Seed error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

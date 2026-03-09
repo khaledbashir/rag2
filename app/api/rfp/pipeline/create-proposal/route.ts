@@ -14,6 +14,7 @@ import { calculateProposalAudit, ScreenInput } from "@/lib/estimator";
 import { findClientLogo } from "@/lib/brand-discovery";
 import { provisionProjectWorkspace } from "@/lib/anything-llm";
 import { logActivity } from "@/services/proposal/server/activityLogService";
+import { log } from "@/lib/logger";
 
 export const maxDuration = 60;
 
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[create-proposal] Processing ${screens.length} screens from analysis ${body.analysisId}`);
+    log.info(`[create-proposal] Processing ${screens.length} screens from analysis ${body.analysisId}`);
 
     // 2. Transform ExtractedLEDSpec[] → ScreenInput[]
     const screenInputs: ScreenInput[] = screens.map((spec: any) => ({
@@ -70,18 +71,18 @@ export async function POST(request: NextRequest) {
     }));
 
     // 3. Run cost estimator
-    console.log("[create-proposal] Running cost estimator...");
+    log.info("[create-proposal] Running cost estimator...");
     let audit;
     try {
       audit = calculateProposalAudit(screenInputs);
     } catch (auditErr: any) {
-      console.error("[create-proposal] Estimator failed:", auditErr);
+      log.error("[create-proposal] Estimator failed:", auditErr);
       return NextResponse.json(
         { error: `Cost estimator failed: ${auditErr.message}` },
         { status: 500 },
       );
     }
-    console.log(`[create-proposal] Estimator produced ${audit.internalAudit.perScreen.length} screen audits`);
+    log.info(`[create-proposal] Estimator produced ${audit.internalAudit.perScreen.length} screen audits`);
 
     // 4. Determine project metadata
     const clientName = project.clientName || project.client_name || analysis.clientName || "New Client";
@@ -97,7 +98,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 6. Create workspace
-    console.log("[create-proposal] Creating workspace...");
+    log.info("[create-proposal] Creating workspace...");
     const workspace = await prisma.workspace.create({
       data: {
         name: projectName,
@@ -170,7 +171,7 @@ export async function POST(request: NextRequest) {
     };
 
     // 8. Create proposal (without screens first — add them after)
-    console.log("[create-proposal] Creating proposal...");
+    log.info("[create-proposal] Creating proposal...");
     const proposal = await prisma.proposal.create({
       data: {
         workspaceId: workspace.id,
@@ -191,7 +192,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 9. Create screens with line items in batches
-    console.log(`[create-proposal] Creating ${audit.internalAudit.perScreen.length} screens...`);
+    log.info(`[create-proposal] Creating ${audit.internalAudit.perScreen.length} screens...`);
     for (let idx = 0; idx < audit.internalAudit.perScreen.length; idx++) {
       const screenAudit = audit.internalAudit.perScreen[idx];
       const input = screenInputs[idx];
@@ -233,7 +234,7 @@ export async function POST(request: NextRequest) {
           },
         });
       } catch (screenErr: any) {
-        console.error(`[create-proposal] Screen ${idx + 1} (${screenAudit.name}) failed:`, screenErr.message);
+        log.error(`[create-proposal] Screen ${idx + 1} (${screenAudit.name}) failed:`, screenErr.message);
         // Continue — don't let one bad screen kill the whole proposal
       }
     }
@@ -257,10 +258,10 @@ export async function POST(request: NextRequest) {
             data: { aiWorkspaceSlug: slug },
           });
         })
-        .catch((e) => console.error("[create-proposal] AI provisioning failed:", e));
+        .catch((e) => log.error("[create-proposal] AI provisioning failed:", e));
     }
 
-    console.log(`[create-proposal] Done — proposal ${proposal.id} with ${screens.length} screens`);
+    log.info(`[create-proposal] Done — proposal ${proposal.id} with ${screens.length} screens`);
 
     return NextResponse.json(
       {
@@ -272,7 +273,7 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     );
   } catch (error: any) {
-    console.error("[create-proposal] Error:", error);
+    log.error("[create-proposal] Error:", error);
     return NextResponse.json(
       { error: error.message || "Failed to create proposal" },
       { status: 500 },

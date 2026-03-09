@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 /**
  * GET /api/demo/vote?featureId=xxx&voterId=yyy
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ up: upCount, down: downCount, myVote: direction || null });
   } catch (error: any) {
-    console.error("[demo/vote] Error:", error);
+    log.error("[demo/vote] Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

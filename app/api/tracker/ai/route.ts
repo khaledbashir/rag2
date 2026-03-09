@@ -13,6 +13,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 const ANYTHING_LLM_URL = process.env.ANYTHING_LLM_URL || "https://basheer-anything-llm.prd42b.easypanel.host/api/v1";
 const ANYTHING_LLM_KEY = process.env.ANYTHING_LLM_KEY || "";
@@ -71,7 +72,7 @@ async function callAnythingLLM(userMessage: string): Promise<string | null> {
     const data = await res.json();
     return data.textResponse || null;
   } catch {
-    console.warn("[tracker/ai] AnythingLLM failed, falling back");
+    log.warn("[tracker/ai] AnythingLLM failed, falling back");
     return null;
   }
 }
@@ -100,7 +101,7 @@ async function callGLM(userMessage: string): Promise<string | null> {
     const data = await res.json();
     return data.choices?.[0]?.message?.content || null;
   } catch {
-    console.warn("[tracker/ai] GLM failed");
+    log.warn("[tracker/ai] GLM failed");
     return null;
   }
 }
@@ -143,7 +144,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Please provide more detail" }, { status: 400 });
     }
 
-    console.log(`[tracker/ai] Processing ${text.length} chars from ${author}`);
+    log.info(`[tracker/ai] Processing ${text.length} chars from ${author}`);
 
     // Try AnythingLLM first, fallback to GLM
     let aiResponse = await callAnythingLLM(text);
@@ -160,7 +161,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[tracker/ai] Got response from ${source} (${aiResponse.length} chars)`);
+    log.info(`[tracker/ai] Got response from ${source} (${aiResponse.length} chars)`);
 
     const tasks = parseTasksFromAI(aiResponse);
     if (tasks.length === 0) {
@@ -226,7 +227,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    console.log(`[tracker/ai] Created ${created.length} tasks`);
+    log.info(`[tracker/ai] Created ${created.length} tasks`);
 
     return NextResponse.json({
       tasks: created,
@@ -235,7 +236,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "AI processing failed";
-    console.error("[tracker/ai] Error:", err);
+    log.error("[tracker/ai] Error:", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

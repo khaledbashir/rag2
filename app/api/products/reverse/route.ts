@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { reverseEngineer, ReverseQuery } from "@/services/catalog/reverseEngineer";
+import { log } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
     try {
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ options, query });
     } catch (error) {
-        console.error("[products/reverse] POST error:", error);
+        log.error("[products/reverse] POST error:", error);
         return NextResponse.json(
             { error: "Failed to run reverse engineer query" },
             { status: 500 }

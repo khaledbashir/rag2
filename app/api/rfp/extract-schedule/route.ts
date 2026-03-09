@@ -6,6 +6,7 @@ import {
     extractWarranty,
     extractScheduleWarrantyWithAI,
 } from "@/services/rfp/scheduleWarrantyExtractor";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/rfp/extract-schedule
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Only PDF files are supported" }, { status: 400 });
         }
 
-        console.log(`[Extract Schedule] Received: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
+        log.info(`[Extract Schedule] Received: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
 
         // Convert File to Buffer
         const arrayBuffer = await file.arrayBuffer();
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
             .map(s => s.text)
             .join("\n\n");
 
-        console.log(`[Extract Schedule] ${file.name}: ${scheduleSections.length} schedule sections, ${warrantySections.length} warranty sections, ${scopeSections.length} scope sections`);
+        log.info(`[Extract Schedule] ${file.name}: ${scheduleSections.length} schedule sections, ${warrantySections.length} warranty sections, ${scopeSections.length} scope sections`);
 
         // Step 3: Regex extraction
         let schedule = extractSchedule(scheduleText);
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
             || avgScheduleConfidence < 0.5;
 
         if (needsAI) {
-            console.log(`[Extract Schedule] Low regex confidence (schedule: ${avgScheduleConfidence.toFixed(2)}, warranty: ${warranty.confidence.toFixed(2)}). Falling back to AI...`);
+            log.info(`[Extract Schedule] Low regex confidence (schedule: ${avgScheduleConfidence.toFixed(2)}, warranty: ${warranty.confidence.toFixed(2)}). Falling back to AI...`);
 
             try {
                 const allRelevantText = [scheduleText, warrantyText].filter(Boolean).join("\n\n---\n\n");
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest) {
                 if (aiResult.warranty.confidence > warranty.confidence) warranty = aiResult.warranty;
                 method = "ai-assisted";
             } catch (aiError: any) {
-                console.error("[Extract Schedule] AI fallback failed:", aiError.message);
+                log.error("[Extract Schedule] AI fallback failed:", aiError.message);
                 // Continue with regex results
             }
         }
@@ -113,7 +114,7 @@ export async function POST(req: NextRequest) {
         });
     } catch (error: any) {
         Sentry.captureException(error, { tags: { area: "rfp-extract-schedule" } });
-        console.error("[Extract Schedule] Error:", error);
+        log.error("[Extract Schedule] Error:", error);
         return NextResponse.json({
             error: error.message || "Failed to extract schedule and warranty",
         }, { status: 500 });

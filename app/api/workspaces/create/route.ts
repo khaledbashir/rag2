@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { provisionProjectWorkspace } from "@/lib/anything-llm";
 import { findClientLogo } from "@/lib/brand-discovery";
 import { ensureAnythingLlmUser, assignWorkspaceToUser } from "@/services/anythingllm/userProvisioner";
+import { log } from "@/lib/logger";
 
 export interface CreateWorkspaceRequest {
   name: string;
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
 
     let proposal: any = null;
     // Prompt 52: Diagnostic logging for project persistence
-    console.log("[WORKSPACE/CREATE] Received:", {
+    log.info("[WORKSPACE/CREATE] Received:", {
       name: body.name,
       clientName: body.clientName,
       hasExcelData: !!body.excelData,
@@ -151,9 +152,9 @@ export async function POST(request: NextRequest) {
         const almId = user.anythingLlmUserId ?? await ensureAnythingLlmUser(user.id, body.userEmail);
         if (almId) await assignWorkspaceToUser(slug, almId);
       }
-    }).catch((e) => console.error("[Workspace/Create] Knowledge Base provisioning failed:", e));
+    }).catch((e) => log.error("[Workspace/Create] Knowledge Base provisioning failed:", e));
     } else {
-      console.log("[Workspace/Create] Knowledge Base disabled by user — skipping AI provisioning");
+      log.info("[Workspace/Create] Knowledge Base disabled by user — skipping AI provisioning");
     }
 
     // 4. STRATEGIC HANDOFF
@@ -166,7 +167,7 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    console.error("CRITICAL VAULT FAILURE:", error);
+    log.error("CRITICAL VAULT FAILURE:", error);
     return NextResponse.json(
       {
         error: "Database Persistence Failed",

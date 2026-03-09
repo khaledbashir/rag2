@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import type { UserRole } from "@/lib/rbac";
 import bcrypt from "bcryptjs";
+import { log } from "@/lib/logger";
 
 /**
  * PATCH /api/admin/users/[id]
@@ -109,7 +110,7 @@ export async function PATCH(
     return NextResponse.json({ user: updatedUser });
   } catch (error: any) {
     const { id } = await params;
-    console.error(`[PATCH /api/admin/users/${id}] Error:`, error);
+    log.error(`[PATCH /api/admin/users/${id}] Error:`, error);
 
     if (error.code === "P2025") {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -154,7 +155,7 @@ export async function DELETE(
     return NextResponse.json({ success: true });
   } catch (error: any) {
     const { id } = await params;
-    console.error(`[DELETE /api/admin/users/${id}] Error:`, error);
+    log.error(`[DELETE /api/admin/users/${id}] Error:`, error);
 
     if (error.code === "P2025") {
       return NextResponse.json({ error: "User not found" }, { status: 404 });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 /**
  * GET /api/dashboard/chat/history
@@ -22,7 +23,7 @@ export async function GET() {
 
     return NextResponse.json({ chat: chat || null });
   } catch (err: any) {
-    console.error("[Dashboard Chat History] GET error:", err);
+    log.error("[Dashboard Chat History] GET error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
@@ -77,7 +78,7 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ success: true, sessionId: chat.id });
   } catch (err: any) {
-    console.error("[Dashboard Chat History] PATCH error:", err);
+    log.error("[Dashboard Chat History] PATCH error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

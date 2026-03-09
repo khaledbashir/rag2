@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { compareWorkbooks } from "@/services/revision/deltaScanner";
+import { log } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   try {
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ result });
   } catch (err: any) {
-    console.error("[REVISION COMPARE]", err);
+    log.error("[REVISION COMPARE]", err);
     return NextResponse.json(
       { error: err.message || "Failed to compare workbooks" },
       { status: 500 }

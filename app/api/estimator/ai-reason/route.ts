@@ -19,7 +19,9 @@
  * Output: SSE stream with reasoning/extraction/fallback/thread events
  */
 
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/apiAuth";
+import { log } from "@/lib/logger";
 
 const GLM_BASE =
     process.env.Z_AI_BASE_URL ||
@@ -90,22 +92,24 @@ async function createAnythingLLMThread(
 
         if (!res.ok) {
             const errText = await res.text();
-            console.error(`[ai-reason] Thread creation failed (${res.status}):`, errText);
+            log.error(`[ai-reason] Thread creation failed (${res.status}):`, errText);
             return null;
         }
 
         const data = await res.json();
         const thread = data.thread || data;
-        console.log(`[ai-reason] Created thread: ${thread.slug} (${threadName})`);
+        log.info(`[ai-reason] Created thread: ${thread.slug} (${threadName})`);
         return { slug: thread.slug, name: threadName };
     } catch (err: any) {
-        console.error("[ai-reason] Thread creation error:", err.message);
+        log.error("[ai-reason] Thread creation error:", err.message);
         return null;
     }
 }
 
 export async function POST(req: NextRequest) {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const { description, threadSlug, sessionName } = await req.json();
 
         if (
@@ -130,19 +134,19 @@ export async function POST(req: NextRequest) {
 
         // Primary failed — try fallback: GLM streaming
         if (GLM_KEY) {
-            console.log("[ai-reason] AnythingLLM unavailable, falling back to GLM");
+            log.info("[ai-reason] AnythingLLM unavailable, falling back to GLM");
             const glmResult = await tryGLMFallback(description.trim());
             if (glmResult) return glmResult;
         }
 
         // Both failed
-        console.error("[ai-reason] All models unavailable");
+        log.error("[ai-reason] All models unavailable");
         return new Response(
             JSON.stringify({ error: "AI models are unavailable. Please try again later." }),
             { status: 503, headers: { "Content-Type": "application/json" } }
         );
     } catch (error: any) {
-        console.error("[ai-reason] Error:", error);
+        log.error("[ai-reason] Error:", error);
         return new Response(
             JSON.stringify({ error: error.message }),
             { status: 500, headers: { "Content-Type": "application/json" } }
@@ -171,7 +175,7 @@ async function tryAnythingLLM(
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
-    console.log(`[ai-reason] Primary: AnythingLLM '${PRIMARY_WORKSPACE}', desc length: ${description.length}`);
+    log.info(`[ai-reason] Primary: AnythingLLM '${PRIMARY_WORKSPACE}', desc length: ${description.length}`);
 
     const rawUrl = (process.env.ANYTHING_LLM_URL || process.env.ANYTHING_LLM_BASE_URL || "").trim();
     const ALLM_KEY = process.env.ANYTHING_LLM_KEY || "";
@@ -180,7 +184,7 @@ async function tryAnythingLLM(
         : `${rawUrl.replace(/\/+$/, "")}/api/v1`;
 
     if (!normalizedBase || !ALLM_KEY) {
-        console.error("[ai-reason] AnythingLLM not configured");
+        log.error("[ai-reason] AnythingLLM not configured");
         return null;
     }
 
@@ -201,7 +205,7 @@ async function tryAnythingLLM(
         ? `${normalizedBase}/workspace/${PRIMARY_WORKSPACE}/thread/${threadSlug}/stream-chat`
         : `${normalizedBase}/workspace/${PRIMARY_WORKSPACE}/stream-chat`;
 
-    console.log(`[ai-reason] Stream URL: ${streamUrl}`);
+    log.info(`[ai-reason] Stream URL: ${streamUrl}`);
 
     let upstreamRes: Response;
     try {
@@ -219,11 +223,11 @@ async function tryAnythingLLM(
 
         if (!upstreamRes.ok) {
             const errText = await upstreamRes.text();
-            console.error(`[ai-reason] AnythingLLM stream error (${upstreamRes.status}):`, errText);
+            log.error(`[ai-reason] AnythingLLM stream error (${upstreamRes.status}):`, errText);
             return null;
         }
     } catch (err: any) {
-        console.error("[ai-reason] AnythingLLM stream fetch failed:", err.message);
+        log.error("[ai-reason] AnythingLLM stream fetch failed:", err.message);
         return null;
     }
 
@@ -283,7 +287,7 @@ async function tryAnythingLLM(
 
                         // Log first chunks for diagnostics
                         if (chunkCount < 5) {
-                            console.log("[ai-reason] chunk:", JSON.stringify(chunk).slice(0, 300));
+                            log.info("[ai-reason] chunk:", JSON.stringify(chunk).slice(0, 300));
                             chunkCount++;
                         }
 
@@ -296,7 +300,7 @@ async function tryAnythingLLM(
                             break;
                         }
                         if (chunk.error) {
-                            console.error("[ai-reason] chunk error:", chunk.error);
+                            log.error("[ai-reason] chunk error:", chunk.error);
                             send({ type: "error", message: "AI returned an error" });
                             break;
                         }
@@ -370,22 +374,22 @@ async function tryAnythingLLM(
                 // We can't retroactively stream the reasoning, but we can
                 // still parse the JSON. This happens with non-reasoning models.
                 if (state === "waiting") {
-                    console.log("[ai-reason] Model did not use <think> tags. Treating as direct output.");
+                    log.info("[ai-reason] Model did not use <think> tags. Treating as direct output.");
                 }
 
                 // Parse JSON from the full accumulated text
-                console.log(`[ai-reason] Done. length: ${fullText.length}, state: ${state}`);
+                log.info(`[ai-reason] Done. length: ${fullText.length}, state: ${state}`);
                 const parsed = parseExtraction(fullText);
 
                 if (parsed) {
                     send({ type: "extraction", ...parsed });
                     send({ type: "done" });
                 } else {
-                    console.error("[ai-reason] Parse failed. Last 500 chars:", fullText.slice(-500));
+                    log.error("[ai-reason] Parse failed. Last 500 chars:", fullText.slice(-500));
                     send({ type: "error", message: "AI couldn't extract project data. Try being more specific." });
                 }
             } catch (err: any) {
-                console.error("[ai-reason] Stream error:", err.message);
+                log.error("[ai-reason] Stream error:", err.message);
                 send({ type: "error", message: "AI stream error: " + (err.message || "unknown") });
             } finally {
                 reader.releaseLock();
@@ -406,7 +410,7 @@ async function tryAnythingLLM(
 /** Fallback: GLM streaming with amber fallback indicator */
 async function tryGLMFallback(description: string): Promise<Response | null> {
     try {
-        console.log(`[ai-reason] Fallback: GLM model=${GLM_MODEL}, desc length: ${description.length}`);
+        log.info(`[ai-reason] Fallback: GLM model=${GLM_MODEL}, desc length: ${description.length}`);
 
         const upstreamRes = await fetch(`${GLM_BASE}/chat/completions`, {
             method: "POST",
@@ -428,7 +432,7 @@ async function tryGLMFallback(description: string): Promise<Response | null> {
 
         if (!upstreamRes.ok) {
             const errorText = await upstreamRes.text();
-            console.error(`[ai-reason] GLM fallback error (${upstreamRes.status}):`, errorText);
+            log.error(`[ai-reason] GLM fallback error (${upstreamRes.status}):`, errorText);
             return null;
         }
 
@@ -516,7 +520,7 @@ async function tryGLMFallback(description: string): Promise<Response | null> {
             },
         });
     } catch (err: any) {
-        console.error("[ai-reason] GLM fallback exception:", err.message);
+        log.error("[ai-reason] GLM fallback exception:", err.message);
         return null;
     }
 }

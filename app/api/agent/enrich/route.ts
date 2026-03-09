@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { queryAgent } from "@/lib/anything-llm";
 import { extractJson } from "@/lib/json-utils";
 import { searchVenueAddress } from "@/lib/serper";
+import { log } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -35,12 +36,12 @@ export async function POST(req: NextRequest) {
                 });
                 if (proposal?.aiWorkspaceSlug) {
                     workspace = proposal.aiWorkspaceSlug;
-                    console.log(`[AI Wand] Using project workspace: ${workspace}`);
+                    log.info(`[AI Wand] Using project workspace: ${workspace}`);
                 } else {
-                    console.log(`[AI Wand] No project workspace found for ${proposalId}, using fallback: ${workspace}`);
+                    log.info(`[AI Wand] No project workspace found for ${proposalId}, using fallback: ${workspace}`);
                 }
             } catch (e) {
-                console.warn(`[AI Wand] Failed to lookup project workspace for ${proposalId}: ${e instanceof Error ? e.message : String(e)}`);
+                log.warn(`[AI Wand] Failed to lookup project workspace for ${proposalId}: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
 
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest) {
 
         // ---- FAST PATH: Serper web search first (< 2 seconds) ----
         // This is the primary path. LLM @agent mode is slow (15-30s+) and often times out.
-        console.log("[Enrich] Trying fast Serper search first for:", normalizedQuery);
+        log.info("[Enrich] Trying fast Serper search first for:", normalizedQuery);
         const serperResults = await searchVenueAddress(normalizedQuery, fields);
         if (serperResults && Object.keys(serperResults).length > 0) {
             const candidate = {
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest) {
                 notes: "Found via web search",
                 results: serperResults,
             };
-            console.log("[Enrich] Serper returned results:", Object.keys(serperResults).join(", "));
+            log.info("[Enrich] Serper returned results:", Object.keys(serperResults).join(", "));
             return NextResponse.json({
                 ok: true,
                 correctedQuery: normalizedQuery,
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest) {
         }
 
         // ---- SLOW PATH: LLM @agent mode (only if Serper fails or no API key) ----
-        console.log("[Enrich] Serper returned nothing, falling back to LLM agent for:", normalizedQuery);
+        log.info("[Enrich] Serper returned nothing, falling back to LLM agent for:", normalizedQuery);
 
         const keysJson = JSON.stringify(fields);
 
@@ -151,7 +152,7 @@ Search target: "${normalizedQuery}"`;
             try {
                 parsed = JSON.parse(safeJsonText);
             } catch (e) {
-                console.warn(`[Enrich] JSON parse failed (${e instanceof Error ? e.message : 'unknown'}), trying to repair. First 200 chars: ${safeJsonText.slice(0, 200)}`);
+                log.warn(`[Enrich] JSON parse failed (${e instanceof Error ? e.message : 'unknown'}), trying to repair. First 200 chars: ${safeJsonText.slice(0, 200)}`);
                 // Try appending braces if it looks like it's missing them
                 try {
                     parsed = JSON.parse(safeJsonText + "}");
@@ -212,7 +213,7 @@ Search target: "${normalizedQuery}"`;
 
             if (candidates.length === 0) {
                 // LLM returned no usable candidates - try Serper fallback
-                console.log("[Enrich] LLM returned no candidates, trying Serper fallback for:", normalizedQuery);
+                log.info("[Enrich] LLM returned no candidates, trying Serper fallback for:", normalizedQuery);
                 const serperResults = await searchVenueAddress(normalizedQuery, fields);
                 if (serperResults && Object.keys(serperResults).length > 0) {
                     const candidate = {
@@ -235,9 +236,9 @@ Search target: "${normalizedQuery}"`;
             if (candidates.length === 1) response.results = candidates[0].results;
             return NextResponse.json(response);
         } catch (e) {
-            console.error("AI Enrichment JSON Parse Error:", e);
+            log.error("AI Enrichment JSON Parse Error:", e);
             // JSON parsing failed - try Serper fallback
-            console.log("[Enrich] JSON parse failed, trying Serper fallback for:", normalizedQuery);
+            log.info("[Enrich] JSON parse failed, trying Serper fallback for:", normalizedQuery);
             const serperResults = await searchVenueAddress(normalizedQuery, fields);
             if (serperResults && Object.keys(serperResults).length > 0) {
                 const candidate = {
@@ -257,7 +258,7 @@ Search target: "${normalizedQuery}"`;
 
         return NextResponse.json({ ok: false, error: "Could not find venue details" }, { status: 404 });
     } catch (error: any) {
-        console.error("Enrichment API error:", error);
+        log.error("Enrichment API error:", error);
         return NextResponse.json({ error: error?.message || String(error) }, { status: 500 });
     }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 /**
  * GET /api/projects/[id]/embedding-status
@@ -39,7 +40,7 @@ export async function GET(
       filterStats: brief.filterStats || null,
     });
   } catch (error) {
-    console.error("GET embedding-status error:", error);
+    log.error("GET embedding-status error:", error);
     return NextResponse.json({ error: "Failed to fetch status" }, { status: 500 });
   }
 }

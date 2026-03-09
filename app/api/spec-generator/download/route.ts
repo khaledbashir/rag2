@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
 import type { FilledDisplay, TemplateField } from "@/app/api/spec-generator/parse/route";
+import { log } from "@/lib/logger";
 
 // ─── Styles (used by fallback addDisplaySheet + Summary) ─────────────────────
 
@@ -541,7 +542,7 @@ export async function POST(request: NextRequest) {
               }
             }
           } catch (e) {
-            console.error("[SPEC GEN] Memory save error:", e);
+            log.error("[SPEC GEN] Memory save error:", e);
           }
         })();
       }
@@ -602,7 +603,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error("[SPEC GEN] Download error:", error);
+    log.error("[SPEC GEN] Download error:", error);
     return NextResponse.json(
       { error: error.message || "Failed to generate Excel file" },
       { status: 500 }

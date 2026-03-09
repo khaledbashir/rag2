@@ -8,6 +8,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { requireAuth } from "@/lib/apiAuth";
+import { log } from "@/lib/logger";
 
 const prisma = new PrismaClient();
 
@@ -16,6 +18,8 @@ export async function GET(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const { id } = await params;
         const product = await prisma.manufacturerProduct.findUnique({
             where: { id },
@@ -27,7 +31,7 @@ export async function GET(
 
         return NextResponse.json({ product });
     } catch (error) {
-        console.error("[products/[id]] GET error:", error);
+        log.error("[products/[id]] GET error:", error);
         return NextResponse.json({ error: "Failed to fetch product" }, { status: 500 });
     }
 }
@@ -37,6 +41,8 @@ export async function PUT(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const { id } = await params;
         const body = await request.json();
 
@@ -87,7 +93,7 @@ export async function PUT(
         if (error?.code === "P2002") {
             return NextResponse.json({ error: "A product with this model number already exists" }, { status: 409 });
         }
-        console.error("[products/[id]] PUT error:", error);
+        log.error("[products/[id]] PUT error:", error);
         return NextResponse.json({ error: "Failed to update product" }, { status: 500 });
     }
 }
@@ -97,6 +103,8 @@ export async function DELETE(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const { id } = await params;
         const existing = await prisma.manufacturerProduct.findUnique({
             where: { id },
@@ -114,7 +122,7 @@ export async function DELETE(
 
         return NextResponse.json({ success: true, message: "Product deactivated" });
     } catch (error) {
-        console.error("[products/[id]] DELETE error:", error);
+        log.error("[products/[id]] DELETE error:", error);
         return NextResponse.json({ error: "Failed to delete product" }, { status: 500 });
     }
 }

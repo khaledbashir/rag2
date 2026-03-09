@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 // PUT update option (including formula upsert)
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -49,7 +50,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 		if (error?.code === "P2025") {
 			return NextResponse.json({ error: "Option not found" }, { status: 404 });
 		}
-		console.error("Error updating option:", error);
+		log.error("Error updating option:", error);
 		return NextResponse.json({ error: "Failed to update option" }, { status: 500 });
 	}
 }
@@ -64,7 +65,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 		if (error?.code === "P2025") {
 			return NextResponse.json({ error: "Option not found" }, { status: 404 });
 		}
-		console.error("Error deleting option:", error);
+		log.error("Error deleting option:", error);
 		return NextResponse.json({ error: "Failed to delete option" }, { status: 500 });
 	}
 }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ANYTHING_LLM_BASE_URL, ANYTHING_LLM_KEY } from "@/lib/variables";
+import { requireAuth } from "@/lib/apiAuth";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/copilot/chat
@@ -15,6 +17,8 @@ import { ANYTHING_LLM_BASE_URL, ANYTHING_LLM_KEY } from "@/lib/variables";
  */
 export async function POST(req: NextRequest) {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const { projectId, message, useAgent } = await req.json();
 
         if (!message) {
@@ -63,7 +67,7 @@ export async function POST(req: NextRequest) {
             ? `${ANYTHING_LLM_BASE_URL}/workspace/${workspaceSlug}/thread/${threadSlug}/chat`
             : `${ANYTHING_LLM_BASE_URL}/workspace/${workspaceSlug}/chat`;
 
-        console.log(`[Copilot] Project ${projectId} → workspace "${workspaceSlug}" thread: ${threadSlug || "(main)"} (agent: ${useAgent ? "YES" : "NO"})`);
+        log.info(`[Copilot] Project ${projectId} → workspace "${workspaceSlug}" thread: ${threadSlug || "(main)"} (agent: ${useAgent ? "YES" : "NO"})`);
 
         // Call AnythingLLM chat endpoint
         const response = await fetch(chatPath, {
@@ -81,7 +85,7 @@ export async function POST(req: NextRequest) {
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error(`[Copilot] AnythingLLM error (${response.status}):`, errorText);
+            log.error(`[Copilot] AnythingLLM error (${response.status}):`, errorText);
             return NextResponse.json({
                 error: "AI workspace error",
                 response: `The AI workspace "${workspaceSlug}" returned an error. It may need to be reconfigured.`,
@@ -98,7 +102,7 @@ export async function POST(req: NextRequest) {
             workspace: workspaceSlug,
         });
     } catch (error: any) {
-        console.error("[Copilot] Error:", error);
+        log.error("[Copilot] Error:", error);
         return NextResponse.json({
             error: error.message,
             response: `Copilot error: ${error.message}`,

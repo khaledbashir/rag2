@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateVendorQuoteSheet, type VendorType } from "@/services/rfp/pipeline/generateVendorQuoteSheets";
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "@/services/rfp/unified/types";
+import { log } from "@/lib/logger";
 
 const VALID_VENDOR_TYPES = ["electrician", "installer", "led_supplier"];
 
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to generate vendor sheet";
-    console.error("[vendor-quote-sheet] Error:", err);
+    log.error("[vendor-quote-sheet] Error:", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -3,6 +3,7 @@ import { queryVault } from "@/lib/anything-llm";
 import { prisma } from "@/lib/prisma";
 import { ANYTHING_LLM_BASE_URL, ANYTHING_LLM_KEY } from "@/lib/variables";
 import { extractJson } from "@/lib/json-utils";
+import { log } from "@/lib/logger";
 
 const EXTRACTION_PROMPT = `
 You are the ANC Digital Signage Expert AI. Analyze the RFP content and extract Equipment (EQ) and Quantities. Follow the 17/20 Rule: extract what you can; for the rest return null and the system will Gap Fill.
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
       if (proposal?.aiWorkspaceSlug) workspaceSlug = proposal.aiWorkspaceSlug;
     }
 
-    console.log(`[RFP Re-extract] Running extraction on workspace: ${workspaceSlug}`);
+    log.info(`[RFP Re-extract] Running extraction on workspace: ${workspaceSlug}`);
     const aiResponse = await queryVault(workspaceSlug, EXTRACTION_PROMPT, "chat");
 
     const jsonText = extractJson(aiResponse);
@@ -94,7 +95,7 @@ export async function POST(req: NextRequest) {
       message: "Re-extraction complete",
     });
   } catch (error: any) {
-    console.error("[RFP Re-extract] Error:", error);
+    log.error("[RFP Re-extract] Error:", error);
     return NextResponse.json({ ok: false, error: error?.message ?? "Re-extraction failed" }, { status: 500 });
   }
 }

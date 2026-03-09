@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { invalidateRateCardCache } from "@/services/rfp/rateCardLoader";
+import { log } from "@/lib/logger";
 
 // ============================================================================
 // RATE CARD SEED DATA
@@ -320,7 +321,7 @@ export async function POST(request: NextRequest) {
             message: `Seed complete. Rate card: ${results.rateCard?.created ?? 0} created, ${results.rateCard?.updated ?? 0} updated. Products: ${results.products?.created ?? 0} created, ${results.products?.updated ?? 0} updated.`,
         });
     } catch (err: any) {
-        console.error("[admin/seed] Error:", err);
+        log.error("[admin/seed] Error:", err);
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
 }

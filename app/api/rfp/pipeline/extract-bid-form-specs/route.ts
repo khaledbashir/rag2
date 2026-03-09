@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { extractSpecsFromBidForm } from "@/services/rfp/pipeline/bidFormFiller";
 import type { ExtractedLEDSpec } from "@/services/rfp/unified/types";
+import { log } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   try {
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(await bidFormFile.arrayBuffer());
     const { specs, blockCount } = await extractSpecsFromBidForm(buffer);
 
-    console.log(
+    log.info(
       `[extract-bid-form-specs] Found ${specs.length} specs from ${blockCount} blocks in ${bidFormFile.name}`
     );
 
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
           data: { screens: merged as any },
         });
 
-        console.log(
+        log.info(
           `[extract-bid-form-specs] Merged: ${existingScreens.length} existing + ${specs.length} bid form → ${merged.length} total`
         );
 
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ specs, blockCount, merged: false });
   } catch (err: any) {
-    console.error("[extract-bid-form-specs] Error:", err);
+    log.error("[extract-bid-form-specs] Error:", err);
     return NextResponse.json(
       { error: err.message || "Failed to extract specs from bid form" },
       { status: 500 }

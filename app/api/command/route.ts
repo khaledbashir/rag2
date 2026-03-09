@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ANYTHING_LLM_BASE_URL, ANYTHING_LLM_KEY } from "@/lib/variables";
+import { log } from "@/lib/logger";
 
 const ANYTHING_LLM_WORKSPACE = process.env.ANYTHING_LLM_WORKSPACE;
 
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
           const threadJson = JSON.parse(threadText);
           effectiveThreadSlug = threadJson?.thread?.slug || threadJson?.slug;
         } catch (e) {
-          console.warn('Failed to create thread, falling back to simple chat', e);
+          log.warn('Failed to create thread, falling back to simple chat', e);
         }
       }
       // Use thread endpoint if threadSlug available, else fallback to simple chat
@@ -391,7 +392,7 @@ export async function POST(req: NextRequest) {
         }
       }
     } catch (e) {
-      console.warn("Vector-search failed or catalog lookup failed", e);
+      log.warn("Vector-search failed or catalog lookup failed", e);
     }
 
     // Return whatever we got, include threadSlug if we created one
@@ -400,7 +401,7 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ ok: true, text: result.bodyText ?? '' }, { status: 200 });
   } catch (error: any) {
-    console.error("Command route error:", error);
+    log.error("Command route error:", error);
     return NextResponse.json({ error: error?.message || String(error) }, { status: 500 });
   }
 }

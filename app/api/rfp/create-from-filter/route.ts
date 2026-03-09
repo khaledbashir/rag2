@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { provisionProjectWorkspace, uploadDocument, addToWorkspace, queryVault, getDashboardWorkspaceSlug } from "@/lib/anything-llm";
 import { findClientLogo } from "@/lib/brand-discovery";
 import { extractJson } from "@/lib/json-utils";
+import { requireAuth } from "@/lib/apiAuth";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/rfp/create-from-filter
@@ -37,6 +39,8 @@ interface CreateFromFilterBody {
 
 export async function POST(req: NextRequest) {
   try {
+    const [, authError] = await requireAuth();
+    if (authError) return authError;
     // Parse FormData — extracted text arrives as a file blob to avoid
     // "Request Header Fields Too Large" from reverse proxy (50+ pages = 500KB+)
     const formData = await req.formData();
@@ -112,11 +116,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    console.log(`[create-from-filter] Created proposal ${proposal.id} for "${clientName}" / "${projectTitle}"`);
+    log.info(`[create-from-filter] Created proposal ${proposal.id} for "${clientName}" / "${projectTitle}"`);
 
     // ── 2. ASYNC: Provision AI workspace + embed + extract (fire-and-forget) ──
     runAsyncEmbedding(workspace.id, proposal.id, body).catch(async (err) => {
-      console.error(`[create-from-filter] Async embedding failed for proposal ${proposal.id}:`, err);
+      log.error(`[create-from-filter] Async embedding failed for proposal ${proposal.id}:`, err);
       await prisma.proposal.update({ where: { id: proposal.id }, data: { embeddingStatus: "failed" } }).catch(() => {});
     });
 
@@ -128,7 +132,7 @@ export async function POST(req: NextRequest) {
     }, { status: 201 });
 
   } catch (error: any) {
-    console.error("[create-from-filter] Critical error:", error);
+    log.error("[create-from-filter] Critical error:", error);
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 }
@@ -149,7 +153,7 @@ async function runAsyncEmbedding(
 
   const slug = await provisionProjectWorkspace(projectTitle || clientName, workspaceId);
   if (!slug) {
-    console.error(`[create-from-filter] Failed to provision AI workspace for ${proposalId}`);
+    log.error(`[create-from-filter] Failed to provision AI workspace for ${proposalId}`);
     await prisma.proposal.update({ where: { id: proposalId }, data: { embeddingStatus: "failed" } });
     return;
   }
@@ -158,7 +162,7 @@ async function runAsyncEmbedding(
   await prisma.workspace.update({ where: { id: workspaceId }, data: { aiWorkspaceSlug: slug } });
   await prisma.proposal.update({ where: { id: proposalId }, data: { aiWorkspaceSlug: slug } });
 
-  console.log(`[create-from-filter] AI workspace provisioned: ${slug}`);
+  log.info(`[create-from-filter] AI workspace provisioned: ${slug}`);
 
   // ── 2. Build signal text (text pages + drawing descriptions) ──
   let signalText = `SMART_FILTER_FROM_CLIENT\nPROJECT=${projectTitle}\nCLIENT=${clientName}\n\n`;
@@ -181,7 +185,7 @@ async function runAsyncEmbedding(
 
   const uploadResult = await uploadDocument(signalBuffer, signalFileName);
   if (!uploadResult.success) {
-    console.error(`[create-from-filter] Signal upload failed:`, uploadResult.message);
+    log.error(`[create-from-filter] Signal upload failed:`, uploadResult.message);
     return;
   }
 
@@ -191,14 +195,14 @@ async function runAsyncEmbedding(
   // Embed in project workspace
   const embedResult = await addToWorkspace(slug, docPath);
   if (!embedResult.success) {
-    console.error(`[create-from-filter] Embedding failed:`, embedResult.message);
+    log.error(`[create-from-filter] Embedding failed:`, embedResult.message);
   }
 
   // Also embed in master vault (dashboard workspace)
   const masterSlug = getDashboardWorkspaceSlug();
   if (masterSlug && masterSlug !== slug) {
     addToWorkspace(masterSlug, docPath).catch((e) =>
-      console.warn(`[create-from-filter] Master vault embed failed:`, e)
+      log.warn(`[create-from-filter] Master vault embed failed:`, e)
     );
   }
 
@@ -211,7 +215,7 @@ async function runAsyncEmbedding(
     },
   });
 
-  console.log(`[create-from-filter] Signal text embedded in ${slug} (${signalText.length} chars)`);
+  log.info(`[create-from-filter] Signal text embedded in ${slug} (${signalText.length} chars)`);
 
   // ── 4. Save drawing manifest to proposal ──
   if (drawingManifest.length > 0) {
@@ -236,12 +240,12 @@ async function runAsyncEmbedding(
       data: { intelligenceBrief: briefData },
     });
 
-    console.log(`[create-from-filter] Drawing manifest saved: ${drawingManifest.length} drawings`);
+    log.info(`[create-from-filter] Drawing manifest saved: ${drawingManifest.length} drawings`);
   }
 
   // ── 5. AI Extraction (Division 11 priority, 20 critical fields) ──
   await prisma.proposal.update({ where: { id: proposalId }, data: { embeddingStatus: "extracting" } });
-  console.log(`[create-from-filter] Running AI extraction against embedded text...`);
+  log.info(`[create-from-filter] Running AI extraction against embedded text...`);
 
   const extractionPrompt = `
 You are the ANC Digital Signage Expert AI. Analyze the RFP content and extract Equipment (EQ) and Quantities. Follow the 17/20 Rule: extract what you can; for the rest return null and the system will Gap Fill.
@@ -288,7 +292,7 @@ Include extractionSummary with totalFields, extractedFields, completionRate, hig
 
   try {
     const aiResponse = await queryVault(slug, extractionPrompt, "chat");
-    console.log(`[create-from-filter] AI Response Length: ${aiResponse.length}`);
+    log.info(`[create-from-filter] AI Response Length: ${aiResponse.length}`);
 
     const jsonText = extractJson(aiResponse);
     if (jsonText) {
@@ -309,16 +313,16 @@ Include extractionSummary with totalFields, extractedFields, completionRate, hig
           data: { intelligenceBrief: briefData },
         });
 
-        console.log(`[create-from-filter] AI extraction complete and saved`);
+        log.info(`[create-from-filter] AI extraction complete and saved`);
       } catch (parseErr) {
-        console.warn(`[create-from-filter] AI extraction JSON parse failed:`, parseErr);
+        log.warn(`[create-from-filter] AI extraction JSON parse failed:`, parseErr);
       }
     }
   } catch (e) {
-    console.error("[create-from-filter] AI Extraction failed:", e);
+    log.error("[create-from-filter] AI Extraction failed:", e);
   }
 
   // Mark pipeline complete
   await prisma.proposal.update({ where: { id: proposalId }, data: { embeddingStatus: "complete" } });
-  console.log(`[create-from-filter] Async pipeline complete for proposal ${proposalId}`);
+  log.info(`[create-from-filter] Async pipeline complete for proposal ${proposalId}`);
 }

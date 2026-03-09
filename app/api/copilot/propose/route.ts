@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ANYTHING_LLM_BASE_URL, ANYTHING_LLM_KEY } from "@/lib/variables";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/apiAuth";
 import {
     ConversationStage,
     createInitialState,
 } from "@/services/chat/proposalConversationFlow";
 import type { CollectedData, StageAction } from "@/services/chat/proposalConversationFlow";
+import { log } from "@/lib/logger";
 
 const COPILOT_SYSTEM_PROMPT = `You are Lux — ANC Sports Enterprises' AI proposal copilot.
 
@@ -175,6 +177,8 @@ CONSTRAINTS:
  */
 export async function POST(req: NextRequest) {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const body = await req.json();
         const {
             projectId,
@@ -207,7 +211,7 @@ export async function POST(req: NextRequest) {
                 !ANYTHING_LLM_BASE_URL && "ANYTHING_LLM_URL",
                 !ANYTHING_LLM_KEY && "ANYTHING_LLM_KEY",
             ].filter(Boolean);
-            console.error(`[Copilot/Propose] Missing env vars: ${missing.join(", ")}`);
+            log.error(`[Copilot/Propose] Missing env vars: ${missing.join(", ")}`);
             return NextResponse.json({
                 reply: `AI backend not configured: ${missing.join(", ")} missing. Contact admin.`,
                 actions: [], nextStage: stage, collected,
@@ -215,18 +219,18 @@ export async function POST(req: NextRequest) {
         }
 
         if (!workspaceSlug) {
-            console.error(`[Copilot/Propose] No workspace slug for project ${projectId}`);
+            log.error(`[Copilot/Propose] No workspace slug for project ${projectId}`);
             return NextResponse.json({
                 reply: "No AI workspace found for this project. Try saving the project first.",
                 actions: [], nextStage: stage, collected,
             }, { status: 503 });
         }
 
-        console.log(`[Copilot/Propose] projectId=${projectId || "none"}, slug=${workspaceSlug}, stage=${stage}`);
+        log.info(`[Copilot/Propose] projectId=${projectId || "none"}, slug=${workspaceSlug}, stage=${stage}`);
 
         // ---- DEMO MODE: detect bulk input and parse everything at once ----
         if (isBulkInput(message) && stage !== ConversationStage.REVIEW && stage !== ConversationStage.DONE) {
-            console.log("[Copilot/Propose] Bulk input detected — activating demo mode");
+            log.info("[Copilot/Propose] Bulk input detected — activating demo mode");
             const bulkResult = await bulkExtract(workspaceSlug, projectId, message, collected);
             if (bulkResult) {
                 return NextResponse.json(bulkResult);
@@ -240,13 +244,13 @@ export async function POST(req: NextRequest) {
         }
 
         // LLM was reachable but returned an error
-        console.error(`[Copilot/Propose] llmGuidedFlow returned null for slug=${workspaceSlug}`);
+        log.error(`[Copilot/Propose] llmGuidedFlow returned null for slug=${workspaceSlug}`);
         return NextResponse.json({
             reply: "AI responded with an error. The workspace may need its LLM model configured. Try again or contact admin.",
             actions: [], nextStage: stage, collected,
         }, { status: 502 });
     } catch (error: any) {
-        console.error("[Copilot/Propose] Error:", error);
+        log.error("[Copilot/Propose] Error:", error);
         return NextResponse.json({
             error: error.message,
             reply: `Error: ${error.message}`,
@@ -375,7 +379,7 @@ async function llmGuidedFlow(
 
         if (!res.ok) {
             const errBody = await res.text().catch(() => "");
-            console.error(`[Copilot/Propose] LLM error ${res.status} for slug=${workspaceSlug}: ${errBody.slice(0, 300)}`);
+            log.error(`[Copilot/Propose] LLM error ${res.status} for slug=${workspaceSlug}: ${errBody.slice(0, 300)}`);
             return null;
         }
 
@@ -439,7 +443,7 @@ async function llmGuidedFlow(
                                 actions.push({ type: "set_bond", data: { rate: c.value } });
                                 break;
                             default:
-                                console.warn(`[Copilot/Propose] Unknown correction field: ${c.field}`);
+                                log.warn(`[Copilot/Propose] Unknown correction field: ${c.field}`);
                                 break;
                         }
                     }
@@ -500,10 +504,10 @@ async function llmGuidedFlow(
                 // ---- Extract screenActions from the SAME parsed JSON ----
                 if (Array.isArray(parsed.screenActions) && parsed.screenActions.length > 0) {
                     screenActions = parsed.screenActions;
-                    console.log(`[Copilot/Propose] Parsed ${screenActions.length} screenActions from LLM JSON`);
+                    log.info(`[Copilot/Propose] Parsed ${screenActions.length} screenActions from LLM JSON`);
                 }
             } catch (e) {
-                console.warn("[Copilot/Propose] Failed to parse LLM JSON, using response as-is:", e);
+                log.warn("[Copilot/Propose] Failed to parse LLM JSON, using response as-is:", e);
             }
         }
 
@@ -514,7 +518,7 @@ async function llmGuidedFlow(
             const detected = detectFieldChangeIntent(message, screenContext);
             if (detected.length > 0) {
                 screenActions = detected;
-                console.log(`[Copilot/Propose] Intent detection generated ${detected.length} screenActions from user message`);
+                log.info(`[Copilot/Propose] Intent detection generated ${detected.length} screenActions from user message`);
             }
         }
 
@@ -526,7 +530,7 @@ async function llmGuidedFlow(
             const extracted = extractFieldsFromReply(reply, collected);
             if (extracted.length > 0) {
                 screenActions = extracted;
-                console.log(`[Copilot/Propose] Response extraction generated ${extracted.length} screenActions from LLM reply`);
+                log.info(`[Copilot/Propose] Response extraction generated ${extracted.length} screenActions from LLM reply`);
             }
         }
 
@@ -534,7 +538,7 @@ async function llmGuidedFlow(
         let reply = content.replace(/```json[\s\S]*?```/, "").trim();
         if (!reply) reply = content.split("{")[0].trim() || "Got it.";
 
-        console.log(`[Copilot/Propose] Response: reply=${reply.slice(0, 80)}... actions=${actions.length} screenActions=${screenActions.length}`);
+        log.info(`[Copilot/Propose] Response: reply=${reply.slice(0, 80)}... actions=${actions.length} screenActions=${screenActions.length}`);
 
         return {
             reply,
@@ -544,7 +548,7 @@ async function llmGuidedFlow(
             collected,
         };
     } catch (error) {
-        console.error("[Copilot/Propose] LLM flow error:", error);
+        log.error("[Copilot/Propose] LLM flow error:", error);
         return null; // Fall back to regex
     }
 }
@@ -717,7 +721,7 @@ function detectFieldChangeIntent(message: string, screenContext?: any): any[] {
         const targetField = resolveFieldAlias(sameMatch[1].trim());
         if (targetField) {
             actions.push({ action: "set_field", field: targetField, value: _lastIntentValue });
-            console.log(`[Intent] Contextual follow-up: set ${targetField} = "${_lastIntentValue}"`);
+            log.info(`[Intent] Contextual follow-up: set ${targetField} = "${_lastIntentValue}"`);
             return actions;
         }
     }
@@ -1006,7 +1010,7 @@ async function bulkExtract(
         });
 
         if (!res.ok) {
-            console.error("[Copilot/Propose] Bulk extract LLM error:", res.status);
+            log.error("[Copilot/Propose] Bulk extract LLM error:", res.status);
             return null;
         }
 
@@ -1021,7 +1025,7 @@ async function bulkExtract(
         // Extract JSON
         const jsonMatch = content.match(/```json\s*([\s\S]*?)```/) || content.match(/\{[\s\S]*"displays"[\s\S]*\}/);
         if (!jsonMatch) {
-            console.warn("[Copilot/Propose] Bulk extract: no JSON found in response");
+            log.warn("[Copilot/Propose] Bulk extract: no JSON found in response");
             return null; // Fall through to normal guided flow
         }
 
@@ -1107,7 +1111,7 @@ async function bulkExtract(
         reply += `\n**Grand Total: ${fmt(grandTotal)}**\n\n`;
         reply += `Check the preview — if anything looks off, just tell me what to change. Otherwise, say **"generate budget estimate"**, **"proposal"**, or **"LOI"**.`;
 
-        console.log(`[Copilot/Propose] Bulk extract: ${actions.length} actions, ${summaryLines.length} items, total ${fmt(grandTotal)}`);
+        log.info(`[Copilot/Propose] Bulk extract: ${actions.length} actions, ${summaryLines.length} items, total ${fmt(grandTotal)}`);
 
         return {
             reply,
@@ -1117,7 +1121,7 @@ async function bulkExtract(
             bulk: true,
         };
     } catch (error) {
-        console.error("[Copilot/Propose] Bulk extract error:", error);
+        log.error("[Copilot/Propose] Bulk extract error:", error);
         return null; // Fall through to normal flow
     }
 }

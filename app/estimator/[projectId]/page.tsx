@@ -2,6 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import EstimatorStudio from "@/app/components/estimator/EstimatorStudio";
+import Breadcrumbs from "@/app/components/layout/Breadcrumbs";
 
 export default async function EstimatorProjectPage({
     params,
@@ -40,11 +41,19 @@ export default async function EstimatorProjectPage({
     }
 
     return (
-        <EstimatorStudio
-            projectId={project.id}
-            initialAnswers={project.estimatorAnswers as any}
-            initialCellOverrides={project.estimatorCellOverrides as any}
-            initialCustomSheets={project.estimatorCustomSheets as any}
-        />
+        <div className="min-h-screen bg-background">
+            <div className="px-4 sm:px-6 pt-3 pb-1">
+                <Breadcrumbs items={[
+                    { label: "Estimates", href: "/estimator" },
+                    { label: project.clientName || "Untitled Estimate" },
+                ]} />
+            </div>
+            <EstimatorStudio
+                projectId={project.id}
+                initialAnswers={project.estimatorAnswers as any}
+                initialCellOverrides={project.estimatorCellOverrides as any}
+                initialCustomSheets={project.estimatorCustomSheets as any}
+            />
+        </div>
     );
 }

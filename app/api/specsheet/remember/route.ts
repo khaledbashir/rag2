@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/specsheet/remember
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ saved: savedCount });
     } catch (err: any) {
-        console.error("[specsheet/remember] Error:", err);
+        log.error("[specsheet/remember] Error:", err);
         return NextResponse.json({ error: err.message || String(err) }, { status: 500 });
     }
 }

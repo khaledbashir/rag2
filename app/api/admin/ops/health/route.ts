@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { isPlatformOwner } from "@/lib/platformOwner";
 import { mistralOcrHealthCheck } from "@/services/rfp/unified/mistralOcrClient";
 import { llamaVisionHealthCheck } from "@/services/rfp/unified/llamaVision";
+import { log } from "@/lib/logger";
 
 /**
  * GET /api/admin/ops/health
@@ -36,7 +37,7 @@ export async function GET() {
       timestamp: new Date().toISOString(),
     });
   } catch (error: any) {
-    console.error("[GET /api/admin/ops/health] Error:", error);
+    log.error("[GET /api/admin/ops/health] Error:", error);
     return NextResponse.json({ error: "Health check failed" }, { status: 500 });
   }
 }

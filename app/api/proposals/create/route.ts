@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { calculateProposalAudit, ScreenInput } from "@/lib/estimator";
 import { logActivity } from "@/services/proposal/server/activityLogService";
 import { provisionProjectWorkspace } from "@/lib/anything-llm";
+import { log } from "@/lib/logger";
 
 export interface CreateProposalRequest {
   workspaceId: string;
@@ -140,7 +141,7 @@ export async function POST(request: NextRequest) {
       `Project created for ${body.clientName} with ${body.screens.length} screen(s)`,
       null,
       { clientName: body.clientName, screenCount: body.screens.length },
-    ).catch((err) => console.error("[Proposals/Create] Activity log failed:", err));
+    ).catch((err) => log.error("[Proposals/Create] Activity log failed:", err));
 
     // Provision dedicated AnythingLLM workspace (non-blocking)
     provisionProjectWorkspace(body.clientName, proposal.id).then(async (slug) => {
@@ -149,7 +150,7 @@ export async function POST(request: NextRequest) {
         where: { id: proposal.id },
         data: { aiWorkspaceSlug: slug },
       });
-    }).catch((e) => console.error("[Proposals/Create] AI provisioning failed:", e));
+    }).catch((e) => log.error("[Proposals/Create] AI provisioning failed:", e));
 
     return NextResponse.json(
       {
@@ -159,7 +160,7 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    console.error("Error creating proposal:", error);
+    log.error("Error creating proposal:", error);
     return NextResponse.json(
       { error: "Failed to create proposal", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }

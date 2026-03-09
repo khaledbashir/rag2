@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { scanForLiabilities } from "@/services/sow/liabilityScanner";
 import { extractText } from "@/services/kreuzberg/kreuzbergClient";
+import { log } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
     try {
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ result });
     } catch (error) {
-        console.error("[sow/scan] POST error:", error);
+        log.error("[sow/scan] POST error:", error);
         return NextResponse.json(
             { error: "Failed to scan document" },
             { status: 500 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeCompetitorSignals } from "@/app/services/CompetitorIntelligenceService";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
     try {
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(result);
 
     } catch (error: any) {
-        console.error("[Competitor Radar API] Error:", error);
+        log.error("[Competitor Radar API] Error:", error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

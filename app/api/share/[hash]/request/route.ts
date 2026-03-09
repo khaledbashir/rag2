@@ -3,6 +3,7 @@ export const maxDuration = 30;
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 /**
  * Async AI triage — non-blocking.
@@ -48,11 +49,11 @@ async function triageAnnotationsAsync(
 			});
 		}
 
-		console.log(
+		log.info(
 			`[AI Triage] Categorized ${results.length} annotations for proposal ${proposalId}`
 		);
 	} catch (err) {
-		console.error("[AI Triage] Failed:", err);
+		log.error("[AI Triage] Failed:", err);
 	}
 }
 
@@ -136,7 +137,7 @@ export async function POST(
 
 			// Fire AI triage asynchronously (non-blocking)
 			triageAnnotationsAsync(snapshot.proposalId, createdIds).catch(
-				console.error
+				log.error
 			);
 
 			return NextResponse.json({

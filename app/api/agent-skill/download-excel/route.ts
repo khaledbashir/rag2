@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile, stat } from "fs/promises";
 import path from "path";
+import { log } from "@/lib/logger";
 
 /**
  * GET /api/agent-skill/download-excel?file=<filename>
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("[AGENT-SKILL] Download Excel failed:", error);
+    log.error("[AGENT-SKILL] Download Excel failed:", error);
     return NextResponse.json(
       { error: "Failed to serve file" },
       { status: 500 }

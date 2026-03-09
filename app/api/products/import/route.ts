@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient, Prisma } from "@prisma/client";
 import * as XLSX from "xlsx";
+import { log } from "@/lib/logger";
 
 const prisma = new PrismaClient();
 
@@ -137,7 +138,7 @@ export async function POST(request: NextRequest) {
             errors: errors.slice(0, 20), // First 20 errors
         });
     } catch (error) {
-        console.error("[products/import] Error:", error);
+        log.error("[products/import] Error:", error);
         return NextResponse.json(
             { error: "Failed to import products" },
             { status: 500 }

@@ -14,6 +14,7 @@ import { generateFingerprint } from "@/services/import/excelNormalizer";
 import { preloadRateCard, getRateSync } from "@/services/rfp/rateCardLoader";
 import { extractText } from "@/services/kreuzberg/kreuzbergClient";
 import { analyzeTemplateWithAI, mergeWithRegexFallback, type AIFieldMapping } from "@/services/specsheet/aiTemplateAnalyzer";
+import { log } from "@/lib/logger";
 
 const prisma = new PrismaClient();
 
@@ -299,11 +300,11 @@ async function parseTemplate(buffer: Buffer): Promise<{ fields: TemplateField[];
         rowIndex: f.rowIndex,
         valueCol: f.valueCol,
       }));
-      console.log(`[SPEC GEN] AI template analysis: ${aiResult.templateType}, ${fields.length} fields, ${(aiResult.confidence * 100).toFixed(0)}% confidence`);
+      log.info(`[SPEC GEN] AI template analysis: ${aiResult.templateType}, ${fields.length} fields, ${(aiResult.confidence * 100).toFixed(0)}% confidence`);
       return { fields, sheetName };
     }
   } catch (err: any) {
-    console.warn(`[SPEC GEN] AI template analysis failed, using regex: ${err.message}`);
+    log.warn(`[SPEC GEN] AI template analysis failed, using regex: ${err.message}`);
   }
 
   // ── Fallback: regex-based parsing ──
@@ -1020,7 +1021,7 @@ export async function POST(request: NextRequest) {
           if (savedMapping._aiFieldCache && Array.isArray(savedMapping._aiFieldCache)) {
             templateFields = savedMapping._aiFieldCache as TemplateField[];
             usedCachedProfile = true;
-            console.log(`[SPEC GEN] Using cached AI field mapping from profile "${existingProfile.name}" (${templateFields.length} fields)`);
+            log.info(`[SPEC GEN] Using cached AI field mapping from profile "${existingProfile.name}" (${templateFields.length} fields)`);
           }
 
           // Bump usage count
@@ -1104,7 +1105,7 @@ export async function POST(request: NextRequest) {
       } catch (e: any) {
         // Ignore duplicate fingerprint race condition
         if (!e.message?.includes("Unique constraint")) {
-          console.warn("[SPEC GEN] Failed to save template profile:", e.message);
+          log.warn("[SPEC GEN] Failed to save template profile:", e.message);
         }
       }
     }
@@ -1125,7 +1126,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(response);
   } catch (error: any) {
-    console.error("[SPEC GEN] Parse error:", error);
+    log.error("[SPEC GEN] Parse error:", error);
     return NextResponse.json(
       { error: error.message || "Failed to parse files" },
       { status: 500 }

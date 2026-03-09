@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 // POST create option
 export async function POST(req: NextRequest) {
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
 		});
 		return NextResponse.json(option, { status: 201 });
 	} catch (error) {
-		console.error("Error creating option:", error);
+		log.error("Error creating option:", error);
 		return NextResponse.json({ error: "Failed to create option" }, { status: 500 });
 	}
 }

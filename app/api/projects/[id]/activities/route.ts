@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/services/proposal/server/activityLogService";
+import { log } from "@/lib/logger";
 
 /**
  * GET /api/projects/[id]/activities
@@ -27,7 +28,7 @@ export async function GET(
 
         return NextResponse.json({ activities });
     } catch (error) {
-        console.error("GET /api/projects/[id]/activities error:", error);
+        log.error("GET /api/projects/[id]/activities error:", error);
         return NextResponse.json(
             { error: "Failed to fetch activities" },
             { status: 500 }
@@ -58,7 +59,7 @@ export async function POST(
         await logActivity(id, action, description, actor, metadata);
         return NextResponse.json({ success: true });
     } catch (error) {
-        console.error("POST /api/projects/[id]/activities error:", error);
+        log.error("POST /api/projects/[id]/activities error:", error);
         return NextResponse.json(
             { error: "Failed to log activity" },
             { status: 500 }

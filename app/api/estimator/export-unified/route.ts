@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { mapEstimatorToScoping } from "@/services/rfp/pipeline/estimatorToScopingMapper";
 import { generateScopingWorkbook } from "@/services/rfp/pipeline/generateScopingWorkbook";
 import type { EstimatorAnswers } from "@/app/components/estimator/questions";
+import { log } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   try {
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
-    console.error("[export-unified] Error:", err);
+    log.error("[export-unified] Error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

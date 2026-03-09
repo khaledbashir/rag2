@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/chat/stream
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
 
         messages.push({ role: "user", content: message });
 
-        console.log(`[Chat/Stream] GLM-5 direct call, ${messages.length} messages, model: ${GLM_MODEL}`);
+        log.info(`[Chat/Stream] GLM-5 direct call, ${messages.length} messages, model: ${GLM_MODEL}`);
 
         const upstreamRes = await fetch(`${GLM_BASE}/chat/completions`, {
             method: "POST",
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
 
         if (!upstreamRes.ok) {
             const errorText = await upstreamRes.text();
-            console.error(`[Chat/Stream] GLM error (${upstreamRes.status}):`, errorText);
+            log.error(`[Chat/Stream] GLM error (${upstreamRes.status}):`, errorText);
             return new Response(
                 JSON.stringify({ error: "GLM API error", details: errorText }),
                 { status: upstreamRes.status, headers: { "Content-Type": "application/json" } }
@@ -147,7 +148,7 @@ export async function POST(req: NextRequest) {
             },
         });
     } catch (error: any) {
-        console.error("[Chat/Stream] Error:", error);
+        log.error("[Chat/Stream] Error:", error);
         return new Response(
             JSON.stringify({ error: error.message }),
             { status: 500, headers: { "Content-Type": "application/json" } }

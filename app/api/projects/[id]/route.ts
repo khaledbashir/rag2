@@ -4,6 +4,7 @@ import { logActivity, detectMeaningfulChanges } from "@/services/proposal/server
 import { auth } from "@/auth";
 
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 /**
  * GET /api/projects/[id]
@@ -33,7 +34,7 @@ export async function GET(
 
         return NextResponse.json({ project });
     } catch (error) {
-        console.error("GET /api/projects/[id] error:", error);
+        log.error("GET /api/projects/[id] error:", error);
         return NextResponse.json(
             { error: "Failed to fetch project" },
             { status: 500 }
@@ -364,7 +365,7 @@ export async function PATCH(
         });
 
     } catch (error: any) {
-        console.error("PATCH /api/projects/[id] error:", error);
+        log.error("PATCH /api/projects/[id] error:", error);
 
         // Handle "Record not found" error codes
         if (error.code === 'P2025') {
@@ -442,7 +443,7 @@ export async function DELETE(
 
         return NextResponse.json({ success: true, softDeleted: true });
     } catch (error: any) {
-        console.error("DELETE /api/projects/[id] error:", error);
+        log.error("DELETE /api/projects/[id] error:", error);
 
         if (error.code === 'P2025') {
             return NextResponse.json({ success: true, message: "Project already deleted or not found" });

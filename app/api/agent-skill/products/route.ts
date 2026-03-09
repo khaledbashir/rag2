@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { log } from "@/lib/logger";
 
 const prisma = new PrismaClient();
 
@@ -59,7 +60,7 @@ export async function GET(request: NextRequest) {
             total: products.length,
         });
     } catch (error) {
-        console.error("[agent-skill/products] GET error:", error);
+        log.error("[agent-skill/products] GET error:", error);
         return NextResponse.json({ error: "Failed to fetch products" }, { status: 500 });
     }
 }

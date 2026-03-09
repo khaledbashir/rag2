@@ -6,11 +6,14 @@ import { normalizeExcel } from "@/services/import/excelNormalizer";
 import * as xlsx from "xlsx";
 import crypto from "node:crypto";
 import { log } from "@/lib/logger";
+import { requireAuth } from "@/lib/apiAuth";
 
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
     try {
+        const [, authError] = await requireAuth();
+        if (authError) return authError;
         const formData = await req.formData();
         const file = formData.get("file") as File;
 

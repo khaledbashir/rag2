@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { autoRfpFromWorkspace, autoRfpFromText } from "@/services/rfp/autoRfpResponse";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/rfp/auto-response
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
 
         // Direct text extraction
         if (text && text.length > 0) {
-            console.log(`[Auto-RFP] Direct text extraction (${text.length} chars)`);
+            log.info(`[Auto-RFP] Direct text extraction (${text.length} chars)`);
             const result = await autoRfpFromText(text, workspaceSlug);
             return NextResponse.json({
                 ok: true,
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
             }, { status: 400 });
         }
 
-        console.log(`[Auto-RFP] Workspace extraction: ${slug}`);
+        log.info(`[Auto-RFP] Workspace extraction: ${slug}`);
         const result = await autoRfpFromWorkspace(slug);
 
         return NextResponse.json({
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
             extractionMethod: result.extractionMethod,
         });
     } catch (error: any) {
-        console.error("[Auto-RFP] Error:", error);
+        log.error("[Auto-RFP] Error:", error);
         return NextResponse.json({
             ok: false,
             error: error?.message || "Auto-RFP extraction failed",

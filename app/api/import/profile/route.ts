@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { saveProfileAndExtract } from "@/services/import/excelNormalizer";
 import type { SaveProfileInput, ColumnMapping } from "@/services/import/excelNormalizer";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/import/profile
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(result);
     } catch (err: any) {
         Sentry.captureException(err, { tags: { area: "excelNormalizerProfile" } });
-        console.error("[IMPORT PROFILE] Error:", err);
+        log.error("[IMPORT PROFILE] Error:", err);
 
         // Handle duplicate fingerprint
         if (err?.code === "P2002" && err?.meta?.target?.includes("fingerprint")) {

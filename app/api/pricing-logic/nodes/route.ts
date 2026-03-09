@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 // POST create node
 export async function POST(req: NextRequest) {
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
 		});
 		return NextResponse.json(node, { status: 201 });
 	} catch (error) {
-		console.error("Error creating node:", error);
+		log.error("Error creating node:", error);
 		return NextResponse.json({ error: "Failed to create node" }, { status: 500 });
 	}
 }

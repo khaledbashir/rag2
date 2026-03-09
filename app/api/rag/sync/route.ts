@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadCatalog } from "@/lib/catalog";
 import { syncDocumentsToAnythingLLM } from "@/lib/rag-sync";
+import { log } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,7 +10,7 @@ export async function POST(req: NextRequest) {
     const res = await syncDocumentsToAnythingLLM(docs);
     return NextResponse.json({ ok: true, result: res }, { status: 200 });
   } catch (err: any) {
-    console.error("/api/rag/sync error:", err);
+    log.error("/api/rag/sync error:", err);
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }

@@ -25,6 +25,7 @@ import { prisma } from "@/lib/prisma";
 import { generateScopingWorkbook } from "@/services/rfp/pipeline/generateScopingWorkbook";
 import { generateRateCardExcel } from "@/services/rfp/pipeline/generateRateCardExcel";
 import type { ExtractedLEDSpec, ExtractedProjectInfo, ExtractedRequirement } from "@/services/rfp/unified/types";
+import { log } from "@/lib/logger";
 
 export const maxDuration = 60;
 
@@ -113,7 +114,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (err: any) {
-    console.error("[scoping-workbook] Error:", err);
+    log.error("[scoping-workbook] Error:", err);
     return NextResponse.json({ error: err.message || "Failed to generate scoping workbook" }, { status: 500 });
   }
 }

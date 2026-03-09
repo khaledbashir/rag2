@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import * as xlsx from "xlsx";
 import { parseFormSheet } from "@/services/specsheet/formSheetParser";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/specsheet/preview
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
             displayCount: result.displays.length,
         });
     } catch (err: any) {
-        console.error("[SPEC SHEET PREVIEW] Error:", err);
+        log.error("[SPEC SHEET PREVIEW] Error:", err);
         return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
     }
 }

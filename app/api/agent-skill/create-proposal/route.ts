@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/agent-skill/create-proposal
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
     const expectedKey = process.env.AGENT_SKILL_API_KEY;
 
     if (!expectedKey) {
-      console.error("[AGENT-SKILL] AGENT_SKILL_API_KEY not configured");
+      log.error("[AGENT-SKILL] AGENT_SKILL_API_KEY not configured");
       return NextResponse.json(
         { error: "Service not configured" },
         { status: 503 }
@@ -151,7 +152,7 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://basheer-natalia.prd42b.easypanel.host";
     const projectUrl = `${baseUrl}/projects/${proposal.id}`;
 
-    console.log(`[AGENT-SKILL] Created proposal ${proposal.id} for "${clientName}" — ${lineItems.length} items, $${total.toLocaleString()}`);
+    log.info(`[AGENT-SKILL] Created proposal ${proposal.id} for "${clientName}" — ${lineItems.length} items, $${total.toLocaleString()}`);
 
     return NextResponse.json({
       success: true,
@@ -166,7 +167,7 @@ export async function POST(request: NextRequest) {
     }, { status: 201 });
 
   } catch (error) {
-    console.error("[AGENT-SKILL] Create proposal failed:", error);
+    log.error("[AGENT-SKILL] Create proposal failed:", error);
     return NextResponse.json(
       { error: "Failed to create proposal", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }

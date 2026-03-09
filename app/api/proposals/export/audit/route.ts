@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { generateScopingWorkbook } from "@/services/rfp/pipeline/generateScopingWorkbook";
 import { mapMirrorToScoping } from "@/services/rfp/pipeline/pricingDocumentToScopingMapper";
 import { mapIntelligenceToScoping } from "@/services/rfp/pipeline/screenAuditToScopingMapper";
+import { log } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   try {
@@ -86,9 +87,9 @@ export async function POST(req: NextRequest) {
           ? "INTELLIGENCE"
           : proposal?.calculationMode ?? "INTELLIGENCE";
 
-    console.log(`[Audit Export] Mode: ${effectiveMode}, Screens: ${effectiveScreens.length}, InternalAudit keys: ${internalAudit ? Object.keys(internalAudit).join(',') : 'null'}, pricingDocument tables: ${pricingDocument?.tables?.length ?? 'null'}`);
+    log.info(`[Audit Export] Mode: ${effectiveMode}, Screens: ${effectiveScreens.length}, InternalAudit keys: ${internalAudit ? Object.keys(internalAudit).join(',') : 'null'}, pricingDocument tables: ${pricingDocument?.tables?.length ?? 'null'}`);
     if (effectiveMode === "MIRROR" && !pricingDocument?.tables?.length) {
-      console.warn(`[Audit Export] WARNING: MIRROR mode proposal missing pricingDocument. Margin Analysis will use flat fallback (screens only). Re-upload the source Excel to populate per-section pricing data.`);
+      log.warn(`[Audit Export] WARNING: MIRROR mode proposal missing pricingDocument. Margin Analysis will use flat fallback (screens only). Re-upload the source Excel to populate per-section pricing data.`);
     }
 
     const proposalName = (body.projectName || proposal?.clientName || body.clientName || "Proposal").toString();
@@ -123,7 +124,7 @@ export async function POST(req: NextRequest) {
     } else if (effectiveMode === "MIRROR") {
       // Mirror without pricingDocument: use screens + internalAudit → canonical workbook
       // (same path as Intelligence — screens have dims/pitch, generator computes costs)
-      console.warn("[Audit Export] MIRROR mode missing pricingDocument — generating canonical workbook from screen data");
+      log.warn("[Audit Export] MIRROR mode missing pricingDocument — generating canonical workbook from screen data");
       const scopingOptions = mapIntelligenceToScoping({
         screens: screensWithAudit,
         currency,
@@ -158,7 +159,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
-    console.error("Audit export error:", err);
+    log.error("Audit export error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

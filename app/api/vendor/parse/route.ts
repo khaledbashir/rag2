@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractFromExcel, extractFromText } from "@/services/vendor/vendorParser";
 import { extractText } from "@/services/kreuzberg/kreuzbergClient";
+import { log } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
     try {
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
             { status: 400 }
         );
     } catch (error) {
-        console.error("[vendor/parse] Error:", error);
+        log.error("[vendor/parse] Error:", error);
         return NextResponse.json(
             { error: "Failed to parse vendor file" },
             { status: 500 }

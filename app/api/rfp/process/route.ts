@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { processPdf } from "@/services/rfp/pdfProcessor";
 import { analyzeRfp } from "@/services/rfp/rfpAnalyzer";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/rfp/process
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Only PDF files are supported" }, { status: 400 });
         }
 
-        console.log(`[RFP Process] Received: ${file.name} (${(file.size / 1024).toFixed(0)} KB), mode: ${mode}`);
+        log.info(`[RFP Process] Received: ${file.name} (${(file.size / 1024).toFixed(0)} KB), mode: ${mode}`);
 
         // Convert File to Buffer
         const arrayBuffer = await file.arrayBuffer();
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
         // Step 1: Extract + chunk + score (no AI, instant)
         const processed = await processPdf(buffer, file.name);
 
-        console.log(`[RFP Process] ${file.name}: ${processed.stats.totalSections} sections, ${processed.stats.highValueCount} high-value, ${processed.stats.filteredOutPercent}% filtered out`);
+        log.info(`[RFP Process] ${file.name}: ${processed.stats.totalSections} sections, ${processed.stats.highValueCount} high-value, ${processed.stats.filteredOutPercent}% filtered out`);
 
         // If scan-only mode, return structure without AI analysis
         if (mode === "scan") {
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest) {
         });
     } catch (error: any) {
         Sentry.captureException(error, { tags: { area: "rfp-process" } });
-        console.error("[RFP Process] Error:", error);
+        log.error("[RFP Process] Error:", error);
         return NextResponse.json({
             error: error.message || "Failed to process RFP",
         }, { status: 500 });

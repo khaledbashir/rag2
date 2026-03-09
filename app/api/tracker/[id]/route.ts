@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 interface Verification {
   name: string;
@@ -68,7 +69,7 @@ export async function GET(
     return NextResponse.json({ item });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to load";
-    console.error("[tracker] GET item error:", err);
+    log.error("[tracker] GET item error:", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -215,7 +216,7 @@ export async function PATCH(
     return NextResponse.json({ error: "No valid action" }, { status: 400 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to update";
-    console.error("[tracker] PATCH error:", err);
+    log.error("[tracker] PATCH error:", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

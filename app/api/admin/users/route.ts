@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import type { UserRole } from "@/lib/rbac";
 import bcrypt from "bcryptjs";
+import { log } from "@/lib/logger";
 
 /**
  * GET /api/admin/users
@@ -50,7 +51,7 @@ export async function GET() {
 
     return NextResponse.json({ users: formattedUsers });
   } catch (error) {
-    console.error("[GET /api/admin/users] Error:", error);
+    log.error("[GET /api/admin/users] Error:", error);
     return NextResponse.json(
       { error: "Failed to fetch users" },
       { status: 500 }
@@ -130,11 +131,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    console.log(`[POST /api/admin/users] Created user: ${user.email} (${user.role})`);
+    log.info(`[POST /api/admin/users] Created user: ${user.email} (${user.role})`);
 
     return NextResponse.json({ user }, { status: 201 });
   } catch (error) {
-    console.error("[POST /api/admin/users] Error:", error);
+    log.error("[POST /api/admin/users] Error:", error);
     return NextResponse.json(
       { error: "Failed to create user" },
       { status: 500 }

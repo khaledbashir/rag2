@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
+import { log } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
     try {
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
             projectId: duplicate.id,
         });
     } catch (error) {
-        console.error("POST /api/estimator/duplicate error:", error);
+        log.error("POST /api/estimator/duplicate error:", error);
         return NextResponse.json({ error: "Duplication failed" }, { status: 500 });
     }
 }

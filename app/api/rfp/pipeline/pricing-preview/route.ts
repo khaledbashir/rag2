@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateRateCardExcel } from "@/services/rfp/pipeline/generateRateCardExcel";
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "@/services/rfp/unified/types";
+import { log } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,13 +46,13 @@ export async function POST(request: NextRequest) {
         specs = (analysis.screens as unknown as ExtractedLEDSpec[]) || [];
         project = (analysis.project as unknown as ExtractedProjectInfo) || {};
       } else {
-        console.warn(`[pricing-preview] Analysis ${analysisId} not found in DB`);
+        log.warn(`[pricing-preview] Analysis ${analysisId} not found in DB`);
       }
     }
 
     // Priority 2: Use inline specs from client state (fallback)
     if (specs.length === 0 && body.specs?.length > 0) {
-      console.log("[pricing-preview] Using inline specs from client state");
+      log.info("[pricing-preview] Using inline specs from client state");
       specs = body.specs;
       project = body.project || {};
     }
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No LED specs found" }, { status: 400 });
     }
 
-    console.log(`[pricing-preview] Pricing ${specs.length} specs (source: ${analysisId ? "db" : "inline"})`);
+    log.info(`[pricing-preview] Pricing ${specs.length} specs (source: ${analysisId ? "db" : "inline"})`);
 
     const { pricedDisplays } = await generateRateCardExcel({
       project,
@@ -132,7 +133,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (err: any) {
-    console.error("[pricing-preview] Error:", err);
+    log.error("[pricing-preview] Error:", err);
     return NextResponse.json({ error: err.message || "Failed to generate pricing preview" }, { status: 500 });
   }
 }

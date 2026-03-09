@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 // ── Cost constants (match EstimatorBridge.ts exactly) ──────────────────────
 
@@ -381,7 +382,7 @@ export async function POST(req: NextRequest) {
       documentTotal: round2(projectTotal),
     });
   } catch (error) {
-    console.error("POST /api/estimator/convert error:", error);
+    log.error("POST /api/estimator/convert error:", error);
     return NextResponse.json({ error: "Conversion failed" }, { status: 500 });
   }
 }

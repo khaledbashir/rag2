@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 export async function GET() {
     try {
@@ -14,7 +15,7 @@ export async function GET() {
 
         return NextResponse.json({ manufacturers });
     } catch (error) {
-        console.error("[manufacturers/list] Error:", error);
+        log.error("[manufacturers/list] Error:", error);
         // Return empty — panel falls back to hardcoded list
         return NextResponse.json({ manufacturers: [] });
     }

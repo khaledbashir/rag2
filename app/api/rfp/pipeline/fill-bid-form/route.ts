@@ -17,6 +17,7 @@ import { prisma } from "@/lib/prisma";
 import { fillBidForm } from "@/services/rfp/pipeline/bidFormFiller";
 import type { PricingData } from "@/services/rfp/pipeline/bidFormFiller";
 import type { ExtractedLEDSpec } from "@/services/rfp/unified/types";
+import { log } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   try {
@@ -91,7 +92,7 @@ export async function POST(request: NextRequest) {
     // Fill the bid form
     const result = await fillBidForm(bidFormBuffer, screens, pricing);
 
-    console.log(
+    log.info(
       `[fill-bid-form] Matched ${result.matches.length}/${result.totalBlocks} blocks, ` +
         `${result.unmatchedBlocks.length} unmatched blocks, ` +
         `${result.unmatchedScreens.length} unmatched screens`
@@ -122,7 +123,7 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (err: any) {
-    console.error("[fill-bid-form] Error:", err);
+    log.error("[fill-bid-form] Error:", err);
     return NextResponse.json(
       { error: err.message || "Failed to fill bid form" },
       { status: 500 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 // PUT update node
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -20,7 +21,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 		if (error?.code === "P2025") {
 			return NextResponse.json({ error: "Node not found" }, { status: 404 });
 		}
-		console.error("Error updating node:", error);
+		log.error("Error updating node:", error);
 		return NextResponse.json({ error: "Failed to update node" }, { status: 500 });
 	}
 }
@@ -35,7 +36,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 		if (error?.code === "P2025") {
 			return NextResponse.json({ error: "Node not found" }, { status: 404 });
 		}
-		console.error("Error deleting node:", error);
+		log.error("Error deleting node:", error);
 		return NextResponse.json({ error: "Failed to delete node" }, { status: 500 });
 	}
 }

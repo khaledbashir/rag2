@@ -6,6 +6,7 @@ import {
     mapPricingSections,
     mapPricingSectionsWithAI,
 } from "@/services/rfp/pricingSectionMapper";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/rfp/extract-pricing
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Only PDF files are supported" }, { status: 400 });
         }
 
-        console.log(`[Extract Pricing] Received: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
+        log.info(`[Extract Pricing] Received: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
 
         // Convert File to Buffer
         const arrayBuffer = await file.arrayBuffer();
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
             .map(s => s.text)
             .join("\n\n");
 
-        console.log(`[Extract Pricing] ${file.name}: ${pricingSections.length} pricing sections, ${scopeSections.length} scope sections`);
+        log.info(`[Extract Pricing] ${file.name}: ${pricingSections.length} pricing sections, ${scopeSections.length} scope sections`);
 
         // Step 3: Regex extraction
         let sections = mapPricingSections(pricingText);
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
             || avgConfidence < 0.5;
 
         if (needsAI) {
-            console.log(`[Extract Pricing] Low regex confidence (${avgConfidence.toFixed(2)}). Falling back to AI...`);
+            log.info(`[Extract Pricing] Low regex confidence (${avgConfidence.toFixed(2)}). Falling back to AI...`);
 
             try {
                 const aiSections = await mapPricingSectionsWithAI(pricingText);
@@ -79,7 +80,7 @@ export async function POST(req: NextRequest) {
                     method = "ai-assisted";
                 }
             } catch (aiError: any) {
-                console.error("[Extract Pricing] AI fallback failed:", aiError.message);
+                log.error("[Extract Pricing] AI fallback failed:", aiError.message);
             }
         }
 
@@ -113,7 +114,7 @@ export async function POST(req: NextRequest) {
         });
     } catch (error: any) {
         Sentry.captureException(error, { tags: { area: "rfp-extract-pricing" } });
-        console.error("[Extract Pricing] Error:", error);
+        log.error("[Extract Pricing] Error:", error);
         return NextResponse.json({
             error: error.message || "Failed to extract pricing sections",
         }, { status: 500 });

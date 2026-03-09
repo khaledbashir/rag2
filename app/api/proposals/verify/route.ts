@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { computeManifest, generateReconciliationReport } from '@/lib/verification';
 import { detectExceptions } from '@/lib/exceptions';
 import { getRoundingAuditSummary } from '@/lib/roundingAudit';
+import { log } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
     try {
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
             },
         });
     } catch (error) {
-        console.error('Verification error:', error);
+        log.error('Verification error:', error);
         return NextResponse.json(
             { 
                 error: 'Verification failed',

@@ -17,6 +17,7 @@ import type {
   ExtractedRequirement,
 } from "@/services/rfp/unified/types";
 import { buildProjectSummary, type ProjectSummaryInfo } from "@/services/proposal/server/exportMirrorUglySheetExcel";
+import { log } from "@/lib/logger";
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
 
@@ -289,7 +290,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (err: any) {
-    console.error("[extraction-excel] Error:", err);
+    log.error("[extraction-excel] Error:", err);
     return NextResponse.json({ error: err.message || "Failed to generate Excel" }, { status: 500 });
   }
 }

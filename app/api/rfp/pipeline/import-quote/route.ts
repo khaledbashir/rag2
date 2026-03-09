@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { importQuoteExcel } from "@/services/rfp/pipeline/quoteImporter";
 import type { ExtractedLEDSpec } from "@/services/rfp/unified/types";
+import { log } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (err: any) {
-    console.error("[import-quote] Error:", err);
+    log.error("[import-quote] Error:", err);
     return NextResponse.json({ error: err.message || "Failed to import quote" }, { status: 500 });
   }
 }

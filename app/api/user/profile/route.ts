@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 /**
  * PATCH /api/user/profile
@@ -53,7 +54,7 @@ export async function PATCH(req: Request) {
 
     return NextResponse.json({ user: updatedUser });
   } catch (error: any) {
-    console.error("[PATCH /api/user/profile] Error:", error);
+    log.error("[PATCH /api/user/profile] Error:", error);
 
     if (error.code === "P2025") {
       return NextResponse.json({ error: "User not found" }, { status: 404 });

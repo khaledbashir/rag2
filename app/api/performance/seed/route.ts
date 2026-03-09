@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/performance/seed
@@ -318,7 +319,7 @@ export async function POST() {
       },
     });
   } catch (error: any) {
-    console.error("[performance/seed] Error:", error);
+    log.error("[performance/seed] Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

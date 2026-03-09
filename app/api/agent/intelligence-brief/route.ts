@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { queryAgent } from "@/lib/anything-llm";
 import { extractJson } from "@/lib/json-utils";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 
 type BriefRequest = {
     clientName: string;
@@ -137,12 +138,12 @@ RULES:
             await prisma.proposal.update({
                 where: { id: proposalId },
                 data: { intelligenceBrief: brief as any },
-            }).catch((err) => console.error("[IntelligenceBrief] Failed to persist:", err));
+            }).catch((err) => log.error("[IntelligenceBrief] Failed to persist:", err));
         }
 
         return NextResponse.json({ ok: true, brief, cached: false });
     } catch (err) {
-        console.error("[IntelligenceBrief] Error:", err);
+        log.error("[IntelligenceBrief] Error:", err);
         return NextResponse.json(
             { error: err instanceof Error ? err.message : "Intelligence brief failed" },
             { status: 500 },
