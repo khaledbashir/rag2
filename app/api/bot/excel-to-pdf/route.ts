@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
             }, { status: 400 });
         }
 
-        const workbook = xlsx.read(buffer, { type: "buffer" });
+        const workbook = xlsx.read(buffer, { type: "buffer", cellStyles: true });
         const sourceWorkbookHash = crypto.createHash("sha256").update(buffer).digest("hex");
 
         const { document: pricingDocument, validation } = parsePricingTablesWithValidation(workbook, filename, {

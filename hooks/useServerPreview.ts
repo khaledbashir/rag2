@@ -84,7 +84,7 @@ export function useServerPreview(answers: EstimatorAnswers): {
         }
 
         const buffer = await res.arrayBuffer();
-        const wb = XLSX.read(new Uint8Array(buffer), { type: "array" });
+        const wb = XLSX.read(new Uint8Array(buffer), { type: "array", cellStyles: true });
 
         // Convert XLSX workbook → SheetTab[] for ExcelPreview
         const sheets: SheetTab[] = wb.SheetNames.map((name) => {

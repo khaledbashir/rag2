@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
         }
 
         // --- Step 2: Always try PricingTable parser (Mirror Mode) ---
-        const workbook = xlsx.read(buffer, { type: "buffer" });
+        const workbook = xlsx.read(buffer, { type: "buffer", cellStyles: true });
         const sourceWorkbookHash = crypto.createHash("sha256").update(buffer).digest("hex");
         let pricingDocument: any = null;
         let validation: any = null;

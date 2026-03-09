@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const sourceWorkbookHash = crypto.createHash("sha256").update(buffer).digest("hex");
-    const workbook = xlsx.read(buffer, { type: "buffer" });
+    const workbook = xlsx.read(buffer, { type: "buffer", cellStyles: true });
 
     // ── Step 1: Convert ALL relevant sheets to text for AI ──
     // Gemini has 1M context — send everything so it extracts ALL screens

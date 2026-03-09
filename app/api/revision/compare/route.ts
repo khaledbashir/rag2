@@ -44,8 +44,8 @@ export async function POST(req: NextRequest) {
     const originalBuffer = Buffer.from(await originalFile.arrayBuffer());
     const revisedBuffer = Buffer.from(await revisedFile.arrayBuffer());
 
-    const originalWorkbook = xlsx.read(originalBuffer, { type: "buffer" });
-    const revisedWorkbook = xlsx.read(revisedBuffer, { type: "buffer" });
+    const originalWorkbook = xlsx.read(originalBuffer, { type: "buffer", cellStyles: true });
+    const revisedWorkbook = xlsx.read(revisedBuffer, { type: "buffer", cellStyles: true });
 
     const result = compareWorkbooks(
       originalWorkbook,
