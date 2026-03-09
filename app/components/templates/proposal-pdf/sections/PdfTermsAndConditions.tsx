@@ -3,6 +3,7 @@
  *
  * Based on ANC's standard Sales Terms and Conditions (Dodgers template).
  * Renders as additional page(s) at the end of the Contract PDF.
+ * Styled to match existing PDF sections (blue bar headers, Arial, plain text).
  *
  * Fillable spots: purchaser name, entity names
  * Toggleable sections: CMS, graphics, labor warranty, materials warranty
@@ -23,6 +24,8 @@ export interface TermsAndConditionsConfig {
     includeCms?: boolean;
     /** Include graphics/content-related clauses */
     includeGraphics?: boolean;
+    /** Exhibit letter (default: "C") */
+    exhibitLetter?: string;
 }
 
 interface PdfTermsAndConditionsProps {
@@ -38,27 +41,22 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
         includeMaterialsWarranty = true,
         includeCms = false,
         includeGraphics = false,
+        exhibitLetter = "C",
     } = config;
 
-    const sectionNumberStart = 1;
-    let sectionNum = sectionNumberStart;
+    let sectionNum = 1;
 
     return (
         <div data-preview-section="terms-and-conditions" className="px-6">
-            {/* Header */}
-            <div className="text-center mb-6">
-                <div
-                    className="text-[15px] font-bold uppercase tracking-wider mb-1"
-                    style={{ color: colors.primary }}
-                >
-                    Sales Terms and Conditions
-                </div>
-                <div className="text-[11px]" style={{ color: colors.textMuted }}>
-                    {purchaserName} — Equipment Purchase Agreement
-                </div>
+            {/* Exhibit Header — matches "Exhibit B — Statement of Work" style */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                <div style={{ width: '3px', height: '14px', borderRadius: '1px', background: colors.primary, flexShrink: 0 }} />
+                <span className="text-[13px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>
+                    Exhibit {exhibitLetter} — Terms and Conditions
+                </span>
             </div>
 
-            <div className="space-y-4 text-[11px] leading-relaxed" style={{ color: colors.text }}>
+            <div className="space-y-3 text-[11px] leading-relaxed" style={{ color: colors.text }}>
                 {/* Section 1: Intellectual Property */}
                 <Section num={sectionNum++} title="Intellectual Property" colors={colors}>
                     <p>
@@ -174,7 +172,7 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
                     </Section>
                 )}
 
-                {/* Section: Indemnification */}
+                {/* Indemnification */}
                 <Section num={sectionNum++} title="Indemnification" colors={colors}>
                     <p className="mb-2">
                         (a) Each party shall indemnify, defend, and hold harmless the other party from and
@@ -191,7 +189,7 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
                     </p>
                 </Section>
 
-                {/* Section: Force Majeure */}
+                {/* Force Majeure */}
                 <Section num={sectionNum++} title="Force Majeure" colors={colors}>
                     <p>
                         Neither party shall be liable for any failure or delay in performance due to causes
@@ -202,7 +200,7 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
                     </p>
                 </Section>
 
-                {/* Section: Miscellaneous */}
+                {/* Miscellaneous */}
                 <Section num={sectionNum++} title="Miscellaneous" colors={colors}>
                     <p className="mb-1">
                         (a) ANC may assign this Agreement without the consent of {purchaserName}.
@@ -234,7 +232,7 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
     );
 }
 
-/** Reusable numbered section wrapper */
+/** Numbered section with blue bar — matches SectionHeader style from ProposalTemplate5 */
 function Section({
     num,
     title,
@@ -248,12 +246,9 @@ function Section({
 }) {
     return (
         <div className="break-inside-avoid">
-            <div className="flex items-center gap-1.5 mb-1">
-                <div
-                    className="w-[3px] h-[12px] rounded-sm flex-shrink-0"
-                    style={{ background: colors.primary }}
-                />
-                <span className="text-[11px] font-bold uppercase tracking-wide">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                <div style={{ width: '3px', height: '12px', borderRadius: '1px', background: colors.primary, flexShrink: 0 }} />
+                <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: colors.text }}>
                     {num}. {title}
                 </span>
             </div>
