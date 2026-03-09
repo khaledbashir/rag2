@@ -30,6 +30,14 @@ const statusFilters = [
     { key: "SIGNED", label: "Signed" },
 ];
 
+const typeFilters = [
+    { key: "all", label: "All Types" },
+    { key: "BUDGET", label: "Budgets" },
+    { key: "PROPOSAL", label: "Proposals" },
+    { key: "LOI", label: "LOIs" },
+    { key: "CONTRACT", label: "Contracts" },
+];
+
 const formatCurrency = (amount: number, currency: string = "USD") =>
     new Intl.NumberFormat("en-US", {
         style: "currency",
@@ -93,6 +101,7 @@ export default function ProjectsPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [viewMode, setViewMode] = useState<"grid" | "list">("list");
     const [statusFilter, setStatusFilter] = useState("all");
+    const [typeFilter, setTypeFilter] = useState("all");
     const [briefProjectId, setBriefProjectId] = useState<string | null>(null);
     const [isBriefOpen, setIsBriefOpen] = useState(false);
     const router = useRouter();
@@ -103,6 +112,7 @@ export default function ProjectsPage() {
             const params = new URLSearchParams();
             if (searchQuery) params.append("search", searchQuery);
             if (statusFilter !== "all") params.append("status", statusFilter);
+            if (typeFilter !== "all") params.append("documentMode", typeFilter);
 
             const response = await fetch(`/api/projects?${params.toString()}`, { cache: "no-store" });
             if (!response.ok) {
@@ -117,7 +127,7 @@ export default function ProjectsPage() {
         } finally {
             setLoading(false);
         }
-    }, [searchQuery, statusFilter]);
+    }, [searchQuery, statusFilter, typeFilter]);
 
     useEffect(() => {
         const timer = setTimeout(fetchProjects, 300);
@@ -346,7 +356,7 @@ export default function ProjectsPage() {
                         </button>
                         <div className="h-5 w-px bg-border/60 mx-1" />
                         <Link
-                            href="/estimator"
+                            href="/estimator/new"
                             className="px-3.5 py-1.5 border border-border text-foreground rounded hover:bg-muted transition-colors text-xs font-medium flex items-center gap-1.5"
                         >
                             <Calculator className="w-3.5 h-3.5" />
@@ -373,7 +383,7 @@ export default function ProjectsPage() {
                                 <p className="text-xs text-muted-foreground mt-0.5">{heroGreeting.line}</p>
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                                 <div className="flex gap-1 shrink-0">
                                     {statusFilters.map((filter) => (
                                         <button
@@ -382,6 +392,23 @@ export default function ProjectsPage() {
                                             className={cn(
                                                 "px-2.5 py-1 text-[11px] font-medium rounded transition-colors duration-150",
                                                 statusFilter === filter.key ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                                            )}
+                                        >
+                                            {filter.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="h-4 w-px bg-border/60" />
+
+                                <div className="flex gap-1 shrink-0">
+                                    {typeFilters.map((filter) => (
+                                        <button
+                                            key={filter.key}
+                                            onClick={() => setTypeFilter(filter.key)}
+                                            className={cn(
+                                                "px-2.5 py-1 text-[11px] font-medium rounded transition-colors duration-150",
+                                                typeFilter === filter.key ? "bg-brand-blue text-white" : "text-muted-foreground hover:text-foreground"
                                             )}
                                         >
                                             {filter.label}

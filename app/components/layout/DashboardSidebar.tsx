@@ -59,7 +59,7 @@ interface NavChild {
 
 const mainMenuItems: NavItem[] = [
     { icon: LayoutGrid, label: "Projects", href: "/projects", allowedRoles: null },
-    { icon: Kanban, label: "Pipeline", href: "/pipeline", allowedRoles: null, hidden: true },
+    { icon: Kanban, label: "Pipeline", href: "/pipeline", allowedRoles: null },
 ];
 
 const toolsMenuItems: NavItem[] = [

@@ -52,6 +52,14 @@ export async function GET(req: NextRequest) {
         if (workspaceId) where.workspaceId = workspaceId;
         if (status && status !== "all") where.status = status;
 
+        // Calculation mode filter (e.g., "ESTIMATE", "MIRROR", "INTELLIGENCE")
+        const calculationMode = searchParams.get("calculationMode");
+        if (calculationMode) where.calculationMode = calculationMode;
+
+        // Document mode filter (e.g., "BUDGET", "PROPOSAL", "LOI", "CONTRACT")
+        const documentMode = searchParams.get("documentMode");
+        if (documentMode) where.documentMode = documentMode;
+
         if (search) {
             where.OR = [
                 { clientName: { contains: search, mode: "insensitive" } },
