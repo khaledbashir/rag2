@@ -24,6 +24,7 @@ import PdfPricingTables from "./sections/PdfPricingTables";
 import PdfSpecsTable from "./sections/PdfSpecsTable";
 import PdfResponsibilityMatrix from "./sections/PdfResponsibilityMatrix";
 import PdfSignatureBlock from "./sections/PdfSignatureBlock";
+import PdfTermsAndConditions from "./sections/PdfTermsAndConditions";
 import { MasterTableSummary, LOISummaryTable } from "./sections/PdfProjectSummary";
 import type { PdfColors, PdfTemplateSpacing } from "./sections/shared";
 
@@ -57,6 +58,17 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const docModeConfig = DOCUMENT_MODES[catalogMode] || DOCUMENT_MODES.proposal;
     const docLabel = docModeConfig.headerText;
     const isLOI = documentMode === "LOI" || documentMode === "CONTRACT";
+    const isContract = documentMode === "CONTRACT";
+
+    // T&C exhibit config — only renders for CONTRACT mode
+    const tcConfig = isContract ? {
+        purchaserName: (details as any)?.purchaserLegalName || receiver?.name || "Purchaser",
+        warrantyYears: (details as any)?.tcWarrantyYears ?? 5,
+        includeLaborWarranty: (details as any)?.tcIncludeLaborWarranty ?? true,
+        includeMaterialsWarranty: (details as any)?.tcIncludeMaterialsWarranty ?? true,
+        includeCms: (details as any)?.tcIncludeCms ?? false,
+        includeGraphics: (details as any)?.tcIncludeGraphics ?? false,
+    } : null;
 
     // Guard against raw numbers (e.g., project IDs mistakenly used as names)
     const rawPurchaserName = receiver?.name || "";
@@ -588,6 +600,15 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                             </>
                         )}
 
+                        {/* T&C Exhibit — CONTRACT mode only */}
+                        {isContract && tcConfig && (
+                            <>
+                                <PageBreak />
+                                <ContinuationPageHeader />
+                                <PdfTermsAndConditions colors={colors} config={tcConfig} />
+                            </>
+                        )}
+
                         <div className="px-6">
                             <HybridFooter />
                         </div>
@@ -659,6 +680,15 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                                 <PageBreak />
                                 <ContinuationPageHeader />
                                 <RespMatrixSOW />
+                            </>
+                        )}
+
+                        {/* T&C Exhibit — CONTRACT mode only */}
+                        {isContract && tcConfig && (
+                            <>
+                                <PageBreak />
+                                <ContinuationPageHeader />
+                                <PdfTermsAndConditions colors={colors} config={tcConfig} />
                             </>
                         )}
 
@@ -743,6 +773,16 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                             </div>
                         </>
                     )}
+
+                    {/* T&C Exhibit — CONTRACT mode only */}
+                    {isContract && tcConfig && (
+                        <>
+                            <PageBreak />
+                            <ContinuationPageHeader />
+                            <PdfTermsAndConditions colors={colors} config={tcConfig} />
+                        </>
+                    )}
+
                     <div className="px-6">
                         <HybridFooter />
                     </div>

@@ -51,7 +51,7 @@
 - [x] **4f.** "Promote to Contract" button on proposal details page
 - [x] **4g.** Pipeline kanban badge + label for CONTRACT
 - [x] **4h.** PDF filename uses "Contract" label
-- [ ] **4i.** T&C Exhibit — appears only when mode = CONTRACT (see Item 5)
+- [x] **4i.** T&C Exhibit — appears only when mode = CONTRACT (see Item 5)
 
 ## 5. Terms & Conditions Exhibit (CONTRACT mode only)
 > Natalia: "That exhibit is just word doc/pdf, just text and it has couple spots we need to change, we can toggle the text on/off"
@@ -65,11 +65,11 @@
 - With CMS / Without CMS
 - With graphics / Without graphics
 
-- [ ] **5a.** Build T&C exhibit component (text sections from Dodgers PDF)
-- [ ] **5b.** Dynamic header: client name, entity names swap per deal
-- [ ] **5c.** Toggle switches for each section (CMS, graphics, labor warranty, materials)
-- [ ] **5d.** T&C exhibit renders as final pages when mode = CONTRACT
-- [ ] **5e.** UI: T&C section toggles visible in proposal editor when CONTRACT selected
+- [x] **5a.** Build T&C exhibit component (text sections from Dodgers PDF)
+- [x] **5b.** Dynamic header: client name, entity names swap per deal
+- [x] **5c.** Toggle switches for each section (CMS, graphics, labor warranty, materials)
+- [x] **5d.** T&C exhibit renders as final pages when mode = CONTRACT
+- [x] **5e.** UI: T&C section toggles visible in proposal editor when CONTRACT selected
 
 ---
 
@@ -81,7 +81,7 @@
 | 2 | Quick Budget shortcuts | Small | No | DONE |
 | 3 | Add user login | Small | No | Waiting on user info |
 | 4 | Contract document mode | Medium | CO candidate | DONE (mode + all 18 files) |
-| 5 | T&C Exhibit (toggleable sections) | Medium | CO candidate | Next up |
+| 5 | T&C Exhibit (toggleable sections) | Medium | CO candidate | DONE |
 
 ---
 

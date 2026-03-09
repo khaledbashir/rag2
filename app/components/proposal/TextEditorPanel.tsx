@@ -6,7 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { FileText, ChevronRight, DollarSign, MessageSquare, Scale } from "lucide-react";
+import { FileText, ChevronRight, DollarSign, MessageSquare, Scale, ShieldCheck } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 /**
@@ -20,7 +21,7 @@ import { cn } from "@/lib/utils";
  * - Additional Notes: Ad-hoc project-specific notes
  */
 export function TextEditorPanel() {
-    const { register, watch } = useFormContext();
+    const { register, watch, setValue } = useFormContext();
     const [isExpanded, setIsExpanded] = useState(false);
 
     // Watch values for character counts
@@ -30,6 +31,14 @@ export function TextEditorPanel() {
     const purchaserLegalName = watch("details.purchaserLegalName") || "";
     const signatureLegalText = watch("details.signatureBlockText") || "";
     const documentMode = watch("details.documentMode") || "BUDGET";
+
+    // T&C exhibit toggles (CONTRACT mode only)
+    const isContract = documentMode === "CONTRACT";
+    const tcIncludeLaborWarranty = watch("details.tcIncludeLaborWarranty") ?? true;
+    const tcIncludeMaterialsWarranty = watch("details.tcIncludeMaterialsWarranty") ?? true;
+    const tcIncludeCms = watch("details.tcIncludeCms") ?? false;
+    const tcIncludeGraphics = watch("details.tcIncludeGraphics") ?? false;
+    const tcWarrantyYears = watch("details.tcWarrantyYears") ?? 5;
 
     const hasContent = introText.length > 0 || paymentTerms.length > 0 || additionalNotes.length > 0 || purchaserLegalName.length > 0 || signatureLegalText.length > 0;
 
@@ -159,6 +168,80 @@ export function TextEditorPanel() {
                             <p className="text-[10px] text-muted-foreground">
                                 Legal entity name for the Purchaser in LOI legal paragraph. Defaults to client name if left blank. The project name will still appear at the end of the paragraph.
                             </p>
+                        </div>
+                    )}
+
+                    {/* T&C Exhibit Controls (CONTRACT mode only) */}
+                    {isContract && (
+                        <div className="space-y-4 border-t border-border/40 pt-6">
+                            <Label className="text-xs font-semibold text-foreground flex items-center gap-2">
+                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                                Terms &amp; Conditions Exhibit
+                                <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-emerald-500/30 text-emerald-600">
+                                    Contract Only
+                                </Badge>
+                            </Label>
+                            <p className="text-[10px] text-muted-foreground -mt-2">
+                                Toggle which sections appear in the T&amp;C exhibit page appended to the contract.
+                            </p>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <label className="flex items-center gap-2 cursor-pointer p-2 rounded-md border border-border/60 hover:bg-muted/50 transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        checked={tcIncludeLaborWarranty}
+                                        onChange={(e) => setValue("details.tcIncludeLaborWarranty", e.target.checked, { shouldDirty: true })}
+                                        className="w-3.5 h-3.5 rounded accent-emerald-500"
+                                    />
+                                    <span className="text-xs text-foreground">Labor Warranty</span>
+                                </label>
+
+                                <label className="flex items-center gap-2 cursor-pointer p-2 rounded-md border border-border/60 hover:bg-muted/50 transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        checked={tcIncludeMaterialsWarranty}
+                                        onChange={(e) => setValue("details.tcIncludeMaterialsWarranty", e.target.checked, { shouldDirty: true })}
+                                        className="w-3.5 h-3.5 rounded accent-emerald-500"
+                                    />
+                                    <span className="text-xs text-foreground">Materials Warranty</span>
+                                </label>
+
+                                <label className="flex items-center gap-2 cursor-pointer p-2 rounded-md border border-border/60 hover:bg-muted/50 transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        checked={tcIncludeCms}
+                                        onChange={(e) => setValue("details.tcIncludeCms", e.target.checked, { shouldDirty: true })}
+                                        className="w-3.5 h-3.5 rounded accent-emerald-500"
+                                    />
+                                    <span className="text-xs text-foreground">CMS Clauses</span>
+                                </label>
+
+                                <label className="flex items-center gap-2 cursor-pointer p-2 rounded-md border border-border/60 hover:bg-muted/50 transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        checked={tcIncludeGraphics}
+                                        onChange={(e) => setValue("details.tcIncludeGraphics", e.target.checked, { shouldDirty: true })}
+                                        className="w-3.5 h-3.5 rounded accent-emerald-500"
+                                    />
+                                    <span className="text-xs text-foreground">Graphics Clauses</span>
+                                </label>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                                <Label htmlFor="tcWarrantyYears" className="text-xs text-foreground whitespace-nowrap">
+                                    Warranty Period
+                                </Label>
+                                <Input
+                                    id="tcWarrantyYears"
+                                    type="number"
+                                    min={1}
+                                    max={25}
+                                    value={tcWarrantyYears}
+                                    onChange={(e) => setValue("details.tcWarrantyYears", parseInt(e.target.value) || 5, { shouldDirty: true })}
+                                    className="w-20 h-8 text-xs"
+                                />
+                                <span className="text-[10px] text-muted-foreground">years</span>
+                            </div>
                         </div>
                     )}
                 </CardContent>
