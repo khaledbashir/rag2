@@ -112,8 +112,8 @@ export default async function RootLayout({
                         {/* Umami Analytics */}
                         <script
                             defer
-                            src="https://basheer-umami.prd42b.easypanel.host/script.js"
-                            data-website-id="d981769e-1a25-49dd-9e09-0533ee7ce145"
+                            src="https://abc-umami.izcgmb.easypanel.host/script.js"
+                            data-website-id="e275b293-afcd-468b-8748-cba2d667ab25"
                         ></script>
 
                         {/* Userback Widget */}

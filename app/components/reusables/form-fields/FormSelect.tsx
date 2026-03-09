@@ -45,16 +45,16 @@ const FormSelect = ({
                     {label && <FormLabel>{`${label}:`}</FormLabel>}
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                            <SelectTrigger className="w-full bg-zinc-950/50 border-zinc-800">
+                            <SelectTrigger className="w-full bg-background border-border">
                                 <SelectValue placeholder={placeholder} />
                             </SelectTrigger>
                         </FormControl>
-                        <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-100">
+                        <SelectContent className="bg-popover border-border text-popover-foreground">
                             {options.map((option) => (
                                 <SelectItem
                                     key={option.value}
                                     value={option.value}
-                                    className="text-zinc-100 focus:bg-zinc-800 focus:text-white"
+                                    className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
                                 >
                                     {option.label}
                                 </SelectItem>
@@ -78,16 +78,16 @@ const FormSelect = ({
                         <div className="flex-[2] relative flex items-center gap-2">
                             <Select onValueChange={field.onChange} defaultValue={field.value}>
                                 <FormControl>
-                                    <SelectTrigger className="w-full bg-zinc-950/50 border-zinc-800">
+                                    <SelectTrigger className="w-full bg-background border-border">
                                         <SelectValue placeholder={placeholder} />
                                     </SelectTrigger>
                                 </FormControl>
-                                <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-100">
+                                <SelectContent className="bg-popover border-border text-popover-foreground">
                                     {options.map((option) => (
                                         <SelectItem
                                             key={option.value}
                                             value={option.value}
-                                            className="text-zinc-100 focus:bg-zinc-800 focus:text-white"
+                                            className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
                                         >
                                             {option.label}
                                         </SelectItem>

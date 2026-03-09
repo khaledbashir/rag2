@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ProposalType } from "@/types";
 import bcrypt from "bcryptjs";
+import crypto from "node:crypto";
 import { PRICING_PARSER_STRICT_VERSION } from "@/services/pricing/pricingTableParser";
+import { log } from "@/lib/logger";
 
 import { prisma } from "@/lib/prisma";
 
@@ -32,8 +34,8 @@ export async function POST(
         }
 
         // Parse summaries if they exist
-        const clientSummary = project.clientSummary ? JSON.parse(project.clientSummary) : null;
-        const internalAudit = project.internalAudit ? JSON.parse(project.internalAudit) : null;
+        const clientSummary = project.clientSummary ? (() => { try { return JSON.parse(project.clientSummary!); } catch { return null; } })() : null;
+        const internalAudit = project.internalAudit ? (() => { try { return JSON.parse(project.internalAudit!); } catch { return null; } })() : null;
 
         // --- NATALIA GATEKEEPER: AI Verification Guardrail ---
         const aiFilledFields = (project.aiFilledFields as string[]) || [];
@@ -73,7 +75,7 @@ export async function POST(
         let shareHash: string;
 
         if (forceNewVersion || !project.shareHash) {
-            shareHash = `${Math.random().toString(36).substring(2, 10)}-v${versionNumber}`;
+            shareHash = `${crypto.randomBytes(16).toString("hex")}-v${versionNumber}`;
             await (prisma.proposal as any).update({
                 where: { id },
                 data: {
@@ -257,7 +259,7 @@ export async function POST(
                 : `Created new v${versionNumber} share link`
         });
     } catch (error) {
-        console.error("POST /api/projects/[id]/share error:", error);
+        log.error("POST /api/projects/[id]/share error:", error);
         return NextResponse.json({ error: "Failed to generate share link" }, { status: 500 });
     }
 }

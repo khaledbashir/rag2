@@ -170,7 +170,7 @@ export default function EstimatorListPage() {
                     ) : (
                         <>
                             {/* Column headers */}
-                            <div className="flex items-center gap-3 px-3 py-1.5 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                            <div className="sticky top-0 z-10 bg-background flex items-center gap-3 px-3 py-1.5 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
                                 <div className="flex-1 min-w-0">Name</div>
                                 <div className="hidden sm:block w-20 text-right shrink-0">Screens</div>
                                 <div className="w-28 text-right shrink-0">Value</div>

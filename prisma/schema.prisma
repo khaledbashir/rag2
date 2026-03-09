@@ -256,6 +256,13 @@ model Proposal {
   screens      ScreenConfig[]
   snapshots    ProposalSnapshot[]
   rfpDocuments RfpDocument[]
+
+  @@index([calculationMode])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([status])
+  @@index([workspaceId])
+  @@index([deletedAt])
 }
 
 // NEW: Manual Override model

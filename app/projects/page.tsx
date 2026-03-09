@@ -6,13 +6,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
-    Bell,
     Calculator,
+    FolderOpen,
     LayoutGrid,
     List,
     Plus,
     Search,
-    Settings,
+    X,
 } from "lucide-react";
 import NewProjectModal from "@/app/components/modals/NewProjectModal";
 import ProjectCard, { type DashboardStatus, type ProjectCardData } from "@/app/components/ProjectCard";
@@ -339,22 +339,24 @@ export default function ProjectsPage() {
                                 placeholder="Search projects..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full pl-9 pr-4 py-1.5 bg-transparent border-b border-border text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary transition-all duration-200"
+                                className="w-full pl-9 pr-8 py-1.5 bg-transparent border-b border-border text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary transition-all duration-200"
                             />
-                            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground rounded-sm border border-border">
-                                ⌘K
-                            </kbd>
+                            {searchQuery ? (
+                                <button
+                                    onClick={() => setSearchQuery("")}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                >
+                                    <X className="w-3.5 h-3.5" />
+                                </button>
+                            ) : (
+                                <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground rounded-sm border border-border">
+                                    ⌘K
+                                </kbd>
+                            )}
                         </div>
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
-                        <button className="p-2 text-muted-foreground hover:text-foreground transition-colors relative">
-                            <Bell className="w-4 h-4" />
-                        </button>
-                        <button className="p-2 text-muted-foreground hover:text-foreground transition-colors">
-                            <Settings className="w-4 h-4" />
-                        </button>
-                        <div className="h-5 w-px bg-border/60 mx-1" />
                         <Link
                             href="/estimator/new"
                             className="px-3.5 py-1.5 border border-border text-foreground rounded hover:bg-muted transition-colors text-xs font-medium flex items-center gap-1.5"
@@ -408,7 +410,7 @@ export default function ProjectsPage() {
                                             onClick={() => setTypeFilter(filter.key)}
                                             className={cn(
                                                 "px-2.5 py-1 text-[11px] font-medium rounded transition-colors duration-150",
-                                                typeFilter === filter.key ? "bg-brand-blue text-white" : "text-muted-foreground hover:text-foreground"
+                                                typeFilter === filter.key ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
                                             )}
                                         >
                                             {filter.label}
@@ -454,10 +456,28 @@ export default function ProjectsPage() {
                                     </div>
                                 </div>
 
-                                {viewMode === "list" ? (
+                                {projects.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center py-20 text-center">
+                                        <FolderOpen className="w-10 h-10 text-muted-foreground/40 mb-3" />
+                                        <p className="text-sm font-medium text-muted-foreground">No projects found</p>
+                                        <p className="text-xs text-muted-foreground/60 mt-1 max-w-xs">
+                                            {searchQuery || statusFilter !== "all" || typeFilter !== "all"
+                                                ? "Try adjusting your search or filters."
+                                                : "Create your first project to get started."}
+                                        </p>
+                                        {(searchQuery || statusFilter !== "all" || typeFilter !== "all") && (
+                                            <button
+                                                onClick={() => { setSearchQuery(""); setStatusFilter("all"); setTypeFilter("all"); }}
+                                                className="mt-3 text-xs text-primary hover:underline"
+                                            >
+                                                Clear all filters
+                                            </button>
+                                        )}
+                                    </div>
+                                ) : viewMode === "list" ? (
                                     <div className="space-y-px">
                                         {/* Column headers */}
-                                        <div className="flex items-center gap-3 px-3 py-1.5 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                                        <div className="sticky top-0 z-10 bg-background flex items-center gap-3 px-3 py-1.5 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
                                             <div className="flex-1 min-w-0">Name</div>
                                             <div className="hidden sm:block w-20 shrink-0">Type</div>
                                             <div className="hidden md:block w-24 shrink-0">Status</div>

@@ -565,7 +565,7 @@ export default function EstimatorStudio({
                     />
                     {/* Bundle panel overlay */}
                     {bundleOpen && (
-                        <div className="absolute inset-0 z-20 bg-background/95 backdrop-blur-sm rounded-lg border border-border shadow-lg">
+                        <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-md rounded-lg border border-border shadow-lg">
                             <BundlePanel
                                 calcs={calcs}
                                 displays={answers.displays}
@@ -576,7 +576,7 @@ export default function EstimatorStudio({
                     )}
                     {/* Vendor spec panel overlay */}
                     {vendorOpen && (
-                        <div className="absolute inset-0 z-20 bg-background/95 backdrop-blur-sm rounded-lg border border-border shadow-lg">
+                        <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-md rounded-lg border border-border shadow-lg">
                             <VendorDropZone
                                 displayIndex={activeDisplayIndex}
                                 currentDisplay={answers.displays[activeDisplayIndex] || { widthFt: 0, heightFt: 0 } as any}
@@ -587,7 +587,7 @@ export default function EstimatorStudio({
                     )}
                     {/* Reverse Engineer panel overlay */}
                     {reverseOpen && (
-                        <div className="absolute inset-0 z-20 bg-background/95 backdrop-blur-sm rounded-lg border border-border shadow-lg overflow-hidden">
+                        <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-md rounded-lg border border-border shadow-lg overflow-hidden">
                             <ReverseEngineerPanel
                                 open={reverseOpen}
                                 onClose={() => setReverseOpen(false)}
@@ -598,7 +598,7 @@ export default function EstimatorStudio({
                     )}
                     {/* Liability scanner panel overlay */}
                     {liabilityOpen && (
-                        <div className="absolute inset-0 z-20 bg-background/95 backdrop-blur-sm rounded-lg border border-border shadow-lg overflow-hidden">
+                        <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-md rounded-lg border border-border shadow-lg overflow-hidden">
                             <LiabilityPanel
                                 open={liabilityOpen}
                                 onClose={() => setLiabilityOpen(false)}
@@ -607,7 +607,7 @@ export default function EstimatorStudio({
                     )}
                     {/* RFQ generator panel overlay */}
                     {rfqOpen && (
-                        <div className="absolute inset-0 z-20 bg-background/95 backdrop-blur-sm rounded-lg border border-border shadow-lg overflow-hidden">
+                        <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-md rounded-lg border border-border shadow-lg overflow-hidden">
                             <RfqPanel
                                 open={rfqOpen}
                                 onClose={() => setRfqOpen(false)}
@@ -619,7 +619,7 @@ export default function EstimatorStudio({
                     )}
                     {/* Revision Radar panel overlay */}
                     {revisionOpen && (
-                        <div className="absolute inset-0 z-20 bg-background/95 backdrop-blur-sm rounded-lg border border-border shadow-lg overflow-hidden">
+                        <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-md rounded-lg border border-border shadow-lg overflow-hidden">
                             <RevisionRadarPanel
                                 open={revisionOpen}
                                 onClose={() => setRevisionOpen(false)}
@@ -628,7 +628,7 @@ export default function EstimatorStudio({
                     )}
                     {/* Cut-Sheet panel overlay */}
                     {cutSheetOpen && (
-                        <div className="absolute inset-0 z-20 bg-background/95 backdrop-blur-sm rounded-lg border border-border shadow-lg overflow-hidden">
+                        <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-md rounded-lg border border-border shadow-lg overflow-hidden">
                             <CutSheetPanel
                                 open={cutSheetOpen}
                                 onClose={() => setCutSheetOpen(false)}
@@ -639,7 +639,7 @@ export default function EstimatorStudio({
                     )}
                     {/* Auto-RFP Response panel overlay */}
                     {autoRfpOpen && (
-                        <div className="absolute inset-0 z-20 bg-background/95 backdrop-blur-sm rounded-lg border border-border shadow-lg overflow-hidden">
+                        <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-md rounded-lg border border-border shadow-lg overflow-hidden">
                             <AutoRfpPanel
                                 open={autoRfpOpen}
                                 onClose={() => setAutoRfpOpen(false)}

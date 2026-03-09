@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { provisionProjectWorkspace } from "@/lib/anything-llm";
 import { assignWorkspaceToUser } from "@/services/anythingllm/userProvisioner";
 import { auth } from "@/auth";
+import { log } from "@/lib/logger";
 
 import { prisma } from "@/lib/prisma";
 
@@ -77,7 +78,8 @@ export async function GET(req: NextRequest) {
 
         // Fetch projects with essential fields to derive dashboard card data.
         // Also fetch ALL proposals (no filter/pagination) for global KPI stats.
-        const [projectsRaw, total, allProposalsForStats] = await Promise.all([
+        // Stats: use groupBy for counts (O(1) not O(n)), separate lightweight query for pipeline total
+        const [projectsRaw, total, statsByMode, allForPipeline] = await Promise.all([
             prisma.proposal.findMany({
                 where,
                 orderBy: { updatedAt: "desc" },
@@ -112,7 +114,12 @@ export async function GET(req: NextRequest) {
                 }
             }),
             prisma.proposal.count({ where }),
-            // Global stats query — all proposals, no filters
+            // Lightweight count by mode — no data transfer
+            prisma.proposal.groupBy({
+                by: ["calculationMode"],
+                _count: { id: true },
+            }),
+            // Pipeline total — only fetch what we need (no pricingDocument blob)
             prisma.proposal.findMany({
                 select: {
                     calculationMode: true,
@@ -193,30 +200,19 @@ export async function GET(req: NextRequest) {
             projects = projects.filter(p => p.screenCount >= minScreens);
         }
 
-        // Compute global KPI stats from ALL proposals (unfiltered, unpaginated)
-        let statsMirror = 0;
-        let statsIntelligence = 0;
-        let statsEstimate = 0;
-        let statsPipeline = 0;
+        // Compute global KPI stats — counts from groupBy (fast), pipeline from lightweight query
+        const modeCountMap = Object.fromEntries(
+            statsByMode.map(g => [g.calculationMode, g._count.id])
+        );
+        const statsMirror = modeCountMap["MIRROR"] || 0;
+        const statsIntelligence = modeCountMap["INTELLIGENCE"] || 0;
+        const statsEstimate = modeCountMap["ESTIMATE"] || 0;
 
-        for (const p of allProposalsForStats) {
+        let statsPipeline = 0;
+        for (const p of allForPipeline) {
             const pd = (p.pricingDocument as PricingDocumentLike | null) ?? null;
             const pdTotal = toFiniteNumber(pd?.documentTotal);
             const bidTotal = toFiniteNumber(p.versions?.[0]?.totalSellingPrice);
-            const tables = pd?.tables;
-            const tableCount = Array.isArray(tables) ? tables.length : 0;
-
-            // Derive mode same way as individual projects
-            const stored = p.calculationMode;
-            if (stored === "ESTIMATE") {
-                statsEstimate++;
-            } else if (tableCount > 0) {
-                statsMirror++;
-            } else {
-                statsIntelligence++;
-            }
-
-            // Sum pipeline
             if (pdTotal !== null) {
                 statsPipeline += pdTotal;
             } else if (bidTotal !== null) {
@@ -230,7 +226,7 @@ export async function GET(req: NextRequest) {
             limit,
             offset,
             stats: {
-                totalProjects: allProposalsForStats.length,
+                totalProjects: statsMirror + statsIntelligence + statsEstimate,
                 mirrorCount: statsMirror,
                 intelligenceCount: statsIntelligence,
                 estimateCount: statsEstimate,
@@ -238,7 +234,7 @@ export async function GET(req: NextRequest) {
             },
         });
     } catch (error) {
-        console.error("GET /api/projects error:", error);
+        log.error("GET /api/projects error:", error);
         return NextResponse.json(
             { error: "Failed to fetch projects" },
             { status: 500 }
@@ -303,7 +299,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ project, warnings }, { status: 201 });
     } catch (error) {
-        console.error("POST /api/projects error:", error);
+        log.error("POST /api/projects error:", error);
         return NextResponse.json(
             { error: "Failed to create project" },
             { status: 500 }

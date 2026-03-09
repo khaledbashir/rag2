@@ -5,6 +5,7 @@ import { parsePricingTablesWithValidation, PRICING_PARSER_STRICT_VERSION } from 
 import { normalizeExcel } from "@/services/import/excelNormalizer";
 import * as xlsx from "xlsx";
 import crypto from "node:crypto";
+import { log } from "@/lib/logger";
 
 export const maxDuration = 120;
 
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
             data = await parseANCExcel(buffer, file.name);
         } catch (err) {
             intelligenceError = err instanceof Error ? err : new Error(String(err));
-            console.warn("[EXCEL IMPORT] Intelligence parser skipped:", intelligenceError.message);
+            log.warn("[EXCEL IMPORT] Intelligence parser skipped:", intelligenceError.message);
         }
 
         // --- Step 2: Always try PricingTable parser (Mirror Mode) ---
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
             validation = result.validation;
         } catch (pricingErr) {
             Sentry.captureException(pricingErr, { tags: { area: "pricingTableParser" } });
-            console.warn("[EXCEL IMPORT] PricingTable parser warning:", pricingErr);
+            log.warn("[EXCEL IMPORT] PricingTable parser warning:", pricingErr);
         }
 
         // --- Step 3: Handle results ---
@@ -70,12 +71,12 @@ export async function POST(req: NextRequest) {
                         });
                         if (match) {
                             screen.group = match.name;
-                            console.log(`[EXCEL IMPORT] Backfilled group for screen "${screen.name}" -> "${match.name}"`);
+                            log.info(`[EXCEL IMPORT] Backfilled group for screen "${screen.name}" -> "${match.name}"`);
                         }
                     }
                 });
 
-                console.log(`[EXCEL IMPORT] PricingDocument: ${pricingDocument.tables.length} tables, ${pricingDocument.documentTotal} total`);
+                log.info(`[EXCEL IMPORT] PricingDocument: ${pricingDocument.tables.length} tables, ${pricingDocument.documentTotal} total`);
                 (data as any).validation = validation;
             } else if (validation?.status === "FAIL" || !pricingDocument) {
                 // Use the actual parser errors so users know exactly what went wrong
@@ -111,7 +112,7 @@ export async function POST(req: NextRequest) {
         // Case B: Intelligence parser failed but Mirror Mode (pricingTableParser) succeeded
         // This handles simple cost-analysis-only files (e.g. CAA ICON single-product proposals)
         if (pricingDocument && pricingDocument.tables.length > 0 && validation?.status !== "FAIL") {
-            console.log(`[EXCEL IMPORT] Mirror-only mode: ${pricingDocument.tables.length} tables, ${pricingDocument.documentTotal} total`);
+            log.info(`[EXCEL IMPORT] Mirror-only mode: ${pricingDocument.tables.length} tables, ${pricingDocument.documentTotal} total`);
 
             // Build a minimal formData envelope so the frontend can hydrate the proposal
             const minimalData = {
@@ -139,7 +140,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Case C: Both parsers failed — try the Frankenstein normalizer as fallback
-        console.warn("[EXCEL IMPORT] Both parsers failed, trying normalizer. Intelligence error:", intelligenceError?.message);
+        log.warn("[EXCEL IMPORT] Both parsers failed, trying normalizer. Intelligence error:", intelligenceError?.message);
         try {
             const fallbackFormData = await req.clone().formData();
             const fallbackFile = fallbackFormData.get("file") as File;
@@ -162,17 +163,15 @@ export async function POST(req: NextRequest) {
             }
         } catch (normErr) {
             Sentry.captureException(normErr, { tags: { area: "excelNormalizerFallback" } });
-            console.error("[EXCEL IMPORT] Normalizer fallback also failed:", normErr);
+            log.error("[EXCEL IMPORT] Normalizer fallback also failed:", normErr);
         }
 
         // All parsers failed
         const finalErr = intelligenceError || new Error("All parsers failed");
         Sentry.captureException(finalErr, { tags: { area: "excelImport" } });
-        console.error("Excel import error:", finalErr);
-        return NextResponse.json({ error: String(finalErr) }, { status: 500 });
+        return NextResponse.json({ error: "Failed to parse Excel file. Please check the format and try again." }, { status: 500 });
     } catch (err) {
         Sentry.captureException(err, { tags: { area: "excelImport" } });
-        console.error("Excel import unexpected error:", err);
-        return NextResponse.json({ error: String(err) }, { status: 500 });
+        return NextResponse.json({ error: "An unexpected error occurred during import." }, { status: 500 });
     }
 }
