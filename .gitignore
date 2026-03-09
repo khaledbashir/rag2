@@ -120,3 +120,7 @@ scripts/generate-lulah-hills-pdf.ts
 
 # Test fixtures in services
 services/rfp/pipeline/*.xlsx
+
+# Local context files (credentials, reference docs)
+contexts/
+run
