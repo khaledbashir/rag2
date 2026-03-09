@@ -239,6 +239,12 @@ export interface ScreenCalc {
     altOfIndex?: number;
 }
 
+/** Courtside tables and stanchions use per-unit pricing, not per-sqft */
+const ADDON_DISPLAY_TYPES = ["courtside-table", "stanchion"];
+function isAddonDisplayType(displayType: string): boolean {
+    return ADDON_DISPLAY_TYPES.includes(displayType);
+}
+
 export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, rates?: RateCard, productSpec?: ProductSpec | null): ScreenCalc {
     const w = d.widthFt || 0;
     const h = d.heightFt || 0;
@@ -247,6 +253,61 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
 
     const pixelsW = Math.round((w * 304.8) / pitch);
     const pixelsH = Math.round((h * 304.8) / pitch);
+
+    // ── Add-on products (courtside/stanchion): unit pricing, Screen + Install only ──
+    const isAddon = isAddonDisplayType(d.displayType);
+    const extSpecs = (productSpec as any)?.extendedSpecs;
+    if (isAddon && extSpecs?.costModel === "per_unit") {
+        const unitCost = extSpecs.unitCost || 0;
+        const unitSalePrice = extSpecs.unitSalePrice || 0;
+        const marginPct = unitSalePrice > 0 ? 1 - (unitCost / unitSalePrice) : 0;
+
+        // Install cost = manual entry (stored in rate card or zero for them to fill in)
+        const installCost = rc(rates, `install.addon.${d.displayType}`, 0);
+
+        const totalCost = unitCost + installCost;
+        const sellPrice = unitSalePrice + (installCost > 0 ? installCost / (1 - (answers.servicesMargin || 20) / 100) : 0);
+
+        const bondRate = (answers.bondRate ?? 1.5) / 100;
+        const bondCost = sellPrice * bondRate;
+        const taxRate = (answers.salesTaxRate ?? 9.5) / 100;
+        const salesTaxCost = (sellPrice + bondCost) * taxRate;
+
+        return {
+            name: d.displayName || d.displayType.replace("-", " "),
+            widthFt: w,
+            heightFt: h,
+            areaSqFt: area,
+            pixelPitch: pitch,
+            pixelsW: extSpecs.pixelsW || pixelsW,
+            pixelsH: extSpecs.pixelsH || pixelsH,
+            totalPixels: (extSpecs.pixelsW || pixelsW) * (extSpecs.pixelsH || pixelsH),
+            costPerSqFt: area > 0 ? unitCost / area : 0,
+            hardwareCost: unitCost,
+            spareParts: 0,
+            structureCost: 0,
+            installCost,
+            electricalCost: 0,
+            equipmentCost: 0,
+            dataCablingCost: 0,
+            pmCost: 0,
+            engineeringCost: 0,
+            shippingCost: 0,
+            demolitionCost: 0,
+            bundleCost: 0,
+            bundleItems: [],
+            totalCost,
+            marginPct,
+            ledMarginPct: marginPct,
+            svcMarginPct: 0,
+            sellPrice,
+            bondCost,
+            salesTaxCost,
+            finalTotal: sellPrice + bondCost + salesTaxCost,
+            profitShieldMargin: undefined,
+            cabinetLayout: null,
+        };
+    }
 
     // LED cost per sqft: user override > rate card (form-factor + env aware) > hardcoded pitch table
     // Priority: fascia > perimeter > outdoor/indoor > base

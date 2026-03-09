@@ -34,7 +34,7 @@ interface ProductRecord {
   productFamily: string | null;
   modelNumber: string;
   displayName: string;
-  productType: string; // "led" | "tv" | "cms"
+  productType: string; // "led" | "tv" | "cms" | "courtside" | "stanchion"
   pixelPitch: number;
   cabinetWidthMm: number;
   cabinetHeightMm: number;
@@ -103,6 +103,12 @@ const MANUFACTURER_STYLES: Record<
     text: "text-purple-700",
     dot: "bg-purple-500",
     isPartner: false,
+  },
+  ANC: {
+    bg: "bg-red-50",
+    text: "text-red-700",
+    dot: "bg-red-500",
+    isPartner: true,
   },
 };
 
@@ -377,7 +383,7 @@ export default function ProductCatalogBrowser({
 
             {/* Product type toggle */}
             <div className="flex items-center gap-1">
-              {(["all", "led", "tv", "cms"] as const).map((t) => (
+              {(["all", "led", "courtside", "stanchion", "tv", "cms"] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setSelectedType(t)}
@@ -388,7 +394,7 @@ export default function ProductCatalogBrowser({
                       : "bg-[#F7F7F7] text-[#616161] hover:bg-[#E8E8E8]"
                   )}
                 >
-                  {t === "all" ? "All Types" : t === "cms" ? "CMS/Scoring" : t}
+                  {t === "all" ? "All Types" : t === "cms" ? "CMS/Scoring" : t === "courtside" ? "Courtside" : t === "stanchion" ? "Stanchion" : t}
                 </button>
               ))}
             </div>

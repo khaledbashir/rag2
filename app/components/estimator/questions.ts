@@ -223,12 +223,34 @@ export const DISPLAY_TYPE_PRESETS: DisplayTypePreset[] = [
         defaults: { locationType: "wall", pixelPitch: "4", installComplexity: "simple" },
     },
     {
+        value: "courtside-table",
+        label: "Courtside Table",
+        description: "LED courtside table — add-on product (Screen + Install only)",
+        defaults: { locationType: "courtside", pixelPitch: "3.9", installComplexity: "standard" },
+    },
+    {
+        value: "stanchion",
+        label: "Stanchion",
+        description: "LED stanchion display — add-on product (Screen + Install only)",
+        defaults: { locationType: "stanchion", pixelPitch: "3.9", installComplexity: "standard" },
+    },
+    {
         value: "custom",
         label: "Custom",
         description: "Enter a custom name and configure manually",
         defaults: {},
     },
 ];
+
+// ============================================================================
+// HELPERS — Add-on product types skip most install questions
+// ============================================================================
+
+/** Courtside tables and stanchions only need Screen + Install — no structural/electrical/PM */
+const ADDON_PRODUCT_TYPES = ["courtside-table", "stanchion"];
+function isAddonProduct(answers: Record<string, any>): boolean {
+    return ADDON_PRODUCT_TYPES.includes(answers.displayType);
+}
 
 // ============================================================================
 // DISPLAY PHASE — Repeated per display
@@ -268,6 +290,8 @@ export const DISPLAY_QUESTIONS: Question[] = [
             { value: "ribbon", label: "Ribbon Board", description: "Long, narrow display around venue perimeter" },
             { value: "freestanding", label: "Freestanding / Column", description: "Requires new structural support" },
             { value: "outdoor", label: "Outdoor / Marquee", description: "External, weather-rated" },
+            { value: "courtside", label: "Courtside Table", description: "LED courtside table — Screen + Install" },
+            { value: "stanchion", label: "Stanchion", description: "LED stanchion display — Screen + Install" },
         ],
         showIf: (answers) => answers.displayType === "custom",
         required: true,
@@ -348,6 +372,7 @@ export const DISPLAY_QUESTIONS: Question[] = [
         ],
         defaultValue: "standard",
         required: true,
+        showIf: (answers) => !isAddonProduct(answers),
         affectsSheet: "Labor Worksheet",
     },
     {
@@ -361,6 +386,7 @@ export const DISPLAY_QUESTIONS: Question[] = [
             { value: "Top", label: "Top Only", description: "Top-access only — 10% structure" },
         ],
         defaultValue: "Front/Rear",
+        showIf: (answers) => !isAddonProduct(answers),
         affectsSheet: "Labor Worksheet",
     },
     {
@@ -370,6 +396,7 @@ export const DISPLAY_QUESTIONS: Question[] = [
         label: "Replacement",
         subtitle: "Adds demolition costs if yes",
         defaultValue: false,
+        showIf: (answers) => !isAddonProduct(answers),
         affectsSheet: "Labor Worksheet",
     },
     {
@@ -379,7 +406,7 @@ export const DISPLAY_QUESTIONS: Question[] = [
         label: "Use Existing Structure",
         subtitle: "Reduces structural costs significantly",
         defaultValue: false,
-        showIf: (answers) => answers.isReplacement === true,
+        showIf: (answers) => !isAddonProduct(answers) && answers.isReplacement === true,
         affectsSheet: "Labor Worksheet",
     },
     {
@@ -394,7 +421,7 @@ export const DISPLAY_QUESTIONS: Question[] = [
             { value: "full", label: "Full Steel Build", description: "New primary + secondary steel structure" },
         ],
         defaultValue: "full",
-        showIf: (answers) => !answers.useExistingStructure,
+        showIf: (answers) => !isAddonProduct(answers) && !answers.useExistingStructure,
         required: true,
         affectsSheet: "Labor Worksheet",
     },
@@ -412,6 +439,7 @@ export const DISPLAY_QUESTIONS: Question[] = [
         ],
         defaultValue: "scissor",
         required: true,
+        showIf: (answers) => !isAddonProduct(answers),
         affectsSheet: "Labor Worksheet",
     },
     {
@@ -427,6 +455,7 @@ export const DISPLAY_QUESTIONS: Question[] = [
         ],
         defaultValue: "near",
         required: true,
+        showIf: (answers) => !isAddonProduct(answers),
         affectsSheet: "Labor Worksheet",
     },
     {
@@ -441,6 +470,7 @@ export const DISPLAY_QUESTIONS: Question[] = [
         ],
         defaultValue: "copper",
         required: true,
+        showIf: (answers) => !isAddonProduct(answers),
         affectsSheet: "Labor Worksheet",
     },
     {
