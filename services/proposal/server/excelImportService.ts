@@ -38,7 +38,7 @@ function sanitizeScreenDisplayName(value: any): string {
  */
 export async function parseANCExcel(buffer: Buffer, fileName?: string): Promise<ParsedANCProposal> {
     try {
-        const workbook = xlsx.read(buffer, { type: 'buffer' });
+        const workbook = xlsx.read(buffer, { type: 'buffer', cellStyles: true });
 
     // 1. Primary Data Source: fuzzy match LED / Cost / Sheet (e.g. "LED Sheet", "LED Cost Sheet", "Copy of LED Sheet")
     const ledSheetName = findLedOrCostSheet(workbook);
@@ -48,6 +48,17 @@ export async function parseANCExcel(buffer: Buffer, fileName?: string): Promise<
         throw new Error(`No sheet matching LED/Cost/Sheet found. Tab names in file: ${names}. Rename a tab to include "LED" and "Sheet" (or "Cost").`);
     }
     const ledData: any[][] = xlsx.utils.sheet_to_json(ledSheet, { header: 1 });
+
+    // Extract hidden row indices from the LED Cost Sheet (requires cellStyles: true)
+    const hiddenLedRows = new Set<number>();
+    if (ledSheet['!rows']) {
+        (ledSheet['!rows'] as any[]).forEach((r: any, i: number) => {
+            if (r?.hidden) hiddenLedRows.add(i);
+        });
+    }
+    if (hiddenLedRows.size > 0) {
+        console.log(`[EXCEL IMPORT] LED Cost Sheet hidden rows detected: ${[...hiddenLedRows].join(', ')} (${hiddenLedRows.size} total)`);
+    }
 
     // 2. Financial Source of Truth: fuzzy match Margin / Analysis / Total
     const marginSheetName = findMarginAnalysisSheet(workbook);
@@ -254,6 +265,12 @@ export async function parseANCExcel(buffer: Buffer, fileName?: string): Promise<
                 bondCost,
                 finalTotal: finalClientTotal,
             };
+
+            // Mark screens from hidden LED rows so specs/PDF can exclude them
+            if (hiddenLedRows.has(i)) {
+                screen.hiddenFromSpecs = true;
+                console.log(`[EXCEL IMPORT] Screen "${cleanedProjectName}" at row ${i} is HIDDEN → hiddenFromSpecs=true`);
+            }
 
             let description = `Resolution: ${screen.pixelsH}h x ${screen.pixelsW}w. `;
             if (brightness) {
