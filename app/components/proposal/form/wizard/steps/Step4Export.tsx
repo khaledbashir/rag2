@@ -1460,13 +1460,23 @@ const Step4Export = () => {
                                                     </div>
                                                 )}
                                             </div>
-                                            <div className="flex items-center justify-between py-3">
+                                            <div className="flex items-center justify-between py-3 border-b border-border/30">
                                                 <div className="flex flex-col">
                                                     <Label htmlFor="showNotes-loi" className="text-sm font-semibold text-foreground">Notes Section</Label>
                                                     <p className="text-[11px] text-muted-foreground">Include additional notes in the PDF</p>
                                                 </div>
                                                 <Switch id="showNotes-loi" checked={watch("details.showNotes") ?? true} onCheckedChange={(checked) => setValue("details.showNotes", checked)} className="data-[state=checked]:bg-brand-blue" />
                                             </div>
+                                            {/* T&C Exhibit toggle — CONTRACT mode only */}
+                                            {headerType === "CONTRACT" && (
+                                                <div className="flex items-center justify-between py-3">
+                                                    <div className="flex flex-col">
+                                                        <Label htmlFor="showTermsAndConditions" className="text-sm font-semibold text-foreground">Terms &amp; Conditions</Label>
+                                                        <p className="text-[11px] text-muted-foreground">Include T&amp;C exhibit page (Exhibit C)</p>
+                                                    </div>
+                                                    <Switch id="showTermsAndConditions" checked={watch("details.showTermsAndConditions" as any) ?? true} onCheckedChange={(checked) => setValue("details.showTermsAndConditions" as any, checked, { shouldDirty: true })} className="data-[state=checked]:bg-brand-blue" />
+                                                </div>
+                                            )}
                                         </TabsContent>
                                     </Tabs>
 

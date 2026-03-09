@@ -60,8 +60,9 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const isLOI = documentMode === "LOI" || documentMode === "CONTRACT";
     const isContract = documentMode === "CONTRACT";
 
-    // T&C exhibit config — only renders for CONTRACT mode
-    const tcConfig = isContract ? {
+    // T&C exhibit config — only renders for CONTRACT mode when toggle is on
+    const showTc = (details as any)?.showTermsAndConditions ?? true;
+    const tcConfig = (isContract && showTc) ? {
         purchaserName: (details as any)?.purchaserLegalName || receiver?.name || "Purchaser",
         warrantyYears: (details as any)?.tcWarrantyYears ?? 5,
         includeLaborWarranty: (details as any)?.tcIncludeLaborWarranty ?? true,
