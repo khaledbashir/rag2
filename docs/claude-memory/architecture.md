@@ -102,7 +102,7 @@
 | Environment | URL | Platform |
 |-------------|-----|----------|
 | Local dev | `localhost:3003` | `pnpm dev` |
-| Production | `basheer-therag2.prd42b.easypanel.host` | EasyPanel (Docker) |
+| Production | `proposals.anc.com` | EasyPanel (Docker) |
 | Staging | PLANNED | Separate EasyPanel service |
 
 ## Authentication

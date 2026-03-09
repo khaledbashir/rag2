@@ -2,7 +2,7 @@
 
 **For:** Natalia, Matt, Jeremy, Eric, Alison & the ANC Team
 **Updated:** February 2026
-**Platform:** [https://basheer-therag2.prd42b.easypanel.host](https://basheer-therag2.prd42b.easypanel.host)
+**Platform:** [https://proposals.anc.com](https://proposals.anc.com)
 
 ---
 

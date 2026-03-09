@@ -1,6 +1,6 @@
 # Test Guide: AI Copilot (Lux / Dual-Brain)
 
-**URL:** https://basheer-therag2.prd42b.easypanel.host
+**URL:** https://proposals.anc.com
 **Login:** natalia.kovaleva@anc.com / admin123
 **Purpose:** AI assistant that understands the proposal context and can take actions in the form
 

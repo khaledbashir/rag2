@@ -75,7 +75,7 @@
 - Next.js 15.3, React 18, TypeScript, Prisma + PostgreSQL
 - shadcn/ui, Tailwind, AG Grid, Framer Motion
 - AnythingLLM RAG, Browserless PDF, Kimi K2.5 via Puter.js
-- Production App: https://basheer-therag2.prd42b.easypanel.host
+- Production App: https://proposals.anc.com
 - AnythingLLM: https://basheer-anything-llm.prd42b.easypanel.host
 - Branch: phase2/product-database
 

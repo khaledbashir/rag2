@@ -52,7 +52,7 @@ module.exports.runtime = {
         `Generating Excel for "${projectData.project_name}" — ${projectData.displays.length} display(s)...`
       );
 
-      const baseUrl = (this.runtimeArgs["ANC_API_URL"] || "https://basheer-therag2.prd42b.easypanel.host").replace(/\/$/, "");
+      const baseUrl = (this.runtimeArgs["ANC_API_URL"] || "https://proposals.anc.com").replace(/\/$/, "");
 
       // Call the generate-excel endpoint (no auth required)
       let response;

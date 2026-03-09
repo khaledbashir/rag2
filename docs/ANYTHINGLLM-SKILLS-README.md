@@ -193,7 +193,7 @@ When building ANC skills, use these endpoints:
 - **Excel Upload**: `/api/upload-excel`
 - **PDF Generation**: `/api/generate-pdf`
 
-Base URL: `https://basheer-therag2.prd42b.easypanel.host`
+Base URL: `https://proposals.anc.com`
 
 ## Support
 

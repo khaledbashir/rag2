@@ -34,7 +34,7 @@ Source: `i18n/ANC_Engineering_Excellence_Playbook.docx.pdf`
 ## Infrastructure Details
 - **VPS IP**: 138.201.126.110
 - **EasyPanel**: port 3000 (container) → 80 (proxy)
-- **Production URL**: basheer-natalia.prd42b.easypanel.host (also basheer-therag2.prd42b.easypanel.host)
+- **Production URL**: basheer-natalia.prd42b.easypanel.host (also proposals.anc.com)
 - **Browserless**: separate EasyPanel service, WSS external + WS internal (Docker network)
 - **Database**: PostgreSQL on same VPS via EasyPanel
 - **Auth**: NextAuth v5 with Credentials provider, AUTH_SECRET required explicitly in Docker

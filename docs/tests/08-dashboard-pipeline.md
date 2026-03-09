@@ -1,6 +1,6 @@
 # Test Guide: Dashboard & Pipeline
 
-**URL:** https://basheer-therag2.prd42b.easypanel.host
+**URL:** https://proposals.anc.com
 **Login:** natalia.kovaleva@anc.com / admin123
 **Purpose:** Project management hub — all proposals, pipeline status, activity
 

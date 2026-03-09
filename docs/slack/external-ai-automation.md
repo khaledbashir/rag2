@@ -158,7 +158,7 @@ Jeremy Riley, Matt Hobbs -- **Phase 1 -- Estimation Engine: Ready for Testing**
 
 Natalia has tested and approved the Mirror Mode side (upload Excel -> PDF). The second half of Phase 1 is the Estimation Engine -- a dedicated tool that replaces the manual Excel process for building cost estimates from scratch.
 
-**Live link:** https://basheer-therag2.prd42b.easypanel.host/estimator/cmlz8ojwv0003sknr0h9m2tzn
+**Live link:** https://proposals.anc.com/estimator/cmlz8ojwv0003sknr0h9m2tzn
 
 **How it works:**
 1. Input project info (client, location, indoor/outdoor, union/non-union)
@@ -648,7 +648,7 @@ I have time this AM -- can I start dropping RFP and check generated excel agains
 ### Feb 27 — Ahmad Basheer
 *(Thread reply)* Yes Ma'am -- the system is ready for you to start testing. Would love for you to compare what it generates against what you'd normally put together manually.
 
-https://basheer-therag2.prd42b.easypanel.host/tools/rfp-analyzer
+https://proposals.anc.com/tools/rfp-analyzer
 
 ---
 

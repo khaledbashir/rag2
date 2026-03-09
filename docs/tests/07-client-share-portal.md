@@ -1,6 +1,6 @@
 # Test Guide: Client Share Portal
 
-**URL:** https://basheer-therag2.prd42b.easypanel.host
+**URL:** https://proposals.anc.com
 **Login:** natalia.kovaleva@anc.com / admin123
 **Purpose:** Share a proposal with client via read-only link — they can annotate and leave voice notes
 

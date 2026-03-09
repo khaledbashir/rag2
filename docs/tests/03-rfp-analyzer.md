@@ -1,6 +1,6 @@
 # Test Guide: RFP Analyzer
 
-**URL:** https://basheer-therag2.prd42b.easypanel.host/tools/rfp-analyzer
+**URL:** https://proposals.anc.com/tools/rfp-analyzer
 **Login:** natalia.kovaleva@anc.com / admin123
 **Purpose:** Upload RFP PDF → extract all LED display specs → generate workbook
 

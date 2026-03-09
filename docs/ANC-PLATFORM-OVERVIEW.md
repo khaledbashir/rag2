@@ -12,7 +12,7 @@ The ANC Proposal Engine is a web-based platform purpose-built for ANC's LED disp
 
 Your team logs in, builds proposals, exports professional PDFs, and shares them with clients for review and e-signature. All from one place.
 
-**Live at:** https://basheer-therag2.prd42b.easypanel.host
+**Live at:** https://proposals.anc.com
 
 ---
 
@@ -211,7 +211,7 @@ All data stays on ANC's server. Nothing goes to external AI services for proposa
 
 ## Access
 
-- **URL:** https://basheer-therag2.prd42b.easypanel.host
+- **URL:** https://proposals.anc.com
 - **Login:** Email + password (accounts created by Admin)
 - **Roles:**
   - **Admin** — full access including Rate Card, User Management, Pricing Logic

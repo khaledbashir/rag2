@@ -19,7 +19,7 @@ The platform serves two primary workflows:
 - **Mirror Mode** (Natalia): Upload an existing Excel budget, edit values, and export a matching proposal
 - **Intelligence Mode** (Jeremy/Matt/Eric): Start from an RFP, auto-extract specs, and generate a complete proposal
 
-**Production URL:** `https://basheer-therag2.prd42b.easypanel.host`
+**Production URL:** `https://proposals.anc.com`
 
 ---
 

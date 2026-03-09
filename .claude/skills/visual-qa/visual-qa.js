@@ -9,7 +9,7 @@
  *   node .claude/skills/visual-qa/visual-qa.js --list
  */
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "https://basheer-therag2.prd42b.easypanel.host";
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "https://proposals.anc.com";
 
 // ============================================================================
 // TEST CASES

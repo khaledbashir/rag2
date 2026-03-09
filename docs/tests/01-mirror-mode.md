@@ -1,6 +1,6 @@
 # Test Guide: Mirror Mode (Excel → PDF)
 
-**URL:** https://basheer-therag2.prd42b.easypanel.host
+**URL:** https://proposals.anc.com
 **Login:** natalia.kovaleva@anc.com / admin123
 **Rule:** NO math recalculation. Output must exactly match input Excel.
 

@@ -11,7 +11,7 @@ If your code changes require env vars, **give me the COMPLETE copy-pasteable blo
 ```
 DATABASE_URL=postgres://postgres:32e4654c47db3b3f2a1e@basheer_natadb:5432/nata?sslmode=disable
 AUTH_SECRET=K8mN2pQ7xR4vY9wL3jH6fG1sD0cB5zA
-NEXT_PUBLIC_BASE_URL=https://basheer-therag2.prd42b.easypanel.host
+NEXT_PUBLIC_BASE_URL=https://proposals.anc.com
 ANYTHING_LLM_URL=https://basheer-anything-llm.prd42b.easypanel.host/api/v1
 ANYTHING_LLM_KEY=7YMK7HD-B1KMNBZ-PPQ3DSV-9RGQDT7
 ANYTHING_LLM_WORKSPACE=nata-estimator
@@ -21,7 +21,7 @@ Z_AI_API_KEY=__Z_AI_API_KEY__
 Z_AI_BASE_URL=https://api.z.ai/api/coding/paas/v4
 Z_AI_MODEL_NAME=glm-4.6v
 SERPER_API_KEY=a2ced8aa811681e1036259d341d7093630ab6dae
-AUTH_URL=https://basheer-therag2.prd42b.easypanel.host
+AUTH_URL=https://proposals.anc.com
 ```
 
 ## Deploy Process
@@ -42,7 +42,7 @@ AUTH_URL=https://basheer-therag2.prd42b.easypanel.host
 
 | Service | Type | URL |
 |---------|------|-----|
-| Proposal Engine | Next.js Docker | https://basheer-therag2.prd42b.easypanel.host |
+| Proposal Engine | Next.js Docker | https://proposals.anc.com |
 | Database | PostgreSQL | basheer_natadb (container) |
 | Browserless | Chrome WS | wss://basheer-browserless.prd42b.easypanel.host |
 | AnythingLLM | API | https://basheer-anything-llm.prd42b.easypanel.host |
@@ -54,7 +54,7 @@ AUTH_URL=https://basheer-therag2.prd42b.easypanel.host
 | `Unexpected token '<'` on JS chunks | Container restart, stale cache | Hard refresh browser (Ctrl+Shift+R) |
 | `MissingSecret` auth error | AUTH_SECRET not found in Docker | Add `secret: process.env.AUTH_SECRET` to auth.ts + auth-middleware.ts |
 | `UntrustedHost` auth error | Docker sees localhost:80, rejects it | Add `trustHost: true` to BOTH auth.ts and auth-middleware.ts |
-| Redirect to localhost:80 after login | Auth.js doesn't know real domain | Add `AUTH_URL=https://basheer-therag2.prd42b.easypanel.host` to EasyPanel env vars |
+| Redirect to localhost:80 after login | Auth.js doesn't know real domain | Add `AUTH_URL=https://proposals.anc.com` to EasyPanel env vars |
 | Old version still live | EasyPanel hasn't rebuilt yet | Wait 2-3 min, check EasyPanel logs |
 
 ## Quick Commands

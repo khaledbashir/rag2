@@ -90,7 +90,7 @@ describe("Sheet Detection", () => {
     expect(result.document).toBeNull();
     expect(result.validation.status).toBe("FAIL");
     expect(result.validation.errors.length).toBeGreaterThan(0);
-    expect(result.validation.errors[0]).toContain("No sheet matching");
+    expect(result.validation.errors[0]).toContain("No Margin Analysis tab found");
   });
 
   it('finds sheet named "Margin Analysis"', () => {
@@ -352,10 +352,10 @@ describe("Alternates", () => {
     const result = parsePricingTablesWithValidation(wb, "test.xlsx");
     const doc = result.document!;
 
-    // Find table with alternates
-    const tableWithAlts = doc.tables.find((t) => t.alternates.length > 0);
-    expect(tableWithAlts).toBeDefined();
-    expect(tableWithAlts!.alternates.length).toBe(2);
+    // Alternates are now promoted to standalone sections (isAlternateSection=true)
+    const altSection = doc.tables.find((t) => t.isAlternateSection);
+    expect(altSection).toBeDefined();
+    expect(altSection!.items.length).toBe(2);
   });
 
   it("alternate items have correct descriptions and price differences", () => {
@@ -371,16 +371,16 @@ describe("Alternates", () => {
     const wb = buildMockWorkbook("Margin Analysis", rows);
     const result = parsePricingTablesWithValidation(wb, "test.xlsx");
     const doc = result.document!;
-    const tableWithAlts = doc.tables.find((t) => t.alternates.length > 0)!;
+    const altSection = doc.tables.find((t) => t.isAlternateSection)!;
 
-    expect(tableWithAlts.alternates[0].description).toBe(
+    expect(altSection.items[0].description).toBe(
       "Alt - Premium Panel Upgrade"
     );
-    expect(tableWithAlts.alternates[0].priceDifference).toBe(5000);
-    expect(tableWithAlts.alternates[1].description).toBe(
+    expect(altSection.items[0].sellingPrice).toBe(5000);
+    expect(altSection.items[1].description).toBe(
       "Alt - Anti-Glare Coating"
     );
-    expect(tableWithAlts.alternates[1].priceDifference).toBe(1500);
+    expect(altSection.items[1].sellingPrice).toBe(1500);
   });
 });
 
@@ -542,11 +542,11 @@ describe("Edge Cases", () => {
     const wb = buildMockWorkbook("Margin Analysis", rows);
     const result = parsePricingTablesWithValidation(wb, "test.xlsx");
     const doc = result.document!;
-    const tableWithAlts = doc.tables.find((t) => t.alternates.length > 0);
-    expect(tableWithAlts).toBeDefined();
+    // Alternates promoted to standalone section
+    const altSection = doc.tables.find((t) => t.isAlternateSection);
+    expect(altSection).toBeDefined();
     // Parenthetical ($800) should parse as -800
-    // The parser replaces () with - then parses, so ($800) → -$800 → -800
-    expect(tableWithAlts!.alternates[0].priceDifference).toBe(-800);
+    expect(altSection!.items[0].sellingPrice).toBe(-800);
   });
 
   it('handles "N/A" and "INCLUDED" cell values — N/A gets textValue, INCLUDED gets isIncluded', () => {

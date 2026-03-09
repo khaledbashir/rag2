@@ -404,7 +404,7 @@ export async function POST(request: NextRequest) {
 
     await wb.xlsx.writeFile(filePath);
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://basheer-therag2.prd42b.easypanel.host";
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://proposals.anc.com";
     const downloadUrl = `${baseUrl}/api/agent-skill/download-excel?file=${encodeURIComponent(filename)}`;
 
     log.info(`[AGENT-SKILL] Generated Excel: ${filename} for "${projectName}"`);

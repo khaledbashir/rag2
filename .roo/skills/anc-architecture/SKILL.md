@@ -155,7 +155,7 @@ This guarantees: `displayedTotal ≡ Σ displayedLineItems + displayedTax + disp
 
 **Branch**: `phase2/product-database` (main working branch)
 
-**Production URL**: https://basheer-therag2.prd42b.easypanel.host
+**Production URL**: https://proposals.anc.com
 
 **No .env file** — all env vars in EasyPanel dashboard.
 

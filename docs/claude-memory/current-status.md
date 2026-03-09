@@ -1,7 +1,7 @@
 # ANC Proposal Engine — Current Status
 
 ## Production URL
-- **Access**: https://basheer-therag2.prd42b.easypanel.host/projects
+- **Access**: https://proposals.anc.com/projects
 - **Date**: February 7, 2026
 
 ## Live Features (26 items ✅)

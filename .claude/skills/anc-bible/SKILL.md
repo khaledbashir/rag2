@@ -287,7 +287,7 @@ user lands on Step 2 Intelligence
 
 ## Deployment
 - **VPS**: 138.201.126.110, EasyPanel, Docker
-- **Production**: https://basheer-therag2.prd42b.easypanel.host
+- **Production**: https://proposals.anc.com
 - **AnythingLLM**: https://basheer-anything-llm.prd42b.easypanel.host
 - **Deploy branch**: `phase2/product-database` (EasyPanel watches this)
 - **Flow**: Code on VPS → git push → EasyPanel auto-builds Docker → port 3000→80

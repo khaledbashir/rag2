@@ -17,7 +17,7 @@ Ahmad NEVER runs the app locally. The workflow is:
 - **VPS:** Hetzner at 138.201.126.110
 - **Hosting:** EasyPanel (Docker containers)
 - **Port:** 3000 internally → 80 externally
-- **Production URL:** https://basheer-therag2.prd42b.easypanel.host
+- **Production URL:** https://proposals.anc.com
 - **AnythingLLM:** https://basheer-anything-llm.prd42b.easypanel.host
 - **No .env file in Docker** — all environment variables configured in EasyPanel dashboard
 - **DB:** PostgreSQL (via Prisma). Schema push in entrypoint: `npx prisma db push --accept-data-loss`

@@ -28,7 +28,7 @@ module.exports.runtime = {
       }
 
       // Get config from setup_args
-      const baseUrl = (this.runtimeArgs["ANC_BASE_URL"] || "https://basheer-therag2.prd42b.easypanel.host").replace(/\/+$/, "");
+      const baseUrl = (this.runtimeArgs["ANC_BASE_URL"] || "https://proposals.anc.com").replace(/\/+$/, "");
       const apiKey = this.runtimeArgs["API_KEY"];
 
       if (!apiKey) {

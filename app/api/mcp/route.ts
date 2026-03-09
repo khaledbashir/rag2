@@ -12,13 +12,13 @@ import { log } from "@/lib/logger";
  *   "mcpServers": {
  *     "anc-excel": {
  *       "type": "streamable",
- *       "url": "https://basheer-therag2.prd42b.easypanel.host/api/mcp"
+ *       "url": "https://proposals.anc.com/api/mcp"
  *     }
  *   }
  * }
  */
 
-const ANC_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "https://basheer-therag2.prd42b.easypanel.host";
+const ANC_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "https://proposals.anc.com";
 const ANC_API_KEY = process.env.AGENT_SKILL_API_KEY || "";
 
 const TOOLS = [

@@ -1,6 +1,6 @@
 # Test Guide: Spec Sheet Generator (Product Data Form)
 
-**URL:** https://basheer-therag2.prd42b.easypanel.host
+**URL:** https://proposals.anc.com
 **Login:** natalia.kovaleva@anc.com / admin123
 **Purpose:** Generate one filled-out product data form per LED display from a Cost Analysis Excel
 

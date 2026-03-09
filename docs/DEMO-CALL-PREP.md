@@ -1,6 +1,6 @@
 # ANC Proposal Engine — Complete Feature Guide & Demo Prep
 
-**Platform URL:** https://basheer-therag2.prd42b.easypanel.host  
+**Platform URL:** https://proposals.anc.com  
 **Login:** Use your existing credentials  
 **Call Date:** Today  
 **Attendees:** Ahmad, Natalia, Jeremy, Matt, Jack, Eric, Jireh

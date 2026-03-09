@@ -1,7 +1,7 @@
 # ANC Proposal Engine — Complete Testing Guide
 
 **Version:** March 7, 2026
-**Production URL:** https://basheer-therag2.prd42b.easypanel.host
+**Production URL:** https://proposals.anc.com
 **Login:** Use your assigned credentials (NextAuth)
 
 ---

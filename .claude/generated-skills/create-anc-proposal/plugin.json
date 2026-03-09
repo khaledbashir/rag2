@@ -14,11 +14,11 @@
       "required": true,
       "input": {
         "type": "text",
-        "default": "https://basheer-therag2.prd42b.easypanel.host",
+        "default": "https://proposals.anc.com",
         "placeholder": "https://your-anc-instance.com",
         "hint": "Base URL of your ANC Proposal Engine (no trailing slash)"
       },
-      "value": "https://basheer-therag2.prd42b.easypanel.host"
+      "value": "https://proposals.anc.com"
     },
     "API_KEY": {
       "type": "string",

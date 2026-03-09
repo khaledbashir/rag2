@@ -10,7 +10,7 @@
  * Deploy: Copy to AnythingLLM container, configure in anythingllm_mcp_servers.json
  */
 
-const ANC_BASE_URL = process.env.ANC_BASE_URL || "https://basheer-therag2.prd42b.easypanel.host";
+const ANC_BASE_URL = process.env.ANC_BASE_URL || "https://proposals.anc.com";
 const ANC_API_KEY = process.env.ANC_API_KEY || "";
 
 // ─── MCP Protocol Handler ────────────────────────────────────────────

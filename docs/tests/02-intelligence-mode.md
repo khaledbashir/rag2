@@ -1,6 +1,6 @@
 # Test Guide: Intelligence Mode (Estimator / Build from Scratch)
 
-**URL:** https://basheer-therag2.prd42b.easypanel.host/estimator
+**URL:** https://proposals.anc.com/estimator
 **Login:** natalia.kovaleva@anc.com / admin123
 **Rule:** Math engine recalculates everything. Formula: Sell = Cost / (1 - Margin%)
 

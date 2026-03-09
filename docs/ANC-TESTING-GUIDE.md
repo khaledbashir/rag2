@@ -2,7 +2,7 @@
 
 **For:** ANC Team (Natalia, Matt, Jeremy, Eric, Alison)
 **Date:** February 2026
-**URL:** https://basheer-therag2.prd42b.easypanel.host
+**URL:** https://proposals.anc.com
 
 This guide walks you through every feature on the platform with step-by-step instructions and sample inputs to try. Work through each section to get familiar with the full system.
 

@@ -1,7 +1,7 @@
 # ANC Demo Script
 
 **Second screen only. Copy-paste blocks into AnythingLLM.**
-**App:** https://basheer-therag2.prd42b.easypanel.host
+**App:** https://proposals.anc.com
 **AI:** https://basheer-anything-llm.prd42b.easypanel.host
 
 ---
@@ -115,7 +115,7 @@ Put together a proposal I can send Sarah.
 ### Or via the AI chat:
 
 ```
-@agent Convert this estimator Excel into a budget PDF: https://basheer-therag2.prd42b.easypanel.host/api/agent-skill/demo-files?file=indiana-fever
+@agent Convert this estimator Excel into a budget PDF: https://proposals.anc.com/api/agent-skill/demo-files?file=indiana-fever
 ```
 
 ---
@@ -181,7 +181,7 @@ This isn't a tool you have to learn. You just talk to it like a colleague."
 
 **Excel to PDF:**
 ```
-@agent Convert this Excel to a budget PDF: https://basheer-therag2.prd42b.easypanel.host/api/agent-skill/demo-files?file=indiana-fever
+@agent Convert this Excel to a budget PDF: https://proposals.anc.com/api/agent-skill/demo-files?file=indiana-fever
 ```
 
 **Product recommendation:**
