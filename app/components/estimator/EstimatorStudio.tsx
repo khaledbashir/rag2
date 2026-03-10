@@ -103,7 +103,7 @@ export default function EstimatorStudio({
 
     // WYSIWYG preview: call the same server-side generator that produces the export.
     // No fake preview. No client-side approximation. Loading state shown until ready.
-    const { data: serverPreview, loading: serverPreviewLoading } = useServerPreview(answers);
+    const { data: serverPreview, loading: serverPreviewLoading, error: serverPreviewError } = useServerPreview(answers);
 
     // Preview data comes ONLY from the canonical server-side generator.
     // null when no displays or server hasn't responded yet — ExcelPreview shows loading state.
@@ -157,7 +157,10 @@ export default function EstimatorStudio({
     }, [customSheets.length, serverPreview]);
 
     const handleExport = useCallback(async () => {
-        if (!previewData || previewData.sheets.length === 0) return;
+        if (!previewData || previewData.sheets.length === 0) {
+            void showAlert({ title: "Cannot Export", description: serverPreviewError || "Workbook preview hasn't loaded yet. Wait for it to generate or check for errors." });
+            return;
+        }
         setExporting(true);
         try {
             // Use unified server-side export (same generator as RFP path)
@@ -185,7 +188,7 @@ export default function EstimatorStudio({
         } finally {
             setExporting(false);
         }
-    }, [answers, previewData, showAlert]);
+    }, [answers, previewData, showAlert, serverPreviewError]);
 
     const handleComplete = useCallback(() => {
         setQuestionsComplete(true);
@@ -562,6 +565,7 @@ export default function EstimatorStudio({
                         onCellEdit={handleCellEdit}
                         onAddSheet={handleAddSheet}
                         loading={serverPreviewLoading}
+                        error={serverPreviewError}
                     />
                     {/* Bundle panel overlay */}
                     {bundleOpen && (

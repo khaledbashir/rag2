@@ -21,13 +21,14 @@ interface ExcelPreviewProps {
     onCellEdit?: (sheetIndex: number, rowIndex: number, colIndex: number, newValue: string) => void;
     onAddSheet?: () => void;
     loading?: boolean;
+    error?: string | null;
 }
 
-export default function ExcelPreview({ data, onExport, exporting, editable = false, onCellEdit, onAddSheet, loading }: ExcelPreviewProps) {
+export default function ExcelPreview({ data, onExport, exporting, editable = false, onCellEdit, onAddSheet, loading, error }: ExcelPreviewProps) {
     const [activeTab, setActiveTab] = useState(0);
     const [editingCell, setEditingCell] = useState<{ row: number; col: number } | null>(null);
 
-    // Loading state — server is generating the canonical workbook
+    // Loading / error / empty state
     if (!data || !data.sheets?.length) {
         return (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-3 bg-white dark:bg-zinc-900 rounded-lg border border-border">
@@ -35,6 +36,12 @@ export default function ExcelPreview({ data, onExport, exporting, editable = fal
                     <>
                         <Loader2 className="w-8 h-8 animate-spin opacity-40" />
                         <p className="text-sm">Generating workbook...</p>
+                    </>
+                ) : error ? (
+                    <>
+                        <FileSpreadsheet className="w-12 h-12 opacity-30 text-red-400" />
+                        <p className="text-sm text-red-500">Preview failed: {error}</p>
+                        <p className="text-xs text-muted-foreground">Try editing a display or refreshing the page</p>
                     </>
                 ) : (
                     <>

@@ -804,9 +804,11 @@ export const LED_COST_PER_SQFT_BY_PITCH: Record<string, number> = {
     '5.95':  260.14, // Yaham R6 Outdoor LGEUS 28% landed. Rate card 02/04/2026.
     '6':     136.51, // Yaham C6 Indoor LGEUS 28% landed. Rate card 02/04/2026.
     '6.25':  293.20, // Yaham HO6T Outdoor Fascia LGEUS 28%. Rate card 02/04/2026.
+    '8':     148.00, // 8mm Indoor. Interpolated from Yaham C6/C10 curve.
     '8.33':  194.07, // Yaham R8 Outdoor LGEUS 28% landed. Rate card 02/04/2026.
     '10':    112.22, // Yaham C10 Indoor LGEUS 28% landed. Rate card 02/04/2026.
     '10.417': 154.79, // Yaham R10 Outdoor LGEUS 28% landed. Rate card 02/04/2026.
+    '16':    95.00,  // 16mm Outdoor. Estimated from R-series price curve. Verify with vendor quote.
 };
 
 // --- WARRANTY ---

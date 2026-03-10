@@ -294,6 +294,7 @@ function computeDisplays(
           || /outdoor|perimeter|field.?pitch|fascia|exterior/i.test(spec.name + " " + (spec.mountingType || ""));
         const OUTDOOR_PITCH_MAP: Record<string, string> = {
           '6': '5.95',     // 6mm outdoor → Yaham R6 ($260.14) not C6 ($136.51)
+          '8': '8.33',     // 8mm outdoor → Yaham R8 ($194.07) not C8 ($148)
           '10': '10.417',  // 10mm outdoor → Yaham R10 ($154.79) not C10 ($112.22)
         };
         // Perimeter/ribbon boards at 10mm → Yaham A10 ($206.59) which is the actual field pitch product
