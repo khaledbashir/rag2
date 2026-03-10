@@ -289,6 +289,7 @@ function EditableCell({ cell, editable, isEditing, onClick, onChange, onBlur }: 
             >
                 <input
                     autoFocus
+                    ref={(el) => { if (el) el.select(); }}
                     type="text"
                     value={value}
                     onChange={(e) => setValue(e.target.value)}

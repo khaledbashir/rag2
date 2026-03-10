@@ -741,7 +741,7 @@ export default function EstimatorStudio({
                 {debugOpen ? "Hide Debug" : `Debug (${debugLogs.length})`}
             </button>
             {debugOpen && (
-                <div className="fixed bottom-12 right-4 z-50 w-[500px] max-h-[300px] overflow-auto bg-black/95 text-green-400 text-[11px] font-mono p-3 rounded-lg shadow-2xl border border-green-800">
+                <div className="fixed top-2 left-2 z-50 w-[400px] max-h-[200px] overflow-auto bg-black/95 text-green-400 text-[10px] font-mono p-2 rounded-lg shadow-2xl border border-green-800">
                     <div className="flex justify-between items-center mb-2">
                         <span className="text-green-300 font-bold">Cell Edit Debug Console</span>
                         <button onClick={() => setDebugLogs([])} className="text-red-400 text-[10px] hover:text-red-300">Clear</button>
