@@ -215,11 +215,12 @@ export default function ProductCatalogBrowser({
       if (selectedMfr !== "all" && p.manufacturer !== selectedMfr) return false;
       // Environment filter
       if (selectedEnv !== "all") {
+        const pEnv = (p.environment || "").toLowerCase();
         if (selectedEnv === "indoor") {
-          if (p.environment !== "indoor" && p.environment !== "indoor_outdoor")
+          if (pEnv !== "indoor" && pEnv !== "indoor_outdoor")
             return false;
         } else if (selectedEnv === "outdoor") {
-          if (p.environment !== "outdoor" && p.environment !== "indoor_outdoor")
+          if (pEnv !== "outdoor" && pEnv !== "indoor_outdoor")
             return false;
         }
       }

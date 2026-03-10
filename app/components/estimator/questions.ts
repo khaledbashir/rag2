@@ -137,9 +137,13 @@ export const PROJECT_QUESTIONS: Question[] = [
     {
         id: "isIndoor",
         phase: "project",
-        type: "yes-no",
-        label: "Environment",
-        subtitle: "Affects environment ratings and material requirements",
+        type: "select",
+        label: "Indoor or Outdoor?",
+        subtitle: "Determines product selection and weatherproofing requirements",
+        options: [
+            { value: true, label: "Indoor" },
+            { value: false, label: "Outdoor" },
+        ],
         defaultValue: true,
         affectsSheet: "Display Details",
     },
