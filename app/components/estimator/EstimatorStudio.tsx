@@ -56,7 +56,7 @@ export default function EstimatorStudio({
     const router = useRouter();
     const [answers, setAnswers] = useState<EstimatorAnswers>(initialAnswers || getDefaultAnswers());
     const [exporting, setExporting] = useState(false);
-    const [questionsComplete, setQuestionsComplete] = useState(false);
+    const [questionsComplete, setQuestionsComplete] = useState(!!initialAnswers);
     const [copilotOpen, setCopilotOpen] = useState(false);
     const [converting, setConverting] = useState(false);
     const [duplicating, setDuplicating] = useState(false);
