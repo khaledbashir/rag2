@@ -40,11 +40,12 @@ function getTabColor(name: string): string {
   return "#6366F1";
 }
 
-export function useServerPreview(answers: EstimatorAnswers): {
+export function useServerPreview(answers: EstimatorAnswers, debugLog?: (msg: string) => void): {
   data: WorkbookData | null;
   loading: boolean;
   error: string | null;
 } {
+  const log = debugLog || (() => {});
   const [data, setData] = useState<WorkbookData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +59,7 @@ export function useServerPreview(answers: EstimatorAnswers): {
       return;
     }
 
-    console.log("[ServerPreview] useEffect triggered, scheduling fetch in", DEBOUNCE_MS, "ms");
+    log(`useEffect triggered, scheduling fetch in ${DEBOUNCE_MS}ms`);
 
     // Debounce
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -73,7 +74,7 @@ export function useServerPreview(answers: EstimatorAnswers): {
       setError(null);
 
       const costOverridesDebug = answers.displays?.map((d: any) => d.costOverrides);
-      console.log("[ServerPreview] Fetching with costOverrides:", JSON.stringify(costOverridesDebug));
+      log(`Fetching... costOverrides: ${JSON.stringify(costOverridesDebug)}`);
 
       try {
         const res = await fetch("/api/estimator/export-unified", {
@@ -83,7 +84,7 @@ export function useServerPreview(answers: EstimatorAnswers): {
           signal: controller.signal,
         });
 
-        console.log("[ServerPreview] Response status:", res.status);
+        log(`Response: ${res.status}`);
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: `${res.status}` }));
@@ -154,10 +155,11 @@ export function useServerPreview(answers: EstimatorAnswers): {
         const fileName = `ANC_${clientName.replace(/\s+/g, "_")}_Cost_Analysis.xlsx`;
 
         if (sheets.length > 0) sheets[0].active = true;
+        log(`Done: ${sheets.length} sheets, ${sheets.reduce((s, sh) => s + sh.rows.length, 0)} rows`);
         setData({ fileName, sheets });
       } catch (err: any) {
-        if (err.name === "AbortError") { console.log("[ServerPreview] Request aborted"); return; }
-        console.error("[ServerPreview] Error:", err);
+        if (err.name === "AbortError") { log("Request aborted"); return; }
+        log(`ERROR: ${err.message}`);
         setError(err.message || "Preview generation failed");
       } finally {
         if (!controller.signal.aborted) {
