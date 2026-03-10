@@ -91,10 +91,13 @@ export async function POST(request: NextRequest) {
     } else if (marginSheet) {
       parseMarginAnalysisSpecs(marginSheet, screens, warnings);
     } else {
-      // Try first sheet as fallback — scan for display-like rows
+      // Try consultant LED schedule format (WJHW, etc.) first, then generic fallback
       const firstSheet = workbook.worksheets[0];
       if (firstSheet) {
-        parseGenericSheet(firstSheet, screens, project, warnings);
+        const consultantParsed = parseConsultantLedSchedule(firstSheet, screens, project, warnings);
+        if (!consultantParsed) {
+          parseGenericSheet(firstSheet, screens, project, warnings);
+        }
       }
     }
 
@@ -333,6 +336,195 @@ function parseMarginAnalysisSpecs(
       });
     }
   }
+}
+
+/**
+ * Parse consultant-supplied LED schedule spreadsheets (WJHW, etc.)
+ *
+ * These have columns like: ID, Location, Image Height (ft+in), Image Width (ft+in),
+ * Pixel Pitch, Indoor/Outdoor, Brightness (nits), Service Type.
+ *
+ * Returns true if it detected and parsed the consultant format, false otherwise.
+ */
+function parseConsultantLedSchedule(
+  sheet: ExcelJS.Worksheet,
+  screens: ExtractedLEDSpec[],
+  project: ExtractedProjectInfo,
+  warnings: string[],
+): boolean {
+  // Detect header row by looking for consultant-specific column patterns
+  let headerRow = 0;
+  const colMap: Record<string, number> = {};
+
+  sheet.eachRow((row, rowNumber) => {
+    if (headerRow > 0) return;
+    const vals: string[] = [];
+    row.eachCell((cell) => vals.push(String(cell.value || "").toLowerCase().trim()));
+    const joined = vals.join(" ");
+
+    // Consultant schedules typically have ID + location + dimensions + pitch columns
+    const hasId = vals.some((v) => v === "id" || v === "display id" || v === "led id");
+    const hasLocation = vals.some((v) => v === "location" || v.includes("location"));
+    const hasDimension = vals.some((v) => v.includes("height") || v.includes("image height"));
+    const hasPitch = vals.some((v) => v.includes("pixel pitch") || v.includes("pitch"));
+
+    if ((hasId && hasDimension) || (hasLocation && hasPitch && hasDimension)) {
+      headerRow = rowNumber;
+      // Track seen header names to handle merged cells (take FIRST occurrence only)
+      const seen = new Set<string>();
+      row.eachCell((cell, colNumber) => {
+        const val = String(cell.value || "").toLowerCase().trim();
+        // For merged headers like "IMAGE HEIGHT" spanning 2 cols (ft + in),
+        // only map the FIRST occurrence — the second is the inches sub-column
+        const mappings: Array<[string, (v: string) => boolean]> = [
+          ["id", (v) => v === "id" || v === "display id" || v === "led id"],
+          ["location", (v) => v === "location" || v === "display location"],
+          ["level", (v) => v === "level" || v === "floor"],
+          ["heightFt", (v) => v.includes("image height") || (v === "height" && !v.includes("max"))],
+          ["widthFt", (v) => v.includes("image width") || v === "width"],
+          ["pitch", (v) => v.includes("pixel pitch") || v === "pitch"],
+          ["env", (v) => v.includes("indoor") || v.includes("outdoor") || v.includes("environment")],
+          ["nits", (v) => v.includes("brightness") || v.includes("nit")],
+          ["service", (v) => v === "service" || v.includes("service type") || v.includes("access")],
+          ["maxHeight", (v) => v.includes("max height")],
+          ["tolerance", (v) => v.includes("tolerance")],
+          ["notes", (v) => v.includes("note")],
+          ["phase", (v) => v === "bid package" || v === "phase"],
+        ];
+        for (const [key, matcher] of mappings) {
+          if (!seen.has(key) && matcher(val)) {
+            colMap[key] = colNumber;
+            seen.add(key);
+            break; // Only one mapping per cell
+          }
+        }
+      });
+    }
+  });
+
+  if (headerRow === 0 || !colMap["heightFt"]) return false;
+
+  // Also detect the inches column (often the column right after height/width ft)
+  // WJHW format: col 11 = height ft, col 12 = height inches, col 13 = width ft, col 14 = width inches
+  const heightInCol = colMap["heightFt"] ? colMap["heightFt"] + 1 : 0;
+  const widthInCol = colMap["widthFt"] ? colMap["widthFt"] + 1 : 0;
+
+  // Check if the inches columns have numeric data (verify they're actually inches, not a different column)
+  let hasInchesFormat = false;
+  for (let ri = headerRow + 1; ri <= Math.min(headerRow + 3, sheet.rowCount); ri++) {
+    const row = sheet.getRow(ri);
+    const hIn = parseNum(row.getCell(heightInCol)?.value);
+    if (hIn !== null && hIn >= 0 && hIn < 12) {
+      hasInchesFormat = true;
+      break;
+    }
+  }
+
+  for (let ri = headerRow + 1; ri <= sheet.rowCount; ri++) {
+    const row = sheet.getRow(ri);
+    const id = colMap["id"] ? String(row.getCell(colMap["id"]).value || "").trim() : "";
+    if (!id || id === "--") continue;
+    // Stop at legend/notes section
+    if (id.includes("LEVEL") || id.includes("NOTE") || id.includes(":")) break;
+
+    const location = colMap["location"] ? String(row.getCell(colMap["location"]).value || "").trim() : "";
+    const level = colMap["level"] ? String(row.getCell(colMap["level"]).value || "").trim() : "";
+
+    // Parse dimensions — handle ft+inches or plain feet
+    let heightFt: number | null = null;
+    let widthFt: number | null = null;
+
+    const hFtRaw = parseNum(colMap["heightFt"] ? row.getCell(colMap["heightFt"]).value : null);
+    const wFtRaw = parseNum(colMap["widthFt"] ? row.getCell(colMap["widthFt"]).value : null);
+
+    if (hFtRaw !== null && hFtRaw !== 0) {
+      if (hasInchesFormat) {
+        const hIn = parseNum(row.getCell(heightInCol)?.value) || 0;
+        heightFt = hFtRaw + hIn / 12;
+      } else {
+        heightFt = hFtRaw;
+      }
+    }
+
+    if (wFtRaw !== null && wFtRaw !== 0) {
+      if (hasInchesFormat) {
+        const wIn = parseNum(row.getCell(widthInCol)?.value) || 0;
+        widthFt = wFtRaw + wIn / 12;
+      } else {
+        widthFt = wFtRaw;
+      }
+    }
+
+    // Handle "--" or missing dimensions (e.g. VisiBowl rows that say "see notes")
+    if (heightFt === null && widthFt === null) continue;
+
+    // Parse pixel pitch — strip "MM" suffix
+    const pitchRaw = colMap["pitch"] ? String(row.getCell(colMap["pitch"]).value || "") : "";
+    const pitchMatch = pitchRaw.match(/([\d.]+)/);
+    const pitch = pitchMatch ? parseFloat(pitchMatch[1]) : null;
+
+    // Parse environment
+    const envRaw = colMap["env"] ? String(row.getCell(colMap["env"]).value || "").toLowerCase() : "";
+    const environment: "indoor" | "outdoor" = envRaw.includes("outdoor") ? "outdoor" : "indoor";
+
+    // Parse brightness — strip "NITS" suffix
+    const nitsRaw = colMap["nits"] ? String(row.getCell(colMap["nits"]).value || "") : "";
+    const nitsMatch = nitsRaw.match(/([\d,]+)/);
+    const nits = nitsMatch ? parseFloat(nitsMatch[1].replace(/,/g, "")) : null;
+
+    // Parse service type
+    const svcRaw = colMap["service"] ? String(row.getCell(colMap["service"]).value || "").toLowerCase() : "";
+    const serviceType: "front" | "rear" | "top" | null =
+      svcRaw.includes("front") ? "front" : svcRaw.includes("rear") ? "rear" : svcRaw.includes("top") ? "top" : null;
+
+    // Notes / special requirements
+    const notes = colMap["notes"] ? String(row.getCell(colMap["notes"]).value || "").trim() : "";
+    const specialReqs: string[] = [];
+    if (notes) {
+      if (/curved|curve/i.test(notes)) specialReqs.push("curved");
+      if (/mesh|transparent/i.test(notes)) specialReqs.push("LED mesh / transparent");
+      if (/wrap/i.test(notes)) specialReqs.push("wrap-around corner");
+    }
+
+    // Build display name from ID + location
+    const displayName = location ? `${id} — ${location}` : id;
+
+    const spec: ExtractedLEDSpec = {
+      name: displayName,
+      location: [level, location].filter(Boolean).join(" — "),
+      widthFt: widthFt ? Math.round(widthFt * 100) / 100 : null,
+      heightFt: heightFt ? Math.round(heightFt * 100) / 100 : null,
+      widthPx: null,
+      heightPx: null,
+      pixelPitchMm: pitch,
+      brightnessNits: nits,
+      environment,
+      quantity: 1,
+      serviceType,
+      mountingType: null,
+      maxPowerW: null,
+      weightLbs: null,
+      specialRequirements: specialReqs,
+      confidence: 0.95,
+      sourcePages: [],
+      sourceType: "table",
+      citation: `Consultant LED Schedule (${sheet.name})`,
+      notes: notes || null,
+    };
+
+    screens.push(spec);
+  }
+
+  if (screens.length > 0) {
+    // Infer project outdoor status from majority environment
+    const outdoorCount = screens.filter((s) => s.environment === "outdoor").length;
+    if (outdoorCount > screens.length / 2) project.isOutdoor = true;
+
+    warnings.push(`Parsed ${screens.length} displays from consultant LED schedule`);
+    return true;
+  }
+
+  return false;
 }
 
 function parseGenericSheet(
