@@ -561,8 +561,16 @@ export async function generateScopingWorkbook(
   buildTechSpecsSheet(wb, projectName, displays);
 
   // 6. Install sheets (one per screen) — uses per-display complexity
-  displays.forEach((d) => {
-    buildInstallSheet(wb, projectName, today, d, d.installComplexity);
+  //    Deduplicate tab names: ExcelJS throws on duplicate worksheet names
+  const usedInstallNames = new Set<string>();
+  displays.forEach((d, idx) => {
+    let baseName = d.spec.name.length > 25 ? d.spec.name.substring(0, 25) + "…" : d.spec.name;
+    let tabName = `${baseName} - Install`;
+    if (usedInstallNames.has(tabName)) {
+      tabName = `${baseName.substring(0, 22)}${idx + 1} - Install`;
+    }
+    usedInstallNames.add(tabName);
+    buildInstallSheet(wb, projectName, today, d, d.installComplexity, tabName);
   });
 
   // 7. Processor Count
@@ -1302,9 +1310,10 @@ function buildInstallSheet(
   date: string,
   d: ComputedDisplay,
   complexity: InstallComplexity,
+  tabName?: string,
 ): void {
   const shortName = d.spec.name.length > 25 ? d.spec.name.substring(0, 25) + "…" : d.spec.name;
-  const ws = wb.addWorksheet(`${shortName} - Install`, {
+  const ws = wb.addWorksheet(tabName || `${shortName} - Install`, {
     properties: { tabColor: { argb: C.GREEN_TAB } },
   });
 
@@ -1738,8 +1747,9 @@ function buildCashFlow(
   ws.getCell(row, 4).font = { bold: true, name: "Calibri" };
   row++;
 
-  // Payment phases
-  const phases = paymentTerms.split("/").map(Number);
+  // Payment phases — "40/30/20/10" format, or fallback to equal split
+  const rawPhases = paymentTerms.split("/").map(Number).filter(n => !isNaN(n) && n > 0);
+  const phases = rawPhases.length > 0 ? rawPhases : [25, 25, 25, 25];
   ws.getCell(row, 4).value = "Payment Phases";
   ws.getCell(row, 5).value = "Contract Signed";
   ws.getCell(row, 6).value = "Product Shipping";
