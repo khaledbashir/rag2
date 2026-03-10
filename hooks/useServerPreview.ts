@@ -58,6 +58,8 @@ export function useServerPreview(answers: EstimatorAnswers): {
       return;
     }
 
+    console.log("[ServerPreview] useEffect triggered, scheduling fetch in", DEBOUNCE_MS, "ms");
+
     // Debounce
     if (timerRef.current) clearTimeout(timerRef.current);
 
@@ -70,6 +72,9 @@ export function useServerPreview(answers: EstimatorAnswers): {
       setLoading(true);
       setError(null);
 
+      const costOverridesDebug = answers.displays?.map((d: any) => d.costOverrides);
+      console.log("[ServerPreview] Fetching with costOverrides:", JSON.stringify(costOverridesDebug));
+
       try {
         const res = await fetch("/api/estimator/export-unified", {
           method: "POST",
@@ -77,6 +82,8 @@ export function useServerPreview(answers: EstimatorAnswers): {
           body: JSON.stringify({ answers }),
           signal: controller.signal,
         });
+
+        console.log("[ServerPreview] Response status:", res.status);
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: `${res.status}` }));
@@ -149,7 +156,8 @@ export function useServerPreview(answers: EstimatorAnswers): {
         if (sheets.length > 0) sheets[0].active = true;
         setData({ fileName, sheets });
       } catch (err: any) {
-        if (err.name === "AbortError") return; // Cancelled, ignore
+        if (err.name === "AbortError") { console.log("[ServerPreview] Request aborted"); return; }
+        console.error("[ServerPreview] Error:", err);
         setError(err.message || "Preview generation failed");
       } finally {
         if (!controller.signal.aborted) {

@@ -150,16 +150,21 @@ export default function EstimatorStudio({
         const sheetName = serverPreview?.sheets?.[sheetIndex]?.name;
         const overrideKey = LED_COST_OVERRIDE_MAP[colIndex];
 
+        console.log("[CellEdit]", { sheetIndex, sheetName, rowIndex, colIndex, overrideKey, newValue });
+
         if (sheetName === "LED Cost Sheet" && overrideKey) {
             // LED Cost Sheet data starts at row 3 (0-based), header is row 2
             const displayIdx = rowIndex - 3;
+            console.log("[CellEdit] LED path:", { displayIdx, displaysLen: answers.displays.length });
             if (displayIdx >= 0 && displayIdx < answers.displays.length) {
                 // Strip currency/percent formatting ($, commas, %) before parsing
                 const cleaned = newValue.replace(/[$,%\s]/g, "");
                 const numValue = parseFloat(cleaned);
+                console.log("[CellEdit] parsed:", { cleaned, numValue, isNaN: isNaN(numValue) });
                 if (!isNaN(numValue)) {
                     // Margin% is stored as decimal (0.058 not 5.8)
                     const finalValue = overrideKey === "marginPct" ? numValue / 100 : numValue;
+                    console.log("[CellEdit] Setting costOverrides:", { overrideKey, finalValue, displayIdx });
                     setAnswers(prev => {
                         const next = { ...prev, displays: [...prev.displays] };
                         next.displays[displayIdx] = {
@@ -171,7 +176,11 @@ export default function EstimatorStudio({
                         };
                         return next;
                     });
-                    return; // Don't store as visual-only override
+                    // Also store visual override so cell shows new value immediately
+                    // (server preview takes ~2s to regenerate with recalculated formulas)
+                    const key = `${sheetIndex}-${rowIndex}-${colIndex}`;
+                    setCellOverrides(prev => ({ ...prev, [key]: newValue }));
+                    return;
                 }
             }
         }
