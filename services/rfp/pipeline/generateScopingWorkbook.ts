@@ -1213,11 +1213,11 @@ function buildLedCostSheet(
     // H (ft), W (ft)
     dr.getCell(5).value = d.heightFt || 0; dr.getCell(5).numFmt = "0.00";
     dr.getCell(6).value = d.widthFt || 0; dr.getCell(6).numFmt = "0.00";
-    // H (px), W (px)
+    // H (px), W (px) — plain integers, NOT currency
     const hPx = d.spec.heightPx || (d.spec.pixelPitchMm && d.heightFt ? Math.round(d.heightFt * 304.8 / d.spec.pixelPitchMm) : 0);
     const wPx = d.spec.widthPx || (d.spec.pixelPitchMm && d.widthFt ? Math.round(d.widthFt * 304.8 / d.spec.pixelPitchMm) : 0);
-    dr.getCell(7).value = hPx; dr.getCell(7).numFmt = FMT_INT;
-    dr.getCell(8).value = wPx; dr.getCell(8).numFmt = FMT_INT;
+    dr.getCell(7).value = hPx;
+    dr.getCell(8).value = wPx;
     // Qty
     const qty = d.spec.quantity || 1;
     dr.getCell(9).value = qty; dr.getCell(9).alignment = { horizontal: "center" };
@@ -1271,6 +1271,14 @@ function buildLedCostSheet(
     if (power > 0) { dr.getCell(23).value = { formula: `V${row}*3.412`, result: Math.round(power * 3.412) }; dr.getCell(23).numFmt = "#,##0"; }
 
     stripe(dr, COLS, idx % 2 === 0);
+
+    // Re-apply number formats AFTER stripe — ExcelJS fill setter can reset numFmt
+    dr.getCell(5).numFmt = "0.00";   // H (ft)
+    dr.getCell(6).numFmt = "0.00";   // W (ft)
+    dr.getCell(7).numFmt = "0";      // H (px) — plain integer
+    dr.getCell(8).numFmt = "0";      // W (px) — plain integer
+    dr.getCell(10).numFmt = "#,##0"; // Total SqFt
+
     row++;
   });
 
