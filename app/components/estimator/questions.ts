@@ -777,6 +777,8 @@ export interface DisplayAnswers {
     excludedBundleItems: string[];
     // Alt pitch — alternate pixel pitch options (only LED cost changes)
     altPitches: string[];
+    // Per-display cost overrides — from direct cell edits on LED Cost Sheet
+    costOverrides?: Record<string, number>;
 }
 
 export function getDefaultAnswers(): EstimatorAnswers {

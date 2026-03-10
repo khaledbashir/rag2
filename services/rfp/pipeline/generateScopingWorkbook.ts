@@ -125,6 +125,8 @@ export interface FinancialOverrides {
   scoringAllocation?: number;     // Scoring cost in dollars
   isUnionLabor?: boolean;         // 15% uplift on labor costs
   perDisplayComplexity?: InstallComplexity[];  // parallel to specs array
+  /** Per-display cost overrides from direct cell edits — parallel to specs array */
+  perDisplayCostOverrides?: Array<Record<string, number> | undefined>;
 }
 
 interface ComputedDisplay {
@@ -151,6 +153,8 @@ interface ComputedDisplay {
   upsCost: number;
   backupProcessorCost: number;
   weatherproofCost: number;
+  // LED Cost Sheet line items
+  shippingCost: number;
   // Totals
   totalCost: number;
   sellingPrice: number;
@@ -371,17 +375,26 @@ function computeDisplays(
     // Skip fixed costs if display has no dimensions (can't scope it)
     const hasDimensions = areaSqFt > 0;
 
+    // Per-display cost overrides from cell edits
+    const co = ov?.perDisplayCostOverrides?.[idx];
+
     // Travel (estimate)
     const travelCost = hasDimensions ? 15000 : 0;
 
+    // LED hardware cost override from cell edit (must be before sparePartsCost)
+    if (co?.displayCost != null) ledHardwareCost = co.displayCost;
+
     // Smart bundles — spare parts from rate card
-    const sendingCardCost = hasDimensions ? BUNDLES.sendingCard : 0;
+    const sendingCardCost = co?.processor != null ? co.processor : (hasDimensions ? BUNDLES.sendingCard : 0);
     const sparePartsCost = round2(ledHardwareCost * BUNDLES.sparePartsPct);
     const signalCableCost = round2(BUNDLES.signalCablePerSqFt25 * (areaSqFt / 25));
     const isScoreboard = isCeiling;
     const upsCost = isScoreboard ? BUNDLES.upsBattery : 0;
     const backupProcessorCost = areaSqFt > 300 ? BUNDLES.backupProcessor : 0;
     const weatherproofCost = spec.environment === "outdoor" ? round2(areaSqFt * BUNDLES.weatherproofPerSqFt) : 0;
+
+    // Shipping — override from cell edit or default $10/sqft
+    const shippingCost = co?.shipping != null ? co.shipping : (hasDimensions ? round2(areaSqFt * 10) : 0);
 
     // Apply union multiplier to labor-related costs
     const totalCost = round2(
@@ -396,7 +409,7 @@ function computeDisplays(
 
     // Margin: per-category approach (override > priced > default)
     // Hardware and services get separate margins, then sum for blended selling price
-    const hwMarginPct = ov?.ledMarginPct ?? priced?.blendedMarginPct ?? DEFAULT_MARGINS.ledHardware;
+    const hwMarginPct = co?.marginPct != null ? co.marginPct : (ov?.ledMarginPct ?? priced?.blendedMarginPct ?? DEFAULT_MARGINS.ledHardware);
     const svcMarginPct = ov?.servicesMarginPct ?? DEFAULT_MARGINS.install;
     const hwCosts = ledHardwareCost + sparePartsCost;
     const svcCosts = round2(structuralMaterialsCost * unionMult)
@@ -440,6 +453,7 @@ function computeDisplays(
       upsCost,
       backupProcessorCost,
       weatherproofCost,
+      shippingCost,
       totalCost,
       sellingPrice,
       marginDollars,
@@ -1240,9 +1254,9 @@ function buildLedCostSheet(
     // Processor
     dr.getCell(15).value = d.sendingCardCost || 0; dr.getCell(15).numFmt = FMT_USD;
     // Shipping
-    dr.getCell(16).value = d.spec.quantity ? round2(d.areaSqFt * 10) : 0; dr.getCell(16).numFmt = FMT_USD;
+    dr.getCell(16).value = d.shippingCost; dr.getCell(16).numFmt = FMT_USD;
     // Total Cost = Display + Processor + Shipping
-    dr.getCell(17).value = { formula: `N${row}+O${row}+P${row}`, result: ledWithSpares + (d.sendingCardCost || 0) + round2(d.areaSqFt * 10) };
+    dr.getCell(17).value = { formula: `N${row}+O${row}+P${row}`, result: ledWithSpares + (d.sendingCardCost || 0) + d.shippingCost };
     dr.getCell(17).numFmt = FMT_USD;
     dr.getCell(17).font = { bold: true, name: "Calibri" };
     // Margin %

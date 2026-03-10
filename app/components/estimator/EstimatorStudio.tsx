@@ -136,10 +136,48 @@ export default function EstimatorStudio({
         setAnswers(next);
     }, []);
 
+    // Map LED Cost Sheet column indices to cost override keys
+    // LED Cost Sheet columns (0-based): 13=Display Cost, 14=Processor, 15=Shipping, 17=Margin%
+    const LED_COST_OVERRIDE_MAP: Record<number, string> = {
+        13: "displayCost",
+        14: "processor",
+        15: "shipping",
+        17: "marginPct",
+    };
+
     const handleCellEdit = useCallback((sheetIndex: number, rowIndex: number, colIndex: number, newValue: string) => {
+        // Check if this is an edit on the LED Cost Sheet
+        const sheetName = serverPreview?.sheets?.[sheetIndex]?.name;
+        const overrideKey = LED_COST_OVERRIDE_MAP[colIndex];
+
+        if (sheetName === "LED Cost Sheet" && overrideKey) {
+            // LED Cost Sheet data starts at row 3 (0-based), header is row 2
+            const displayIdx = rowIndex - 3;
+            if (displayIdx >= 0 && displayIdx < answers.displays.length) {
+                const numValue = parseFloat(newValue);
+                if (!isNaN(numValue)) {
+                    // Margin% is stored as decimal (0.058 not 5.8)
+                    const finalValue = overrideKey === "marginPct" ? numValue / 100 : numValue;
+                    setAnswers(prev => {
+                        const next = { ...prev, displays: [...prev.displays] };
+                        next.displays[displayIdx] = {
+                            ...next.displays[displayIdx],
+                            costOverrides: {
+                                ...next.displays[displayIdx].costOverrides,
+                                [overrideKey]: finalValue,
+                            },
+                        };
+                        return next;
+                    });
+                    return; // Don't store as visual-only override
+                }
+            }
+        }
+
+        // Default: visual-only override for non-mapped cells
         const key = `${sheetIndex}-${rowIndex}-${colIndex}`;
         setCellOverrides(prev => ({ ...prev, [key]: newValue }));
-    }, []);
+    }, [answers.displays, serverPreview?.sheets]);
 
     const handleAddSheet = useCallback(() => {
         const idx = customSheets.length;

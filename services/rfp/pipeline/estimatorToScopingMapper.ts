@@ -101,14 +101,17 @@ export function mapEstimatorToScoping(answers: EstimatorAnswers): ScopingWorkboo
   // Map all displays (base + alt pitch variants)
   const specs: ExtractedLEDSpec[] = [];
   const perDisplayComplexity: InstallComplexity[] = [];
+  const perDisplayCostOverrides: Array<Record<string, number> | undefined> = [];
   for (const d of answers.displays) {
     specs.push(mapDisplay(d, env));
     perDisplayComplexity.push(complexityMap[d.installComplexity] || "standard");
+    perDisplayCostOverrides.push(d.costOverrides && Object.keys(d.costOverrides).length > 0 ? d.costOverrides : undefined);
     // Alt pitch variants inherit parent complexity
     const alts = mapAltPitchVariants(d, env);
     specs.push(...alts);
     for (const _a of alts) {
       perDisplayComplexity.push(complexityMap[d.installComplexity] || "standard");
+      perDisplayCostOverrides.push(undefined);
     }
   }
 
@@ -127,6 +130,7 @@ export function mapEstimatorToScoping(answers: EstimatorAnswers): ScopingWorkboo
     scoringAllocation: answers.includeScoring ? (answers.scoringAllocation || 0) : undefined,
     isUnionLabor: answers.isUnion || undefined,
     perDisplayComplexity,
+    perDisplayCostOverrides,
   };
 
   return {
