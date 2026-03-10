@@ -70,13 +70,6 @@ export default function EstimatorStudio({
     const [autoRfpOpen, setAutoRfpOpen] = useState(false);
     const [venueOpen, setVenueOpen] = useState(false);
     const [toolbarOpen, setToolbarOpen] = useState(false);
-    // Debug overlay for cell edit testing (temporary — remove after fixing)
-    const [debugLogs, setDebugLogs] = useState<string[]>([]);
-    const [debugOpen, setDebugOpen] = useState(false);
-    const debugLog = useCallback((msg: string) => {
-        const ts = new Date().toLocaleTimeString();
-        setDebugLogs(prev => [...prev.slice(-30), `[${ts}] ${msg}`]);
-    }, []);
     // Cell overrides: key = "sheetIdx-rowIdx-colIdx", value = edited value
     const [cellOverrides, setCellOverrides] = useState<Record<string, string | number>>(initialCellOverrides || {});
     // User-added custom sheets
@@ -110,7 +103,7 @@ export default function EstimatorStudio({
 
     // WYSIWYG preview: call the same server-side generator that produces the export.
     // No fake preview. No client-side approximation. Loading state shown until ready.
-    const { data: serverPreview, loading: serverPreviewLoading, error: serverPreviewError } = useServerPreview(answers, debugLog);
+    const { data: serverPreview, loading: serverPreviewLoading, error: serverPreviewError } = useServerPreview(answers);
 
     // Preview data comes ONLY from the canonical server-side generator.
     // null when no displays or server hasn't responded yet — ExcelPreview shows loading state.
@@ -153,25 +146,16 @@ export default function EstimatorStudio({
     };
 
     const handleCellEdit = useCallback((sheetIndex: number, rowIndex: number, colIndex: number, newValue: string) => {
-        // Check if this is an edit on the LED Cost Sheet
         const sheetName = serverPreview?.sheets?.[sheetIndex]?.name;
         const overrideKey = LED_COST_OVERRIDE_MAP[colIndex];
 
-        debugLog(`EDIT sheet=${sheetIndex} "${sheetName}" row=${rowIndex} col=${colIndex} key=${overrideKey || "none"} val="${newValue}"`);
-
         if (sheetName === "LED Cost Sheet" && overrideKey) {
-            // LED Cost Sheet data starts at row 3 (0-based), header is row 2
             const displayIdx = rowIndex - 3;
-            debugLog(`LED path: displayIdx=${displayIdx} of ${answers.displays.length} displays`);
             if (displayIdx >= 0 && displayIdx < answers.displays.length) {
-                // Strip currency/percent formatting ($, commas, %) before parsing
                 const cleaned = newValue.replace(/[$,%\s]/g, "");
                 const numValue = parseFloat(cleaned);
-                debugLog(`Parsed: "${cleaned}" -> ${numValue} (isNaN=${isNaN(numValue)})`);
                 if (!isNaN(numValue)) {
-                    // Margin% is stored as decimal (0.058 not 5.8)
                     const finalValue = overrideKey === "marginPct" ? numValue / 100 : numValue;
-                    debugLog(`SET costOverrides.${overrideKey} = ${finalValue} for display[${displayIdx}]`);
                     setAnswers(prev => {
                         const next = { ...prev, displays: [...prev.displays] };
                         next.displays[displayIdx] = {
@@ -184,7 +168,6 @@ export default function EstimatorStudio({
                         return next;
                     });
                     // Also store visual override so cell shows new value immediately
-                    // (server preview takes ~2s to regenerate with recalculated formulas)
                     const key = `${sheetIndex}-${rowIndex}-${colIndex}`;
                     setCellOverrides(prev => ({ ...prev, [key]: newValue }));
                     return;
@@ -733,30 +716,6 @@ export default function EstimatorStudio({
                 )}
             </main>
 
-            {/* Debug overlay — temporary, remove after cell edit fix verified */}
-            <button
-                onClick={() => setDebugOpen(v => !v)}
-                className="fixed bottom-4 right-4 z-50 bg-black text-green-400 text-[10px] font-mono px-2 py-1 rounded shadow-lg opacity-70 hover:opacity-100"
-            >
-                {debugOpen ? "Hide Debug" : `Debug (${debugLogs.length})`}
-            </button>
-            {debugOpen && (
-                <div className="fixed top-2 left-2 z-50 w-[400px] max-h-[200px] overflow-auto bg-black/95 text-green-400 text-[10px] font-mono p-2 rounded-lg shadow-2xl border border-green-800">
-                    <div className="flex justify-between items-center mb-2">
-                        <span className="text-green-300 font-bold">Cell Edit Debug Console</span>
-                        <button onClick={() => setDebugLogs([])} className="text-red-400 text-[10px] hover:text-red-300">Clear</button>
-                    </div>
-                    {debugLogs.length === 0 ? (
-                        <div className="text-green-700">Edit a cell on LED Cost Sheet to see logs...</div>
-                    ) : (
-                        debugLogs.map((line, i) => (
-                            <div key={i} className={`py-0.5 border-b border-green-900/30 ${line.includes("ERROR") ? "text-red-400" : line.includes("Done") ? "text-blue-400" : ""}`}>
-                                {line}
-                            </div>
-                        ))
-                    )}
-                </div>
-            )}
         </div>
     );
 }

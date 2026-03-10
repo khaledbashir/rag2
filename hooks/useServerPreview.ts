@@ -40,12 +40,11 @@ function getTabColor(name: string): string {
   return "#6366F1";
 }
 
-export function useServerPreview(answers: EstimatorAnswers, debugLog?: (msg: string) => void): {
+export function useServerPreview(answers: EstimatorAnswers): {
   data: WorkbookData | null;
   loading: boolean;
   error: string | null;
 } {
-  const log = debugLog || (() => {});
   const [data, setData] = useState<WorkbookData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,8 +58,6 @@ export function useServerPreview(answers: EstimatorAnswers, debugLog?: (msg: str
       return;
     }
 
-    log(`useEffect triggered, scheduling fetch in ${DEBOUNCE_MS}ms`);
-
     // Debounce
     if (timerRef.current) clearTimeout(timerRef.current);
 
@@ -73,9 +70,6 @@ export function useServerPreview(answers: EstimatorAnswers, debugLog?: (msg: str
       setLoading(true);
       setError(null);
 
-      const costOverridesDebug = answers.displays?.map((d: any) => d.costOverrides);
-      log(`Fetching... costOverrides: ${JSON.stringify(costOverridesDebug)}`);
-
       try {
         const res = await fetch("/api/estimator/export-unified", {
           method: "POST",
@@ -83,8 +77,6 @@ export function useServerPreview(answers: EstimatorAnswers, debugLog?: (msg: str
           body: JSON.stringify({ answers }),
           signal: controller.signal,
         });
-
-        log(`Response: ${res.status}`);
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: `${res.status}` }));
@@ -155,11 +147,9 @@ export function useServerPreview(answers: EstimatorAnswers, debugLog?: (msg: str
         const fileName = `ANC_${clientName.replace(/\s+/g, "_")}_Cost_Analysis.xlsx`;
 
         if (sheets.length > 0) sheets[0].active = true;
-        log(`Done: ${sheets.length} sheets, ${sheets.reduce((s, sh) => s + sh.rows.length, 0)} rows`);
         setData({ fileName, sheets });
       } catch (err: any) {
-        if (err.name === "AbortError") { log("Request aborted"); return; }
-        log(`ERROR: ${err.message}`);
+        if (err.name === "AbortError") return; // Cancelled, ignore
         setError(err.message || "Preview generation failed");
       } finally {
         if (!controller.signal.aborted) {
