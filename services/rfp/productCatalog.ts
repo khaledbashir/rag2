@@ -538,6 +538,91 @@ const PRODUCTS: Record<string, ProductType> = {
         smallCabinet: null,
         environment: "Outdoor",
     },
+
+    // =========================================================================
+    // LG PRODUCTS — Source: SBA PH4 Cost Analysis 03/09/2026 (Matt's validated pricing)
+    // LG is ANC's primary partner. These are actual contracted rates.
+    // =========================================================================
+
+    "lg-lsca039": {
+        id: "lg-lsca039",
+        name: "LG LSCA039 3.91mm Indoor Ceiling",
+        manufacturer: "LG",
+        pitchMm: 3.91,
+        powerDensityWm2: 400,       // estimated — LG datasheet pending
+        weightDensityLbm2: 48,      // estimated
+        avgMaxRatio: 0.40,
+        brightnessNits: 1000,
+        pixelDensityPPF: 6084,      // (1000/3.91)^2 / 10.764
+        colorTempK: { nominal: 6500, min: 3200, max: 9300 },
+        diode: "LG Proprietary",
+        processing: "LG Embedded",
+        hardware: "LG LSCA Series",
+        lifespanHours: 100_000,
+        defaultCabinet: null,       // custom sizes per project
+        smallCabinet: null,
+        environment: "Indoor",
+    },
+
+    "lg-lscb025": {
+        id: "lg-lscb025",
+        name: "LG LSCB025 2.5mm Indoor Wall",
+        manufacturer: "LG",
+        pitchMm: 2.5,
+        powerDensityWm2: 390,
+        weightDensityLbm2: 50,
+        avgMaxRatio: 0.35,
+        brightnessNits: 1000,
+        pixelDensityPPF: 14863,
+        colorTempK: { nominal: 6500, min: 3200, max: 9300 },
+        diode: "LG Proprietary",
+        processing: "LG Embedded",
+        hardware: "LG LSCB Series",
+        lifespanHours: 100_000,
+        defaultCabinet: null,
+        smallCabinet: null,
+        environment: "Indoor",
+    },
+
+    "lg-lsga039": {
+        id: "lg-lsga039",
+        name: "LG LSGA039 3.9mm Indoor Wall",
+        manufacturer: "LG",
+        pitchMm: 3.91,
+        powerDensityWm2: 400,
+        weightDensityLbm2: 45,
+        avgMaxRatio: 0.40,
+        brightnessNits: 1000,
+        pixelDensityPPF: 6084,
+        colorTempK: { nominal: 6500, min: 3200, max: 9300 },
+        diode: "LG Proprietary",
+        processing: "LG Embedded",
+        hardware: "LG LSGA Series",
+        lifespanHours: 100_000,
+        defaultCabinet: null,
+        smallCabinet: null,
+        environment: "Indoor",
+    },
+
+    "lg-lsca015": {
+        id: "lg-lsca015",
+        name: "LG LSCA015 1.5mm Indoor Fine Pitch",
+        manufacturer: "LG",
+        pitchMm: 1.5,
+        powerDensityWm2: 350,
+        weightDensityLbm2: 55,
+        avgMaxRatio: 0.33,
+        brightnessNits: 1000,
+        pixelDensityPPF: 41217,
+        colorTempK: { nominal: 6500, min: 3200, max: 9300 },
+        diode: "LG Proprietary",
+        processing: "LG Embedded",
+        hardware: "LG LSCA Series",
+        lifespanHours: 100_000,
+        defaultCabinet: null,
+        smallCabinet: null,
+        environment: "Indoor",
+    },
 };
 
 // ============================================================================
@@ -711,8 +796,9 @@ export const YAHAM_PRICING_LAYERS = {
 
 export const LED_COST_PER_SQFT_BY_PITCH: Record<string, number> = {
     '1.2':   430,    // Indiana Fever: =M*430 (Locker Room Ribbon)
+    '1.5':   929.05, // LG LSCA015 indoor. SBA PH4 Cost Analysis 03/09/2026.
     '1.875': 0,      // No formula found — vendor quote.
-    '2.5':   251.57, // Yaham C2.5-MIP LGEUS 28% landed. Rate card 02/04/2026.
+    '2.5':   277.56, // LG LSCB025 indoor. SBA PH4 Cost Analysis 03/09/2026. (prev Yaham C2.5 $251.57)
     '3.91':  232.53, // Yaham R4 Outdoor LGEUS 28% landed. Rate card 02/04/2026.
     '4':     178.09, // Yaham C4 Indoor LGEUS 28% landed. Rate card 02/04/2026.
     '5.95':  260.14, // Yaham R6 Outdoor LGEUS 28% landed. Rate card 02/04/2026.
@@ -757,6 +843,14 @@ export const HARDWARE_COST_PER_SQM: Record<string, number> = {
     'yaham-a10':         2224,  // $206.59/sqft × 10.7639
     'yaham-ho10t':       1900,  // $176.45/sqft × 10.7639
     'yaham-ho6t':        3157,  // $293.20/sqft × 10.7639
+    // LG — from SBA PH4 Cost Analysis 03/09/2026 (Matt's validated pricing)
+    'lg-lsca039':        1220,  // LG LSCA039 3.91mm indoor. $113.34/sqft × 10.7639
+    'lg-lscb025':        2988,  // LG LSCB025 2.5mm indoor.  $277.56/sqft × 10.7639
+    'lg-lsga039':        1202,  // LG LSGA039 3.9mm indoor.  $111.67/sqft × 10.7639
+    'lg-lsca015':       10000,  // LG LSCA015 1.5mm indoor.  $929.05/sqft × 10.7639
+    'lg-lapa163':        5466,  // LG LAPA163 1.88mm AIO.    $507.80/sqft × 10.7639
+    'lg-lapa136':        5505,  // LG LAPA136 1.56mm AIO.    $511.46/sqft × 10.7639
+    'lg-lsga018':        2348,  // LG LSGA018 1.85mm rear.   $218.14/sqft × 10.7639
 };
 
 /** Calculate hardware cost from active area and product ID. */

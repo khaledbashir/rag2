@@ -85,10 +85,14 @@ function getSmartBundles() {
 
 function getBudgetRates() {
   return {
-    installPerSqFt: 289,                                       // composite budget rate — no single rate card key
-    electricalPerSqFt: rc("electrical.materials_per_sqft", 125),// rate card: electrical materials
-    structuralWallPerSqFt: 30,                                 // no rate card key (budget heuristic)
-    structuralCeilingPerSqFt: 60,                              // no rate card key (budget heuristic)
+    // Per-display-type install rates (validated against Jeremy's Denver Cost Analysis 03/04/2026)
+    installScoreboardPerSqFt: 375,                               // scoreboard/center-hung: Jeremy $374.93/sqft
+    installFasciaPerSqFt: 432,                                   // fascia/ribbon-board: Jeremy ~$432/sqft
+    installWallPerSqFt: 251,                                     // wall-mounted/perimeter: Jeremy $251.32/sqft
+    installPerSqFt: 289,                                         // fallback composite budget rate
+    electricalPerSqFt: rc("electrical.materials_per_sqft", 125), // rate card: electrical materials
+    structuralWallPerSqFt: 30,                                   // no rate card key (budget heuristic)
+    structuralCeilingPerSqFt: 55,                                // validated: Jeremy $54.63/sqft (was 60)
   };
 }
 
@@ -284,35 +288,72 @@ function computeDisplays(
           }
         }
       } else if (spec.pixelPitchMm) {
-        // No explicit product — standard pitch-based lookup
-        const pitchKey = `led_cost.${String(spec.pixelPitchMm).replace(".", "_")}mm`;
-        const rcRate = rc(pitchKey, 0);
-        const catalogRate = LED_COST_PER_SQFT_BY_PITCH[String(spec.pixelPitchMm)];
-        const rate = rcRate > 0 ? rcRate : catalogRate;
-        if (rate) ledHardwareCost = round2(areaSqFt * rate);
+        // No explicit product — pitch-based lookup with outdoor/indoor awareness
+        // Round pitches (6, 10) map to outdoor variants for outdoor/perimeter displays
+        const isOutdoor = spec.environment === "outdoor"
+          || /outdoor|perimeter|field.?pitch|fascia|exterior/i.test(spec.name + " " + (spec.mountingType || ""));
+        const OUTDOOR_PITCH_MAP: Record<string, string> = {
+          '6': '5.95',     // 6mm outdoor → Yaham R6 ($260.14) not C6 ($136.51)
+          '10': '10.417',  // 10mm outdoor → Yaham R10 ($154.79) not C10 ($112.22)
+        };
+        // Perimeter/ribbon boards at 10mm → Yaham A10 ($206.59) which is the actual field pitch product
+        const isPerimeter = /perimeter|field.?pitch|ribbon/i.test(spec.name + " " + (spec.mountingType || ""));
+        const PERIMETER_PITCH_MAP: Record<string, number> = {
+          '10': 206.59,    // Yaham A10 outdoor perimeter. Denver Cost Analysis 03/04/2026.
+        };
+
+        let effectivePitch = String(spec.pixelPitchMm);
+        let directRate: number | undefined;
+
+        // Check perimeter-specific override first
+        if (isPerimeter && PERIMETER_PITCH_MAP[effectivePitch] != null) {
+          directRate = PERIMETER_PITCH_MAP[effectivePitch];
+        }
+        // Then outdoor pitch remapping
+        else if (isOutdoor && OUTDOOR_PITCH_MAP[effectivePitch]) {
+          effectivePitch = OUTDOOR_PITCH_MAP[effectivePitch];
+        }
+
+        if (directRate != null) {
+          ledHardwareCost = round2(areaSqFt * directRate);
+        } else {
+          const pitchKey = `led_cost.${effectivePitch.replace(".", "_")}mm`;
+          const rcRate = rc(pitchKey, 0);
+          const catalogRate = LED_COST_PER_SQFT_BY_PITCH[effectivePitch];
+          const rate = rcRate > 0 ? rcRate : catalogRate;
+          if (rate) ledHardwareCost = round2(areaSqFt * rate);
+        }
       }
     }
 
     // Structural / Labor / Electrical: use priced data when available (Mirror path),
     // otherwise compute from budget rates (Estimator/RFP path).
     const isCeiling = /center.?hung|scoreboard|hanging|ribbon|fascia/i.test(spec.name + " " + (spec.mountingType || ""));
+    const isScoreboardType = /scoreboard|center.?hung|hanging|jumbotron/i.test(spec.name + " " + (spec.mountingType || ""));
+    const isFasciaType = /fascia|ribbon|perimeter.*board|banner/i.test(spec.name + " " + (spec.mountingType || ""));
     let structuralMaterialsCost: number;
     let structuralLaborCost: number;
     let electricalCost: number;
+
+    // Select install rate based on display type (validated against Denver Cost Analysis)
+    const installRate = isScoreboardType ? RATES.installScoreboardPerSqFt
+      : isFasciaType ? RATES.installFasciaPerSqFt
+      : isCeiling ? RATES.installScoreboardPerSqFt  // default ceiling to scoreboard rate
+      : RATES.installWallPerSqFt;
 
     if (priced && priced.installCost > 0) {
       // Priced data available (Mirror/RFP) — distribute combined installCost
       // across structural/labor/electrical proportionally using budget rate ratios
       const structRate = isCeiling ? RATES.structuralCeilingPerSqFt : RATES.structuralWallPerSqFt;
-      const totalRate = structRate + RATES.installPerSqFt + RATES.electricalPerSqFt;
+      const totalRate = structRate + installRate + RATES.electricalPerSqFt;
       structuralMaterialsCost = round2(priced.installCost * (structRate / totalRate));
-      structuralLaborCost = round2(priced.installCost * (RATES.installPerSqFt / totalRate));
+      structuralLaborCost = round2(priced.installCost * (installRate / totalRate));
       electricalCost = round2(priced.installCost * (RATES.electricalPerSqFt / totalRate));
     } else {
       // No priced data — compute from budget rates
       const structRate = isCeiling ? RATES.structuralCeilingPerSqFt : RATES.structuralWallPerSqFt;
       structuralMaterialsCost = round2(areaSqFt * structRate);
-      structuralLaborCost = round2(areaSqFt * RATES.installPerSqFt);
+      structuralLaborCost = round2(areaSqFt * installRate);
       electricalCost = round2(areaSqFt * RATES.electricalPerSqFt);
     }
 
@@ -352,10 +393,22 @@ function computeDisplays(
       + upsCost + backupProcessorCost + weatherproofCost
     );
 
-    // Margin: override > priced > default
-    const marginPct = ov?.ledMarginPct ?? priced?.blendedMarginPct ?? DEFAULT_MARGINS.ledHardware;
-    const sellingPrice = totalCost > 0 ? round2(totalCost / (1 - marginPct)) : 0;
+    // Margin: per-category approach (override > priced > default)
+    // Hardware and services get separate margins, then sum for blended selling price
+    const hwMarginPct = ov?.ledMarginPct ?? priced?.blendedMarginPct ?? DEFAULT_MARGINS.ledHardware;
+    const svcMarginPct = ov?.servicesMarginPct ?? DEFAULT_MARGINS.install;
+    const hwCosts = ledHardwareCost + sparePartsCost;
+    const svcCosts = round2(structuralMaterialsCost * unionMult)
+      + round2(structuralLaborCost * unionMult)
+      + round2(electricalCost * unionMult)
+      + pmCost + engCost + travelCost;
+    const equipCosts = sendingCardCost + signalCableCost + upsCost + backupProcessorCost + weatherproofCost;
+    const hwSell = hwCosts > 0 ? round2(hwCosts / (1 - hwMarginPct)) : 0;
+    const svcSell = svcCosts > 0 ? round2(svcCosts / (1 - svcMarginPct)) : 0;
+    const equipSell = equipCosts > 0 ? round2(equipCosts / (1 - hwMarginPct)) : 0;
+    const sellingPrice = round2(hwSell + svcSell + equipSell);
     const marginDollars = round2(sellingPrice - totalCost);
+    const marginPct = sellingPrice > 0 ? round2((1 - totalCost / sellingPrice) * 10000) / 10000 : 0;
 
     // Processor math
     const widthPx = spec.widthPx || (spec.pixelPitchMm && widthFt ? Math.round(widthFt * 304.8 / spec.pixelPitchMm) : 0);
