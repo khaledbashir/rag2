@@ -8,7 +8,7 @@
 import type { EstimatorAnswers, DisplayAnswers } from "@/app/components/estimator/questions";
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "@/services/rfp/unified/types";
 import type { ScopingWorkbookOptions, FinancialOverrides } from "./generateScopingWorkbook";
-import type { InstallComplexity } from "@/services/rfp/productCatalog";
+import { type InstallComplexity, getProduct } from "@/services/rfp/productCatalog";
 
 // ---------------------------------------------------------------------------
 // Display mapping: DisplayAnswers → ExtractedLEDSpec
@@ -31,7 +31,7 @@ function mapDisplay(d: DisplayAnswers, env: "indoor" | "outdoor"): ExtractedLEDS
     widthPx,
     heightPx,
     pixelPitchMm: pitch,
-    brightnessNits: null,
+    brightnessNits: d.productId ? (getProduct(d.productId)?.brightnessNits ?? null) : null,
     environment: env,
     quantity: 1,
     serviceType: (d.serviceType as "front" | "rear" | "top") || null,
