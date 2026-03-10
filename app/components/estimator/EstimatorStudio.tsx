@@ -154,7 +154,9 @@ export default function EstimatorStudio({
             // LED Cost Sheet data starts at row 3 (0-based), header is row 2
             const displayIdx = rowIndex - 3;
             if (displayIdx >= 0 && displayIdx < answers.displays.length) {
-                const numValue = parseFloat(newValue);
+                // Strip currency/percent formatting ($, commas, %) before parsing
+                const cleaned = newValue.replace(/[$,%\s]/g, "");
+                const numValue = parseFloat(cleaned);
                 if (!isNaN(numValue)) {
                     // Margin% is stored as decimal (0.058 not 5.8)
                     const finalValue = overrideKey === "marginPct" ? numValue / 100 : numValue;

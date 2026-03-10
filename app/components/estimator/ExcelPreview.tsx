@@ -261,11 +261,24 @@ interface EditableCellProps {
 }
 
 function EditableCell({ cell, editable, isEditing, onClick, onChange, onBlur }: EditableCellProps) {
+    // Show raw number when editing (no $, commas, %) so it's easy to type
+    const rawValue = (cell.currency || cell.percent) && typeof cell.value === "number"
+        ? cell.percent ? (cell.value * 100).toString() : cell.value.toString()
+        : formatCellValue(cell);
     const [value, setValue] = React.useState(formatCellValue(cell));
+    const wasEditing = React.useRef(false);
 
     React.useEffect(() => {
         setValue(formatCellValue(cell));
     }, [cell]);
+
+    // When entering edit mode, switch to raw value
+    React.useEffect(() => {
+        if (isEditing && !wasEditing.current) {
+            setValue(rawValue);
+        }
+        wasEditing.current = isEditing;
+    }, [isEditing, rawValue]);
 
     if (isEditing && editable) {
         return (
