@@ -625,7 +625,7 @@ export async function generateScopingWorkbook(
   }
 
   const buffer = await wb.xlsx.writeBuffer();
-  return { buffer: buffer as unknown as Buffer, displays };
+  return { buffer: buffer as unknown as Buffer, displays, workbook: wb };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -845,24 +845,31 @@ function buildBudgetSummary(
   const svcMargin = ov?.servicesMarginPct ?? (avgMargin > 0 ? Math.max(avgMargin * 0.67, 0.15) : DEFAULT_MARGINS.install);
 
   // Category rows — each with cost, selling (formula), margin$, margin%
-  const categories: [string, number, number][] = [
-    ["LED Hardware (all displays)", totalLedHw, hwMargin],
-    ["Structural Materials", totalStructMat, svcMargin],
-    ["Structural Labor & LED Installation", totalInstall, svcMargin],
-    ["Electrical & Data", totalElectrical, svcMargin],
-    ["PM / General Conditions / Travel", totalPm, svcMargin],
-    ["Engineering & Permits", totalEng, svcMargin],
+  // LED Hardware uses cross-sheet SUM from LED Cost Sheet col N (Display Cost)
+  const ledDataEnd = 3 + displays.length; // LED Cost Sheet rows: 4..4+len-1
+  const categories: [string, number, number, string | undefined][] = [
+    ["LED Hardware (all displays)", totalLedHw, hwMargin, `SUM('LED Cost Sheet'!N4:N${ledDataEnd})`],
+    ["Structural Materials", totalStructMat, svcMargin, undefined],
+    ["Structural Labor & LED Installation", totalInstall, svcMargin, undefined],
+    ["Electrical & Data", totalElectrical, svcMargin, undefined],
+    ["PM / General Conditions / Travel", totalPm, svcMargin, undefined],
+    ["Engineering & Permits", totalEng, svcMargin, undefined],
   ];
   if (totalEquip > 0) {
-    categories.push(["Processor & Equipment", totalEquip, hwMargin]);
+    categories.push(["Processor & Equipment", totalEquip, hwMargin, undefined]);
   }
 
   const catStartRow = row;
-  for (const [label, cost, marginPct] of categories) {
+  for (const [label, cost, marginPct, costFormula] of categories) {
     const r = ws.getRow(row);
     r.getCell(2).value = label;
     r.getCell(2).font = { name: "Calibri", size: 10 };
-    r.getCell(3).value = cost; r.getCell(3).numFmt = FMT_USD;
+    if (costFormula) {
+      r.getCell(3).value = { formula: costFormula, result: cost };
+    } else {
+      r.getCell(3).value = cost;
+    }
+    r.getCell(3).numFmt = FMT_USD;
     r.getCell(4).value = { formula: sellFormula(row), result: cost > 0 ? round2(cost / (1 - marginPct)) : 0 };
     r.getCell(4).numFmt = FMT_USD;
     r.getCell(5).value = { formula: marginFormula(row), result: cost > 0 ? round2(cost / (1 - marginPct) - cost) : 0 };
@@ -966,10 +973,15 @@ function buildMarginAnalysis(
   const marginDollarFormula = (r: number) => `D${r}-C${r}`;
   const blendedMarginFormula = (r: number) => `1-C${r}/D${r}`;
 
-  function writeCategory(label: string, cost: number, marginPct: number): void {
+  function writeCategory(label: string, cost: number, marginPct: number, costFormula?: string): void {
     const r = ws.getRow(row);
     r.getCell(2).value = `    ${label}`; r.getCell(2).font = subFont;
-    r.getCell(3).value = cost; r.getCell(3).numFmt = ";;;";
+    if (costFormula) {
+      r.getCell(3).value = { formula: costFormula, result: cost };
+    } else {
+      r.getCell(3).value = cost;
+    }
+    r.getCell(3).numFmt = ";;;";
     r.getCell(4).value = { formula: sellFormula(row), result: cost > 0 ? round2(cost / (1 - marginPct)) : 0 };
     r.getCell(4).numFmt = FMT_USD; r.getCell(4).font = subFont;
     r.getCell(6).value = marginPct; r.getCell(6).numFmt = ";;;";
@@ -1001,7 +1013,10 @@ function buildMarginAnalysis(
     const hwMargin = ov?.ledMarginPct ?? (d.marginPct > 0 ? d.marginPct : DEFAULT_MARGINS.ledHardware);
     const svcMargin = ov?.servicesMarginPct ?? (d.marginPct > 0 ? Math.max(d.marginPct * 0.67, 0.15) : DEFAULT_MARGINS.install);
 
-    writeCategory("LED Hardware", ledHardwareWithSpares, hwMargin);
+    // Cross-sheet formula refs: LED Cost Sheet data row = 4 + display index
+    const ledSheetRow = 4 + idx;
+
+    writeCategory("LED Hardware", ledHardwareWithSpares, hwMargin, `'LED Cost Sheet'!N${ledSheetRow}`);
     writeCategory("Structural Materials", d.structuralMaterialsCost, svcMargin);
     writeCategory("Structural Labor & LED Installation", d.structuralLaborCost, svcMargin);
     writeCategory("Electrical & Data", d.electricalCost, svcMargin);

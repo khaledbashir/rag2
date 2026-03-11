@@ -240,12 +240,8 @@ export async function POST(req: NextRequest) {
     // Map Budget estimator data → scoping workbook options
     const options = mapEstimatorToScoping(answers);
 
-    // Generate the canonical workbook (returns buffer)
-    const { buffer } = await generateScopingWorkbook(options);
-
-    // Re-parse with ExcelJS to get the workbook object with formulas & styles
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buffer);
+    // Generate the canonical workbook (returns workbook object directly)
+    const { workbook: wb } = await generateScopingWorkbook(options);
 
     // Convert each worksheet to Univer format
     const sheetOrder: string[] = [];
