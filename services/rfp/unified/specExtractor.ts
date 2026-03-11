@@ -516,7 +516,7 @@ function screensMatch(a: ExtractedLEDSpec, b: ExtractedLEDSpec): boolean {
   return false;
 }
 
-function deduplicateScreens(screens: ExtractedLEDSpec[]): ExtractedLEDSpec[] {
+export function deduplicateScreens(screens: ExtractedLEDSpec[]): ExtractedLEDSpec[] {
   const deduped: ExtractedLEDSpec[] = [];
 
   for (const screen of screens) {

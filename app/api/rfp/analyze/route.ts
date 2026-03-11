@@ -21,7 +21,7 @@ import { promisify } from "util";
 
 
 import { extractSinglePage } from "@/services/rfp/unified/mistralOcrClient";
-import { extractLEDSpecsBatched } from "@/services/rfp/unified/specExtractor";
+import { extractLEDSpecsBatched, deduplicateScreens } from "@/services/rfp/unified/specExtractor";
 import { convertPageToImage } from "@/services/rfp/unified/pdfToImages";
 import { provisionRfpWorkspace } from "@/services/rfp/unified/rfpWorkspaceProvisioner";
 import { ensureAnythingLlmUser } from "@/services/anythingllm/userProvisioner";
@@ -611,7 +611,8 @@ export async function POST(request: NextRequest) {
 
           if (annotationSpecs.length > 0) {
             log.info(`[Pipeline] Mistral Document AI annotations found ${annotationSpecs.length} specs from drawings`);
-            screens = [...screens, ...annotationSpecs];
+            screens = deduplicateScreens([...screens, ...annotationSpecs]);
+            log.info(`[Pipeline] After dedup: ${screens.length} unique display(s)`);
           }
 
           send("stage", {
