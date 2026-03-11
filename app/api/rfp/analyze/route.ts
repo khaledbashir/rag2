@@ -466,11 +466,17 @@ export async function POST(request: NextRequest) {
                 const imagePath = await convertPageToImage(filePath, rp.pageNumber, pageDir);
                 const ocrPage = await extractSinglePage(imagePath, rp.pageNumber);
 
+                // Document AI annotations: specs extracted directly from OCR (no separate LLM call)
+                const annotationSpecs = ocrPage.annotationSpecs || [];
+                if (annotationSpecs.length > 0) {
+                  log.info(`[Pipeline] Page ${rp.pageNumber}: Mistral Document AI found ${annotationSpecs.length} LED specs directly`);
+                }
+
                 return {
                   index: textPages.length + i,
                   pageNumber: rp.pageNumber,
                   category: rp.category,
-                  relevance: rp.relevance,
+                  relevance: annotationSpecs.length > 0 ? Math.max(rp.relevance, 85) : rp.relevance,
                   markdown: ocrPage.markdown,
                   tables: ocrPage.tables.map((t) => ({
                     id: t.id,
@@ -478,6 +484,7 @@ export async function POST(request: NextRequest) {
                     format: t.format,
                   })),
                   visionAnalyzed: true,
+                  extractedSpecs: annotationSpecs.length > 0 ? annotationSpecs : undefined,
                   summary: ocrPage.markdown.split("\n").find((l) => l.trim().length > 10)?.slice(0, 150) || "",
                   classifiedBy: "mistral-ocr" as const,
                 };
@@ -523,14 +530,19 @@ export async function POST(request: NextRequest) {
           // Sort by page number for consistent batching
           analyzedPages.sort((a, b) => a.pageNumber - b.pageNumber);
 
+          const docAiSpecCount = analyzedPages
+            .filter((p) => p.extractedSpecs && p.extractedSpecs.length > 0)
+            .reduce((sum, p) => sum + p.extractedSpecs!.length, 0);
+
           send("stage", {
             stage: "vision_done",
-            message: `Processed ${analyzedPages.length} pages (${textPages.length} text + ${drawingPages.length} drawings)`,
+            message: `Processed ${analyzedPages.length} pages (${textPages.length} text + ${drawingPages.length} drawings)${docAiSpecCount > 0 ? ` — Document AI found ${docAiSpecCount} specs` : ""}`,
             pagesProcessed: analyzedPages.length,
             textPages: textPages.length,
             visionPages: drawingPages.length,
             visionSuccess: analyzedPages.filter((p) => p.visionAnalyzed).length,
             tables: analyzedPages.reduce((s, p) => s + p.tables.length, 0),
+            annotationSpecs: docAiSpecCount,
           });
         }
 
@@ -592,14 +604,24 @@ export async function POST(request: NextRequest) {
             clearInterval(heartbeat);
           }
 
+          // Merge annotation specs from drawing pages (extracted directly by Mistral Document AI)
+          const annotationSpecs: ExtractedLEDSpec[] = analyzedPages
+            .filter((p) => p.extractedSpecs && p.extractedSpecs.length > 0)
+            .flatMap((p) => p.extractedSpecs!);
+
+          if (annotationSpecs.length > 0) {
+            log.info(`[Pipeline] Mistral Document AI annotations found ${annotationSpecs.length} specs from drawings`);
+            screens = [...screens, ...annotationSpecs];
+          }
+
           send("stage", {
             stage: "extracted",
-            message: extractionFailed
+            message: extractionFailed && annotationSpecs.length === 0
               ? "Extraction failed — AI providers returned no data. Try again or contact support."
-              : `Found ${screens.length} LED display(s), ${requirements.length} requirement(s)`,
+              : `Found ${screens.length} LED display(s), ${requirements.length} requirement(s)${annotationSpecs.length > 0 ? ` (${annotationSpecs.length} from Document AI)` : ""}`,
             specsFound: screens.length,
             requirementsFound: requirements.length,
-            extractionFailed,
+            extractionFailed: extractionFailed && annotationSpecs.length === 0,
           });
         }
 
@@ -613,12 +635,17 @@ export async function POST(request: NextRequest) {
           specialRequirements: [], schedulePhases: [],
         };
 
+        const annotationSpecCount = analyzedPages
+          .filter((p) => p.extractedSpecs && p.extractedSpecs.length > 0)
+          .reduce((sum, p) => sum + p.extractedSpecs!.length, 0);
+
         const finalStats = {
           totalPages: ocrResult.totalPages,
           relevantPages: relevantPages.length,
           noisePages: noisePages.length,
           drawingPages: classifiedPages.filter((p) => p.isDrawing).length,
           specsFound: screens.length,
+          annotationSpecs: annotationSpecCount,
           processingTimeMs: Date.now() - startTime,
           visionPagesProcessed: analyzedPages.filter((p) => p.visionAnalyzed).length,
         };

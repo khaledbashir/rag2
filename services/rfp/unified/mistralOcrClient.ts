@@ -1,9 +1,12 @@
 /**
- * Mistral OCR Client — Direct API
+ * Mistral OCR Client — Direct API with Document AI Annotations
  *
  * Calls Mistral OCR API directly (https://api.mistral.ai/v1/ocr).
- * No middleman service. Sends image as base64, gets structured markdown back.
+ * Uses document_annotation to extract structured LED specs in ONE call.
+ * No separate LLM extraction step needed for annotated pages.
  */
+
+import type { ExtractedLEDSpec } from "./types";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -39,14 +42,155 @@ export interface MistralOcrResult {
 }
 
 // ---------------------------------------------------------------------------
-// Extract a SINGLE page IMAGE — vision model actually SEES the page
-// This is the main function used by the pipeline.
+// LED Spec Annotation Schema — Mistral extracts structured data in the OCR call
+// ---------------------------------------------------------------------------
+
+const LED_ANNOTATION_SCHEMA = {
+  type: "json_schema" as const,
+  json_schema: {
+    name: "led_display_extraction",
+    strict: true,
+    schema: {
+      type: "object",
+      properties: {
+        has_led_displays: {
+          type: "boolean",
+          description: "Whether this page shows or references LED displays, video boards, ribbon boards, scoreboards, or fascia boards",
+        },
+        drawing_type: {
+          type: "string",
+          description: "Type of drawing/document: av_layout, elevation, section, detail, schedule, spec_sheet, electrical, structural, other",
+        },
+        displays: {
+          type: "array",
+          description: "All LED displays found on this page. Only include displays with at least one measurable spec.",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Display name from the document (e.g., 'North Main Videoboard')" },
+              location: { type: "string", description: "Physical location in venue (e.g., 'North End Zone, Upper Level')" },
+              width_ft: { type: ["number", "null"], description: "Width in feet. Convert from inches (/12) or mm (/304.8) if needed." },
+              height_ft: { type: ["number", "null"], description: "Height in feet. Convert from inches (/12) or mm (/304.8) if needed." },
+              pixel_pitch_mm: { type: ["number", "null"], description: "Pixel pitch in mm" },
+              brightness_nits: { type: ["number", "null"], description: "Brightness in nits/candelas per sqm" },
+              environment: { type: "string", enum: ["indoor", "outdoor"], description: "Indoor or outdoor installation" },
+              quantity: { type: "number", description: "Number of identical displays. Default 1." },
+              mounting_type: { type: ["string", "null"], description: "Mounting method (fascia, structure, wall, ceiling, etc.)" },
+              confidence: { type: "number", description: "Confidence 0-1 based on how clearly specs are stated" },
+              notes: { type: ["string", "null"], description: "Any additional relevant notes" },
+              is_alternate: { type: "boolean", description: "True if this is a cost alternate, not base bid" },
+              alternate_id: { type: ["string", "null"], description: "Alternate ID (e.g., 'A1', 'B3') if is_alternate" },
+            },
+            required: ["name", "location", "width_ft", "height_ft", "pixel_pitch_mm", "brightness_nits", "environment", "quantity", "mounting_type", "confidence", "notes", "is_alternate", "alternate_id"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["has_led_displays", "drawing_type", "displays"],
+      additionalProperties: false,
+    },
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Drawing bbox annotation — analyzes each figure/image in drawings
+// ---------------------------------------------------------------------------
+
+const BBOX_ANNOTATION_SCHEMA = {
+  type: "json_schema" as const,
+  json_schema: {
+    name: "drawing_figure_analysis",
+    strict: true,
+    schema: {
+      type: "object",
+      properties: {
+        figure_type: {
+          type: "string",
+          description: "Type: led_display_diagram, floor_plan, elevation, wiring_diagram, detail, legend, photo, logo, other",
+        },
+        shows_led_display: {
+          type: "boolean",
+          description: "Whether this figure shows an LED display, video board, or related equipment",
+        },
+        description: {
+          type: "string",
+          description: "Brief description of what this figure shows",
+        },
+        display_name: {
+          type: ["string", "null"],
+          description: "If an LED display is shown, its name/label",
+        },
+        dimensions_noted: {
+          type: ["string", "null"],
+          description: "Any dimensions visible in the figure (e.g., '40\\' x 22\\'')",
+        },
+      },
+      required: ["figure_type", "shows_led_display", "description", "display_name", "dimensions_noted"],
+      additionalProperties: false,
+    },
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Parse annotation response into ExtractedLEDSpec[]
+// ---------------------------------------------------------------------------
+
+export function parseAnnotationSpecs(
+  annotationJson: string | null,
+  pageNumber: number,
+): ExtractedLEDSpec[] {
+  if (!annotationJson) return [];
+
+  try {
+    const parsed = typeof annotationJson === "string" ? JSON.parse(annotationJson) : annotationJson;
+    if (!parsed.has_led_displays || !Array.isArray(parsed.displays)) return [];
+
+    return parsed.displays
+      .filter((d: any) => {
+        // Must have at least one measurable spec
+        return d.width_ft != null || d.height_ft != null ||
+          d.pixel_pitch_mm != null || d.brightness_nits != null;
+      })
+      .map((d: any): ExtractedLEDSpec => ({
+        name: d.name || "Unknown Display",
+        location: d.location || "",
+        widthFt: d.width_ft ?? null,
+        heightFt: d.height_ft ?? null,
+        widthPx: null,
+        heightPx: null,
+        pixelPitchMm: d.pixel_pitch_mm ?? null,
+        brightnessNits: d.brightness_nits ?? null,
+        environment: d.environment === "outdoor" ? "outdoor" : "indoor",
+        quantity: d.quantity || 1,
+        serviceType: null,
+        mountingType: d.mounting_type ?? null,
+        maxPowerW: null,
+        weightLbs: null,
+        specialRequirements: [],
+        confidence: d.confidence ?? 0.7,
+        sourcePages: [pageNumber],
+        sourceType: "drawing",
+        citation: `[Source: Mistral Document AI, Page ${pageNumber}]`,
+        notes: d.notes ?? null,
+        isAlternate: d.is_alternate ?? false,
+        alternateId: d.alternate_id ?? null,
+        alternateDescription: null,
+      }));
+  } catch (err) {
+    console.error(`[MistralOCR] Failed to parse annotation for page ${pageNumber}:`, err);
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Extract a SINGLE page IMAGE — with Document AI annotations
+// Returns structured LED specs directly from OCR (no separate LLM call needed)
 // ---------------------------------------------------------------------------
 
 export async function extractSinglePage(
   imagePath: string,
   pageNumber: number,
-): Promise<MistralOcrPage> {
+): Promise<MistralOcrPage & { annotationSpecs: ExtractedLEDSpec[] }> {
   if (!MISTRAL_API_KEY) {
     throw new Error("MISTRAL_API_KEY not set — cannot call Mistral OCR");
   }
@@ -57,7 +201,7 @@ export async function extractSinglePage(
   const dataUrl = `data:image/jpeg;base64,${base64}`;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60_000); // 60s per page
+  const timer = setTimeout(() => controller.abort(), 90_000); // 90s per page (annotation takes longer)
 
   try {
     const res = await fetch(`${MISTRAL_API_BASE}/v1/ocr`, {
@@ -73,6 +217,9 @@ export async function extractSinglePage(
           image_url: dataUrl,
         },
         include_image_base64: false,
+        table_format: "html",
+        document_annotation_format: LED_ANNOTATION_SCHEMA,
+        bbox_annotation_format: BBOX_ANNOTATION_SCHEMA,
       }),
       signal: controller.signal,
     });
@@ -95,10 +242,21 @@ export async function extractSinglePage(
         header: null,
         footer: null,
         dimensions: { dpi: 0, height: 0, width: 0 },
+        annotationSpecs: [],
       };
     }
 
-    return data.pages[0];
+    // Parse structured specs from the document annotation
+    const annotationSpecs = parseAnnotationSpecs(data.document_annotation, pageNumber);
+
+    if (annotationSpecs.length > 0) {
+      console.log(`[MistralOCR] Page ${pageNumber}: Document AI extracted ${annotationSpecs.length} LED specs directly`);
+    }
+
+    return {
+      ...data.pages[0],
+      annotationSpecs,
+    };
   } catch (err: any) {
     clearTimeout(timer);
     throw new Error(`Mistral OCR page ${pageNumber} failed: ${err.message}`);
@@ -106,7 +264,7 @@ export async function extractSinglePage(
 }
 
 // ---------------------------------------------------------------------------
-// Extract full document via Mistral OCR (for smaller PDFs)
+// Extract full document via Mistral OCR (for smaller PDFs / unified pipeline)
 // ---------------------------------------------------------------------------
 
 export async function extractWithMistral(
@@ -138,6 +296,7 @@ export async function extractWithMistral(
           image_url: dataUrl,
         },
         include_image_base64: false,
+        table_format: "html",
       }),
       signal: controller.signal,
     });
