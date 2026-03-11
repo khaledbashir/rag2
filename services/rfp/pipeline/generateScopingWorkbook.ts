@@ -871,6 +871,16 @@ function buildBudgetSummary(
     categories.push(["Processor & Equipment", totalEquip, hwMargin, undefined]);
   }
 
+  // CMS and Scoring allocations (from financial overrides)
+  const cmsBudget = ov?.cmsAllocation ?? 0;
+  const scoringBudget = ov?.scoringAllocation ?? 0;
+  if (cmsBudget > 0) {
+    categories.push(["CMS (Content Management System)", cmsBudget, DEFAULT_MARGINS.cms, undefined]);
+  }
+  if (scoringBudget > 0) {
+    categories.push(["Scoring System", scoringBudget, DEFAULT_MARGINS.scoring, undefined]);
+  }
+
   const catStartRow = row;
   for (const [label, cost, marginPct, costFormula] of categories) {
     const r = ws.getRow(row);
@@ -1148,6 +1158,14 @@ function buildMarginAnalysis(
   // ADDITIONAL SECTIONS (CMS, Scoring) — single-line placeholders
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // Section header for CMS / Scoring
+  row++; // separator
+  const addlHdrR = ws.getRow(row);
+  addlHdrR.getCell(2).value = "ADDITIONAL COST CENTERS";
+  for (let c = 2; c <= 6; c++) { hdr(addlHdrR.getCell(c), C.DARK_HEADER); }
+  addlHdrR.height = 24;
+  row++;
+
   // CMS — use override allocation if set, otherwise editable $0 placeholder
   const cmsCost = ov?.cmsAllocation ?? 0;
   const cmsRow = row;
@@ -1400,6 +1418,10 @@ function buildInstallSheet(
   ws.getCell(row, 1).value = "Revised By: ANC Proposal Engine";
   ws.getCell(row, 1).font = { name: "Calibri", size: 10, color: { argb: "FF666666" } };
 
+  // Compute the service margin for this display BEFORE the margin assignment section
+  // so the header cells and the data rows use the exact same value.
+  const svcMargin = getServiceMargin(d.areaSqFt);
+
   // Margin assignment — track row numbers so data rows can reference them
   row += 2;
   ws.getCell(row, 3).value = "Linked Margin Assignment";
@@ -1407,10 +1429,10 @@ function buildInstallSheet(
   row++;
   const marginRows = { install: row, electrical: row + 1, anc: row + 2, engineering: row + 3 };
   const margins = [
-    ["Install Margin", MARGIN_PRESETS.servicesDefault],
-    ["Electrical Margin", MARGIN_PRESETS.servicesDefault],
-    ["ANC Margin", MARGIN_PRESETS.servicesDefault],
-    ["Engineering and Permits", MARGIN_PRESETS.servicesDefault],
+    ["Install Margin", svcMargin],
+    ["Electrical Margin", svcMargin],
+    ["ANC Margin", svcMargin],
+    ["Engineering and Permits", svcMargin],
   ];
   margins.forEach(([label, val]) => {
     ws.getCell(row, 3).value = label as string;
@@ -1458,7 +1480,6 @@ function buildInstallSheet(
     "OTHER SCOPE ITEM",
     "OTHER SCOPE ITEM",
   ];
-  const svcMargin = getServiceMargin(d.areaSqFt);
 
   structItems.forEach((item, i) => {
     const r = ws.getRow(row);
