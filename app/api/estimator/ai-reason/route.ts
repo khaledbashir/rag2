@@ -63,7 +63,9 @@ Rules:
 - pixelPitch should be a string number like "4" or "6" or "10"
 - If multiple identical displays, create one entry per display (e.g., "two ribbon boards" = 2 separate entries)
 - Default to budget docType and USD currency unless specified
-- Infer installComplexity from context (center-hung = complex, wall mount = simple, etc.)`;
+- Infer installComplexity from context (center-hung = complex, wall mount = simple, etc.)
+- CRITICAL: If the user says "supply only", "no installation", "hardware only", "LED only", "no install", "equipment only", or similar → set isNewInstall: false AND set installComplexity: "simple" on all displays. Supply-only means the client handles their own installation.
+- If the user says "replacement" or "retrofit" → set isNewInstall: false and isReplacement: true on the relevant displays`;
 
 const PRIMARY_WORKSPACE = process.env.ANYTHING_LLM_REASONING_WORKSPACE || process.env.ANYTHING_LLM_WORKSPACE || "ancdashboard";
 

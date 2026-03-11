@@ -165,7 +165,14 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
         if (a.docType) next.docType = a.docType;
         if (a.currency) next.currency = a.currency;
         if (typeof a.isIndoor === "boolean") next.isIndoor = a.isIndoor;
-        if (typeof a.isNewInstall === "boolean") next.isNewInstall = a.isNewInstall;
+        if (typeof a.isNewInstall === "boolean") {
+            next.isNewInstall = a.isNewInstall;
+            // Supply-only: when AI detects no installation, zero services margin
+            // so the workbook generator skips all non-LED costs
+            if (!a.isNewInstall) {
+                next.servicesMargin = 0;
+            }
+        }
         if (typeof a.isUnion === "boolean") next.isUnion = a.isUnion;
         if (Array.isArray(extractedData.displays) && extractedData.displays.length > 0) {
             next.displays = extractedData.displays.map((d: any) => ({
