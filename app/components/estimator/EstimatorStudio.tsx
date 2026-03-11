@@ -16,9 +16,8 @@ import { FileSpreadsheet, ArrowLeft, Download, Loader2, MessageSquare, Copy, Arr
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import QuestionFlow from "./QuestionFlow";
-import ExcelPreview from "./ExcelPreview";
 import EstimatorCopilot from "./EstimatorCopilot";
-import { calculateDisplay, type ExcelPreviewData, type SheetTab, type ProductSpec } from "./EstimatorBridge";
+import { calculateDisplay, type SheetTab, type ProductSpec } from "./EstimatorBridge";
 import { getDefaultAnswers, type EstimatorAnswers, type DisplayAnswers } from "./questions";
 import VendorDropZone from "./VendorDropZone";
 import BundlePanel from "./BundlePanel";
@@ -31,14 +30,14 @@ import AutoRfpPanel from "./AutoRfpPanel";
 import ToolDescription from "./ToolDescription";
 import type { VendorExtractedSpec } from "@/services/vendor/vendorParser";
 import { useProductSpecs } from "@/hooks/useProductSpecs";
-import { exportEstimatorExcel } from "./exportEstimatorExcel";
 import { useRateCard } from "@/hooks/useRateCard";
 import { useEstimatorAutoSave } from "@/hooks/useEstimatorAutoSave";
 import { useServerPreview } from "@/hooks/useServerPreview";
 
 const EstimatorVenuePanel = dynamic(() => import("./EstimatorVenuePanel"), { ssr: false });
+const UniverPreview = dynamic(() => import("./UniverPreview"), { ssr: false });
 
-const SHEET_COLORS = ["#6366F1", "#EC4899", "#14B8A6", "#F59E0B", "#8B5CF6", "#EF4444"];
+// Sheet colors no longer needed — Univer renders tab colors from the workbook data.
 
 interface EstimatorStudioProps {
     projectId?: string;
@@ -50,8 +49,6 @@ interface EstimatorStudioProps {
 export default function EstimatorStudio({
     projectId,
     initialAnswers,
-    initialCellOverrides,
-    initialCustomSheets,
 }: EstimatorStudioProps = {}) {
     const router = useRouter();
     const [answers, setAnswers] = useState<EstimatorAnswers>(initialAnswers || getDefaultAnswers());
@@ -70,10 +67,9 @@ export default function EstimatorStudio({
     const [autoRfpOpen, setAutoRfpOpen] = useState(false);
     const [venueOpen, setVenueOpen] = useState(false);
     const [toolbarOpen, setToolbarOpen] = useState(false);
-    // Cell overrides: key = "sheetIdx-rowIdx-colIdx", value = edited value
-    const [cellOverrides, setCellOverrides] = useState<Record<string, string | number>>(initialCellOverrides || {});
-    // User-added custom sheets
-    const [customSheets, setCustomSheets] = useState<SheetTab[]>(initialCustomSheets || []);
+    // Legacy cell overrides / custom sheets kept for auto-save compatibility
+    const cellOverrides: Record<string, string | number> = {};
+    const customSheets: SheetTab[] = [];
     // Rate card from DB (replaces hardcoded constants)
     const { rates, loading: ratesLoading } = useRateCard();
     // Auto-save to DB when projectId is provided
@@ -105,98 +101,16 @@ export default function EstimatorStudio({
     // No fake preview. No client-side approximation. Loading state shown until ready.
     const { data: serverPreview, loading: serverPreviewLoading, error: serverPreviewError } = useServerPreview(answers);
 
-    // Preview data comes ONLY from the canonical server-side generator.
-    // null when no displays or server hasn't responded yet — ExcelPreview shows loading state.
-    const previewData: ExcelPreviewData | null = useMemo(() => {
-        if (!serverPreview) return null;
-        const allSheets = [...serverPreview.sheets, ...customSheets];
-
-        // Apply cell overrides
-        const sheets = allSheets.map((sheet, si) => ({
-            ...sheet,
-            rows: sheet.rows.map((row, ri) => ({
-                ...row,
-                cells: row.cells.map((cell, ci) => {
-                    const key = `${si}-${ri}-${ci}`;
-                    if (key in cellOverrides) {
-                        const raw = cellOverrides[key];
-                        const numVal = typeof raw === "string" ? parseFloat(raw) : raw;
-                        const isNum = !isNaN(numVal as number) && raw !== "";
-                        return { ...cell, value: isNum ? numVal : raw };
-                    }
-                    return cell;
-                }),
-            })),
-        }));
-
-        return { ...serverPreview, sheets };
-    }, [serverPreview, customSheets, cellOverrides]);
+    // Univer handles all editing natively — no client-side cell override logic needed.
 
     const handleChange = useCallback((next: EstimatorAnswers) => {
         setAnswers(next);
     }, []);
 
-    // Map LED Cost Sheet column indices to cost override keys
-    // LED Cost Sheet columns (0-based): 13=Display Cost, 14=Processor, 15=Shipping, 17=Margin%
-    const LED_COST_OVERRIDE_MAP: Record<number, string> = {
-        13: "displayCost",
-        14: "processor",
-        15: "shipping",
-        17: "marginPct",
-    };
-
-    const handleCellEdit = useCallback((sheetIndex: number, rowIndex: number, colIndex: number, newValue: string) => {
-        const sheetName = serverPreview?.sheets?.[sheetIndex]?.name;
-        const overrideKey = LED_COST_OVERRIDE_MAP[colIndex];
-
-        if (sheetName === "LED Cost Sheet" && overrideKey) {
-            const displayIdx = rowIndex - 3;
-            if (displayIdx >= 0 && displayIdx < answers.displays.length) {
-                const cleaned = newValue.replace(/[$,%\s]/g, "");
-                const numValue = parseFloat(cleaned);
-                if (!isNaN(numValue)) {
-                    const finalValue = overrideKey === "marginPct" ? numValue / 100 : numValue;
-                    setAnswers(prev => {
-                        const next = { ...prev, displays: [...prev.displays] };
-                        next.displays[displayIdx] = {
-                            ...next.displays[displayIdx],
-                            costOverrides: {
-                                ...next.displays[displayIdx].costOverrides,
-                                [overrideKey]: finalValue,
-                            },
-                        };
-                        return next;
-                    });
-                    // Also store visual override so cell shows new value immediately
-                    const key = `${sheetIndex}-${rowIndex}-${colIndex}`;
-                    setCellOverrides(prev => ({ ...prev, [key]: newValue }));
-                    return;
-                }
-            }
-        }
-
-        // Default: visual-only override for non-mapped cells
-        const key = `${sheetIndex}-${rowIndex}-${colIndex}`;
-        setCellOverrides(prev => ({ ...prev, [key]: newValue }));
-    }, [answers.displays, serverPreview?.sheets]);
-
-    const handleAddSheet = useCallback(() => {
-        const idx = customSheets.length;
-        const sheetCount = (serverPreview?.sheets?.length ?? 0) + idx;
-        const color = SHEET_COLORS[idx % SHEET_COLORS.length];
-        const newSheet: SheetTab = {
-            name: `Sheet ${sheetCount + 1}`,
-            color,
-            columns: ["A", "B", "C", "D", "E"],
-            rows: Array.from({ length: 20 }, () => ({
-                cells: Array.from({ length: 5 }, () => ({ value: "" })),
-            })),
-        };
-        setCustomSheets(prev => [...prev, newSheet]);
-    }, [customSheets.length, serverPreview]);
+    // Cell editing and sheet management are handled natively by Univer.
 
     const handleExport = useCallback(async () => {
-        if (!previewData || previewData.sheets.length === 0) {
+        if (!serverPreview) {
             void showAlert({ title: "Cannot Export", description: serverPreviewError || "Workbook preview hasn't loaded yet. Wait for it to generate or check for errors." });
             return;
         }
@@ -216,7 +130,9 @@ export default function EstimatorStudio({
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = res.headers.get("Content-Disposition")?.split("filename=")[1]?.replace(/"/g, "") || previewData.fileName;
+            const clientName = answers.clientName || "Client";
+            const defaultName = `ANC_${clientName.replace(/\s+/g, "_")}_Cost_Analysis.xlsx`;
+            a.download = res.headers.get("Content-Disposition")?.split("filename=")[1]?.replace(/"/g, "") || defaultName;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -227,7 +143,7 @@ export default function EstimatorStudio({
         } finally {
             setExporting(false);
         }
-    }, [answers, previewData, showAlert, serverPreviewError]);
+    }, [answers, serverPreview, showAlert, serverPreviewError]);
 
     const handleComplete = useCallback(() => {
         setQuestionsComplete(true);
@@ -596,13 +512,8 @@ export default function EstimatorStudio({
 
                 {/* Center/Right: Excel Preview */}
                 <section className="relative min-w-0 min-h-0 bg-zinc-100 dark:bg-zinc-950 overflow-hidden flex flex-col p-3">
-                    <ExcelPreview
-                        data={previewData}
-                        onExport={handleExport}
-                        exporting={exporting}
-                        editable={true}
-                        onCellEdit={handleCellEdit}
-                        onAddSheet={handleAddSheet}
+                    <UniverPreview
+                        workbookData={serverPreview}
                         loading={serverPreviewLoading}
                         error={serverPreviewError}
                     />
