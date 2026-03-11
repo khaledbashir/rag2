@@ -11,6 +11,7 @@ interface UseEstimatorAutoSaveOptions {
     customSheets: SheetTab[];
     rates: RateCard | null;
     debounceMs?: number;
+    totalAmount?: number;
 }
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -26,6 +27,7 @@ export function useEstimatorAutoSave({
     customSheets,
     rates,
     debounceMs = 2000,
+    totalAmount,
 }: UseEstimatorAutoSaveOptions) {
     const [status, setStatus] = useState<SaveStatus>("idle");
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -42,6 +44,8 @@ export function useEstimatorAutoSave({
             clientName: answers.clientName || "Untitled Estimate",
             // Snapshot rate card on save so estimates are reproducible
             ...(rates ? { estimatorRateSnapshot: rates } : {}),
+            // Persist computed total for list page display
+            ...(totalAmount != null && totalAmount > 0 ? { totalSellingPrice: totalAmount } : {}),
         };
 
         const serialized = JSON.stringify(payload);
@@ -76,7 +80,7 @@ export function useEstimatorAutoSave({
             console.error("[EstimatorAutoSave] Save error:", err);
             setStatus("error");
         }
-    }, [projectId, answers, cellOverrides, customSheets, rates]);
+    }, [projectId, answers, cellOverrides, customSheets, rates, totalAmount]);
 
     // Debounced trigger on state changes
     useEffect(() => {

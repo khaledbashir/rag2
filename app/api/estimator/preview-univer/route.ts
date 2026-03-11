@@ -239,7 +239,10 @@ export async function POST(req: NextRequest) {
     const options = mapEstimatorToScoping(answers);
 
     // Generate the canonical workbook (returns workbook object directly)
-    const { workbook: wb } = await generateScopingWorkbook(options);
+    const { workbook: wb, displays: computedDisplays } = await generateScopingWorkbook(options);
+
+    // Compute project total for list page display
+    const projectTotal = computedDisplays.reduce((s, d) => s + (d.sellingPrice || 0), 0);
 
     // Convert each worksheet to Univer format
     const sheetOrder: string[] = [];
@@ -261,7 +264,7 @@ export async function POST(req: NextRequest) {
       sheets,
     };
 
-    return NextResponse.json(workbookData);
+    return NextResponse.json({ ...workbookData, projectTotal });
   } catch (err) {
     log.error("[preview-univer] Error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });

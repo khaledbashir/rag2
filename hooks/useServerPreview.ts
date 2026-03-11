@@ -16,10 +16,12 @@ export function useServerPreview(answers: EstimatorAnswers): {
   data: any | null;
   loading: boolean;
   error: string | null;
+  projectTotal: number;
 } {
   const [data, setData] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [projectTotal, setProjectTotal] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -56,6 +58,9 @@ export function useServerPreview(answers: EstimatorAnswers): {
         }
 
         const workbookData = await res.json();
+        if (workbookData.projectTotal != null) {
+          setProjectTotal(workbookData.projectTotal);
+        }
         setData(workbookData);
       } catch (err: any) {
         if (err.name === "AbortError") return; // Cancelled, ignore
@@ -72,5 +77,5 @@ export function useServerPreview(answers: EstimatorAnswers): {
     };
   }, [answers]);
 
-  return { data, loading, error };
+  return { data, loading, error, projectTotal };
 }

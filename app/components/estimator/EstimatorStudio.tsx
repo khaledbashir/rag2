@@ -79,6 +79,7 @@ export default function EstimatorStudio({
         cellOverrides,
         customSheets,
         rates,
+        totalAmount: projectTotal,
     });
     const { confirm, alert: showAlert } = useConfirm();
 
@@ -99,7 +100,7 @@ export default function EstimatorStudio({
 
     // WYSIWYG preview: call the same server-side generator that produces the export.
     // No fake preview. No client-side approximation. Loading state shown until ready.
-    const { data: serverPreview, loading: serverPreviewLoading, error: serverPreviewError } = useServerPreview(answers);
+    const { data: serverPreview, loading: serverPreviewLoading, error: serverPreviewError, projectTotal } = useServerPreview(answers);
 
     // Univer handles all editing natively — no client-side cell override logic needed.
 

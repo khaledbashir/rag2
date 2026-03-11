@@ -111,6 +111,8 @@ export async function GET(req: NextRequest) {
                     createdByUser: {
                         select: { name: true, email: true },
                     },
+                    estimatorAnswers: true,
+                    estimatorDisplays: true,
                 }
             }),
             prisma.proposal.count({ where }),
@@ -180,8 +182,12 @@ export async function GET(req: NextRequest) {
                 currency: pricingDocument?.currency || "USD",
                 sectionCount,
                 hasExcel: sectionCount > 0,
-                screenCount: project.screens?.length || 0,
+                screenCount: project.screens?.length
+                    || ((project as any).estimatorAnswers as any)?.displays?.length
+                    || ((project as any).estimatorDisplays as any[])?.length
+                    || 0,
                 createdBy: (project as any).createdByUser?.name || (project as any).createdByUser?.email || null,
+                createdByName: (project as any).createdByUser?.name || (project as any).createdByUser?.email || null,
             };
         });
 
