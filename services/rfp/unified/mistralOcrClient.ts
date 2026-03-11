@@ -2,8 +2,9 @@
  * Mistral OCR Client — Direct API with Document AI Annotations
  *
  * Calls Mistral OCR API directly (https://api.mistral.ai/v1/ocr).
- * Uses document_annotation to extract structured LED specs in ONE call.
- * No separate LLM extraction step needed for annotated pages.
+ * Uses document_annotation + annotation_prompt for structured LED extraction.
+ * Supports file upload flow for large PDFs (avoids base64 bloat).
+ * Extracts headers/footers for project metadata.
  */
 
 import type { ExtractedLEDSpec } from "./types";
@@ -16,6 +17,9 @@ const MISTRAL_API_BASE = process.env.MISTRAL_API_BASE_URL || "https://api.mistra
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || "";
 const MISTRAL_OCR_MODEL = process.env.MISTRAL_OCR_MODEL || "mistral-ocr-latest";
 
+// Threshold for file upload vs base64 inline (10MB)
+const FILE_UPLOAD_THRESHOLD = 10 * 1024 * 1024;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -23,7 +27,7 @@ const MISTRAL_OCR_MODEL = process.env.MISTRAL_OCR_MODEL || "mistral-ocr-latest";
 export interface MistralOcrPage {
   index: number;
   markdown: string;
-  images: Array<{ id: string; data?: string }>;
+  images: Array<{ id: string; data?: string; image_annotation?: string | null }>;
   tables: Array<{ id: string; content: string; format: string }>;
   hyperlinks: Array<{ url: string; text: string }>;
   header: string | null;
@@ -40,6 +44,28 @@ export interface MistralOcrResult {
     doc_size_bytes: number;
   } | null;
 }
+
+// ---------------------------------------------------------------------------
+// Domain-specific annotation prompt — guides Mistral's Document AI
+// ---------------------------------------------------------------------------
+
+const LED_ANNOTATION_PROMPT = `You are analyzing architectural/engineering construction documents for a stadium or arena LED display integration project.
+
+Your goal: extract EVERY LED display, video board, ribbon board, scoreboard, fascia board, and digital signage system from this page.
+
+Key context:
+- These are RFP (Request for Proposal) bid documents for professional sports venues (NFL, NBA, MLS, NCAA)
+- Displays are identified by names like "Main Videoboard", "North Ribbon", "Fascia Board", "Center Hung"
+- Dimensions may be in feet, inches, or millimeters — convert everything to feet
+- Pixel pitch is always in millimeters (e.g., 2.5mm, 3.9mm, 5.9mm, 10mm)
+- Brightness is in nits or cd/m² (same unit) — outdoor displays are typically 5000-10000 nits
+- Indoor displays are typically 800-2000 nits
+- Look for spec schedules (tables listing multiple displays), elevation drawings with callouts, and detail drawings
+- "Alternate" or "Alt" means an optional add-on, not the base bid
+- Common mounting: fascia (on face of structure), flown (hung from ceiling), wall-mount, ground-supported
+- Drawing sheet numbers like AV2.04, TL3.01 indicate AV/technology drawings
+
+Be thorough — missing a display costs the contractor money. Include every display you can identify, even with partial specs.`;
 
 // ---------------------------------------------------------------------------
 // LED Spec Annotation Schema — Mistral extracts structured data in the OCR call
@@ -183,7 +209,7 @@ export function parseAnnotationSpecs(
 }
 
 // ---------------------------------------------------------------------------
-// Extract a SINGLE page IMAGE — with Document AI annotations
+// Extract a SINGLE page IMAGE — with Document AI annotations + prompt
 // Returns structured LED specs directly from OCR (no separate LLM call needed)
 // ---------------------------------------------------------------------------
 
@@ -218,7 +244,10 @@ export async function extractSinglePage(
         },
         include_image_base64: false,
         table_format: "html",
+        extract_header: true,
+        extract_footer: true,
         document_annotation_format: LED_ANNOTATION_SCHEMA,
+        document_annotation_prompt: LED_ANNOTATION_PROMPT,
         bbox_annotation_format: BBOX_ANNOTATION_SCHEMA,
       }),
       signal: controller.signal,
@@ -253,8 +282,14 @@ export async function extractSinglePage(
       console.log(`[MistralOCR] Page ${pageNumber}: Document AI extracted ${annotationSpecs.length} LED specs directly`);
     }
 
+    // Log header/footer if present (useful for project metadata)
+    const page = data.pages[0];
+    if (page.header) {
+      console.log(`[MistralOCR] Page ${pageNumber} header: ${page.header.slice(0, 100)}`);
+    }
+
     return {
-      ...data.pages[0],
+      ...page,
       annotationSpecs,
     };
   } catch (err: any) {
@@ -264,40 +299,137 @@ export async function extractSinglePage(
 }
 
 // ---------------------------------------------------------------------------
-// Extract full document via Mistral OCR (for smaller PDFs / unified pipeline)
+// Upload file to Mistral cloud → get signed URL (for large PDFs)
+// ---------------------------------------------------------------------------
+
+async function uploadToMistralCloud(
+  buffer: Buffer,
+  filename: string,
+): Promise<{ fileId: string; signedUrl: string }> {
+  // Step 1: Upload file
+  const formData = new FormData();
+  formData.append("purpose", "ocr");
+  formData.append("file", new Blob([buffer]), filename);
+
+  const uploadRes = await fetch(`${MISTRAL_API_BASE}/v1/files`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${MISTRAL_API_KEY}`,
+    },
+    body: formData,
+    signal: AbortSignal.timeout(120_000), // 2 min upload timeout
+  });
+
+  if (!uploadRes.ok) {
+    const text = await uploadRes.text();
+    throw new Error(`Mistral file upload ${uploadRes.status}: ${text.slice(0, 300)}`);
+  }
+
+  const uploadData = await uploadRes.json();
+  const fileId = uploadData.id;
+  console.log(`[MistralOCR] Uploaded ${filename} to cloud: ${fileId} (${(buffer.length / 1024 / 1024).toFixed(1)}MB)`);
+
+  // Step 2: Get signed URL
+  const urlRes = await fetch(`${MISTRAL_API_BASE}/v1/files/${fileId}/url?expiry=1`, {
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${MISTRAL_API_KEY}`,
+    },
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (!urlRes.ok) {
+    const text = await urlRes.text();
+    throw new Error(`Mistral signed URL ${urlRes.status}: ${text.slice(0, 300)}`);
+  }
+
+  const urlData = await urlRes.json();
+  return { fileId, signedUrl: urlData.url };
+}
+
+// ---------------------------------------------------------------------------
+// Delete file from Mistral cloud (cleanup after OCR)
+// ---------------------------------------------------------------------------
+
+async function deleteFromMistralCloud(fileId: string): Promise<void> {
+  try {
+    await fetch(`${MISTRAL_API_BASE}/v1/files/${fileId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${MISTRAL_API_KEY}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    console.log(`[MistralOCR] Deleted cloud file ${fileId}`);
+  } catch (err: any) {
+    console.warn(`[MistralOCR] Failed to delete cloud file ${fileId}:`, err.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Extract full document via Mistral OCR
+// Supports: selective pages, file upload for large PDFs, header/footer extraction
 // ---------------------------------------------------------------------------
 
 export async function extractWithMistral(
   buffer: Buffer,
   filename: string,
+  options?: {
+    pages?: number[];  // 0-indexed page indices to process (undefined = all)
+  },
 ): Promise<MistralOcrResult> {
   if (!MISTRAL_API_KEY) {
     throw new Error("MISTRAL_API_KEY not set — cannot call Mistral OCR");
   }
 
-  const base64 = buffer.toString("base64");
-  const mime = guessMime(filename);
-  const dataUrl = `data:${mime};base64,${base64}`;
+  const useCloudUpload = buffer.length > FILE_UPLOAD_THRESHOLD;
+  let cloudFileId: string | null = null;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 300_000); // 5 min for full docs
 
   try {
+    let documentPayload: any;
+
+    if (useCloudUpload) {
+      // Large file: upload to Mistral cloud, OCR from signed URL
+      console.log(`[MistralOCR] File ${(buffer.length / 1024 / 1024).toFixed(1)}MB > ${(FILE_UPLOAD_THRESHOLD / 1024 / 1024)}MB threshold — using cloud upload`);
+      const { fileId, signedUrl } = await uploadToMistralCloud(buffer, filename);
+      cloudFileId = fileId;
+      documentPayload = {
+        type: "document_url",
+        document_url: signedUrl,
+      };
+    } else {
+      // Small file: inline base64
+      const base64 = buffer.toString("base64");
+      const mime = guessMime(filename);
+      documentPayload = {
+        type: "document_url",
+        document_url: `data:${mime};base64,${base64}`,
+      };
+    }
+
+    const body: any = {
+      model: MISTRAL_OCR_MODEL,
+      document: documentPayload,
+      include_image_base64: false,
+      table_format: "html",
+      extract_header: true,
+      extract_footer: true,
+    };
+
+    // Selective page processing — only OCR specific pages
+    if (options?.pages && options.pages.length > 0) {
+      body.pages = options.pages;
+      console.log(`[MistralOCR] Selective OCR: ${options.pages.length} pages (of full document)`);
+    }
+
     const res = await fetch(`${MISTRAL_API_BASE}/v1/ocr`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${MISTRAL_API_KEY}`,
       },
-      body: JSON.stringify({
-        model: MISTRAL_OCR_MODEL,
-        document: {
-          type: "image_url",
-          image_url: dataUrl,
-        },
-        include_image_base64: false,
-        table_format: "html",
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -322,6 +454,11 @@ export async function extractWithMistral(
   } catch (err: any) {
     clearTimeout(timer);
     throw new Error(`Mistral OCR extraction failed: ${err.message}`);
+  } finally {
+    // Cleanup uploaded file from Mistral cloud
+    if (cloudFileId) {
+      deleteFromMistralCloud(cloudFileId).catch(() => {});
+    }
   }
 }
 
