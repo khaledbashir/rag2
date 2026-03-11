@@ -16,8 +16,23 @@ import { type InstallComplexity, getProduct } from "@/services/rfp/productCatalo
 
 function mapDisplay(d: DisplayAnswers, env: "indoor" | "outdoor"): ExtractedLEDSpec {
   const pitch = parseFloat(d.pixelPitch) || null;
-  const widthFt = d.widthFt || null;
-  const heightFt = d.heightFt || null;
+  let widthFt = d.widthFt || null;
+  let heightFt = d.heightFt || null;
+
+  // Snap dimensions to actual cabinet sizes when a product is selected
+  // LED cabinets come in fixed sizes — actual display dimensions are always
+  // multiples of the cabinet (or module) size, not the user's round numbers.
+  if (widthFt && heightFt && d.productId) {
+    const prod = getProduct(d.productId);
+    if (prod?.defaultCabinet) {
+      const unitW = prod.defaultCabinet.widthMm;
+      const unitH = prod.defaultCabinet.heightMm;
+      const cols = Math.max(1, Math.round((widthFt * 304.8) / unitW));
+      const rows = Math.max(1, Math.round((heightFt * 304.8) / unitH));
+      widthFt = Math.round((cols * unitW) / 304.8 * 10000) / 10000;
+      heightFt = Math.round((rows * unitH) / 304.8 * 10000) / 10000;
+    }
+  }
 
   // Compute pixel resolution from pitch + physical size
   const widthPx = pitch && widthFt ? Math.round((widthFt * 304.8) / pitch) : null;
