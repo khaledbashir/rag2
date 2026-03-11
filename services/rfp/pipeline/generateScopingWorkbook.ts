@@ -547,8 +547,20 @@ export async function generateScopingWorkbook(
     displays,
   });
 
+  // Pre-compute Install tab names so MA can reference them in cross-sheet formulas
+  const preInstallNames = new Set<string>();
+  const installTabNames: string[] = displays.map((d, idx) => {
+    const baseName = d.spec.name.length > 25 ? d.spec.name.substring(0, 25) + "…" : d.spec.name;
+    let tn = `${baseName} - Install`;
+    if (preInstallNames.has(tn)) {
+      tn = `${baseName.substring(0, 22)}${idx + 1} - Install`;
+    }
+    preInstallNames.add(tn);
+    return sanitizeSheetName(tn);
+  });
+
   // ─── Sheet 1: Margin Analysis ───────────────────────────────────────────
-  const maGrandTotalRow = buildMarginAnalysis(wb, projectName, clientName, today, displays, altDisplays, grandCost, grandSelling, grandMargin, grandMarginPct, includeBond, ov);
+  const maGrandTotalRow = buildMarginAnalysis(wb, projectName, clientName, today, displays, altDisplays, grandCost, grandSelling, grandMargin, grandMarginPct, includeBond, ov, installTabNames);
 
   // Cross-sheet link: Project Overview document total → MA BASE BID GRAND TOTAL selling price
   const overviewSheet = wb.getWorksheet("Project Overview");
@@ -941,6 +953,7 @@ function buildMarginAnalysis(
   grandMarginPct: number,
   includeBond: boolean,
   ov?: FinancialOverrides,
+  installTabNames?: string[],
 ): number {
   const ws = wb.addWorksheet("Margin Analysis", {
     properties: { tabColor: { argb: C.ANC_BLUE } },
@@ -1015,13 +1028,17 @@ function buildMarginAnalysis(
 
     // Cross-sheet formula refs: LED Cost Sheet data row = 4 + display index
     const ledSheetRow = 4 + idx;
+    // Install sheet cross-sheet refs (fixed structure — row numbers are deterministic)
+    // Struct subtotal=26, Labor subtotal=35, PM item=34, Elec subtotal=44, Eng subtotal=52
+    const instTab = installTabNames?.[idx];
+    const instRef = instTab ? `'${instTab}'` : null;
 
     writeCategory("LED Hardware", ledHardwareWithSpares, hwMargin, `'LED Cost Sheet'!N${ledSheetRow}`);
-    writeCategory("Structural Materials", d.structuralMaterialsCost, svcMargin);
-    writeCategory("Structural Labor & LED Installation", d.structuralLaborCost, svcMargin);
-    writeCategory("Electrical & Data", d.electricalCost, svcMargin);
-    writeCategory("PM / General Conditions / Travel", d.pmCost + d.travelCost, svcMargin);
-    writeCategory("Engineering & Permits", d.engCost, svcMargin);
+    writeCategory("Structural Materials", d.structuralMaterialsCost, svcMargin, instRef ? `${instRef}!I26` : undefined);
+    writeCategory("Structural Labor & LED Installation", d.structuralLaborCost, svcMargin, instRef ? `${instRef}!I35-${instRef}!I34` : undefined);
+    writeCategory("Electrical & Data", d.electricalCost, svcMargin, instRef ? `${instRef}!I44` : undefined);
+    writeCategory("PM / General Conditions / Travel", d.pmCost + d.travelCost, svcMargin, instRef ? `${instRef}!I34` : undefined);
+    writeCategory("Engineering & Permits", d.engCost, svcMargin, instRef ? `${instRef}!I52` : undefined);
 
     // Equipment bundle (group non-zero items into one line)
     const equipCost = d.sendingCardCost + d.signalCableCost + d.upsCost
@@ -1347,6 +1364,15 @@ function buildLedCostSheet(
 
 // ─── 3. PER-ZONE INSTALL SHEET ─────────────────────────────────────────────
 
+interface InstallSheetInfo {
+  tabName: string;
+  structSubtotalRow: number;
+  laborSubtotalRow: number;
+  pmRow: number;
+  elecSubtotalRow: number;
+  engSubtotalRow: number;
+}
+
 function buildInstallSheet(
   wb: ExcelJS.Workbook,
   projectName: string,
@@ -1354,7 +1380,7 @@ function buildInstallSheet(
   d: ComputedDisplay,
   complexity: InstallComplexity,
   tabName?: string,
-): void {
+): InstallSheetInfo {
   const shortName = d.spec.name.length > 25 ? d.spec.name.substring(0, 25) + "…" : d.spec.name;
   const ws = wb.addWorksheet(sanitizeSheetName(tabName || `${shortName} - Install`), {
     properties: { tabColor: { argb: C.GREEN_TAB } },
@@ -1457,6 +1483,7 @@ function buildInstallSheet(
   });
 
   // Subtotal with SUM formulas
+  const structSubtotalRow = row;
   const stSubR = ws.getRow(row);
   stSubR.getCell(2).value = "SUBTOTAL";
   stSubR.getCell(9).value = { formula: `SUM(I${row - structItems.length}:I${row - 1})`, result: d.structuralMaterialsCost };
@@ -1487,12 +1514,13 @@ function buildInstallSheet(
   ];
 
   const laborStartRow = row;
+  let pmItemRow = row; // will be set when we hit PM item (index 5)
   laborItems.forEach((item, i) => {
     const r = ws.getRow(row);
     r.getCell(2).value = item;
     let cost = 0;
     if (i === 2) cost = d.structuralLaborCost; // INSTALL LED DISPLAYS
-    if (i === 5) cost = d.pmCost; // PM/GC/TRAVEL
+    if (i === 5) { cost = d.pmCost; pmItemRow = row; } // PM/GC/TRAVEL
     r.getCell(3).value = cost; r.getCell(3).numFmt = FMT_USD; inputCell(r.getCell(3));
     r.getCell(4).value = 0; r.getCell(4).numFmt = FMT_USD; inputCell(r.getCell(4));
     r.getCell(5).value = 0; r.getCell(5).numFmt = FMT_USD; inputCell(r.getCell(5));
@@ -1510,6 +1538,7 @@ function buildInstallSheet(
     row++;
   });
 
+  const laborSubtotalRow = row;
   const lSubR = ws.getRow(row);
   lSubR.getCell(2).value = "SUBTOTAL";
   lSubR.getCell(9).value = { formula: `SUM(I${laborStartRow}:I${row - 1})`, result: d.structuralLaborCost + d.pmCost };
@@ -1561,6 +1590,7 @@ function buildInstallSheet(
   });
 
   const elecStartRow = row - elecItems.length;
+  const elecSubtotalRow = row;
   const eSubR = ws.getRow(row);
   eSubR.getCell(2).value = "SUBTOTAL";
   eSubR.getCell(9).value = { formula: `SUM(I${elecStartRow}:I${row - 1})`, result: d.electricalCost };
@@ -1611,6 +1641,7 @@ function buildInstallSheet(
     row++;
   });
 
+  const engSubtotalRow = row;
   const engSubR = ws.getRow(row);
   engSubR.getCell(2).value = "SUBTOTAL";
   engSubR.getCell(9).value = { formula: `SUM(I${engStartRow}:I${row - 1})`, result: d.engCost };
@@ -1629,6 +1660,16 @@ function buildInstallSheet(
   gtR.getCell(2).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
   gtR.getCell(9).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
   gtR.getCell(11).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
+
+  const finalTabName = sanitizeSheetName(tabName || `${shortName} - Install`);
+  return {
+    tabName: finalTabName,
+    structSubtotalRow,
+    laborSubtotalRow,
+    pmRow: pmItemRow,
+    elecSubtotalRow,
+    engSubtotalRow,
+  };
 }
 
 // ─── 4. P&L ─────────────────────────────────────────────────────────────────
