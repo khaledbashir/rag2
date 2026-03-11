@@ -2056,7 +2056,7 @@ function buildProcessorCount(
   ws.getCell(row, 2).font = { bold: true, size: 12, name: "Calibri" };
   row++;
 
-  const dHeaders = ["", "Display", "Width (px)", "Height (px)", "Total Pixels", "Ports Needed (660 Pro)", "Processors Needed"];
+  const dHeaders = ["", "Display", "Width (px)", "Height (px)", "Qty", "Total Pixels", "Ports Needed", "Processor Type", "Processors Needed"];
   dHeaders.forEach((h, i) => {
     ws.getCell(row, i + 1).value = h;
     hdr(ws.getCell(row, i + 1), C.ANC_BLUE);
@@ -2064,27 +2064,40 @@ function buildProcessorCount(
   ws.getRow(row).height = 28;
   row++;
 
-  let totalPorts = 0;
+  const dataStartRowProc = row;
+  let totalProcessors = 0;
   displays.forEach((d, i) => {
-    const wPx = d.spec.widthPx || (d.spec.pixelPitchMm && d.widthFt ? Math.round(d.widthFt * 304.8 / d.spec.pixelPitchMm) : 0);
-    const hPx = d.spec.heightPx || (d.spec.pixelPitchMm && d.heightFt ? Math.round(d.heightFt * 304.8 / d.spec.pixelPitchMm) : 0);
+    const ledRow = 4 + i; // LED Cost Sheet data row
+    const qty = d.spec.quantity || 1;
     const r = ws.getRow(row);
-    r.getCell(2).value = d.spec.name;
-    r.getCell(3).value = wPx; r.getCell(3).numFmt = FMT_INT;
-    r.getCell(4).value = hPx; r.getCell(4).numFmt = FMT_INT;
-    r.getCell(5).value = d.totalPixels; r.getCell(5).numFmt = FMT_INT;
-    r.getCell(6).value = d.portsNeeded;
-    r.getCell(7).value = Math.ceil(d.portsNeeded / 8); // 660 Pro has 8 ports
-    totalPorts += d.portsNeeded;
-    stripe(r, 7, i % 2 === 0);
+    // Cross-sheet linked to LED Cost Sheet (BUG-11)
+    r.getCell(2).value = { formula: `'LED Cost Sheet'!A${ledRow}`, result: d.spec.name };
+    r.getCell(3).value = { formula: `'LED Cost Sheet'!H${ledRow}`, result: d.spec.widthPx || 0 }; r.getCell(3).numFmt = FMT_INT;
+    r.getCell(4).value = { formula: `'LED Cost Sheet'!G${ledRow}`, result: d.spec.heightPx || 0 }; r.getCell(4).numFmt = FMT_INT;
+    r.getCell(5).value = { formula: `'LED Cost Sheet'!I${ledRow}`, result: qty };
+    // Total Pixels = W × H × Qty (cross-sheet formula)
+    r.getCell(6).value = { formula: `C${row}*D${row}*E${row}`, result: d.totalPixels }; r.getCell(6).numFmt = FMT_INT;
+    // Ports Needed = CEILING(TotalPixels / 650000, 1)
+    r.getCell(7).value = { formula: `IFERROR(CEILING(F${row}/650000,1),0)`, result: d.portsNeeded };
+    // Processor Type: >8 ports = MCTRL4K (16-port), otherwise 660 Pro (8-port) (BUG-12)
+    const portsPerUnit = d.portsNeeded > 8 ? 16 : 8;
+    const procType = d.portsNeeded > 8 ? "MCTRL4K" : "660 Pro";
+    const procsNeeded = d.portsNeeded > 0 ? Math.ceil(d.portsNeeded / portsPerUnit) : 0;
+    r.getCell(8).value = { formula: `IF(G${row}>8,"MCTRL4K","660 Pro")`, result: procType };
+    // Processors Needed = CEILING(Ports / IF(>8, 16, 8))
+    r.getCell(9).value = { formula: `IFERROR(CEILING(G${row}/IF(G${row}>8,16,8),1),0)`, result: procsNeeded };
+    totalProcessors += procsNeeded;
+    stripe(r, 9, i % 2 === 0);
     row++;
   });
 
   const pTotalR = ws.getRow(row);
   pTotalR.getCell(2).value = "TOTAL";
-  pTotalR.getCell(6).value = totalPorts;
-  pTotalR.getCell(7).value = Math.ceil(totalPorts / 8);
-  totalStyle(pTotalR, 7, C.GREEN_BG);
+  pTotalR.getCell(6).value = { formula: `SUM(F${dataStartRowProc}:F${row - 1})`, result: displays.reduce((s, d) => s + d.totalPixels, 0) };
+  pTotalR.getCell(6).numFmt = FMT_INT;
+  pTotalR.getCell(7).value = { formula: `SUM(G${dataStartRowProc}:G${row - 1})`, result: displays.reduce((s, d) => s + d.portsNeeded, 0) };
+  pTotalR.getCell(9).value = { formula: `SUM(I${dataStartRowProc}:I${row - 1})`, result: totalProcessors };
+  totalStyle(pTotalR, 9, C.GREEN_BG);
 }
 
 // ─── 8. RESPONSIBILITY MATRIX ───────────────────────────────────────────────
