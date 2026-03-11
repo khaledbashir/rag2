@@ -78,7 +78,13 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 			headers: { "Content-Type": "application/json" },
 		});
 
-	if (isMirrorMode && (!pricingDocument || !Array.isArray(pricingDocument?.tables) || pricingDocument.tables.length === 0)) {
+	// If we have valid audit data (non-zero totals), skip Mirror Mode validation gates.
+	// The audit engine already computed real numbers — the PDF can render from that.
+	// This handles consultant schedules, RFP Analyzer imports, and other non-MA sources.
+	const audit = (body as any)?._audit;
+	const hasValidAudit = audit?.internalAudit?.totals?.finalClientTotal > 0;
+
+	if (isMirrorMode && !hasValidAudit && (!pricingDocument || !Array.isArray(pricingDocument?.tables) || pricingDocument.tables.length === 0)) {
 		return preflightError(
 			"We couldn't generate this PDF because pricing tables were not found in the uploaded Excel.",
 			[
@@ -87,7 +93,7 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 			]
 		);
 	}
-	if (isMirrorMode && (!validation || validation.status !== "PASS")) {
+	if (isMirrorMode && !hasValidAudit && (!validation || validation.status !== "PASS")) {
 		return preflightError(
 			"We couldn't generate this PDF because the Excel data is incomplete or formatted differently than expected.",
 			[
@@ -96,7 +102,7 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 			]
 		);
 	}
-	if (isMirrorMode && parserStrictVersion !== PRICING_PARSER_STRICT_VERSION) {
+	if (isMirrorMode && !hasValidAudit && parserStrictVersion !== PRICING_PARSER_STRICT_VERSION) {
 		return preflightError(
 			"This project needs a fresh Excel parse before export.",
 			[
