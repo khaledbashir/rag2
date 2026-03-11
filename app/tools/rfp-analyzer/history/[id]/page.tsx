@@ -39,6 +39,14 @@ import type { ExtractedLEDSpec, ExtractedRequirement } from "@/services/rfp/unif
 // Types
 // ============================================================================
 
+interface IncompleteSpecUI {
+  name: string;
+  location: string;
+  notes: string | null;
+  sourcePages: number[];
+  reason: string;
+}
+
 interface FullAnalysis {
   id: string;
   projectName: string | null;
@@ -56,6 +64,7 @@ interface FullAnalysis {
   visionPages: number;
   screens: ExtractedLEDSpec[];
   requirements: ExtractedRequirement[];
+  incompleteSpecs?: IncompleteSpecUI[];
   project: {
     clientName: string | null;
     projectName: string | null;
@@ -168,6 +177,7 @@ export default function AnalysisDetailPage() {
         // Parse JSON blobs if they come as strings
         if (typeof data.screens === "string") data.screens = JSON.parse(data.screens);
         if (typeof data.requirements === "string") data.requirements = JSON.parse(data.requirements);
+        if (typeof data.incompleteSpecs === "string") data.incompleteSpecs = JSON.parse(data.incompleteSpecs);
         if (typeof data.project === "string") data.project = JSON.parse(data.project);
         if (typeof data.triage === "string") data.triage = JSON.parse(data.triage);
 
@@ -518,7 +528,7 @@ export default function AnalysisDetailPage() {
 
         {/* ═══ Stage 1: LED Specs ═══ */}
         {activeStage === 1 && (
-          <div className="animate-in fade-in duration-300">
+          <div className="animate-in fade-in duration-300 space-y-4">
             {loadingPricing && (
               <div className="mb-4 p-3 border border-blue-500/30 bg-blue-500/10 rounded-lg flex items-center gap-3">
                 <Loader2 className="w-4 h-4 text-blue-600 animate-spin shrink-0" />
@@ -539,6 +549,27 @@ export default function AnalysisDetailPage() {
               ) : undefined}
             />
             </div>
+
+            {/* Needs Review — incomplete specs */}
+            {a.incompleteSpecs && a.incompleteSpecs.length > 0 && (
+              <NeedsReviewSection
+                incompleteSpecs={a.incompleteSpecs}
+                analysisId={a.id}
+                onPromote={(promoted, remainingIncomplete) => {
+                  setAnalysis((prev) => {
+                    if (!prev) return prev;
+                    const newScreens = [...prev.screens, ...promoted];
+                    // Also persist the updated screens to DB
+                    autoSaveSpecs(newScreens, prev.id);
+                    return {
+                      ...prev,
+                      screens: newScreens,
+                      incompleteSpecs: remainingIncomplete,
+                    };
+                  });
+                }}
+              />
+            )}
           </div>
         )}
 
@@ -906,6 +937,261 @@ function ProjectInfoCard({ project }: { project: any }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Needs Review — Incomplete Specs with Inline Editing + Promote
+// ============================================================================
+
+function NeedsReviewSection({
+  incompleteSpecs,
+  analysisId,
+  onPromote,
+}: {
+  incompleteSpecs: IncompleteSpecUI[];
+  analysisId: string;
+  onPromote: (promoted: ExtractedLEDSpec[], remainingIncomplete: IncompleteSpecUI[]) => void;
+}) {
+  // Local editable state for each incomplete spec
+  const [editState, setEditState] = useState<
+    Array<{
+      widthFt: string;
+      heightFt: string;
+      pixelPitchMm: string;
+      brightnessNits: string;
+      environment: "indoor" | "outdoor";
+    }>
+  >(() =>
+    incompleteSpecs.map(() => ({
+      widthFt: "",
+      heightFt: "",
+      pixelPitchMm: "",
+      brightnessNits: "",
+      environment: "indoor",
+    }))
+  );
+  const [saving, setSaving] = useState<number | null>(null);
+  const [dismissed, setDismissed] = useState<Set<number>>(new Set());
+
+  const updateField = (idx: number, field: string, value: string) => {
+    setEditState((prev) => {
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], [field]: value };
+      return updated;
+    });
+  };
+
+  const canPromote = (idx: number) => {
+    const e = editState[idx];
+    return (
+      (e.widthFt && parseFloat(e.widthFt) > 0) ||
+      (e.heightFt && parseFloat(e.heightFt) > 0) ||
+      (e.pixelPitchMm && parseFloat(e.pixelPitchMm) > 0) ||
+      (e.brightnessNits && parseFloat(e.brightnessNits) > 0)
+    );
+  };
+
+  const handlePromote = async (idx: number) => {
+    const spec = incompleteSpecs[idx];
+    const edit = editState[idx];
+
+    const promoted: ExtractedLEDSpec = {
+      name: spec.name,
+      location: spec.location,
+      widthFt: edit.widthFt ? parseFloat(edit.widthFt) : null,
+      heightFt: edit.heightFt ? parseFloat(edit.heightFt) : null,
+      widthPx: null,
+      heightPx: null,
+      pixelPitchMm: edit.pixelPitchMm ? parseFloat(edit.pixelPitchMm) : null,
+      brightnessNits: edit.brightnessNits ? parseFloat(edit.brightnessNits) : null,
+      environment: edit.environment,
+      quantity: 1,
+      serviceType: null,
+      mountingType: null,
+      maxPowerW: null,
+      weightLbs: null,
+      specialRequirements: [],
+      confidence: 0.5,
+      sourcePages: spec.sourcePages,
+      sourceType: "text",
+      citation: `[Manual entry from incomplete spec]`,
+      notes: spec.notes,
+    };
+
+    setSaving(idx);
+    try {
+      const remaining = incompleteSpecs.filter((_, i) => i !== idx);
+
+      // First get current screens from parent, then save both to DB
+      // The onPromote callback updates local state; we also need to persist
+      onPromote([promoted], remaining);
+
+      // Persist: update incompleteSpecs (remove this one) — screens auto-saved by parent
+      await fetch(`/api/rfp/analyses/${analysisId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ incompleteSpecs: remaining }),
+      });
+    } catch (err) {
+      console.error("Failed to promote spec:", err);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const handleDismiss = async (idx: number) => {
+    setDismissed((prev) => new Set(prev).add(idx));
+  };
+
+  const visibleSpecs = incompleteSpecs.filter((_, i) => !dismissed.has(i));
+
+  if (visibleSpecs.length === 0) return null;
+
+  return (
+    <div className="border border-amber-500/30 bg-amber-500/[0.04] rounded-xl overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-3 border-b border-amber-500/20 bg-amber-500/[0.06]">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+          <h3 className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+            Needs Review ({visibleSpecs.length})
+          </h3>
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          These displays are referenced in the RFP but have no physical specs. Fill in what you know and promote them to confirmed.
+        </p>
+      </div>
+
+      {/* Specs list */}
+      <div className="divide-y divide-amber-500/10">
+        {incompleteSpecs.map((spec, idx) => {
+          if (dismissed.has(idx)) return null;
+          const edit = editState[idx];
+          const isSaving = saving === idx;
+
+          return (
+            <div key={idx} className="px-5 py-4">
+              {/* Name + location + reason */}
+              <div className="flex items-start justify-between gap-4 mb-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Monitor className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span className="text-sm font-semibold text-foreground">{spec.name}</span>
+                  </div>
+                  {spec.location && (
+                    <p className="text-xs text-muted-foreground mt-0.5 ml-6">{spec.location}</p>
+                  )}
+                  {spec.notes && (
+                    <p className="text-xs text-muted-foreground/70 mt-0.5 ml-6 italic">{spec.notes}</p>
+                  )}
+                  <p className="text-[10px] text-amber-600/70 mt-1 ml-6">{spec.reason}</p>
+                  {spec.sourcePages.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground mt-0.5 ml-6">
+                      Source: page{spec.sourcePages.length > 1 ? "s" : ""} {spec.sourcePages.join(", ")}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleDismiss(idx)}
+                  className="text-[10px] text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                  title="Dismiss — not a real display"
+                >
+                  Dismiss
+                </button>
+              </div>
+
+              {/* Inline editable fields */}
+              <div className="ml-6 grid grid-cols-2 sm:grid-cols-5 gap-2">
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-0.5">Width (ft)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={edit.widthFt}
+                    onChange={(e) => updateField(idx, "widthFt", e.target.value)}
+                    placeholder="—"
+                    className="w-full px-2 py-1.5 text-xs font-mono border border-amber-500/30 rounded bg-background
+                      focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-0.5">Height (ft)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={edit.heightFt}
+                    onChange={(e) => updateField(idx, "heightFt", e.target.value)}
+                    placeholder="—"
+                    className="w-full px-2 py-1.5 text-xs font-mono border border-amber-500/30 rounded bg-background
+                      focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-0.5">Pitch (mm)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={edit.pixelPitchMm}
+                    onChange={(e) => updateField(idx, "pixelPitchMm", e.target.value)}
+                    placeholder="—"
+                    className="w-full px-2 py-1.5 text-xs font-mono border border-amber-500/30 rounded bg-background
+                      focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-0.5">Nits</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={edit.brightnessNits}
+                    onChange={(e) => updateField(idx, "brightnessNits", e.target.value)}
+                    placeholder="—"
+                    className="w-full px-2 py-1.5 text-xs font-mono border border-amber-500/30 rounded bg-background
+                      focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-0.5">Environment</label>
+                  <select
+                    value={edit.environment}
+                    onChange={(e) => updateField(idx, "environment", e.target.value)}
+                    className="w-full px-2 py-1.5 text-xs border border-amber-500/30 rounded bg-background
+                      focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none transition-colors"
+                  >
+                    <option value="indoor">Indoor</option>
+                    <option value="outdoor">Outdoor</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Promote button */}
+              <div className="ml-6 mt-3 flex items-center gap-2">
+                <button
+                  onClick={() => handlePromote(idx)}
+                  disabled={!canPromote(idx) || isSaving}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors
+                    disabled:opacity-40 disabled:cursor-not-allowed
+                    bg-amber-600 text-white hover:bg-amber-700 disabled:hover:bg-amber-600"
+                >
+                  {isSaving ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-3 h-3" />
+                  )}
+                  Promote to Confirmed
+                </button>
+                {!canPromote(idx) && (
+                  <span className="text-[10px] text-muted-foreground">
+                    Fill in at least one spec to promote
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

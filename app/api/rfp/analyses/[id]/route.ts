@@ -38,7 +38,7 @@ export async function PATCH(
 
   // Allow updating safe fields
   const stringFields = ["projectName", "clientName", "venue", "location"];
-  const jsonArrayFields = ["screens", "requirements"];
+  const jsonArrayFields = ["screens", "requirements", "incompleteSpecs"];
   const jsonObjectFields = ["pricingDocument", "mirrorModePricing"];
   const data: Record<string, any> = {};
 

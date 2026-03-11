@@ -658,6 +658,7 @@ export async function POST(request: NextRequest) {
               visionPages: analyzedPages.filter((p) => p.visionAnalyzed).length,
               screens: JSON.parse(JSON.stringify(screens)),
               requirements: JSON.parse(JSON.stringify(requirements)),
+              incompleteSpecs: JSON.parse(JSON.stringify(incompleteSpecs)),
               project: JSON.parse(JSON.stringify(finalProject)),
               triage: JSON.parse(JSON.stringify(triageData)),
               pages: [], // Don't store full page markdown (too big)
