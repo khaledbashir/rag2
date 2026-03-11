@@ -92,9 +92,9 @@ function getBudgetRates() {
   return {
     // Per-display-type install rates (validated against Jeremy's Denver Cost Analysis 03/04/2026)
     installScoreboardPerSqFt: 375,                               // scoreboard/center-hung: Jeremy $374.93/sqft
-    installFasciaPerSqFt: 432,                                   // fascia/ribbon-board: Jeremy ~$432/sqft
-    installWallPerSqFt: 251,                                     // wall-mounted/perimeter: Jeremy $251.32/sqft
-    installPerSqFt: 289,                                         // fallback composite budget rate
+    installFasciaPerSqFt: 150,                                   // fascia/ribbon-board: Jeremy update 03/11/2026 (was $432)
+    installWallPerSqFt: 125,                                     // wall-mounted/perimeter: Jeremy update 03/11/2026 (was $251)
+    installPerSqFt: 150,                                         // fallback composite budget rate (updated to match fascia default)
     electricalPerSqFt: rc("electrical.materials_per_sqft", 125), // rate card: electrical materials
     structuralWallPerSqFt: 30,                                   // no rate card key (budget heuristic)
     structuralCeilingPerSqFt: 55,                                // validated: Jeremy $54.63/sqft (was 60)
