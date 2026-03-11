@@ -600,16 +600,20 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     const displayStartRow = maRow;
     for (const d of pricingDisplays) {
       const cost = d.hardwareCost + (d.installCost ?? 0) + (d.pmCost ?? 0) + (d.engCost ?? 0);
-      const sell = d.totalSellingPrice || 0;
-      const marginPct = (sell > 0 && cost > 0) ? (1 - cost / sell) : (d.blendedMarginPct ?? 0.30);
       const r = maRow + 1; // 1-based row for formulas
+
+      // Cross-sheet link: Cost → Install (Base) zone grand total col G
+      const installGtRow = installZoneGtRows[d.name];
+      const costCell: any = installGtRow
+        ? { f: `='Install (Base)'!G${installGtRow}`, s: "currency" }
+        : { v: cost, s: "currency" };
 
       maCellData[maRow] = {
         0: { v: d.name, s: "bold" },
-        1: { v: cost, s: "currency" },
+        1: costCell,
         2: { f: guardedSellingFormula(`B${r}`, `E${r}`), s: "currency" },
         3: { f: `=C${r}-B${r}`, s: "currency" },
-        4: { v: marginPct, s: getMarginStyle(marginPct) },
+        4: { f: guardedDivisionFormula(`D${r}`, `C${r}`, 4), s: "percent" },
       };
       maRow++;
     }
@@ -835,6 +839,8 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   };
 
   let installRow = 0;
+  // Track zone grand total rows per display for cross-sheet linking from MA
+  const installZoneGtRows: Record<string, number> = {}; // display name → 1-based row of ZONE GRAND TOTAL (cost col G)
   // Title
   installCellData[installRow++] = { 1: { v: `${projectName} — Install (Base)`, s: { bl: 1, fs: 14 } } };
   installRow++; // blank
@@ -849,7 +855,9 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       1: { v: spec.name, s: { bl: 1, fs: 12, cl: { rgb: NAVY } } },
     };
 
-    // Margin settings row
+    // Margin settings row — track the 1-based row so data cells can reference it
+    const marginSettingsRow = installRow; // 0-based
+    const msr = marginSettingsRow + 1;    // 1-based for Excel formulas
     installCellData[installRow++] = {
       1: { v: "Install Margin:" },
       2: { v: margin, s: "percent" },
@@ -873,81 +881,51 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
 
     const sectionStartRow = installRow;
 
-    // Structural Materials section
+    // Helper: create data row with margin linked to margin settings row
+    const makeItemRow = (item: string, marginCol: string) => {
+      installCellData[installRow] = {
+        1: { v: item },
+        2: { v: 0, s: "currency" },
+        3: { v: 0, s: "currency" },
+        4: { v: 0, s: "currency" },
+        5: { v: 0, s: "currency" },
+        6: { f: `=ROUND(SUM(C${installRow + 1}:F${installRow + 1}),2)`, s: "currency" },
+        7: { f: `=$${marginCol}$${msr}`, s: "percent" },
+        8: { f: guardedSellingFormula(`G${installRow + 1}`, `H${installRow + 1}`), s: "currency" },
+      };
+      installRow++;
+    };
+
+    // Structural Materials section — linked to Install Margin (col C)
     installCellData[installRow++] = { 1: { v: "STRUCTURAL MATERIALS", s: { bl: 1, bg: { rgb: LIGHT_GRAY } } } };
     const structItems = ["Steel Fabrication", "Steel Finish", "Mounting Hardware", "Misc Materials"];
-    structItems.forEach((item) => {
-      installCellData[installRow] = {
-        1: { v: item },
-        2: { v: 0, s: "currency" },
-        3: { v: 0, s: "currency" },
-        4: { v: 0, s: "currency" },
-        5: { v: 0, s: "currency" },
-        6: { f: `=ROUND(SUM(C${installRow + 1}:F${installRow + 1}),2)`, s: "currency" },
-        7: { v: margin, s: "percent" },
-        8: { f: guardedSellingFormula(`G${installRow + 1}`, `H${installRow + 1}`), s: "currency" },
-      };
-      installRow++;
-    });
+    structItems.forEach((item) => makeItemRow(item, "C"));
 
-    // Structural Labor section
+    // Structural Labor section — linked to Install Margin (col C)
     installCellData[installRow++] = { 1: { v: "STRUCTURAL LABOR & LED INSTALL", s: { bl: 1, bg: { rgb: LIGHT_GRAY } } } };
     const laborItems = ["Structural Labor", "LED Installation", "Rigging", "Equipment Rental"];
-    laborItems.forEach((item) => {
-      installCellData[installRow] = {
-        1: { v: item },
-        2: { v: 0, s: "currency" },
-        3: { v: 0, s: "currency" },
-        4: { v: 0, s: "currency" },
-        5: { v: 0, s: "currency" },
-        6: { f: `=ROUND(SUM(C${installRow + 1}:F${installRow + 1}),2)`, s: "currency" },
-        7: { v: margin, s: "percent" },
-        8: { f: guardedSellingFormula(`G${installRow + 1}`, `H${installRow + 1}`), s: "currency" },
-      };
-      installRow++;
-    });
+    laborItems.forEach((item) => makeItemRow(item, "C"));
 
-    // Electrical section
+    // Electrical section — linked to Electrical Margin (col F)
     installCellData[installRow++] = { 1: { v: "ELECTRICAL & DATA", s: { bl: 1, bg: { rgb: LIGHT_GRAY } } } };
     const elecItems = ["Electrical Materials", "Data Materials", "Electrical Labor", "Data Labor", "Sub Panel", "Misc"];
-    elecItems.forEach((item) => {
-      installCellData[installRow] = {
-        1: { v: item },
-        2: { v: 0, s: "currency" },
-        3: { v: 0, s: "currency" },
-        4: { v: 0, s: "currency" },
-        5: { v: 0, s: "currency" },
-        6: { f: `=ROUND(SUM(C${installRow + 1}:F${installRow + 1}),2)`, s: "currency" },
-        7: { v: margin, s: "percent" },
-        8: { f: guardedSellingFormula(`G${installRow + 1}`, `H${installRow + 1}`), s: "currency" },
-      };
-      installRow++;
-    });
+    elecItems.forEach((item) => makeItemRow(item, "F"));
 
-    // Engineering section
+    // Engineering section — linked to ANC Margin (col I)
     installCellData[installRow++] = { 1: { v: "SUBMITTALS, ENGINEERING & PERMITS", s: { bl: 1, bg: { rgb: LIGHT_GRAY } } } };
     const engItems = ["Structural Engineering", "Structural Certification", "Electrical Engineering", "Electrical Certification", "Permits"];
-    engItems.forEach((item) => {
-      installCellData[installRow] = {
-        1: { v: item },
-        2: { v: 0, s: "currency" },
-        3: { v: 0, s: "currency" },
-        4: { v: 0, s: "currency" },
-        5: { v: 0, s: "currency" },
-        6: { f: `=ROUND(SUM(C${installRow + 1}:F${installRow + 1}),2)`, s: "currency" },
-        7: { v: margin, s: "percent" },
-        8: { f: guardedSellingFormula(`G${installRow + 1}`, `H${installRow + 1}`), s: "currency" },
-      };
-      installRow++;
-    });
+    engItems.forEach((item) => makeItemRow(item, "I"));
 
     // Zone Grand Total — SUM all item rows (G column = Total Cost, I column = Selling Price)
     const zoneGtRow = installRow + 1; // 1-based
-    installCellData[installRow++] = {
+    installCellData[installRow] = {
       1: { v: "ZONE GRAND TOTAL", s: { bl: 1, cl: { rgb: WHITE }, bg: { rgb: NAVY } } },
       6: { f: `=ROUND(SUM(G${sectionStartRow + 1}:G${zoneGtRow - 1}),2)`, s: { bl: 1, cl: { rgb: WHITE }, ...CURRENCY_FMT } },
       8: { f: `=ROUND(SUM(I${sectionStartRow + 1}:I${zoneGtRow - 1}),2)`, s: { bl: 1, cl: { rgb: WHITE }, ...CURRENCY_FMT } },
     };
+    // Track for MA cross-sheet linking (cost = col G, selling = col I)
+    installZoneGtRows[spec.name] = zoneGtRow;
+    installRow++;
 
     installRow++; // separator
   });
