@@ -36,7 +36,7 @@ import type {
 } from "@/services/rfp/unified/types";
 import { log } from "@/lib/logger";
 
-export const maxDuration = 600;
+export const maxDuration = 1800; // 30 min — large RFPs need time
 export const dynamic = "force-dynamic";
 
 const UPLOAD_DIR = process.env.RFP_UPLOAD_DIR || "/rfp-data/rfp-uploads";
@@ -378,8 +378,22 @@ export async function POST(request: NextRequest) {
           classifiedPages.push({ pageNumber: page.pageNumber, text: page.text, category, relevance, isDrawing });
         }
 
+        // Neighbor-page boosting: if page N-1 and N+1 are both high-relevance,
+        // boost page N. Prevents losing pages sandwiched between LED spec pages.
+        for (let i = 1; i < classifiedPages.length - 1; i++) {
+          const prev = classifiedPages[i - 1];
+          const curr = classifiedPages[i];
+          const next = classifiedPages[i + 1];
+          if (curr.relevance < 50 && prev.relevance >= 65 && next.relevance >= 65) {
+            curr.relevance = Math.max(curr.relevance, 55);
+            if (curr.category === "unknown" || curr.category === "boilerplate") {
+              curr.category = curr.isDrawing ? "drawing" : "technical";
+            }
+          }
+        }
+
         // Threshold: 50+ = relevant. STRICT. Should yield 30-80 pages from a 1380-page RFP.
-        const MAX_VISION_PAGES = 100; // Hard cap — never send more than this to Mistral
+        const MAX_VISION_PAGES = 200; // Hard cap — never send more than this to Mistral
         let relevantPages = classifiedPages
           .filter((p) => p.relevance >= 50)
           .sort((a, b) => b.relevance - a.relevance); // Best pages first
@@ -435,30 +449,24 @@ export async function POST(request: NextRequest) {
             });
           }
 
-          // 4b: Drawing pages — convert to JPEG + Mistral vision OCR
+          // 4b: Drawing pages — convert to JPEG + Mistral vision OCR (PARALLEL)
           if (drawingPages.length > 0) {
             lastHeartbeatStage = "vision";
             send("stage", {
               stage: "vision",
-              message: `Vision model reading ${drawingPages.length} drawing pages...`,
+              message: `Vision model reading ${drawingPages.length} drawing pages (parallel)...`,
             });
 
-            for (let i = 0; i < drawingPages.length; i++) {
-              const rp = drawingPages[i];
+            const VISION_CONCURRENCY = 5; // Process 5 drawing pages at a time
+            let visionCompleted = 0;
 
-              send("progress", {
-                stage: "vision",
-                current: i + 1,
-                total: drawingPages.length,
-                message: `Drawing page ${rp.pageNumber} — Mistral vision OCR (${i + 1}/${drawingPages.length})`,
-              });
-
+            const processDrawingPage = async (rp: typeof drawingPages[0], i: number): Promise<AnalyzedPage> => {
               try {
                 const pageDir = path.join(imageDir, `p${rp.pageNumber}`);
                 const imagePath = await convertPageToImage(filePath, rp.pageNumber, pageDir);
                 const ocrPage = await extractSinglePage(imagePath, rp.pageNumber);
 
-                analyzedPages.push({
+                return {
                   index: textPages.length + i,
                   pageNumber: rp.pageNumber,
                   category: rp.category,
@@ -472,11 +480,13 @@ export async function POST(request: NextRequest) {
                   visionAnalyzed: true,
                   summary: ocrPage.markdown.split("\n").find((l) => l.trim().length > 10)?.slice(0, 150) || "",
                   classifiedBy: "mistral-ocr" as const,
-                });
+                };
               } catch (err: any) {
                 log.error(`[Pipeline] Drawing page ${rp.pageNumber} vision failed:`, err.message);
-                // Fallback: use whatever pdftotext got (probably sparse but better than nothing)
-                analyzedPages.push({
+                send("warning", {
+                  message: `Drawing page ${rp.pageNumber}: vision failed, using text fallback`,
+                });
+                return {
                   index: textPages.length + i,
                   pageNumber: rp.pageNumber,
                   category: rp.category,
@@ -486,13 +496,28 @@ export async function POST(request: NextRequest) {
                   visionAnalyzed: false,
                   summary: rp.text.split("\n").find((l) => l.trim().length > 10)?.slice(0, 150) || "",
                   classifiedBy: "text-heuristic" as const,
-                });
+                };
+              }
+            };
 
-                send("warning", {
-                  message: `Drawing page ${rp.pageNumber}: vision failed, using text fallback`,
+            // Concurrency pool — process VISION_CONCURRENCY pages at a time
+            const drawingQueue = drawingPages.map((rp, i) => ({ rp, i }));
+            const drawingResults: AnalyzedPage[] = new Array(drawingPages.length);
+            const workers = Array.from({ length: Math.min(VISION_CONCURRENCY, drawingPages.length) }, async () => {
+              while (drawingQueue.length > 0) {
+                const item = drawingQueue.shift()!;
+                drawingResults[item.i] = await processDrawingPage(item.rp, item.i);
+                visionCompleted++;
+                send("progress", {
+                  stage: "vision",
+                  current: visionCompleted,
+                  total: drawingPages.length,
+                  message: `Drawing page ${item.rp.pageNumber} — Mistral vision OCR (${visionCompleted}/${drawingPages.length})`,
                 });
               }
-            }
+            });
+            await Promise.all(workers);
+            analyzedPages.push(...drawingResults.filter(Boolean));
           }
 
           // Sort by page number for consistent batching

@@ -13,8 +13,8 @@ import type { AnalyzedPage, ExtractedLEDSpec } from "./types";
 
 const GEMINI_MODEL = "gemini-2.0-flash";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-const MAX_IMAGES_PER_BATCH = 5;
-const MAX_CONCURRENT_BATCHES = 3;
+const MAX_IMAGES_PER_BATCH = 10; // Gemini 2.0 Flash handles larger batches fine
+const MAX_CONCURRENT_BATCHES = 6; // More parallelism for faster processing
 
 // ---------------------------------------------------------------------------
 // Drawing Analysis Prompt
@@ -144,7 +144,7 @@ async function processBatch(
         contents: [{ role: "user", parts: userParts }],
         generationConfig: {
           temperature: 0.4,
-          maxOutputTokens: 8192,
+          maxOutputTokens: 16384, // Larger output for bigger batches
           responseMimeType: "text/plain",
         },
       }),

@@ -148,7 +148,7 @@ async function callMistralChat(userMessage: string): Promise<string> {
           { role: "user", content: userMessage },
         ],
         temperature: 0.1,
-        max_tokens: 8192,
+        max_tokens: 16384, // Larger output for bigger batches with more specs
         response_format: { type: "json_object" },
       }),
       signal: controller.signal,
@@ -197,8 +197,8 @@ export async function extractLEDSpecs(
     })
     .join("\n");
 
-  // Truncate if too long (Mistral large context is 128K but let's be safe)
-  const maxChars = 60_000;
+  // Mistral large context is 128K tokens (~100K chars). Use most of it.
+  const maxChars = 100_000;
   const textToSend =
     combinedText.length > maxChars
       ? combinedText.slice(0, maxChars) + "\n\n[TRUNCATED — remaining pages omitted]"
@@ -286,8 +286,8 @@ export async function extractLEDSpecs(
 // Batched extraction — processes pages in groups, no truncation
 // ---------------------------------------------------------------------------
 
-const BATCH_SIZE = 10;
-const MAX_CHARS_PER_BATCH = 30_000;
+const BATCH_SIZE = 25; // More pages per batch — uses Mistral's full context
+const MAX_CHARS_PER_BATCH = 80_000; // ~20K tokens — well within Mistral's 128K
 const PARALLEL_BATCHES = 4; // Run up to 4 Mistral calls concurrently
 
 export async function extractLEDSpecsBatched(
@@ -305,12 +305,16 @@ export async function extractLEDSpecsBatched(
     return { screens: [], project: emptyProject(), requirements: [], incompleteSpecs: [], warnings: [], extractionFailed: false };
   }
 
+  // Sort by relevance (highest first) so the most important pages get processed
+  // even if we hit token limits or batch failures
+  const sortedPages = [...relevantPages].sort((a, b) => b.relevance - a.relevance);
+
   // Build batches — respect both page count and char limit
   const batches: AnalyzedPage[][] = [];
   let currentBatch: AnalyzedPage[] = [];
   let currentChars = 0;
 
-  for (const page of relevantPages) {
+  for (const page of sortedPages) {
     const pageChars = page.markdown.length + page.tables.reduce((s, t) => s + t.content.length, 0);
 
     if (currentBatch.length >= BATCH_SIZE || (currentChars + pageChars > MAX_CHARS_PER_BATCH && currentBatch.length > 0)) {

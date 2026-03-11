@@ -307,11 +307,16 @@ function deduplicateSpecs(specs: ExtractedLEDSpec[]): ExtractedLEDSpec[] {
 
   for (const spec of specs) {
     // Check if we already have a spec with the same name
-    const existing = deduped.find(
-      (d) =>
-        normalizeName(d.name) === normalizeName(spec.name) &&
-        d.environment === spec.environment,
-    );
+    const existing = deduped.find((d) => {
+      // Never merge across environments
+      if (d.environment !== spec.environment) return false;
+      // Never merge base bid with alternate
+      if ((d.isAlternate ?? false) !== (spec.isAlternate ?? false)) return false;
+      // For alternates, only merge if same alternate ID
+      if (d.isAlternate && spec.isAlternate && d.alternateId !== spec.alternateId) return false;
+      // Name match
+      return normalizeName(d.name) === normalizeName(spec.name);
+    });
 
     if (existing) {
       // Merge: keep the higher-confidence version, fill in missing fields
