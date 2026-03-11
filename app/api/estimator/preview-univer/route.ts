@@ -58,12 +58,10 @@ function convertCell(cell: ExcelJS.Cell): UniverCell | null {
   if (cellValue === null || cellValue === undefined) return null;
 
   if (typeof cellValue === "object" && cellValue !== null && "formula" in cellValue) {
-    // Formula cell
+    // Formula cell — only pass `f`, NOT `v`. Univer skips recalculation
+    // if a cached `v` is present. Let the formula engine compute values live.
     const fObj = cellValue as { formula: string; result?: any };
     result.f = `=${fObj.formula}`;
-    if (fObj.result !== undefined && fObj.result !== null) {
-      result.v = typeof fObj.result === "object" ? 0 : fObj.result;
-    }
   } else if (typeof cellValue === "object" && cellValue !== null && "richText" in cellValue) {
     // Rich text — flatten to plain string
     const rt = cellValue as { richText: { text: string }[] };
