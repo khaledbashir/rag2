@@ -17,6 +17,7 @@ import {
   X,
   Zap,
   Layers,
+  ArrowRight,
 } from "lucide-react";
 
 export interface PipelineEvent {
@@ -87,7 +88,6 @@ function extractStats(events: PipelineEvent[]): LiveStats {
       if (e.specsFound != null) stats.specsFound = e.specsFound;
       if (e.tables != null) stats.tablesFound = e.tables;
       if ((e as any).annotationSpecs != null) stats.annotationSpecs = (e as any).annotationSpecs;
-      // vision_done carries these as custom fields
       if ((e as any).visionPages != null) stats.drawingPages = (e as any).visionPages;
     }
     if (e.type === "complete" && e.result) {
@@ -166,9 +166,8 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
   const latestMessage = [...events].reverse().find((e) => e.message)?.message || "Initializing pipeline...";
   const isComplete = events.some((e) => e.type === "complete");
   const hasError = events.some((e) => e.type === "error");
-  const activeStageIdx = stages.findIndex((s) => s.status === "active");
   const completedCount = stages.filter((s) => s.status === "done").length;
-  const overallPercent = isComplete ? 100 : Math.round((completedCount / stages.length) * 100 + (activeStageIdx >= 0 ? 10 : 0));
+  const overallPercent = isComplete ? 100 : Math.round((completedCount / stages.length) * 100 + (stages.some(s => s.status === "active") ? 10 : 0));
 
   // =========================================================================
   // UPLOAD STATE (not loading)
@@ -176,58 +175,73 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
 
   if (!isLoading) {
     return (
-      <div className="w-full max-w-3xl mx-auto mt-8 space-y-5">
-        {/* Drop zone */}
+      <div className="w-full max-w-3xl mx-auto mt-8 space-y-6">
+        {/* Hero drop zone */}
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`relative border-2 border-dashed rounded-2xl transition-all duration-300 p-12 ${
+          className={`relative rounded-2xl transition-all duration-300 overflow-hidden ${
             isDragging
-              ? "border-[#0A52EF] bg-[#0A52EF]/5 scale-[1.01] shadow-[0_0_40px_rgba(10,82,239,0.1)]"
-              : "border-border hover:border-[#0A52EF]/40 hover:bg-muted/20"
+              ? "ring-2 ring-[#0A52EF] shadow-[0_0_40px_rgba(10,82,239,0.12)]"
+              : "ring-1 ring-gray-200 hover:ring-[#0A52EF]/40 hover:shadow-lg"
           }`}
         >
+          {/* Top accent bar */}
+          <div className="h-1 bg-gradient-to-r from-[#0A52EF] via-[#0A52EF]/60 to-[#0A52EF]/20" />
+
           <input
             type="file"
             accept="application/pdf,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             multiple
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
             onChange={handleFileChange}
           />
-          <div className="flex flex-col items-center justify-center space-y-4">
-            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-300 ${
-              isDragging ? "bg-[#0A52EF] shadow-[0_0_30px_rgba(10,82,239,0.3)]" : "bg-[#0A52EF]/10"
-            }`}>
-              <UploadCloud className={`w-8 h-8 transition-colors ${isDragging ? "text-white" : "text-[#0A52EF]"}`} />
-            </div>
-            <div className="text-center">
-              <h3 className="text-lg font-semibold text-foreground">Drop your RFP here</h3>
-              <p className="text-sm text-muted-foreground mt-1.5 max-w-md">
-                Project manuals, spec books, bid documents — drop any PDF or Excel and we&apos;ll extract every LED display spec.
-              </p>
-            </div>
-            <div className="flex gap-2 text-[11px] text-muted-foreground">
-              {[
-                { icon: FileIcon, label: "PDF up to 2GB" },
-                { icon: FileSpreadsheet, label: "Excel (.xlsx)" },
-                { icon: Sparkles, label: "Auto-extract" },
-                { icon: Monitor, label: "LED specs" },
-              ].map((item, i) => (
-                <span key={i} className="bg-muted/80 px-2.5 py-1 rounded-md flex items-center gap-1.5">
-                  <item.icon className="w-3 h-3" /> {item.label}
-                </span>
-              ))}
+
+          <div className={`px-10 py-14 transition-colors duration-300 ${
+            isDragging ? "bg-[#0A52EF]/[0.03]" : "bg-white"
+          }`}>
+            <div className="flex flex-col items-center justify-center space-y-5">
+              <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+                isDragging
+                  ? "bg-[#0A52EF] shadow-lg shadow-[#0A52EF]/20 scale-110"
+                  : "bg-[#0A52EF]/[0.07]"
+              }`}>
+                <UploadCloud className={`w-7 h-7 transition-colors ${isDragging ? "text-white" : "text-[#0A52EF]"}`} />
+              </div>
+
+              <div className="text-center space-y-2">
+                <h3 className="text-xl font-semibold text-gray-900">Drop your RFP here</h3>
+                <p className="text-sm text-gray-500 max-w-sm leading-relaxed">
+                  Project manuals, spec books, bid documents — drop any PDF and we&apos;ll extract every LED display spec automatically.
+                </p>
+              </div>
+
+              <button className="mt-1 px-5 py-2.5 bg-[#0A52EF] text-white text-sm font-medium rounded-lg hover:bg-[#0A52EF]/90 transition-colors shadow-sm pointer-events-none">
+                Select Files
+              </button>
+
+              <div className="flex gap-3 mt-2">
+                {[
+                  { icon: FileIcon, label: "PDF up to 2GB" },
+                  { icon: FileSpreadsheet, label: "Excel (.xlsx)" },
+                  { icon: Sparkles, label: "AI extraction" },
+                ].map((item, i) => (
+                  <span key={i} className="flex items-center gap-1.5 text-[11px] text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full">
+                    <item.icon className="w-3 h-3" /> {item.label}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </div>
 
         {/* Bid form attachment */}
-        <div className="flex items-center justify-center gap-3">
+        <div className="flex items-center justify-center">
           {bidFormFile ? (
-            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg">
               <FileSpreadsheet className="w-4 h-4 text-amber-600" />
-              <span className="text-sm text-amber-800 dark:text-amber-300">{bidFormFile.name}</span>
+              <span className="text-sm text-amber-800">{bidFormFile.name}</span>
               <button onClick={() => setBidFormFile(null)} className="ml-1 p-0.5 hover:bg-amber-200/50 rounded">
                 <X className="w-3 h-3 text-amber-600" />
               </button>
@@ -235,7 +249,7 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
           ) : (
             <button
               onClick={() => bidFormInputRef.current?.click()}
-              className="flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-dashed border-border rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-50 border border-dashed border-gray-200 rounded-lg transition-colors"
             >
               <FileSpreadsheet className="w-4 h-4" />
               Have a bid form? Attach it here
@@ -250,24 +264,26 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
           />
         </div>
 
-        {/* Pipeline preview */}
-        <div className="grid grid-cols-4 gap-3">
+        {/* Pipeline preview steps */}
+        <div className="flex items-center justify-center gap-2">
           {[
-            { icon: Database, label: "Extract text", desc: "Every page scanned" },
-            { icon: Filter, label: "Filter noise", desc: "Keep LED pages only" },
-            { icon: Eye, label: "Read drawings", desc: "Document AI + Vision" },
-            { icon: Sparkles, label: "Extract specs", desc: "Displays, sizes, pitch" },
+            { icon: Database, label: "OCR scan" },
+            { icon: Filter, label: "Filter pages" },
+            { icon: Eye, label: "Read drawings" },
+            { icon: Sparkles, label: "Extract specs" },
           ].map((step, i) => (
-            <div key={i} className="flex flex-col items-center text-center px-2 py-3 rounded-xl bg-muted/30 border border-border/50">
-              <step.icon className="w-4 h-4 text-muted-foreground mb-1.5" />
-              <span className="text-[11px] font-medium text-foreground">{step.label}</span>
-              <span className="text-[10px] text-muted-foreground mt-0.5">{step.desc}</span>
-            </div>
+            <React.Fragment key={i}>
+              {i > 0 && <ArrowRight className="w-3 h-3 text-gray-300 shrink-0" />}
+              <div className="flex items-center gap-1.5 text-xs text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg">
+                <step.icon className="w-3.5 h-3.5 text-gray-400" />
+                {step.label}
+              </div>
+            </React.Fragment>
           ))}
         </div>
 
         {error && (
-          <div className="p-4 border border-destructive/50 bg-destructive/10 text-destructive rounded-lg flex items-start gap-3">
+          <div className="p-4 border border-red-200 bg-red-50 text-red-700 rounded-lg flex items-start gap-3">
             <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
             <div className="text-sm">{error}</div>
           </div>
@@ -277,77 +293,75 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
   }
 
   // =========================================================================
-  // PROCESSING STATE — the redesigned pipeline view
+  // PROCESSING STATE — light theme, alive pipeline
   // =========================================================================
 
   return (
-    <div className="w-full max-w-4xl mx-auto mt-6 space-y-5">
-      {/* Main processing card — dark, present, alive */}
-      <div className={`relative rounded-2xl overflow-hidden transition-all duration-500 ${
+    <div className="w-full max-w-4xl mx-auto mt-6 space-y-4">
+      {/* Main processing card — white, clean, professional */}
+      <div className={`relative rounded-2xl overflow-hidden transition-all duration-500 bg-white ring-1 ${
         isComplete
-          ? "bg-emerald-950/90 dark:bg-emerald-950/80 shadow-[0_0_60px_rgba(16,185,129,0.08)]"
+          ? "ring-emerald-200 shadow-[0_4px_30px_rgba(16,185,129,0.08)]"
           : hasError
-            ? "bg-red-950/90 dark:bg-red-950/80"
-            : "bg-slate-950/95 dark:bg-slate-950/90 shadow-[0_0_80px_rgba(10,82,239,0.06)]"
+            ? "ring-red-200 shadow-[0_4px_30px_rgba(239,68,68,0.08)]"
+            : "ring-gray-200 shadow-[0_4px_40px_rgba(10,82,239,0.06)]"
       }`}>
-        {/* Subtle animated gradient overlay */}
-        {!isComplete && !hasError && (
+        {/* Top accent bar — animated when processing */}
+        <div className="h-1 relative overflow-hidden bg-gray-100">
           <div
-            className="absolute inset-0 opacity-[0.03]"
-            style={{
-              background: "linear-gradient(135deg, #0A52EF 0%, transparent 50%, #0A52EF 100%)",
-              backgroundSize: "400% 400%",
-              animation: "gradientShift 8s ease infinite",
-            }}
+            className={`h-full rounded-full transition-all duration-700 ease-out ${
+              isComplete ? "bg-emerald-500" : hasError ? "bg-red-500" : "bg-[#0A52EF]"
+            }`}
+            style={{ width: `${overallPercent}%` }}
           />
-        )}
+          {!isComplete && !hasError && (
+            <div
+              className="absolute inset-0 h-full opacity-30"
+              style={{
+                background: "linear-gradient(90deg, transparent 0%, #0A52EF 50%, transparent 100%)",
+                backgroundSize: "200% 100%",
+                animation: "shimmer 2s ease-in-out infinite",
+              }}
+            />
+          )}
+        </div>
 
-        <div className="relative z-10 p-6 sm:p-8">
+        <div className="p-6 sm:p-8">
           {/* Header row: filename + timer */}
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3 min-w-0">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                isComplete ? "bg-emerald-500/20" : hasError ? "bg-red-500/20" : "bg-[#0A52EF]/20"
+                isComplete ? "bg-emerald-50" : hasError ? "bg-red-50" : "bg-[#0A52EF]/[0.07]"
               }`}>
                 {isComplete ? (
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
                 ) : hasError ? (
-                  <AlertCircle className="w-5 h-5 text-red-400" />
+                  <AlertCircle className="w-5 h-5 text-red-500" />
                 ) : (
                   <Zap className="w-5 h-5 text-[#0A52EF] animate-pulse" />
                 )}
               </div>
               <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-white truncate">
+                <h3 className={`text-sm font-semibold truncate ${
+                  isComplete ? "text-emerald-700" : hasError ? "text-red-700" : "text-gray-900"
+                }`}>
                   {isComplete ? "Analysis Complete" : hasError ? "Pipeline Error" : "Analyzing Document"}
                 </h3>
                 {fileName && (
-                  <p className="text-xs text-white/40 truncate mt-0.5">{fileName}</p>
+                  <p className="text-xs text-gray-400 truncate mt-0.5">{fileName}</p>
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-white/30 font-mono tabular-nums shrink-0">
+            <div className="flex items-center gap-1.5 text-xs text-gray-400 font-mono tabular-nums shrink-0">
               <Clock className="w-3 h-3" />
               {formatTime(elapsedSeconds)}
-            </div>
-          </div>
-
-          {/* Overall progress bar */}
-          <div className="mb-6">
-            <div className="h-1 bg-white/[0.06] rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-700 ease-out ${
-                  isComplete ? "bg-emerald-500" : hasError ? "bg-red-500" : "bg-[#0A52EF]"
-                }`}
-                style={{ width: `${overallPercent}%` }}
-              />
             </div>
           </div>
 
           {/* Live status message */}
           <div className="mb-6">
             <p className={`text-sm font-medium ${
-              isComplete ? "text-emerald-300" : hasError ? "text-red-300" : "text-white/80"
+              isComplete ? "text-emerald-600" : hasError ? "text-red-600" : "text-gray-600"
             }`}>
               {latestMessage}
             </p>
@@ -361,60 +375,57 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
               const isDone = stage.status === "done";
               const isErr = stage.status === "error";
               const isWarn = stage.status === "warning";
-              const isPending = stage.status === "pending";
 
               return (
                 <React.Fragment key={stage.key}>
                   {idx > 0 && (
                     <div className="flex-shrink-0 pt-4 px-0.5">
                       <div className={`w-4 h-[2px] rounded-full transition-all duration-500 ${
-                        isDone || (stages[idx - 1]?.status === "done") ? "bg-emerald-500/60" : "bg-white/[0.06]"
+                        isDone || (stages[idx - 1]?.status === "done") ? "bg-emerald-400" : "bg-gray-200"
                       }`} />
                     </div>
                   )}
                   <div className={`flex-1 min-w-0 rounded-xl px-3 py-3 transition-all duration-500 ${
-                    isActive ? "bg-[#0A52EF]/10 ring-1 ring-[#0A52EF]/20" :
-                    isDone ? "bg-emerald-500/[0.06]" :
-                    isErr ? "bg-red-500/10" :
-                    isWarn ? "bg-amber-500/10" :
-                    "bg-white/[0.02]"
+                    isActive ? "bg-[#0A52EF]/[0.04] ring-1 ring-[#0A52EF]/20" :
+                    isDone ? "bg-emerald-50/60" :
+                    isErr ? "bg-red-50" :
+                    isWarn ? "bg-amber-50" :
+                    "bg-gray-50/60"
                   }`}>
-                    {/* Icon + status indicator */}
                     <div className="flex items-center gap-2 mb-1.5">
                       {isDone ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                       ) : isActive ? (
                         <Loader2 className="w-3.5 h-3.5 text-[#0A52EF] animate-spin shrink-0" />
                       ) : isErr ? (
-                        <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                        <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
                       ) : isWarn ? (
-                        <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                       ) : (
-                        <Icon className="w-3.5 h-3.5 text-white/20 shrink-0" />
+                        <Icon className="w-3.5 h-3.5 text-gray-300 shrink-0" />
                       )}
                       <span className={`text-[11px] font-semibold truncate ${
                         isActive ? "text-[#0A52EF]" :
-                        isDone ? "text-emerald-400/80" :
-                        isErr ? "text-red-400/80" :
-                        isWarn ? "text-amber-400/80" :
-                        "text-white/20"
+                        isDone ? "text-emerald-600" :
+                        isErr ? "text-red-600" :
+                        isWarn ? "text-amber-600" :
+                        "text-gray-300"
                       }`}>
                         {isActive ? stage.activeLabel : stage.label}
                       </span>
                     </div>
 
-                    {/* Count / detail */}
                     {stage.count && (
                       <p className={`text-[10px] font-mono tabular-nums truncate ${
-                        isDone ? "text-emerald-400/60" :
-                        isActive ? "text-[#0A52EF]/70" :
-                        "text-white/20"
+                        isDone ? "text-emerald-500/70" :
+                        isActive ? "text-[#0A52EF]/60" :
+                        "text-gray-300"
                       }`}>
                         {stage.count}
                       </p>
                     )}
                     {isActive && stage.detail && (
-                      <p className="text-[10px] text-white/30 truncate mt-0.5">
+                      <p className="text-[10px] text-gray-400 truncate mt-0.5">
                         {stage.detail}
                       </p>
                     )}
@@ -424,7 +435,7 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
             })}
           </div>
 
-          {/* Live stats grid — appears after first data */}
+          {/* Live stats grid */}
           {(stats.totalPages > 0 || stats.specsFound > 0) && (
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
               <StatPill label="Pages" value={stats.totalPages} show={stats.totalPages > 0} />
@@ -444,22 +455,21 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
         </div>
       </div>
 
-      {/* Annotation badge — when Document AI finds specs directly */}
+      {/* Annotation badge */}
       {stats.annotationSpecs > 0 && (
-        <div className="flex items-center gap-2 px-4 py-2.5 bg-[#0A52EF]/5 border border-[#0A52EF]/20 rounded-xl">
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-[#0A52EF]/[0.04] border border-[#0A52EF]/15 rounded-xl">
           <Layers className="w-4 h-4 text-[#0A52EF]" />
           <span className="text-xs text-[#0A52EF] font-medium">
-            Mistral Document AI extracted {stats.annotationSpecs} specs directly from drawings
+            Document AI extracted {stats.annotationSpecs} specs directly from drawings
           </span>
         </div>
       )}
 
-      {/* Gradient animation keyframes */}
+      {/* Shimmer animation */}
       <style jsx>{`
-        @keyframes gradientShift {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
         }
       `}</style>
     </div>
@@ -467,7 +477,7 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
 }
 
 // ---------------------------------------------------------------------------
-// Stat pill — small counter in the live stats grid
+// Stat pill — light theme
 // ---------------------------------------------------------------------------
 
 function StatPill({
@@ -485,23 +495,25 @@ function StatPill({
 }) {
   if (!show) {
     return (
-      <div className="rounded-lg bg-white/[0.02] px-3 py-2">
-        <p className="text-[10px] text-white/15 mb-0.5">{label}</p>
-        <p className="text-sm font-mono text-white/10">--</p>
+      <div className="rounded-lg bg-gray-50 px-3 py-2">
+        <p className="text-[10px] text-gray-300 mb-0.5">{label}</p>
+        <p className="text-sm font-mono text-gray-200">--</p>
       </div>
     );
   }
 
-  const accentColor = accent === "emerald" ? "text-emerald-400"
-    : accent === "blue" ? "text-blue-400"
+  const accentColor = accent === "emerald" ? "text-emerald-600"
+    : accent === "blue" ? "text-[#0A52EF]"
     : accent === "primary" ? "text-[#0A52EF]"
-    : "text-white/60";
+    : "text-gray-700";
 
-  const bgColor = highlight ? "bg-[#0A52EF]/[0.08] ring-1 ring-[#0A52EF]/20" : "bg-white/[0.03]";
+  const bgColor = highlight
+    ? "bg-[#0A52EF]/[0.05] ring-1 ring-[#0A52EF]/15"
+    : "bg-gray-50";
 
   return (
     <div className={`rounded-lg px-3 py-2 transition-all duration-500 ${bgColor}`}>
-      <p className="text-[10px] text-white/30 mb-0.5">{label}</p>
+      <p className="text-[10px] text-gray-400 mb-0.5">{label}</p>
       <p className={`text-sm font-bold font-mono tabular-nums ${accentColor}`}>
         {value.toLocaleString()}
       </p>
