@@ -310,10 +310,10 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
             // Sync margin tier → individual margin fields
             if (currentQ.id === "marginTier") {
                 if (val === "budget") {
-                    next.ledMargin = 15;
+                    next.ledMargin = 20;
                     next.servicesMargin = 20;
                 } else if (val === "proposal") {
-                    next.ledMargin = 38;
+                    next.ledMargin = 30;
                     next.servicesMargin = 20;
                 }
             }

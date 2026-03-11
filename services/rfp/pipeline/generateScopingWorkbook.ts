@@ -371,26 +371,47 @@ function computeDisplays(
     const pmMult = ov?.pmComplexity === "complex" ? 2 : ov?.pmComplexity === "major" ? 3 : 1;
     const pmBase = rc("other.pm_base_fee", PM_BASE_FEE);
     const engBase = rc("other.eng_base_fee", ENG_BASE_FEE);
-    const pmCost = priced?.pmCost ?? round2(pmBase * pmMult);
-    const engCost = priced?.engCost ?? round2(engBase * pmMult);
+    const pmCost = supplyOnly ? 0 : (priced?.pmCost ?? round2(pmBase * pmMult));
+    const engCost = supplyOnly ? 0 : (priced?.engCost ?? round2(engBase * pmMult));
+
+    // Supply-only: zero all non-LED costs
+    if (supplyOnly) {
+      structuralMaterialsCost = 0;
+      structuralLaborCost = 0;
+      electricalCost = 0;
+    }
 
     // Union labor: 15% uplift on labor-related costs
     const unionMult = ov?.isUnionLabor ? 1.15 : 1.0;
 
+    // Supply-only mode: when services margin is explicitly 0%, zero out all non-LED costs
+    const supplyOnly = ov?.servicesMarginPct === 0;
+
     // Skip fixed costs if display has no dimensions (can't scope it)
-    const hasDimensions = areaSqFt > 0;
+    const hasDimensions = areaSqFt > 0 && !supplyOnly;
 
     // Per-display cost overrides from cell edits
     const co = ov?.perDisplayCostOverrides?.[idx];
 
-    // Travel (estimate)
-    const travelCost = hasDimensions ? 15000 : 0;
+    // Travel (estimate) — zeroed for supply-only
+    const travelCost = hasDimensions ? 15000 : 0; // hasDimensions is already false when supplyOnly
 
     // LED hardware cost override from cell edit (must be before sparePartsCost)
     if (co?.displayCost != null) ledHardwareCost = co.displayCost;
 
-    // Smart bundles — spare parts from rate card
-    const sendingCardCost = co?.processor != null ? co.processor : (hasDimensions ? BUNDLES.sendingCard : 0);
+    // Processor cost — calculated from pixel count, not a single sending card
+    // NovaStar 660 Pro: 650K pixels per port, 8 ports per unit, ~$450/unit
+    // MCTRL4K: 650K pixels per port, 16 ports per unit, ~$8,400/unit
+    const pWidthPx = spec.widthPx || (spec.pixelPitchMm && widthFt ? Math.round(widthFt * 304.8 / spec.pixelPitchMm) : 0);
+    const pHeightPx = spec.heightPx || (spec.pixelPitchMm && heightFt ? Math.round(heightFt * 304.8 / spec.pixelPitchMm) : 0);
+    const pTotalPixels = pWidthPx * pHeightPx * (spec.quantity || 1);
+    const pPixelsPerPort = 650000;
+    const pPortsNeeded = pTotalPixels > 0 ? Math.ceil(pTotalPixels / pPixelsPerPort) : 0;
+    // Use 4K processor for >8 ports (16-port unit), otherwise 660 Pro (8-port unit)
+    const processorUnitCost = pPortsNeeded > 8 ? 8400 : BUNDLES.sendingCard;
+    const portsPerUnit = pPortsNeeded > 8 ? 16 : 8;
+    const processorsNeeded = pPortsNeeded > 0 ? Math.ceil(pPortsNeeded / portsPerUnit) : (hasDimensions ? 1 : 0);
+    const sendingCardCost = co?.processor != null ? co.processor : round2(processorsNeeded * processorUnitCost);
     const sparePartsCost = round2(ledHardwareCost * BUNDLES.sparePartsPct);
     const signalCableCost = round2(BUNDLES.signalCablePerSqFt25 * (areaSqFt / 25));
     const isScoreboard = isCeiling;
@@ -410,6 +431,7 @@ function computeDisplays(
       + pmCost + engCost + travelCost
       + sendingCardCost + sparePartsCost + signalCableCost
       + upsCost + backupProcessorCost + weatherproofCost
+      + shippingCost
     );
 
     // Margin: per-category approach (override > priced > default)
@@ -562,15 +584,29 @@ export async function generateScopingWorkbook(
   // ─── Sheet 1: Margin Analysis ───────────────────────────────────────────
   const maGrandTotalRow = buildMarginAnalysis(wb, projectName, clientName, today, displays, altDisplays, grandCost, grandSelling, grandMargin, grandMarginPct, includeBond, ov, installTabNames);
 
-  // Cross-sheet link: Project Overview document total → MA BASE BID GRAND TOTAL selling price
+  // Cross-sheet links: Project Overview → MA BASE BID GRAND TOTAL
   const overviewSheet = wb.getWorksheet("Project Overview");
   if (overviewSheet) {
     overviewSheet.eachRow((row) => {
-      if (row.getCell(2).value === "DOCUMENT TOTAL") {
+      const label = String(row.getCell(2).value || "");
+      if (label === "DOCUMENT TOTAL") {
         row.getCell(3).value = {
           formula: `'Margin Analysis'!D${maGrandTotalRow}`,
           result: grandSelling,
         };
+      }
+      // Link summary totals to MA grand total row (Bug 1: Project Margin from actual MA)
+      if (label === "Total Cost") {
+        row.getCell(3).value = { formula: `'Margin Analysis'!C${maGrandTotalRow}`, result: grandCost };
+      }
+      if (label === "Total Selling Price") {
+        row.getCell(3).value = { formula: `'Margin Analysis'!D${maGrandTotalRow}`, result: grandSelling };
+      }
+      if (label === "Project Margin $") {
+        row.getCell(3).value = { formula: `'Margin Analysis'!E${maGrandTotalRow}`, result: grandMargin };
+      }
+      if (label === "Project Margin %") {
+        row.getCell(3).value = { formula: `'Margin Analysis'!F${maGrandTotalRow}`, result: grandMarginPct };
       }
     });
   }
@@ -749,18 +785,25 @@ function buildProjectOverview(wb: ExcelJS.Workbook, data: ProjectOverviewData): 
   hdr(stR.getCell(3), C.ANC_BLUE);
   row++;
 
-  const totalRows: [string, number, string][] = [
-    ["Total Cost", data.grandCost, FMT_USD],
-    ["Total Selling Price", data.grandSelling, FMT_USD],
-    ["Blended Margin $", data.grandMargin, FMT_USD],
-    ["Blended Margin %", data.grandMarginPct, FMT_PCT],
+  // Summary total rows — values here are placeholders; they get cross-sheet linked
+  // to MA BASE BID GRAND TOTAL after the MA sheet is built
+  const totalLabels: [string, string][] = [
+    ["Total Cost", FMT_USD],
+    ["Total Selling Price", FMT_USD],
+    ["Project Margin $", FMT_USD],
+    ["Project Margin %", FMT_PCT],
   ];
+  const summaryStartRow = row;
 
-  for (const [label, value, fmt] of totalRows) {
+  for (const [label, fmt] of totalLabels) {
     const r = ws.getRow(row);
     r.getCell(2).value = label;
     r.getCell(2).font = { bold: true, name: "Calibri", size: 10 };
-    r.getCell(3).value = value;
+    // Default values — overwritten by cross-sheet formula after MA is built
+    r.getCell(3).value = label.includes("Cost") ? data.grandCost
+      : label.includes("Selling") ? data.grandSelling
+      : label.includes("$") ? data.grandMargin
+      : data.grandMarginPct;
     r.getCell(3).numFmt = fmt;
     r.getCell(3).font = { name: "Calibri", size: 10 };
     row++;
@@ -778,23 +821,8 @@ function buildProjectOverview(wb: ExcelJS.Workbook, data: ProjectOverviewData): 
   row++;
   row++;
 
-  // ─── Section 4: Display Summary Table ───
-  const dsR = ws.getRow(row);
-  dsR.getCell(2).value = "DISPLAY SUMMARY";
-  hdr(dsR.getCell(2), C.DARK_HEADER);
-  hdr(dsR.getCell(3), C.DARK_HEADER);
-  row++;
-
-  // Mini table — Display Name | Selling Price
-  for (const d of data.displays) {
-    const r = ws.getRow(row);
-    r.getCell(2).value = d.spec.name;
-    r.getCell(2).font = { name: "Calibri", size: 10 };
-    r.getCell(3).value = d.sellingPrice;
-    r.getCell(3).numFmt = FMT_USD;
-    r.getCell(3).font = { name: "Calibri", size: 10 };
-    row++;
-  }
+  // Display Summary removed per team review (March 11 2026).
+  // Project Overview shows only: project info, financial parameters, summary totals, document total.
 }
 
 // ─── 1b. BUDGET SUMMARY (per-category view) ─────────────────────────────────
@@ -1004,10 +1032,12 @@ function buildMarginAnalysis(
     } else {
       r.getCell(3).value = cost;
     }
-    r.getCell(3).numFmt = ";;;";
+    r.getCell(3).numFmt = FMT_USD; r.getCell(3).font = subFont;
     r.getCell(4).value = { formula: sellFormula(row), result: cost > 0 ? round2(cost / (1 - marginPct)) : 0 };
     r.getCell(4).numFmt = FMT_USD; r.getCell(4).font = subFont;
-    r.getCell(6).value = marginPct; r.getCell(6).numFmt = ";;;";
+    r.getCell(5).value = { formula: marginDollarFormula(row), result: cost > 0 ? round2(cost / (1 - marginPct) - cost) : 0 };
+    r.getCell(5).numFmt = FMT_USD; r.getCell(5).font = subFont;
+    r.getCell(6).value = marginPct; r.getCell(6).numFmt = FMT_PCT; r.getCell(6).font = subFont;
     row++;
   }
 
@@ -1363,7 +1393,7 @@ function buildLedCostSheet(
   gtR.getCell(14).numFmt = FMT_USD;
   gtR.getCell(15).value = { formula: `SUM(O${dataStartRow}:O${row - 2})`, result: displays.reduce((s, d) => s + (d.sendingCardCost || 0), 0) };
   gtR.getCell(15).numFmt = FMT_USD;
-  gtR.getCell(16).value = { formula: `SUM(P${dataStartRow}:P${row - 2})`, result: 0 };
+  gtR.getCell(16).value = { formula: `SUM(P${dataStartRow}:P${row - 2})`, result: displays.reduce((s, d) => s + d.shippingCost, 0) };
   gtR.getCell(16).numFmt = FMT_USD;
   gtR.getCell(17).value = { formula: `SUM(Q${dataStartRow}:Q${row - 2})`, result: displays.reduce((s, d) => s + d.totalCost, 0) };
   gtR.getCell(17).numFmt = FMT_USD;
@@ -2299,6 +2329,7 @@ function buildCMS(
     ["", "Travel", 0],
   ] as [string, string, number][];
 
+  const cmsStartRow = row;
   cmsItems.forEach(([cat, item, cost], i) => {
     const r = ws.getRow(row);
     r.getCell(2).value = cat;
@@ -2306,7 +2337,9 @@ function buildCMS(
     r.getCell(3).value = item;
     r.getCell(4).value = cost; r.getCell(4).numFmt = FMT_USD; inputCell(r.getCell(4));
     r.getCell(5).value = 0; inputCell(r.getCell(5));
-    r.getCell(6).value = 0; r.getCell(6).numFmt = FMT_USD;
+    // Total Cost = Cost * Quantity (was hardcoded 0 — Bug 4)
+    r.getCell(6).value = { formula: `D${row}*E${row}`, result: 0 };
+    r.getCell(6).numFmt = FMT_USD;
     r.getCell(7).value = 0.10; r.getCell(7).numFmt = FMT_PCT;
     stripe(r, 7, i % 2 === 0);
     row++;
@@ -2315,7 +2348,8 @@ function buildCMS(
   row++;
   const totR = ws.getRow(row);
   totR.getCell(3).value = "CMS TOTAL";
-  totR.getCell(6).value = 0; totR.getCell(6).numFmt = FMT_USD;
+  totR.getCell(6).value = { formula: `SUM(F${cmsStartRow}:F${row - 2})`, result: 0 };
+  totR.getCell(6).numFmt = FMT_USD;
   totalStyle(totR, 7, C.GREEN_BG);
 
   row += 2;
@@ -2529,17 +2563,17 @@ function buildTechSpecsSheet(
     properties: { tabColor: { argb: C.MEDIUM_GRAY } },
   });
 
-  const colWidths = [36, 8, 12, 12, 12, 12, 12, 10, 12, 10, 10, 12, 14, 12];
+  const colWidths = [36, 8, 12, 12, 12, 12, 12, 10, 12, 10, 10, 12, 14, 14, 12];
   colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
-  setTitle(ws, "N", `${projectName} — LED Technical Specifications (No Pricing)`);
-  setMeta(ws, "N", "Technical specifications only — no pricing data. Safe for installer/subcontractor distribution.");
+  setTitle(ws, "O", `${projectName} — LED Technical Specifications (No Pricing)`);
+  setMeta(ws, "O", "Technical specifications only — no pricing data. Safe for installer/subcontractor distribution.");
 
   let row = 4;
   const headers = [
     "Display Name", "Qty", "Pixel Pitch", "Height (ft)", "Width (ft)",
     "Pixels H", "Pixels W", "Sq Ft", "Brightness (nits)", "Service", "Environment",
-    "Weight (lbs)", "Total Power (W)", "BTU/hr",
+    "Weight (lbs)", "Total Power (W)", "Fiber Strands", "BTU/hr",
   ];
   headers.forEach((h, i) => {
     const cell = ws.getCell(row, i + 1);
@@ -2592,10 +2626,14 @@ function buildTechSpecsSheet(
     r.getCell(12).numFmt = "#,##0";
     r.getCell(13).value = { formula: `'LED Cost Sheet'!V${ledRow}`, result: tsPower || 0 };
     r.getCell(13).numFmt = "#,##0";
-    r.getCell(14).value = { formula: `'LED Cost Sheet'!W${ledRow}`, result: tsBtu || 0 };
+    // Fiber Strands = total pixels / 400,000 (one strand per 400K pixels)
+    const tsFiber = (hPx * wPx * qty) > 0 ? Math.ceil((hPx * wPx * qty) / 400000) : 0;
+    r.getCell(14).value = { formula: `CEILING(F${row}*G${row}*B${row}/400000,1)`, result: tsFiber };
     r.getCell(14).numFmt = "#,##0";
+    r.getCell(15).value = { formula: `'LED Cost Sheet'!W${ledRow}`, result: tsBtu || 0 };
+    r.getCell(15).numFmt = "#,##0";
 
-    stripe(r, 14, idx % 2 === 0);
+    stripe(r, 15, idx % 2 === 0);
     row++;
   });
 }
