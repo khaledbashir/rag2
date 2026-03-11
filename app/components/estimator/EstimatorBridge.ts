@@ -60,6 +60,11 @@ function rc(rates: RateCard | undefined, key: string, fallback: number): number 
     return rates?.[key] ?? fallback;
 }
 
+/** Strip characters illegal in Excel sheet names: * ? : \ / [ ] */
+function sanitizeSheetName(name: string): string {
+    return name.replace(/[*?:\\/[\]]/g, "-").slice(0, 31);
+}
+
 // ============================================================================
 // CABINET TETRIS — Module-based layout math
 // ============================================================================
@@ -1697,7 +1702,7 @@ function buildInstallPreview(answers: EstimatorAnswers, c: ScreenCalc, d: Displa
     });
 
     return {
-        name: `${shortName} - Install`,
+        name: sanitizeSheetName(`${shortName} - Install`),
         color: "#28A745",
         columns: ["SECTION", "ITEM", "COST", "MARGIN %", "SELLING PRICE", ""],
         rows,

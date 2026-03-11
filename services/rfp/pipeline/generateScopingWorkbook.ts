@@ -43,6 +43,11 @@ import { preloadRateCard, getRateSync } from "@/services/rfp/rateCardLoader";
 
 // ─── Colors ─────────────────────────────────────────────────────────────────
 
+/** Strip characters illegal in Excel sheet names: * ? : \ / [ ] */
+function sanitizeSheetName(name: string): string {
+  return name.replace(/[*?:\\/[\]]/g, "-").slice(0, 31);
+}
+
 const C = {
   ANC_BLUE: "FF0A52EF",
   DARK_HEADER: "FF1F2937",
@@ -1335,7 +1340,7 @@ function buildInstallSheet(
   tabName?: string,
 ): void {
   const shortName = d.spec.name.length > 25 ? d.spec.name.substring(0, 25) + "…" : d.spec.name;
-  const ws = wb.addWorksheet(tabName || `${shortName} - Install`, {
+  const ws = wb.addWorksheet(sanitizeSheetName(tabName || `${shortName} - Install`), {
     properties: { tabColor: { argb: C.GREEN_TAB } },
   });
 
