@@ -12,7 +12,7 @@
 import React, { useState, useCallback, useMemo } from "react";
 import { useConfirm } from "@/hooks/useConfirm";
 import dynamic from "next/dynamic";
-import { FileSpreadsheet, ArrowLeft, Download, Loader2, MessageSquare, Copy, ArrowRightLeft, Package, Boxes, Search, Shield, Send, GitCompare, FileText, Box, Zap, ChevronDown, PenLine } from "lucide-react";
+import { FileSpreadsheet, ArrowLeft, Download, Loader2, MessageSquare, Copy, ArrowRightLeft, Package, Boxes, Search, Shield, Send, GitCompare, FileText, Box, Zap, ChevronDown, PenLine, Activity } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import QuestionFlow from "./QuestionFlow";
@@ -33,9 +33,11 @@ import { useProductSpecs } from "@/hooks/useProductSpecs";
 import { useRateCard } from "@/hooks/useRateCard";
 import { useEstimatorAutoSave } from "@/hooks/useEstimatorAutoSave";
 import { useServerPreview } from "@/hooks/useServerPreview";
+import { usePresence } from "@/hooks/usePresence";
 
 const EstimatorVenuePanel = dynamic(() => import("./EstimatorVenuePanel"), { ssr: false });
 const UniverPreview = dynamic(() => import("./UniverPreview"), { ssr: false });
+const EstimatorActivityPanel = dynamic(() => import("./EstimatorActivityPanel"), { ssr: false });
 
 // Sheet colors no longer needed — Univer renders tab colors from the workbook data.
 
@@ -67,6 +69,8 @@ export default function EstimatorStudio({
     const [autoRfpOpen, setAutoRfpOpen] = useState(false);
     const [venueOpen, setVenueOpen] = useState(false);
     const [toolbarOpen, setToolbarOpen] = useState(false);
+    const [activityOpen, setActivityOpen] = useState(false);
+    const { activeUsers } = usePresence(projectId);
     // Legacy cell overrides / custom sheets kept for auto-save compatibility
     const cellOverrides: Record<string, string | number> = {};
     const customSheets: SheetTab[] = [];
@@ -328,6 +332,43 @@ export default function EstimatorStudio({
                             </button>
                         </>
                     )}
+                    {/* Active users presence indicators */}
+                    {activeUsers.length > 0 && (
+                        <div className="flex items-center gap-1">
+                            <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                            </span>
+                            <div className="flex -space-x-1.5">
+                                {activeUsers.slice(0, 3).map((u, i) => (
+                                    u.userImage ? (
+                                        <img key={i} src={u.userImage} alt={u.userName} className="w-5 h-5 rounded-full border border-background" />
+                                    ) : (
+                                        <div key={i} className="w-5 h-5 rounded-full bg-[#0A52EF] text-white text-[8px] font-bold flex items-center justify-center border border-background">
+                                            {u.userName?.split(" ").map(w => w[0]).join("").slice(0, 2) || "?"}
+                                        </div>
+                                    )
+                                ))}
+                            </div>
+                            {activeUsers.length > 3 && (
+                                <span className="text-[9px] text-muted-foreground">+{activeUsers.length - 3}</span>
+                            )}
+                        </div>
+                    )}
+                    {/* Activity panel toggle */}
+                    {projectId && (
+                        <button
+                            onClick={() => setActivityOpen((v) => !v)}
+                            className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs transition-colors ${
+                                activityOpen
+                                    ? "bg-[#0A52EF] text-white"
+                                    : "text-muted-foreground hover:bg-muted"
+                            }`}
+                            title="Activity timeline"
+                        >
+                            <Activity className="w-3.5 h-3.5" />
+                        </button>
+                    )}
                     {/* Auto-RFP and 3D Arena hidden — reserved for Phase 2 */}
                     <div className="w-px h-5 bg-border mx-0.5" />
                     <button
@@ -491,13 +532,21 @@ export default function EstimatorStudio({
                 </div>
             </header>
 
-            {/* Split screen — responsive grid: Questions | Excel | Copilot */}
+            {/* Split screen — responsive grid: Questions | Excel | Activity/Copilot */}
             <main className={`flex-1 min-h-0 overflow-hidden grid transition-all duration-500 ease-in-out ${
-                copilotOpen
-                    ? 'grid-cols-[minmax(0,1fr)_minmax(320px,380px)]'
-                    : questionsComplete
-                        ? 'grid-cols-[1fr]'
-                        : 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)]'
+                copilotOpen && activityOpen
+                    ? questionsComplete
+                        ? 'grid-cols-[1fr_minmax(320px,380px)_320px]'
+                        : 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(320px,380px)_320px]'
+                    : copilotOpen
+                        ? 'grid-cols-[minmax(0,1fr)_minmax(320px,380px)]'
+                        : activityOpen
+                            ? questionsComplete
+                                ? 'grid-cols-[1fr_320px]'
+                                : 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)_320px]'
+                            : questionsComplete
+                                ? 'grid-cols-[1fr]'
+                                : 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)]'
             }`}>
                 {/* Left: Questions (hidden when Lux is open or questions complete) */}
                 {!copilotOpen && !questionsComplete ? (
@@ -623,6 +672,17 @@ export default function EstimatorStudio({
                             onUpdateAnswers={handleChange}
                             isOpen={copilotOpen}
                             onClose={() => setCopilotOpen(false)}
+                        />
+                    </section>
+                )}
+
+                {/* Activity panel */}
+                {activityOpen && (
+                    <section className="min-w-0 min-h-0 overflow-hidden">
+                        <EstimatorActivityPanel
+                            projectId={projectId}
+                            onClose={() => setActivityOpen(false)}
+                            activeUsers={activeUsers}
                         />
                     </section>
                 )}

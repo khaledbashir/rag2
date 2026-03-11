@@ -10,6 +10,7 @@ export async function logActivity(
     description: string,
     actor?: string | null,
     metadata?: Record<string, any> | null,
+    userId?: string | null,
 ) {
     try {
         await prisma.activityLog.create({
@@ -18,6 +19,7 @@ export async function logActivity(
                 action,
                 description,
                 actor: actor ?? null,
+                userId: userId ?? null,
                 metadata: metadata ?? undefined,
             },
         });

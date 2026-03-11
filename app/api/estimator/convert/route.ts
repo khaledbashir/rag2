@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { log } from "@/lib/logger";
+import { logActivity } from "@/services/proposal/server/activityLogService";
 
 // ── Cost constants (match EstimatorBridge.ts exactly) ──────────────────────
 
@@ -374,6 +375,8 @@ export async function POST(req: NextRequest) {
         })),
       });
     }
+
+    await logActivity(projectId, "converted", `Converted estimate to proposal with ${displays.length} displays`, null);
 
     return NextResponse.json({
       success: true,

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { logActivity } from "@/services/proposal/server/activityLogService";
 
 /**
  * /estimator/new — Auto-creates a new ESTIMATE project and redirects.
@@ -40,6 +41,8 @@ export default async function NewEstimatePage() {
             ...(user ? { createdByUserId: user.id } : {}),
         },
     });
+
+    await logActivity(project.id, "created", "Estimate created", session.user.name || session.user.email, null, user?.id);
 
     redirect(`/estimator/${project.id}`);
 }

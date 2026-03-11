@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { useConfirm } from "@/hooks/useConfirm";
+import { useEstimatorPresence } from "@/hooks/useEstimatorPresence";
 
 interface Estimate {
     id: string;
@@ -31,6 +32,8 @@ interface Estimate {
     createdAt: string;
     updatedAt: string;
     createdByName: string | null;
+    createdByImage: string | null;
+    lastActivity: { action: string; description: string; actor: string | null; createdAt: string } | null;
 }
 
 const formatCurrency = (amount: number, currency: string = "USD") =>
@@ -48,6 +51,7 @@ export default function EstimatorListPage() {
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [creating, setCreating] = useState(false);
+    const presence = useEstimatorPresence();
 
     const fetchEstimates = useCallback(async () => {
         try {
@@ -174,8 +178,8 @@ export default function EstimatorListPage() {
                                 <div className="flex-1 min-w-0">Name</div>
                                 <div className="hidden sm:block w-20 text-right shrink-0">Screens</div>
                                 <div className="w-28 text-right shrink-0">Value</div>
-                                <div className="hidden md:block w-20 shrink-0">Created by</div>
-                                <div className="hidden lg:block w-28 text-right shrink-0">Updated</div>
+                                <div className="hidden md:block w-24 shrink-0">Created by</div>
+                                <div className="hidden lg:block w-32 text-right shrink-0">Last Activity</div>
                                 <div className="w-16 shrink-0" />
                             </div>
 
@@ -187,8 +191,22 @@ export default function EstimatorListPage() {
                                         onClick={() => router.push(`/estimator/${est.id}`)}
                                     >
                                         <div className="flex-1 min-w-0">
-                                            <div className="text-sm font-medium text-foreground truncate">
-                                                {est.clientName}
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-medium text-foreground truncate">
+                                                    {est.clientName}
+                                                </span>
+                                                {/* Live presence: who's editing right now */}
+                                                {presence[est.id] && presence[est.id].length > 0 && (
+                                                    <div className="flex items-center gap-1 shrink-0">
+                                                        <span className="relative flex h-1.5 w-1.5">
+                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                                                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                                                        </span>
+                                                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                                                            {presence[est.id].map(u => u.userName.split(" ")[0]).join(", ")}
+                                                        </span>
+                                                    </div>
+                                                )}
                                             </div>
                                             {(est.venue || est.clientCity) && (
                                                 <div className="text-[11px] text-muted-foreground truncate">
@@ -210,12 +228,36 @@ export default function EstimatorListPage() {
                                             {est.totalAmount > 0 ? formatCurrency(est.totalAmount, est.currency) : "—"}
                                         </div>
 
-                                        <div className="hidden md:block w-20 shrink-0 text-[11px] text-muted-foreground truncate">
-                                            {est.createdByName || "—"}
+                                        <div className="hidden md:flex items-center gap-1.5 w-24 shrink-0">
+                                            {est.createdByImage ? (
+                                                <img src={est.createdByImage} alt="" className="w-4 h-4 rounded-full shrink-0" />
+                                            ) : est.createdByName ? (
+                                                <div className="w-4 h-4 rounded-full bg-muted text-[7px] font-bold flex items-center justify-center shrink-0">
+                                                    {est.createdByName.split(" ").map(w => w[0]).join("").slice(0, 2)}
+                                                </div>
+                                            ) : null}
+                                            <span className="text-[11px] text-muted-foreground truncate">
+                                                {est.createdByName || "—"}
+                                            </span>
                                         </div>
 
-                                        <div className="hidden lg:block w-28 text-right shrink-0 text-[11px] text-muted-foreground">
-                                            {formatDistanceToNow(new Date(est.updatedAt), { addSuffix: true })}
+                                        <div className="hidden lg:block w-32 text-right shrink-0">
+                                            {est.lastActivity ? (
+                                                <div>
+                                                    <div className="text-[11px] text-muted-foreground truncate">
+                                                        {est.lastActivity.description.length > 30
+                                                            ? est.lastActivity.description.slice(0, 30) + "..."
+                                                            : est.lastActivity.description}
+                                                    </div>
+                                                    <div className="text-[10px] text-muted-foreground/60">
+                                                        {formatDistanceToNow(new Date(est.lastActivity.createdAt), { addSuffix: true })}
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <span className="text-[11px] text-muted-foreground">
+                                                    {formatDistanceToNow(new Date(est.updatedAt), { addSuffix: true })}
+                                                </span>
+                                            )}
                                         </div>
 
                                         <div className="w-16 shrink-0 flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

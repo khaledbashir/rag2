@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { log } from "@/lib/logger";
+import { logActivity } from "@/services/proposal/server/activityLogService";
 
 export async function POST(req: NextRequest) {
     try {
@@ -54,6 +55,8 @@ export async function POST(req: NextRequest) {
                 estimatorRateSnapshot: source.estimatorRateSnapshot ?? undefined,
             },
         });
+
+        await logActivity(duplicate.id, "duplicated", `Duplicated from ${source.clientName}`, session?.user?.name || session?.user?.email || null, { sourceProjectId: projectId }, userId);
 
         return NextResponse.json({
             success: true,

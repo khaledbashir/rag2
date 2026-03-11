@@ -89,6 +89,7 @@ model User {
   sessions      Session[]
   proposals     Proposal[] // Projects created by this user
   dashboardChats DashboardChatSession[]
+  presences      UserPresence[]
 }
 
 model DashboardChatSession {
@@ -249,6 +250,7 @@ model Proposal {
   comments            Comment[]
   activityLogs        ActivityLog[]
   changeRequests      ChangeRequest[]
+  presences           UserPresence[]
 
   // Existing relations
   versions     BidVersion[]
@@ -432,6 +434,21 @@ model ActivityLog {
   createdAt   DateTime @default(now())
 
   @@index([proposalId, createdAt])
+}
+
+model UserPresence {
+  id         String   @id @default(cuid())
+  proposalId String
+  proposal   Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userName   String
+  userImage  String?
+  lastSeenAt DateTime @default(now())
+
+  @@unique([proposalId, userId])
+  @@index([proposalId])
+  @@index([lastSeenAt])
 }
 
 // REQ-114: E-Signature Audit Trail (Section 9.2)

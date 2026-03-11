@@ -13,6 +13,7 @@ import { mapEstimatorToScoping } from "@/services/rfp/pipeline/estimatorToScopin
 import { generateScopingWorkbook } from "@/services/rfp/pipeline/generateScopingWorkbook";
 import type { EstimatorAnswers } from "@/app/components/estimator/questions";
 import { log } from "@/lib/logger";
+import { logActivity } from "@/services/proposal/server/activityLogService";
 
 export async function POST(req: NextRequest) {
   try {
@@ -35,6 +36,11 @@ export async function POST(req: NextRequest) {
     const safeName = (answers.projectName || answers.clientName || "Budget")
       .replace(/\s+/g, "_")
       .replace(/[^\w\-_.]/g, "");
+
+    // Log activity if projectId provided
+    if (body.projectId) {
+      logActivity(body.projectId, "excel_exported", "Exported Excel workbook", body.actorName || null);
+    }
 
     return new Response(buffer, {
       status: 200,

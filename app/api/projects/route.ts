@@ -109,7 +109,12 @@ export async function GET(req: NextRequest) {
                         select: { id: true },
                     },
                     createdByUser: {
-                        select: { name: true, email: true },
+                        select: { name: true, email: true, image: true },
+                    },
+                    activityLogs: {
+                        orderBy: { createdAt: "desc" as const },
+                        take: 1,
+                        select: { action: true, description: true, actor: true, createdAt: true },
                     },
                     estimatorAnswers: true,
                     estimatorDisplays: true,
@@ -188,6 +193,8 @@ export async function GET(req: NextRequest) {
                     || 0,
                 createdBy: (project as any).createdByUser?.name || (project as any).createdByUser?.email || null,
                 createdByName: (project as any).createdByUser?.name || (project as any).createdByUser?.email || null,
+                createdByImage: (project as any).createdByUser?.image || null,
+                lastActivity: (project as any).activityLogs?.[0] || null,
             };
         });
 
