@@ -699,25 +699,21 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                     </>
                 )
             ) : (
-                /* Budget / Proposal order: Header → Intro → Master Table → Page Break → Pricing → Notes → Specs → Exhibit A */
+                /* Budget / Proposal order: Header → Intro → Pricing → Grand Total → Notes → Specs → Exhibit A */
                 <>
-                    {/* Master table (project summary) on page 1 */}
-                    {showPricingTables && masterTableIndex !== null && <MasterTableSummarySection />}
+                    {/* Page break before pricing detail if needed */}
+                    {showPricingTables && shouldPushPricingToNewPage && <PageBreak />}
+                    {showPricingTables && shouldPushPricingToNewPage && <ContinuationPageHeader />}
 
-                    {/* Page break: detail section breakdowns start on a new page */}
-                    {showPricingTables && masterTableIndex !== null && <PageBreak />}
-                    {showPricingTables && masterTableIndex !== null && <ContinuationPageHeader />}
-                    {showPricingTables && masterTableIndex === null && shouldPushPricingToNewPage && <PageBreak />}
-                    {showPricingTables && masterTableIndex === null && shouldPushPricingToNewPage && <ContinuationPageHeader />}
-                    {showPricingTables && masterTableIndex === null && shouldPushPricingToNewPage && <PageBreak />}
-                    {showPricingTables && masterTableIndex === null && shouldPushPricingToNewPage && <ContinuationPageHeader />}
-
-                    {/* Pricing tables */}
+                    {/* Pricing tables (individual display breakdowns) */}
                     {showPricingTables && (
                         <div className="px-6">
                             <PricingSection />
                         </div>
                     )}
+
+                    {/* Master table (project grand total) — BELOW the options per Jireh's requirement */}
+                    {showPricingTables && masterTableIndex !== null && <MasterTableSummarySection />}
 
                     {showNotes && (
                         <div className="px-6">
