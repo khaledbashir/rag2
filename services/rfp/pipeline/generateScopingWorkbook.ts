@@ -1065,11 +1065,12 @@ function buildMarginAnalysis(
     grR.getCell(2).value = "    GRAND TOTAL"; grR.getCell(2).font = { bold: true, name: "Calibri", size: 11 };
     grR.getCell(3).value = { formula: `C${subtotalRow}`, result: d.totalCost };
     grR.getCell(3).numFmt = FMT_USD; grR.getCell(3).font = { bold: true, name: "Calibri" };
-    grR.getCell(4).value = { formula: `D${subtotalRow}+D${taxRow}+D${bondRow}+D${tariffRow}`, result: d.sellingPrice };
+    const grandSell = d.sellingPrice + round2(d.sellingPrice * taxRateVal) + round2(d.sellingPrice * bondRateVal) + 0;
+    grR.getCell(4).value = { formula: `D${subtotalRow}+D${taxRow}+D${bondRow}+D${tariffRow}`, result: grandSell };
     grR.getCell(4).numFmt = FMT_USD; grR.getCell(4).font = { bold: true, name: "Calibri" };
-    grR.getCell(5).value = { formula: `D${grandRow}-C${grandRow}`, result: d.marginDollars };
+    grR.getCell(5).value = { formula: `D${grandRow}-C${grandRow}`, result: grandSell - d.totalCost };
     grR.getCell(5).numFmt = FMT_USD; grR.getCell(5).font = { bold: true, name: "Calibri" };
-    grR.getCell(6).value = { formula: `1-C${grandRow}/D${grandRow}`, result: d.marginPct };
+    grR.getCell(6).value = { formula: `1-C${grandRow}/D${grandRow}`, result: grandSell > 0 ? 1 - (d.totalCost / grandSell) : 0 };
     grR.getCell(6).numFmt = FMT_PCT; grR.getCell(6).font = { bold: true, name: "Calibri" };
     // Light bottom border to separate from next section
     for (let c = 2; c <= 6; c++) {
