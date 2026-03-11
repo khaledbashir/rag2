@@ -1110,7 +1110,7 @@ function displayDescription(d: DisplayAnswers, c: ScreenCalc): string {
 
 function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): SheetTab {
     const rows: SheetRow[] = [];
-    const COLS = 12; // Total columns
+    const COLS = 15; // Total columns (12 base + Weight/Power/BTU)
 
     rows.push({
         cells: [{ value: "DISPLAY SPECIFICATIONS & COSTS", bold: true, header: true, span: COLS, align: "center" }],
@@ -1133,6 +1133,9 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                 { value: "SELL PRICE", bold: true, header: true, align: "right" },
                 { value: "MARGIN %", bold: true, header: true, align: "center" },
                 { value: "MARGIN $", bold: true, header: true, align: "right" },
+                { value: "WEIGHT (lbs)", bold: true, header: true, align: "right" },
+                { value: "POWER (W)", bold: true, header: true, align: "right" },
+                { value: "BTU/hr", bold: true, header: true, align: "right" },
             ],
             isHeader: true,
         });
@@ -1168,6 +1171,9 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                     { value: "SELL PRICE", bold: true, header: true, align: "right" },
                     { value: "MARGIN %", bold: true, header: true, align: "center" },
                     { value: "MARGIN $", bold: true, header: true, align: "right" },
+                    { value: "WEIGHT (lbs)", bold: true, header: true, align: "right" },
+                    { value: "POWER (W)", bold: true, header: true, align: "right" },
+                    { value: "BTU/hr", bold: true, header: true, align: "right" },
                 ],
                 isHeader: true,
             });
@@ -1194,6 +1200,9 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                         { value: hwSell, currency: true, align: "right", highlight: isAlt },
                         { value: ledMargin, percent: true, align: "center" },
                         { value: marginDollar, currency: true, align: "right", highlight: isAlt },
+                        { value: c.totalWeightLbs > 0 ? Math.round(c.totalWeightLbs) : "", align: "right" },
+                        { value: c.totalMaxPowerW > 0 ? Math.round(c.totalMaxPowerW) : "", align: "right" },
+                        { value: c.heatLoadBtu > 0 ? Math.round(c.heatLoadBtu) : "", align: "right" },
                     ],
                 });
             }
@@ -1222,6 +1231,9 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                     { value: "SELL PRICE", bold: true, header: true, align: "right" },
                     { value: "MARGIN %", bold: true, header: true, align: "center" },
                     { value: "MARGIN $", bold: true, header: true, align: "right" },
+                    { value: "", bold: true, header: true },
+                    { value: "", bold: true, header: true },
+                    { value: "", bold: true, header: true },
                 ],
                 isHeader: true,
             });
@@ -1262,6 +1274,9 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                         { value: g.totalSell, currency: true, align: "right" },
                         { value: g.marginPct, percent: true, align: "center" },
                         { value: marginDollar, currency: true, align: "right" },
+                        { value: "" },
+                        { value: "" },
+                        { value: "" },
                     ],
                 });
             }
@@ -1281,6 +1296,9 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                 { value: totalHwSell, currency: true, align: "right", bold: true },
                 { value: totalMarginPct, percent: true, align: "center", bold: true },
                 { value: totalMarginDollar, currency: true, align: "right", bold: true },
+                { value: primaryOnly.reduce((s, c) => s + (c.totalWeightLbs > 0 ? Math.round(c.totalWeightLbs) : 0), 0) || "", align: "right", bold: true },
+                { value: primaryOnly.reduce((s, c) => s + (c.totalMaxPowerW > 0 ? Math.round(c.totalMaxPowerW) : 0), 0) || "", align: "right", bold: true },
+                { value: primaryOnly.reduce((s, c) => s + (c.heatLoadBtu > 0 ? Math.round(c.heatLoadBtu) : 0), 0) || "", align: "right", bold: true },
             ],
             isTotal: true,
         });
@@ -1289,7 +1307,7 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
     return {
         name: "LED Cost Sheet",
         color: "#FFC107",
-        columns: ["DISPLAY", "TYPE", "W (ft)", "H (ft)", "SQ FT", "PITCH", "PIXELS", "$/SQFT", "LED COST", "SELL PRICE", "MARGIN %", "MARGIN $"],
+        columns: ["DISPLAY", "TYPE", "W (ft)", "H (ft)", "SQ FT", "PITCH", "PIXELS", "$/SQFT", "LED COST", "SELL PRICE", "MARGIN %", "MARGIN $", "WEIGHT (lbs)", "POWER (W)", "BTU/hr"],
         rows,
     };
 }
