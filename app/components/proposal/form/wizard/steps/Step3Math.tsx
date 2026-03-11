@@ -20,6 +20,7 @@ import {
     Wand2,
     GripVertical,
     Package,
+    RotateCcw,
 } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -397,6 +398,44 @@ const Step3Math = () => {
             setValue("details.clientSummary", audit.clientSummary);
         } catch (e) {
             console.error("Audit recalc failed", e);
+        }
+    };
+
+    // Reset all screens to catalog defaults — clears cost overrides and resets margins
+    const resetToCatalogDefaults = () => {
+        const currentScreens = getValues("details.screens") || [];
+        const defaultMargin = 0.25;
+
+        const resetScreens = currentScreens.map((s: any) => {
+            const { costPerSqFt, manualCost, categoryMargins: _, ...rest } = s;
+            return {
+                ...rest,
+                desiredMargin: defaultMargin,
+                // costPerSqFt removed — estimator falls back to catalog VLOOKUP
+                // manualCost removed — unless it's a manual line item
+                ...(s.isManualLineItem && manualCost !== undefined ? { manualCost } : {}),
+            };
+        });
+
+        setValue("details.screens", resetScreens, { shouldValidate: true, shouldDirty: true });
+        setValue("details.globalMargin", defaultMargin, { shouldDirty: true });
+        setValue("details.categoryMargins", undefined, { shouldDirty: true });
+        setUseCategoryMargins(false);
+
+        // Recalculate audit
+        try {
+            const audit = calculateProposalAudit(resetScreens, {
+                taxRate: getValues("details.taxRateOverride"),
+                bondPct: getValues("details.bondRateOverride"),
+                structuralTonnage: getValues("details.metadata.structuralTonnage"),
+                reinforcingTonnage: getValues("details.metadata.reinforcingTonnage"),
+                projectAddress: `${getValues("receiver.address") ?? ""} ${getValues("receiver.city") ?? ""} ${getValues("receiver.zipCode") ?? ""} ${getValues("details.location") ?? ""}`.trim(),
+                venue: getValues("details.venue"),
+            });
+            setValue("details.internalAudit", audit.internalAudit);
+            setValue("details.clientSummary", audit.clientSummary);
+        } catch (e) {
+            console.error("Reset audit recalc failed", e);
         }
     };
 
@@ -964,9 +1003,20 @@ const Step3Math = () => {
                             <TrendingUp className="w-4 h-4 text-brand-blue" />
                             <h3 className="text-sm font-bold text-foreground uppercase tracking-tight">Strategic P&L Audit</h3>
                         </div>
-                        <Badge variant="outline" className="text-[10px] font-bold border-border text-muted-foreground uppercase tracking-widest">
-                            Real-time Verification
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-[10px] font-bold border-border text-muted-foreground uppercase tracking-widest">
+                                Real-time Verification
+                            </Badge>
+                            <BaseButton
+                                variant="outline"
+                                size="sm"
+                                onClick={resetToCatalogDefaults}
+                                className="h-6 px-2 text-[10px] font-semibold gap-1 text-orange-600 border-orange-300 hover:bg-orange-50"
+                            >
+                                <RotateCcw className="w-3 h-3" />
+                                Reset to Catalog
+                            </BaseButton>
+                        </div>
                     </div>
 
                     <Card className="bg-muted/50 border border-border overflow-hidden">
