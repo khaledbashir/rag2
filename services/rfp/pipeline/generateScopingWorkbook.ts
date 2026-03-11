@@ -874,8 +874,9 @@ function buildBudgetSummary(
       + d.backupProcessorCost + d.weatherproofCost;
   }
 
-  const sellFormula = (r: number) => `C${r}/(1-F${r})`;
-  const marginFormula = (r: number) => `D${r}-C${r}`;
+  // Guarded formulas: IFERROR prevents #VALUE! / #DIV/0! on zero-cost or empty rows
+  const sellFormula = (r: number) => `IFERROR(C${r}/(1-F${r}),0)`;
+  const marginFormula = (r: number) => `IFERROR(D${r}-C${r},0)`;
 
   // Margin priority: financial override > weighted average from displays > default
   const avgMargin = displays.length > 0
@@ -938,21 +939,21 @@ function buildBudgetSummary(
   stR.getCell(3).numFmt = FMT_USD;
   stR.getCell(4).value = { formula: `SUM(D${catStartRow}:D${catEndRow})`, result: grandSelling };
   stR.getCell(4).numFmt = FMT_USD;
-  stR.getCell(5).value = { formula: `D${row}-C${row}`, result: grandMargin };
+  stR.getCell(5).value = { formula: `IFERROR(D${row}-C${row},0)`, result: grandMargin };
   stR.getCell(5).numFmt = FMT_USD;
-  stR.getCell(6).value = { formula: `1-C${row}/D${row}`, result: grandMarginPct };
+  stR.getCell(6).value = { formula: `IFERROR(1-C${row}/D${row},0)`, result: grandMarginPct };
   stR.getCell(6).numFmt = FMT_PCT;
   totalStyle(stR, 6, C.MEDIUM_GRAY);
   row++;
 
-  // Grand total — same as MA grand total (cross-validates)
+  // Grand total — formula-linked to subtotal for consistency
   row++;
   const gtR = ws.getRow(row);
   gtR.getCell(2).value = "GRAND TOTAL";
-  gtR.getCell(3).value = grandCost; gtR.getCell(3).numFmt = FMT_USD;
-  gtR.getCell(4).value = grandSelling; gtR.getCell(4).numFmt = FMT_USD;
-  gtR.getCell(5).value = grandMargin; gtR.getCell(5).numFmt = FMT_USD;
-  gtR.getCell(6).value = grandMarginPct; gtR.getCell(6).numFmt = FMT_PCT;
+  gtR.getCell(3).value = { formula: `C${row - 2}`, result: grandCost }; gtR.getCell(3).numFmt = FMT_USD;
+  gtR.getCell(4).value = { formula: `D${row - 2}`, result: grandSelling }; gtR.getCell(4).numFmt = FMT_USD;
+  gtR.getCell(5).value = { formula: `IFERROR(D${row}-C${row},0)`, result: grandMargin }; gtR.getCell(5).numFmt = FMT_USD;
+  gtR.getCell(6).value = { formula: `IFERROR(1-C${row}/D${row},0)`, result: grandMarginPct }; gtR.getCell(6).numFmt = FMT_PCT;
   totalStyle(gtR, 6, C.ANC_BLUE);
   for (let c = 2; c <= 6; c++) {
     gtR.getCell(c).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
@@ -1020,9 +1021,10 @@ function buildMarginAnalysis(
   // Helpers for sub-line rows
   const subFont = { name: "Calibri", color: { argb: "FF666666" }, size: 10 };
   const subFontBold = { name: "Calibri", bold: true, size: 10 };
-  const sellFormula = (r: number) => `C${r}/(1-F${r})`;
-  const marginDollarFormula = (r: number) => `D${r}-C${r}`;
-  const blendedMarginFormula = (r: number) => `1-C${r}/D${r}`;
+  // Guarded formulas: IFERROR prevents #VALUE! / #DIV/0! on zero-cost or empty rows
+  const sellFormula = (r: number) => `IFERROR(C${r}/(1-F${r}),0)`;
+  const marginDollarFormula = (r: number) => `IFERROR(D${r}-C${r},0)`;
+  const blendedMarginFormula = (r: number) => `IFERROR(1-C${r}/D${r},0)`;
 
   function writeCategory(label: string, cost: number, marginPct: number, costFormula?: string): void {
     const r = ws.getRow(row);
@@ -1140,9 +1142,9 @@ function buildMarginAnalysis(
     const grandSell = d.sellingPrice + round2(d.sellingPrice * taxRateVal) + round2(d.sellingPrice * bondRateVal) + 0;
     grR.getCell(4).value = { formula: `D${subtotalRow}+D${taxRow}+D${bondRow}+D${tariffRow}`, result: grandSell };
     grR.getCell(4).numFmt = FMT_USD; grR.getCell(4).font = { bold: true, name: "Calibri" };
-    grR.getCell(5).value = { formula: `D${grandRow}-C${grandRow}`, result: grandSell - d.totalCost };
+    grR.getCell(5).value = { formula: `IFERROR(D${grandRow}-C${grandRow},0)`, result: grandSell - d.totalCost };
     grR.getCell(5).numFmt = FMT_USD; grR.getCell(5).font = { bold: true, name: "Calibri" };
-    grR.getCell(6).value = { formula: `1-C${grandRow}/D${grandRow}`, result: grandSell > 0 ? 1 - (d.totalCost / grandSell) : 0 };
+    grR.getCell(6).value = { formula: `IFERROR(1-C${grandRow}/D${grandRow},0)`, result: grandSell > 0 ? 1 - (d.totalCost / grandSell) : 0 };
     grR.getCell(6).numFmt = FMT_PCT; grR.getCell(6).font = { bold: true, name: "Calibri" };
     // Light bottom border to separate from next section
     for (let c = 2; c <= 6; c++) {
@@ -1236,9 +1238,9 @@ function buildMarginAnalysis(
   bbR.getCell(3).numFmt = FMT_USD;
   bbR.getCell(4).value = { formula: `SUM(${sellGtRefs})`, result: grandSelling };
   bbR.getCell(4).numFmt = FMT_USD;
-  bbR.getCell(5).value = { formula: `D${baseBidRow}-C${baseBidRow}`, result: grandMargin };
+  bbR.getCell(5).value = { formula: `IFERROR(D${baseBidRow}-C${baseBidRow},0)`, result: grandMargin };
   bbR.getCell(5).numFmt = FMT_USD;
-  bbR.getCell(6).value = { formula: `1-C${baseBidRow}/D${baseBidRow}`, result: grandMarginPct };
+  bbR.getCell(6).value = { formula: `IFERROR(1-C${baseBidRow}/D${baseBidRow},0)`, result: grandMarginPct };
   bbR.getCell(6).numFmt = FMT_PCT;
   totalStyle(bbR, 6, C.ANC_BLUE);
   for (let c = 2; c <= 6; c++) {
