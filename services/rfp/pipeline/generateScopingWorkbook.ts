@@ -2480,26 +2480,42 @@ function buildTechSpecsSheet(
     const r = ws.getRow(row);
 
     // All values via cross-sheet formulas to LED Cost Sheet
-    r.getCell(1).value = { formula: `'LED Cost Sheet'!A${ledRow}` };
-    r.getCell(2).value = { formula: `'LED Cost Sheet'!I${ledRow}` };
-    r.getCell(3).value = { formula: `'LED Cost Sheet'!D${ledRow}` };
-    r.getCell(4).value = { formula: `'LED Cost Sheet'!E${ledRow}` };
-    r.getCell(5).value = { formula: `'LED Cost Sheet'!F${ledRow}` };
-    r.getCell(6).value = { formula: `'LED Cost Sheet'!G${ledRow}` };
-    r.getCell(7).value = { formula: `'LED Cost Sheet'!H${ledRow}` };
+    // IMPORTANT: result values required — browser preview can't resolve cross-sheet formulas
+    const qty = d.spec.quantity || 1;
+    const displayName = d.spec.name + (d.spec.location ? ` — ${d.spec.location}` : "");
+    const pitchLabel = d.spec.pixelPitchMm ? `${d.spec.pixelPitchMm}mm` : "—";
+    const hPx = d.spec.heightPx || (d.spec.pixelPitchMm && d.heightFt ? Math.round(d.heightFt * 304.8 / d.spec.pixelPitchMm) : 0);
+    const wPx = d.spec.widthPx || (d.spec.pixelPitchMm && d.widthFt ? Math.round(d.widthFt * 304.8 / d.spec.pixelPitchMm) : 0);
+
+    r.getCell(1).value = { formula: `'LED Cost Sheet'!A${ledRow}`, result: displayName };
+    r.getCell(2).value = { formula: `'LED Cost Sheet'!I${ledRow}`, result: qty };
+    r.getCell(3).value = { formula: `'LED Cost Sheet'!D${ledRow}`, result: pitchLabel };
+    r.getCell(4).value = { formula: `'LED Cost Sheet'!E${ledRow}`, result: d.heightFt || 0 };
+    r.getCell(5).value = { formula: `'LED Cost Sheet'!F${ledRow}`, result: d.widthFt || 0 };
+    r.getCell(6).value = { formula: `'LED Cost Sheet'!G${ledRow}`, result: hPx };
+    r.getCell(7).value = { formula: `'LED Cost Sheet'!H${ledRow}`, result: wPx };
     // Sq Ft: =D*E*B (height × width × qty)
     r.getCell(8).value = { formula: `D${row}*E${row}*B${row}`, result: d.areaSqFt };
     r.getCell(8).numFmt = "#,##0";
-    r.getCell(9).value = { formula: `'LED Cost Sheet'!K${ledRow}` };
-    r.getCell(10).value = { formula: `'LED Cost Sheet'!L${ledRow}` };
+    r.getCell(9).value = { formula: `'LED Cost Sheet'!K${ledRow}`, result: d.spec.brightnessNits ?? "" };
+    r.getCell(10).value = { formula: `'LED Cost Sheet'!L${ledRow}`, result: d.spec.serviceType || "Front" };
     r.getCell(11).value = d.spec.environment || "indoor";
 
     // Weight & Power & BTU — cross-sheet refs to LED Cost Sheet (cols U, V, W)
-    r.getCell(12).value = { formula: `'LED Cost Sheet'!U${ledRow}` };
+    const areaM2 = d.areaSqFt * 0.092903;
+    const selectedProduct = d.spec.selectedProductId ? getProduct(d.spec.selectedProductId) : null;
+    const pitch = d.spec.pixelPitchMm ?? 0;
+    const catalogMatch = selectedProduct
+      ?? (pitch > 0 ? getAllProducts().find((p) => Math.abs(p.pitchMm - pitch) < 0.5) : null);
+    const tsWeight = catalogMatch ? Math.round(areaM2 * catalogMatch.weightDensityLbm2) : Math.round(d.areaSqFt * 5);
+    const tsPower = catalogMatch ? Math.round(areaM2 * catalogMatch.powerDensityWm2) : 0;
+    const tsBtu = tsPower > 0 ? Math.round(tsPower * 3.412) : 0;
+
+    r.getCell(12).value = { formula: `'LED Cost Sheet'!U${ledRow}`, result: tsWeight || 0 };
     r.getCell(12).numFmt = "#,##0";
-    r.getCell(13).value = { formula: `'LED Cost Sheet'!V${ledRow}` };
+    r.getCell(13).value = { formula: `'LED Cost Sheet'!V${ledRow}`, result: tsPower || 0 };
     r.getCell(13).numFmt = "#,##0";
-    r.getCell(14).value = { formula: `'LED Cost Sheet'!W${ledRow}` };
+    r.getCell(14).value = { formula: `'LED Cost Sheet'!W${ledRow}`, result: tsBtu || 0 };
     r.getCell(14).numFmt = "#,##0";
 
     stripe(r, 14, idx % 2 === 0);
