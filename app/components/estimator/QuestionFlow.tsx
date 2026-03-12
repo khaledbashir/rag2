@@ -429,6 +429,15 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
         onComplete?.();
     }, [onComplete]);
 
+    const skipToFirstDisplay = useCallback(() => {
+        if (answers.displays.length === 0) {
+            onChange({ ...answers, displays: [getDefaultDisplayAnswers()] });
+        }
+        setPhase("display");
+        setDisplayIndex(0);
+        setCurrentStep(0);
+    }, [answers, onChange]);
+
     const jumpToPhase = useCallback((target: "project" | "display" | "financial") => {
         setPhase(target);
         setCurrentStep(0);
@@ -995,6 +1004,15 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                             <span className="text-[10px] text-muted-foreground">
                                 press <kbd className="px-1 py-0.5 bg-accent rounded text-[10px]">Enter ↵</kbd>
                             </span>
+                            {phase === "project" && (
+                                <button
+                                    onClick={skipToFirstDisplay}
+                                    className="ml-auto flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                                >
+                                    Skip to Display 1
+                                    <ArrowRight className="w-3.5 h-3.5" />
+                                </button>
+                            )}
                             {(phase === "display" || phase === "financial") && (
                                 <button
                                     onClick={skipToFinalPage}
