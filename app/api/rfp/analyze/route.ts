@@ -691,7 +691,7 @@ export async function POST(request: NextRequest) {
               triage: JSON.parse(JSON.stringify(triageData)),
               pages: [], // Don't store full page markdown (too big)
               status: "complete",
-              createdBy: session?.user?.email || null,
+              createdBy: session?.user?.name || session?.user?.email || null,
             },
           });
           analysisId = saved.id;

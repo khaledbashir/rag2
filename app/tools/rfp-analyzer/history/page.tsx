@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import {
   Search,
   FileText,
@@ -46,6 +47,7 @@ interface AnalysisSummary {
 // ============================================================================
 
 export default function RfpHistoryPage() {
+  const { data: session } = useSession();
   const [analyses, setAnalyses] = useState<AnalysisSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -222,6 +224,7 @@ export default function RfpHistoryPage() {
                       isLatest={i === 0 && offset === 0 && !debouncedSearch}
                       onDelete={handleDelete}
                       deleting={deleting}
+                      currentUserLabel={session?.user?.name || session?.user?.email || null}
                     />
                   ))}
                   {emptyAnalyses.length > 0 && (
@@ -242,6 +245,7 @@ export default function RfpHistoryPage() {
                           dimmed
                           onDelete={handleDelete}
                           deleting={deleting}
+                          currentUserLabel={session?.user?.name || session?.user?.email || null}
                         />
                       ))}
                     </>
@@ -271,11 +275,12 @@ export default function RfpHistoryPage() {
                 <AnalysisCard
                   key={a.id}
                   analysis={a}
-                  isLatest={i === 0 && offset === 0 && !debouncedSearch}
-                  onDelete={handleDelete}
-                  deleting={deleting}
-                />
-              ))}
+                    isLatest={i === 0 && offset === 0 && !debouncedSearch}
+                    onDelete={handleDelete}
+                    deleting={deleting}
+                    currentUserLabel={session?.user?.name || session?.user?.email || null}
+                  />
+                ))}
             </div>
             {emptyAnalyses.length > 0 && (
               <>
@@ -290,6 +295,7 @@ export default function RfpHistoryPage() {
                       isLatest={false}
                       onDelete={handleDelete}
                       deleting={deleting}
+                      currentUserLabel={session?.user?.name || session?.user?.email || null}
                     />
                   ))}
                 </div>
@@ -325,6 +331,7 @@ function TableRow({
   dimmed,
   onDelete,
   deleting,
+  currentUserLabel,
 }: {
   analysis: AnalysisSummary;
   index: number;
@@ -332,10 +339,12 @@ function TableRow({
   dimmed?: boolean;
   onDelete: (id: string, e: React.MouseEvent) => void;
   deleting: string | null;
+  currentUserLabel: string | null;
 }) {
   const date = new Date(a.createdAt);
   const timeAgo = getTimeAgo(date);
   const title = a.projectName || a.venue || a.filename;
+  const createdByLabel = a.createdBy || currentUserLabel;
 
   return (
     <tr className={`group hover:bg-muted/30 transition-colors ${dimmed ? "opacity-50" : ""} ${isLatest ? "bg-primary/[0.03]" : ""}`}>
@@ -387,8 +396,8 @@ function TableRow({
       <td className="py-2.5 px-4 text-xs text-muted-foreground truncate max-w-[140px]" title={a.filename}>
         {a.filename}
       </td>
-      <td className="py-2.5 px-4 text-xs text-muted-foreground truncate max-w-[120px]" title={a.createdBy || ""}>
-        {a.createdBy ? a.createdBy.split("@")[0] : <span className="text-muted-foreground/40">—</span>}
+      <td className="py-2.5 px-4 text-xs text-muted-foreground truncate max-w-[120px]" title={createdByLabel || ""}>
+        {createdByLabel ? createdByLabel.split("@")[0] : <span className="text-muted-foreground/40">—</span>}
       </td>
       <td className="py-2.5 px-4 text-right">
         <div className="text-xs text-muted-foreground">{timeAgo}</div>
@@ -426,15 +435,18 @@ function AnalysisCard({
   isLatest,
   onDelete,
   deleting,
+  currentUserLabel,
 }: {
   analysis: AnalysisSummary;
   isLatest: boolean;
   onDelete: (id: string, e: React.MouseEvent) => void;
   deleting: string | null;
+  currentUserLabel: string | null;
 }) {
   const date = new Date(a.createdAt);
   const timeAgo = getTimeAgo(date);
   const title = a.projectName || a.venue || a.filename;
+  const createdByLabel = a.createdBy || currentUserLabel;
 
   return (
     <Link href={`/tools/rfp-analyzer/history/${a.id}`}>
@@ -499,8 +511,8 @@ function AnalysisCard({
             <span className="truncate">{a.filename}</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {a.createdBy && (
-              <span className="text-muted-foreground/70">{a.createdBy.split("@")[0]}</span>
+            {createdByLabel && (
+              <span className="text-muted-foreground/70">{createdByLabel.split("@")[0]}</span>
             )}
             <span className="flex items-center gap-1">
               <Clock className="w-3 h-3" />{timeAgo}

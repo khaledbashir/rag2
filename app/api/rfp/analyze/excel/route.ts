@@ -15,9 +15,11 @@ import * as xlsx from "xlsx";
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "@/services/rfp/unified/types";
 import { parsePricingTablesWithValidation } from "@/services/pricing/pricingTableParser";
 import { log } from "@/lib/logger";
+import { auth } from "@/auth";
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
+  const session = await auth();
 
   try {
     const formData = await request.formData();
@@ -139,6 +141,7 @@ export async function POST(request: NextRequest) {
         pages: [],
         pricingDocument: pricingDocument ? JSON.parse(JSON.stringify(pricingDocument)) : undefined,
         mirrorModePricing: mirrorModePricing.length > 0 ? JSON.parse(JSON.stringify(mirrorModePricing)) : undefined,
+        createdBy: session?.user?.name || session?.user?.email || null,
       },
     });
 
