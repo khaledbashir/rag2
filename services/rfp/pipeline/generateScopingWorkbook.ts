@@ -1152,6 +1152,12 @@ function buildMarginAnalysis(
       grR.getCell(c).border = { bottom: { style: "medium", color: { argb: C.ANC_BLUE } } };
     }
     screenGrandTotalRows.push(grandRow);
+
+    // Row grouping: collapse detail rows (categories through tariff) for large projects
+    // Only the header + grand total remain visible when collapsed in Excel
+    for (let r = catStartRow; r <= grandRow - 1; r++) {
+      ws.getRow(r).outlineLevel = 1;
+    }
     row++;
 
     // ─── ALT ADD/DEDUCT lines — show delta from base ───

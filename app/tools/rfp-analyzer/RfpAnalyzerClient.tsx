@@ -261,6 +261,7 @@ export default function RfpAnalyzerClient() {
   const searchParams = useSearchParams();
   const { data: session } = useSession();
   const [phase, setPhase] = useState<Phase>("upload");
+  const [recentAnalyses, setRecentAnalyses] = useState<Array<{ id: string; projectName: string | null; filename: string; specsFound: number; createdAt: string; status: string }>>([]);
   const [events, setEvents] = useState<PipelineEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const lastExcelFileRef = useRef<File | null>(null);
@@ -441,6 +442,19 @@ export default function RfpAnalyzerClient() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  // Fetch recent analyses for the upload landing page
+  useEffect(() => {
+    if (phase !== "upload") return;
+    (async () => {
+      try {
+        const res = await fetch("/api/rfp/analyses?limit=8&offset=0");
+        if (!res.ok) return;
+        const data = await res.json();
+        setRecentAnalyses(data.analyses ?? []);
+      } catch { /* silent */ }
+    })();
+  }, [phase]);
 
   // ========================================================================
   // Helpers: recalculate display costs when dims/qty/product change
@@ -2007,6 +2021,37 @@ export default function RfpAnalyzerClient() {
                 isLoading={phase === "processing"}
                 events={events}
               />
+              {/* Recent analyses — shown on upload page so users see past work */}
+              {phase === "upload" && recentAnalyses.length > 0 && (
+                <div className="mt-8 max-w-3xl mx-auto">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-foreground">Recent Analyses</h3>
+                    <Link href="/tools/rfp-analyzer/history" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                      View all
+                    </Link>
+                  </div>
+                  <div className="grid gap-2">
+                    {recentAnalyses.map((a) => (
+                      <Link
+                        key={a.id}
+                        href={`/tools/rfp-analyzer?id=${a.id}`}
+                        className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border hover:bg-muted/50 transition-colors group"
+                      >
+                        <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate group-hover:text-[#0A52EF] transition-colors">
+                            {a.projectName || a.filename}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {a.specsFound} display{a.specsFound !== 1 ? "s" : ""} &middot; {new Date(a.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-muted-foreground/50 group-hover:text-[#0A52EF] transition-colors" />
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
               {error && phase === "upload" && (
                 <div className="mt-6 p-5 max-w-2xl mx-auto text-center border border-destructive/20 bg-destructive/10 rounded-xl">
                   <p className="text-sm text-destructive font-medium mb-3">{error}</p>
