@@ -209,6 +209,39 @@ function totalStyle(row: ExcelJS.Row, cols: number, bg: string = C.GREEN_BG): vo
   }
 }
 
+function getBundleEquipmentSubtotalRows(displays: ComputedDisplay[]): number[] {
+  const subtotalRows: number[] = [];
+  let row = 5; // Header at row 4, first zone starts at row 5
+
+  displays.forEach((d) => {
+    row++; // Zone header row
+    const itemCount = [
+      d.sendingCardCost,
+      d.signalCableCost,
+      d.upsCost,
+      d.backupProcessorCost,
+      d.weatherproofCost,
+    ].filter((cost) => cost > 0).length;
+
+    row += Math.max(itemCount, 1);
+    subtotalRows.push(row);
+    row++; // subtotal row
+    row++; // separator row
+  });
+
+  return subtotalRows;
+}
+
+function isClockLikeDisplay(d: ComputedDisplay): boolean {
+  const haystack = [
+    d.spec.name,
+    d.spec.location,
+    d.spec.selectedProductName,
+  ].filter(Boolean).join(" ").toLowerCase();
+
+  return /shot.?clock|play.?clock|time.?of.?day|tod.?clock|pitch.?clock|\bclock\b/.test(haystack);
+}
+
 function subtotalBorder(row: ExcelJS.Row, cols: number): void {
   for (let i = 1; i <= cols; i++) {
     const cell = row.getCell(i);
@@ -526,6 +559,8 @@ export async function generateScopingWorkbook(
   const projectName = project.projectName || project.venue || "Untitled Project";
   const clientName = project.clientName || "Client";
   const today = new Date().toISOString().split("T")[0];
+  const supplyOnlyProject = ov?.servicesMarginPct === 0;
+  const effectiveIncludeBond = includeBond && !supplyOnlyProject;
 
   // Split base bid vs alternates — budget sheets only see base bid
   const baseSpecs = allSpecs.filter((s) => !s.isAlternate);
@@ -561,7 +596,7 @@ export async function generateScopingWorkbook(
     currency,
     environment: project.isOutdoor ? "Outdoor" : "Indoor",
     unionLabor: project.isUnionLabor,
-    bondRequired: includeBond,
+    bondRequired: effectiveIncludeBond,
     location: project.location || project.venue || "",
     displayCount: displays.length,
     grandCost,
@@ -584,7 +619,7 @@ export async function generateScopingWorkbook(
   });
 
   // ─── Sheet 1: Margin Analysis ───────────────────────────────────────────
-  const maGrandTotalRow = buildMarginAnalysis(wb, projectName, clientName, today, displays, altDisplays, grandCost, grandSelling, grandMargin, grandMarginPct, includeBond, ov, installTabNames);
+  const maGrandTotalRow = buildMarginAnalysis(wb, projectName, clientName, today, displays, altDisplays, grandCost, grandSelling, grandMargin, grandMarginPct, effectiveIncludeBond, ov, installTabNames);
 
   // Cross-sheet links: Project Overview → MA BASE BID GRAND TOTAL
   const overviewSheet = wb.getWorksheet("Project Overview");
@@ -624,7 +659,7 @@ export async function generateScopingWorkbook(
   buildBudgetSummary(wb, projectName, clientName, today, displays, grandCost, grandSelling, grandMargin, grandMarginPct, ov);
 
   // 4. LED Cost Sheet
-  buildLedCostSheet(wb, projectName, displays, ov);
+  buildLedCostSheet(wb, projectName, displays, ov, getBundleEquipmentSubtotalRows(displays));
 
   // 5. Tech Specs (no pricing — for installers/subs)
   buildTechSpecsSheet(wb, projectName, displays);
@@ -1030,15 +1065,21 @@ function buildMarginAnalysis(
   function writeCategory(label: string, cost: number, marginPct: number, costFormula?: string): void {
     const r = ws.getRow(row);
     r.getCell(2).value = `    ${label}`; r.getCell(2).font = subFont;
-    if (costFormula) {
+    if (cost === 0) {
+      r.getCell(3).value = 0;
+    } else if (costFormula) {
       r.getCell(3).value = { formula: costFormula, result: cost };
     } else {
       r.getCell(3).value = cost;
     }
     r.getCell(3).numFmt = FMT_USD; r.getCell(3).font = subFont;
-    r.getCell(4).value = { formula: sellFormula(row), result: cost > 0 ? round2(cost / (1 - marginPct)) : 0 };
+    r.getCell(4).value = cost > 0
+      ? { formula: sellFormula(row), result: round2(cost / (1 - marginPct)) }
+      : 0;
     r.getCell(4).numFmt = FMT_USD; r.getCell(4).font = subFont;
-    r.getCell(5).value = { formula: marginDollarFormula(row), result: cost > 0 ? round2(cost / (1 - marginPct) - cost) : 0 };
+    r.getCell(5).value = cost > 0
+      ? { formula: marginDollarFormula(row), result: round2(cost / (1 - marginPct) - cost) }
+      : 0;
     r.getCell(5).numFmt = FMT_USD; r.getCell(5).font = subFont;
     r.getCell(6).value = marginPct; r.getCell(6).numFmt = FMT_PCT; r.getCell(6).font = subFont;
     row++;
@@ -1076,19 +1117,12 @@ function buildMarginAnalysis(
     const instTab = installTabNames?.[idx];
     const instRef = instTab ? `'${instTab}'` : null;
 
-    writeCategory("LED Hardware", ledHardwareWithSpares, hwMargin, `'LED Cost Sheet'!N${ledSheetRow}`);
+    writeCategory("LED Hardware", ledHardwareWithSpares + d.shippingCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost, hwMargin, `'LED Cost Sheet'!Q${ledSheetRow}`);
     writeCategory("Structural Materials", d.structuralMaterialsCost, svcMargin, instRef ? `${instRef}!I26` : undefined);
     writeCategory("Structural Labor & LED Installation", d.structuralLaborCost, svcMargin, instRef ? `${instRef}!I35-${instRef}!I34` : undefined);
     writeCategory("Electrical & Data", d.electricalCost, svcMargin, instRef ? `${instRef}!I44` : undefined);
     writeCategory("PM / General Conditions / Travel", d.pmCost + d.travelCost, svcMargin, instRef ? `${instRef}!I34` : undefined);
     writeCategory("Engineering & Permits", d.engCost, svcMargin, instRef ? `${instRef}!I52` : undefined);
-
-    // Equipment bundle (group non-zero items into one line)
-    const equipCost = d.sendingCardCost + d.signalCableCost + d.upsCost
-      + d.backupProcessorCost + d.weatherproofCost;
-    if (equipCost > 0) {
-      writeCategory("Processor & Equipment", equipCost, hwMargin);
-    }
     const catEndRow = row - 1;
 
     // ─── SUBTOTAL — SUM of category rows ───
@@ -1110,7 +1144,9 @@ function buildMarginAnalysis(
     const txR = ws.getRow(row);
     txR.getCell(2).value = "    TAX"; txR.getCell(2).font = subFont;
     const taxRateVal = ov?.taxRate ?? 0;
-    txR.getCell(4).value = { formula: `D${subtotalRow}*G${row}`, result: round2(d.sellingPrice * taxRateVal) };
+    txR.getCell(4).value = taxRateVal > 0
+      ? { formula: `D${subtotalRow}*G${row}`, result: round2(d.sellingPrice * taxRateVal) }
+      : 0;
     txR.getCell(4).numFmt = FMT_USD;
     txR.getCell(7).value = taxRateVal; txR.getCell(7).numFmt = FMT_PCT; inputCell(txR.getCell(7));
     row++;
@@ -1119,8 +1155,10 @@ function buildMarginAnalysis(
     const bondRow = row;
     const bdR = ws.getRow(row);
     bdR.getCell(2).value = "    BOND"; bdR.getCell(2).font = subFont;
-    const bondRateVal = ov?.bondRate ?? (includeBond ? rc("bond_tax.bond_rate", BOND_RATE) : 0);
-    bdR.getCell(4).value = { formula: `D${subtotalRow}*G${row}`, result: round2(d.sellingPrice * bondRateVal) };
+    const bondRateVal = ov?.servicesMarginPct === 0 ? 0 : (ov?.bondRate ?? (includeBond ? rc("bond_tax.bond_rate", BOND_RATE) : 0));
+    bdR.getCell(4).value = bondRateVal > 0
+      ? { formula: `D${subtotalRow}*G${row}`, result: round2(d.sellingPrice * bondRateVal) }
+      : 0;
     bdR.getCell(4).numFmt = FMT_USD;
     bdR.getCell(7).value = bondRateVal; bdR.getCell(7).numFmt = FMT_PCT; inputCell(bdR.getCell(7));
     row++;
@@ -1129,7 +1167,7 @@ function buildMarginAnalysis(
     const tariffRow = row;
     const trR = ws.getRow(row);
     trR.getCell(2).value = "    TARIFF"; trR.getCell(2).font = subFont;
-    trR.getCell(4).value = { formula: `D${subtotalRow}*G${row}`, result: 0 };
+    trR.getCell(4).value = 0;
     trR.getCell(4).numFmt = FMT_USD;
     trR.getCell(7).value = 0; trR.getCell(7).numFmt = FMT_PCT; inputCell(trR.getCell(7));
     row++;
@@ -1213,8 +1251,14 @@ function buildMarginAnalysis(
   cmsR.getCell(2).font = { bold: true, name: "Calibri" };
   cmsR.getCell(3).value = cmsCost; cmsR.getCell(3).numFmt = FMT_USD; inputCell(cmsR.getCell(3));
   cmsR.getCell(6).value = DEFAULT_MARGINS.cms; cmsR.getCell(6).numFmt = FMT_PCT; inputCell(cmsR.getCell(6));
-  cmsR.getCell(4).value = { formula: sellFormula(row), result: cmsCost > 0 ? round2(cmsCost / (1 - DEFAULT_MARGINS.cms)) : 0 }; cmsR.getCell(4).numFmt = FMT_USD;
-  cmsR.getCell(5).value = { formula: marginDollarFormula(row), result: cmsCost > 0 ? round2(cmsCost / (1 - DEFAULT_MARGINS.cms) - cmsCost) : 0 }; cmsR.getCell(5).numFmt = FMT_USD;
+  cmsR.getCell(4).value = cmsCost > 0
+    ? { formula: sellFormula(row), result: round2(cmsCost / (1 - DEFAULT_MARGINS.cms)) }
+    : 0;
+  cmsR.getCell(4).numFmt = FMT_USD;
+  cmsR.getCell(5).value = cmsCost > 0
+    ? { formula: marginDollarFormula(row), result: round2(cmsCost / (1 - DEFAULT_MARGINS.cms) - cmsCost) }
+    : 0;
+  cmsR.getCell(5).numFmt = FMT_USD;
   screenGrandTotalRows.push(cmsRow);
   row++;
 
@@ -1226,8 +1270,14 @@ function buildMarginAnalysis(
   scR.getCell(2).font = { bold: true, name: "Calibri" };
   scR.getCell(3).value = scoringCost; scR.getCell(3).numFmt = FMT_USD; inputCell(scR.getCell(3));
   scR.getCell(6).value = DEFAULT_MARGINS.scoring; scR.getCell(6).numFmt = FMT_PCT; inputCell(scR.getCell(6));
-  scR.getCell(4).value = { formula: sellFormula(row), result: scoringCost > 0 ? round2(scoringCost / (1 - DEFAULT_MARGINS.scoring)) : 0 }; scR.getCell(4).numFmt = FMT_USD;
-  scR.getCell(5).value = { formula: marginDollarFormula(row), result: scoringCost > 0 ? round2(scoringCost / (1 - DEFAULT_MARGINS.scoring) - scoringCost) : 0 }; scR.getCell(5).numFmt = FMT_USD;
+  scR.getCell(4).value = scoringCost > 0
+    ? { formula: sellFormula(row), result: round2(scoringCost / (1 - DEFAULT_MARGINS.scoring)) }
+    : 0;
+  scR.getCell(4).numFmt = FMT_USD;
+  scR.getCell(5).value = scoringCost > 0
+    ? { formula: marginDollarFormula(row), result: round2(scoringCost / (1 - DEFAULT_MARGINS.scoring) - scoringCost) }
+    : 0;
+  scR.getCell(5).numFmt = FMT_USD;
   screenGrandTotalRows.push(scoringRow);
   row++;
   row++; // separator
@@ -1266,6 +1316,7 @@ function buildLedCostSheet(
   projectName: string,
   displays: ComputedDisplay[],
   ov?: FinancialOverrides,
+  bundleSubtotalRows: number[] = [],
 ): void {
   const ws = wb.addWorksheet("LED Cost Sheet", {
     properties: { tabColor: { argb: C.GREEN_TAB } },
@@ -1316,17 +1367,22 @@ function buildLedCostSheet(
   // Data rows — one per display
   displays.forEach((d, idx) => {
     const dr = ws.getRow(row);
+    const isClockLike = isClockLikeDisplay(d);
     dr.getCell(1).value = d.spec.name + (d.spec.location ? ` — ${d.spec.location}` : "");
     dr.getCell(1).font = { bold: true, name: "Calibri" };
     // Vendor — honor explicit product selection > priced match > fallback
     const selectedProduct = d.spec.selectedProductId ? getProduct(d.spec.selectedProductId) : null;
-    dr.getCell(2).value = selectedProduct
+    dr.getCell(2).value = isClockLike
+      ? (selectedProduct?.manufacturer || "—")
+      : selectedProduct
       ? `${selectedProduct.manufacturer} ${selectedProduct.displayName || ""}`.trim()
       : d.match?.module?.manufacturer
         ? `${d.match.module.manufacturer} ${d.match.module.name || ""}`.trim()
         : (d.spec.environment === "outdoor" ? "Yaham" : "LG/Yaham");
     // Product
-    dr.getCell(3).value = selectedProduct?.displayName
+    dr.getCell(3).value = isClockLike
+      ? (selectedProduct?.displayName || d.spec.selectedProductName || "—")
+      : selectedProduct?.displayName
       || d.spec.selectedProductName
       || d.match?.module?.name
       || "—";
@@ -1348,7 +1404,7 @@ function buildLedCostSheet(
     dr.getCell(10).value = { formula: `E${row}*F${row}*I${row}`, result: d.areaSqFt };
     dr.getCell(10).numFmt = "#,##0";
     // NITs
-    dr.getCell(11).value = d.match?.module?.nits ?? d.spec.brightnessNits ?? "";
+    dr.getCell(11).value = isClockLike ? "" : (d.match?.module?.nits ?? d.spec.brightnessNits ?? "");
     dr.getCell(11).alignment = { horizontal: "center" };
     // Service
     dr.getCell(12).value = d.spec.serviceType || "Front";
@@ -1360,9 +1416,13 @@ function buildLedCostSheet(
     dr.getCell(13).numFmt = FMT_USD;
     // Display Cost (LED hardware + spare parts rolled in)
     dr.getCell(14).value = d.ledHardwareCost + d.sparePartsCost; dr.getCell(14).numFmt = FMT_USD;
-    // Processor — full bundle equipment cost (sending card + signal cable + UPS + backup + weatherproof)
+    const bundleSubtotalRow = bundleSubtotalRows[idx];
+    // Processor — linked to the processor/equipment breakdown sheet subtotal for this zone
     const bundleEquipmentCost = d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost;
-    dr.getCell(15).value = bundleEquipmentCost || 0; dr.getCell(15).numFmt = FMT_USD;
+    dr.getCell(15).value = bundleSubtotalRow
+      ? { formula: `'Bundle Equipment'!D${bundleSubtotalRow}`, result: bundleEquipmentCost || 0 }
+      : (bundleEquipmentCost || 0);
+    dr.getCell(15).numFmt = FMT_USD;
     // Shipping
     dr.getCell(16).value = d.shippingCost; dr.getCell(16).numFmt = FMT_USD;
     // Total Cost = Display + Processor Bundle + Shipping
@@ -1413,17 +1473,26 @@ function buildLedCostSheet(
   gtR.getCell(1).font = { bold: true, name: "Calibri" };
   gtR.getCell(10).value = { formula: `SUM(J${dataStartRow}:J${row - 2})`, result: displays.reduce((s, d) => s + d.areaSqFt, 0) };
   gtR.getCell(10).numFmt = "#,##0";
-  gtR.getCell(14).value = { formula: `SUM(N${dataStartRow}:N${row - 2})`, result: displays.reduce((s, d) => s + d.ledHardwareCost, 0) };
+  gtR.getCell(14).value = { formula: `SUM(N${dataStartRow}:N${row - 2})`, result: displays.reduce((s, d) => s + d.ledHardwareCost + d.sparePartsCost, 0) };
   gtR.getCell(14).numFmt = FMT_USD;
-  gtR.getCell(15).value = { formula: `SUM(O${dataStartRow}:O${row - 2})`, result: displays.reduce((s, d) => s + (d.sendingCardCost || 0), 0) };
+  gtR.getCell(15).value = { formula: `SUM(O${dataStartRow}:O${row - 2})`, result: displays.reduce((s, d) => s + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost, 0) };
   gtR.getCell(15).numFmt = FMT_USD;
   gtR.getCell(16).value = { formula: `SUM(P${dataStartRow}:P${row - 2})`, result: displays.reduce((s, d) => s + d.shippingCost, 0) };
   gtR.getCell(16).numFmt = FMT_USD;
-  gtR.getCell(17).value = { formula: `SUM(Q${dataStartRow}:Q${row - 2})`, result: displays.reduce((s, d) => s + d.totalCost, 0) };
+  gtR.getCell(17).value = { formula: `SUM(Q${dataStartRow}:Q${row - 2})`, result: displays.reduce((s, d) => s + d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost, 0) };
   gtR.getCell(17).numFmt = FMT_USD;
-  gtR.getCell(19).value = { formula: `SUM(S${dataStartRow}:S${row - 2})`, result: displays.reduce((s, d) => s + d.sellingPrice, 0) };
+  gtR.getCell(19).value = { formula: `SUM(S${dataStartRow}:S${row - 2})`, result: displays.reduce((s, d) => {
+    const totalLedCost = d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost;
+    const ledMargin = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
+    return s + (ledMargin < 1 ? round2(totalLedCost / (1 - ledMargin)) : totalLedCost);
+  }, 0) };
   gtR.getCell(19).numFmt = FMT_USD;
-  gtR.getCell(20).value = { formula: `SUM(T${dataStartRow}:T${row - 2})`, result: displays.reduce((s, d) => s + d.marginDollars, 0) };
+  gtR.getCell(20).value = { formula: `SUM(T${dataStartRow}:T${row - 2})`, result: displays.reduce((s, d) => {
+    const totalLedCost = d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost;
+    const ledMargin = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
+    const selling = ledMargin < 1 ? round2(totalLedCost / (1 - ledMargin)) : totalLedCost;
+    return s + (selling - totalLedCost);
+  }, 0) };
   gtR.getCell(20).numFmt = FMT_USD;
   gtR.getCell(21).value = { formula: `SUM(U${dataStartRow}:U${row - 2})`, result: 0 };
   gtR.getCell(21).numFmt = "#,##0";
@@ -2542,13 +2611,13 @@ function buildBundleEquipmentSheet(
     if (d.backupProcessorCost > 0) items.push(["Backup Video Processor", d.backupProcessorCost]);
     if (d.weatherproofCost > 0) items.push(["Weatherproof Enclosure Surcharge", d.weatherproofCost]);
 
+    const firstItemRow = row;
     if (items.length === 0) {
       const emptyR = ws.getRow(row);
       emptyR.getCell(2).value = "(no equipment for this zone)";
       emptyR.getCell(2).font = { italic: true, color: { argb: "FF999999" }, name: "Calibri", size: 10 };
       row++;
     } else {
-      const firstItemRow = row;
       items.forEach(([label, cost]) => {
         const ir = ws.getRow(row);
         ir.getCell(2).value = label;
@@ -2560,17 +2629,20 @@ function buildBundleEquipmentSheet(
         stripe(ir, 4, row % 2 === 0);
         row++;
       });
-
-      // Zone subtotal
-      const subR = ws.getRow(row);
-      subR.getCell(2).value = "Zone Subtotal";
-      subR.getCell(2).font = { bold: true, name: "Calibri" };
-      subR.getCell(4).value = { formula: `SUM(D${firstItemRow}:D${row - 1})`, result: items.reduce((s, [, c]) => s + c, 0) };
-      subR.getCell(4).numFmt = FMT_USD;
-      subR.getCell(4).font = { bold: true, name: "Calibri" };
-      zoneTotalRows.push(row);
-      row++;
     }
+
+    // Zone subtotal
+    const subR = ws.getRow(row);
+    subR.getCell(2).value = "Zone Subtotal";
+    subR.getCell(2).font = { bold: true, name: "Calibri" };
+    subR.getCell(4).value = {
+      formula: items.length > 0 ? `SUM(D${firstItemRow}:D${row - 1})` : "0",
+      result: items.reduce((s, [, c]) => s + c, 0),
+    };
+    subR.getCell(4).numFmt = FMT_USD;
+    subR.getCell(4).font = { bold: true, name: "Calibri" };
+    zoneTotalRows.push(row);
+    row++;
 
     row++; // separator
   });
@@ -2626,6 +2698,7 @@ function buildTechSpecsSheet(
   displays.forEach((d, idx) => {
     const ledRow = 4 + idx; // LED Cost Sheet data row
     const r = ws.getRow(row);
+    const isClockLike = isClockLikeDisplay(d);
 
     // All values via cross-sheet formulas to LED Cost Sheet
     // IMPORTANT: result values required — browser preview can't resolve cross-sheet formulas
@@ -2645,7 +2718,7 @@ function buildTechSpecsSheet(
     // Sq Ft: =D*E*B (height × width × qty)
     r.getCell(8).value = { formula: `D${row}*E${row}*B${row}`, result: d.areaSqFt };
     r.getCell(8).numFmt = "#,##0";
-    r.getCell(9).value = { formula: `'LED Cost Sheet'!K${ledRow}`, result: d.spec.brightnessNits ?? "" };
+    r.getCell(9).value = { formula: `'LED Cost Sheet'!K${ledRow}`, result: isClockLike ? "" : (d.spec.brightnessNits ?? "") };
     r.getCell(10).value = { formula: `'LED Cost Sheet'!L${ledRow}`, result: d.spec.serviceType || "Front" };
     r.getCell(11).value = d.spec.environment || "indoor";
 
@@ -2664,9 +2737,9 @@ function buildTechSpecsSheet(
     r.getCell(13).value = { formula: `'LED Cost Sheet'!V${ledRow}`, result: tsPower || 0 };
     r.getCell(13).numFmt = "#,##0";
     // Fiber Strands = total pixels / 400,000 (one strand per 400K pixels)
-    const tsFiber = (hPx * wPx * qty) > 0 ? Math.ceil((hPx * wPx * qty) / 400000) : 0;
-    r.getCell(14).value = { formula: `CEILING(F${row}*G${row}*B${row}/400000,1)`, result: tsFiber };
-    r.getCell(14).numFmt = "#,##0";
+    const tsFiber = (hPx * wPx * qty) > 0 ? round2((hPx * wPx * qty) / 400000) : 0;
+    r.getCell(14).value = { formula: `IFERROR((F${row}*G${row}*B${row})/400000,0)`, result: tsFiber };
+    r.getCell(14).numFmt = "0.0";
     r.getCell(15).value = { formula: `'LED Cost Sheet'!W${ledRow}`, result: tsBtu || 0 };
     r.getCell(15).numFmt = "#,##0";
 
