@@ -318,9 +318,13 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       margin: marginPct,
     });
 
-    const hCell = `E${row + 1}`;
-    const wCell = `F${row + 1}`;
-    const qtyCell = `J${row + 1}`;
+    const sqFtPerScreen = h > 0 && w > 0 ? Math.round(h * w * 100) / 100 : 0;
+    const totalSqFt = sqFtPerScreen > 0 ? Math.round(sqFtPerScreen * qty * 100) / 100 : 0;
+    const displayCost = ratePerSqFt > 0 && totalSqFt > 0 ? Math.round(ratePerSqFt * totalSqFt * 100) / 100 : 0;
+    const processorCost = pd?.processorCost ?? 0;
+    const shippingCost = pd?.shippingCost ?? 0;
+    const totalLedCost = Math.round((displayCost + processorCost + shippingCost) * 100) / 100;
+    const resolvedNits = Number(mp?.nits ?? spec.brightnessNits ?? 0) || "";
 
     ledCellData[row] = {
       0: { v: spec.name, s: "bold" },
@@ -331,16 +335,16 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       5: { v: w > 0 ? Math.round(w * 100) / 100 : "", s: "number2" },
       6: pitch > 0 ? { f: `=ROUND(E${row + 1}*304.8/D${row + 1},0)`, s: "number" } : { v: hPx > 0 ? hPx : "" },
       7: pitch > 0 ? { f: `=ROUND(F${row + 1}*304.8/D${row + 1},0)`, s: "number" } : { v: wPx > 0 ? wPx : "" },
-      8: { f: `=ROUND(${hCell}*${wCell},2)`, s: "number2" },
+      8: { v: sqFtPerScreen || "", s: "number2" },
       9: { v: qty },
-      10: { f: `=ROUND(I${row + 1}*${qtyCell},2)`, s: "number2" },
-      11: { v: mp?.nits ?? spec.brightnessNits ?? "" },
+      10: { v: totalSqFt || "", s: "number2" },
+      11: { v: resolvedNits },
       12: { v: spec.serviceType ?? "" },
       13: { v: ratePerSqFt > 0 ? ratePerSqFt : 0, s: "currency2" },
-      14: { f: `=ROUND(N${row + 1}*K${row + 1},2)`, s: "currency" },
-      15: { v: pd?.processorCost ?? 0, s: "currency" },
-      16: { v: pd?.shippingCost ?? 0, s: "currency" },
-      17: { f: `=ROUND(O${row + 1}+P${row + 1}+Q${row + 1},2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } },
+      14: { v: displayCost, s: "currency" },
+      15: { v: processorCost, s: "currency" },
+      16: { v: shippingCost, s: "currency" },
+      17: { v: totalLedCost, s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } },
       18: { v: marginPct, s: getMarginStyle(marginPct) },
       19: { f: guardedSellingFormula(`R${row + 1}`, `S${row + 1}`), s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } },
       20: { v: weight, s: "number" },

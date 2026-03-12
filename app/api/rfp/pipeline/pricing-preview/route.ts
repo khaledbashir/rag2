@@ -92,6 +92,8 @@ export async function POST(request: NextRequest) {
         quantity: pd.spec.quantity,
         areaSqFt: pd.areaSqFt,
         hardwareCost: pd.hardwareCost,
+        processorCost: pd.processorCost,
+        shippingCost: pd.shippingCost,
         installCost: pd.installCost,
         pmCost: pd.pmCost,
         engCost: pd.engCost,

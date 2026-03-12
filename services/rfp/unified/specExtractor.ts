@@ -290,6 +290,101 @@ const BATCH_SIZE = 25; // More pages per batch — uses Mistral's full context
 const MAX_CHARS_PER_BATCH = 80_000; // ~20K tokens — well within Mistral's 128K
 const PARALLEL_BATCHES = 4; // Run up to 4 Mistral calls concurrently
 
+function buildDeterministicScheduleScreens(text: string): ExtractedLEDSpec[] {
+  const itemMatches = [...text.matchAll(/\((\d+)\)\s+([^\n:]+?)(?=(?::|\n))/g)];
+  if (itemMatches.length < 3) return [];
+
+  const screens: ExtractedLEDSpec[] = [];
+
+  for (let i = 0; i < itemMatches.length; i++) {
+    const match = itemMatches[i];
+    const itemNo = match[1];
+    const rawName = match[2].trim().replace(/\s+/g, " ");
+    const start = match.index ?? 0;
+    const end = i + 1 < itemMatches.length ? (itemMatches[i + 1].index ?? text.length) : text.length;
+    const block = text.slice(start, end);
+
+    const dimensionMatches = [...block.matchAll(/(\d+(?:\.\d+)?)\s*'\s*[x×]\s*(\d+(?:\.\d+)?)\s*'/gi)];
+    if (dimensionMatches.length === 0) continue;
+
+    const isOutdoor = /outdoor|ip65|exterior|weather/i.test(block);
+    const serviceType = /front/i.test(block) ? "front" : /rear/i.test(block) ? "rear" : null;
+    const mountingType = /transparent|mesh/i.test(block)
+      ? "mesh / transparent"
+      : /no structural/i.test(block)
+        ? "existing structure / no structural"
+        : null;
+    const specialRequirements = [
+      /transparent|mesh/i.test(block) ? "mesh / transparent" : null,
+      /ip65/i.test(block) ? "IP65" : null,
+      /no structural/i.test(block) ? "LED only / no structural" : null,
+    ].filter(Boolean) as string[];
+
+    const pitchOptions = [...new Set(
+      [...block.matchAll(/(?:option\s*\d+[^.\n]*?)?(\d+(?:\.\d+)?)\s*mm/gi)].map((m) => Number.parseFloat(m[1]))
+    )].filter((n) => Number.isFinite(n));
+
+    const rangeMatch = block.match(/screens?\s+(\d+)\s*[-–]\s*(\d+)/i);
+    const explicitQtyMatch = block.match(/(?:qty|quantity)\s*[:=]?\s*(\d+)/i);
+    const rangeQty = rangeMatch ? (Number.parseInt(rangeMatch[2], 10) - Number.parseInt(rangeMatch[1], 10) + 1) : null;
+    const explicitQty = explicitQtyMatch ? Number.parseInt(explicitQtyMatch[1], 10) : null;
+
+    const baseNames = dimensionMatches.length > 1
+      ? dimensionMatches.map((_m, idx) => `${rawName} ${idx + 1}`)
+      : [rawName];
+
+    dimensionMatches.forEach((dim, idx) => {
+      const widthFt = Number.parseFloat(dim[1]);
+      const heightFt = Number.parseFloat(dim[2]);
+      const quantity = dimensionMatches.length > 1 ? 1 : (explicitQty ?? rangeQty ?? 1);
+      const baseName = baseNames[idx];
+
+      const baseSpec: ExtractedLEDSpec = {
+        name: baseName,
+        location: rawName,
+        widthFt,
+        heightFt,
+        widthPx: null,
+        heightPx: null,
+        pixelPitchMm: pitchOptions[0] ?? null,
+        brightnessNits: null,
+        environment: isOutdoor ? "outdoor" : "indoor",
+        quantity,
+        serviceType,
+        mountingType,
+        maxPowerW: null,
+        weightLbs: null,
+        specialRequirements,
+        confidence: 0.95,
+        sourcePages: [],
+        sourceType: "table",
+        citation: `[Deterministic schedule parse: Item ${itemNo}]`,
+        notes: null,
+        isAlternate: false,
+        alternateId: null,
+        alternateDescription: null,
+      };
+
+      screens.push(baseSpec);
+
+      if (pitchOptions.length > 1) {
+        for (let p = 1; p < pitchOptions.length; p++) {
+          screens.push({
+            ...baseSpec,
+            name: `${baseName} — Option ${p + 1}`,
+            pixelPitchMm: pitchOptions[p],
+            isAlternate: true,
+            alternateId: `Item ${itemNo} Option ${p + 1}`,
+            alternateDescription: `${pitchOptions[p]}mm alternate`,
+          });
+        }
+      }
+    });
+  }
+
+  return screens;
+}
+
 export async function extractLEDSpecsBatched(
   relevantPages: AnalyzedPage[],
   onProgress?: (batch: number, totalBatches: number) => void,
@@ -396,6 +491,13 @@ export async function extractLEDSpecsBatched(
     if (result.project.bondRequired) project.bondRequired = true;
     project.specialRequirements = [...new Set([...project.specialRequirements, ...result.project.specialRequirements])];
     project.schedulePhases = [...project.schedulePhases, ...result.project.schedulePhases];
+  }
+
+  const deterministicScreens = buildDeterministicScheduleScreens(
+    relevantPages.map((p) => [p.markdown, ...p.tables.map((t) => t.content)].join("\n")).join("\n\n")
+  );
+  if (deterministicScreens.length > 0) {
+    allScreens.push(...deterministicScreens);
   }
 
   // Quarantine incomplete specs instead of silently dropping them

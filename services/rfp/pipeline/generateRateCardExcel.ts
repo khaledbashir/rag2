@@ -57,6 +57,10 @@ export interface PricedDisplay {
   areaSqFt: number;
   /** Hardware cost (from quote or rate card) */
   hardwareCost: number;
+  /** Processor / bundle equipment cost */
+  processorCost: number;
+  /** Shipping / logistics cost */
+  shippingCost: number;
   /** Installation cost */
   installCost: number;
   /** PM cost */
@@ -138,6 +142,57 @@ import { excelCurrencyFmt } from "@/services/pricing/currencyService";
 
 let FMT = '"$"#,##0';
 const PCT = "0.0%";
+
+const PROCESSOR_PIXELS_PER_PORT = 650000;
+const PROCESSOR_SMALL_UNIT_COST = 450;
+const PROCESSOR_LARGE_UNIT_COST = 8400;
+const SIGNAL_CABLE_PER_25_SQFT = 15;
+const UPS_BATTERY_COST = 2500;
+const BACKUP_PROCESSOR_COST = 12000;
+const WEATHERPROOF_PER_SQFT = 12;
+
+function getDisplayClassificationText(spec: ExtractedLEDSpec): string {
+  return [
+    spec.name,
+    spec.location,
+    spec.mountingType,
+    spec.notes,
+    ...(spec.specialRequirements || []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function computeProcessorAndShipping(spec: ExtractedLEDSpec, areaSqFt: number): {
+  processorCost: number;
+  shippingCost: number;
+} {
+  const widthFt = spec.widthFt || 0;
+  const heightFt = spec.heightFt || 0;
+  const qty = spec.quantity || 1;
+  const pitch = spec.pixelPitchMm || 0;
+  const widthPx = spec.widthPx || (pitch > 0 ? Math.round(widthFt * 304.8 / pitch) : 0);
+  const heightPx = spec.heightPx || (pitch > 0 ? Math.round(heightFt * 304.8 / pitch) : 0);
+  const totalPixels = widthPx * heightPx * qty;
+  const portsNeeded = totalPixels > 0 ? Math.ceil(totalPixels / PROCESSOR_PIXELS_PER_PORT) : 0;
+  const portsPerUnit = portsNeeded > 8 ? 16 : 8;
+  const processorUnitCost = portsNeeded > 8 ? PROCESSOR_LARGE_UNIT_COST : PROCESSOR_SMALL_UNIT_COST;
+  const processorsNeeded = portsNeeded > 0 ? Math.ceil(portsNeeded / portsPerUnit) : (areaSqFt > 0 ? 1 : 0);
+
+  const displayText = getDisplayClassificationText(spec);
+  const isScoreboardLike = /scoreboard|center.?hung|hanging|jumbotron/i.test(displayText);
+  const signalCableCost = areaSqFt > 0 ? round2(SIGNAL_CABLE_PER_25_SQFT * (areaSqFt / 25)) : 0;
+  const upsCost = isScoreboardLike ? UPS_BATTERY_COST : 0;
+  const backupProcessorCost = areaSqFt > 300 ? BACKUP_PROCESSOR_COST : 0;
+  const weatherproofCost = spec.environment === "outdoor" ? round2(areaSqFt * WEATHERPROOF_PER_SQFT) : 0;
+  const processorCost = round2(processorsNeeded * processorUnitCost + signalCableCost + upsCost + backupProcessorCost + weatherproofCost);
+
+  const rawShipping = areaSqFt > 0 ? round2(areaSqFt * 10) : 0;
+  const shippingCost = rawShipping > 0 ? Math.max(rawShipping, 500) : 0;
+
+  return { processorCost, shippingCost };
+}
 
 // ─── Core: Price Each Display ───────────────────────────────────────────────
 
@@ -270,8 +325,9 @@ async function priceDisplay(
   const ledMarginPct = MARGIN_PRESETS.ledHardware; // 30%
   const svcMarginPct = getServiceMargin(areaSqFt); // 20% or 30% for small
 
+  const { processorCost, shippingCost } = computeProcessorAndShipping(spec, areaSqFt);
   const servicesCost = installCost + pmCost + engCost;
-  const totalCost = hardwareCost + servicesCost;
+  const totalCost = hardwareCost + processorCost + shippingCost + servicesCost;
 
   // Selling prices using Natalia's divisor model
   const hardwareSellingPrice = hardwareCost > 0 ? round2(hardwareCost / (1 - ledMarginPct)) : 0;
@@ -287,6 +343,8 @@ async function priceDisplay(
     match,
     areaSqFt,
     hardwareCost,
+    processorCost,
+    shippingCost,
     installCost,
     pmCost,
     engCost,

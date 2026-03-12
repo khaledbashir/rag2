@@ -164,10 +164,11 @@ function buildPricedDisplay(
   const areaSqFt = audit?.areaSqFt ?? ((spec.widthFt ?? 0) * (spec.heightFt ?? 0));
 
   const hardwareCost = b?.hardware ?? 0;
+  const shippingCost = b?.shipping ?? 0;
   const installCost = (b?.structure ?? 0) + (b?.install ?? 0) + (b?.labor ?? 0) + (b?.power ?? 0);
   const pmCost = (b?.pm ?? 0) + (b?.generalConditions ?? 0) + (b?.travel ?? 0);
   const engCost = (b?.engineering ?? 0) + (b?.permits ?? 0) + (b?.submittals ?? 0);
-  const totalCost = b?.totalCost ?? (hardwareCost + installCost + pmCost + engCost + (b?.shipping ?? 0) + (b?.cms ?? 0) + (b?.demolition ?? 0));
+  const totalCost = b?.totalCost ?? (hardwareCost + installCost + pmCost + engCost + shippingCost + (b?.cms ?? 0) + (b?.demolition ?? 0));
   const sellPrice = b?.sellPrice ?? 0;
   const marginDollars = b?.ancMargin ?? (sellPrice - totalCost);
   const blendedMarginPct = sellPrice > 0 && totalCost > 0 && totalCost < sellPrice
@@ -180,6 +181,8 @@ function buildPricedDisplay(
     match: null,
     areaSqFt,
     hardwareCost,
+    processorCost: 0,
+    shippingCost,
     installCost,
     pmCost,
     engCost,

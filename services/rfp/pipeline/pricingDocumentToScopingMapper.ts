@@ -218,6 +218,8 @@ function buildPricedDisplay(
     match: null,
     areaSqFt,
     hardwareCost,
+    processorCost: equipmentCost,
+    shippingCost: 0,
     installCost: structuralCost + installCost + electricalCost,
     pmCost,
     engCost,
