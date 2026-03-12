@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
         log.info(`[BOT] Created proposal ${proposal.id} for "${clientName}" — ${pricingDocument.tables.length} tables, $${grandTotal.toLocaleString()}`);
 
         if (returnFormat === "url") {
-            const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://basheer-natalia.prd42b.easypanel.host";
+            const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://proposals.anc.com";
             const projectUrl = `${baseUrl}/projects/${proposal.id}`;
             const pdfUrl = `${baseUrl}/api/projects/${proposal.id}/pdf`;
 

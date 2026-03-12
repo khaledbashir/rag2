@@ -3,7 +3,10 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
-const ANYTHINGLLM_URL = "https://basheer-anything-llm.prd42b.easypanel.host";
+const ANYTHINGLLM_URL =
+    process.env.NEXT_PUBLIC_ANYTHING_LLM_URL ||
+    process.env.NEXT_PUBLIC_BASE_URL ||
+    "https://proposals.anc.com";
 
 /**
  * Full-page AnythingLLM iframe.

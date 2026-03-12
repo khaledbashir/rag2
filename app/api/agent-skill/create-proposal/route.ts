@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 8. Build project URL
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://basheer-natalia.prd42b.easypanel.host";
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://proposals.anc.com";
     const projectUrl = `${baseUrl}/projects/${proposal.id}`;
 
     log.info(`[AGENT-SKILL] Created proposal ${proposal.id} for "${clientName}" — ${lineItems.length} items, $${total.toLocaleString()}`);

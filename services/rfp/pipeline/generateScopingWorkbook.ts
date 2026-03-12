@@ -980,16 +980,52 @@ function buildBudgetSummary(
   stR.getCell(6).value = { formula: `IFERROR(1-C${row}/D${row},0)`, result: grandMarginPct };
   stR.getCell(6).numFmt = FMT_PCT;
   totalStyle(stR, 6, C.MEDIUM_GRAY);
+  const subtotalRow = row;
   row++;
 
-  // Grand total — formula-linked to subtotal for consistency
+  const taxRateVal = ov?.taxRate ?? 0;
+  const budgetBondRateVal = ov?.servicesMarginPct === 0 ? 0 : (ov?.bondRate ?? 0);
+
+  const taxR = ws.getRow(row);
+  taxR.getCell(2).value = "TAX";
+  taxR.getCell(3).value = 0;
+  taxR.getCell(3).numFmt = FMT_USD;
+  taxR.getCell(4).value = taxRateVal > 0
+    ? { formula: `D${subtotalRow}*${taxRateVal}`, result: round2(grandSelling * taxRateVal) }
+    : 0;
+  taxR.getCell(4).numFmt = FMT_USD;
+  taxR.getCell(5).value = taxRateVal > 0 ? { formula: `D${row}-C${row}`, result: round2(grandSelling * taxRateVal) } : 0;
+  taxR.getCell(5).numFmt = FMT_USD;
+  taxR.getCell(6).value = taxRateVal;
+  taxR.getCell(6).numFmt = FMT_PCT;
+  stripe(taxR, 6, row % 2 === 0);
   row++;
+
+  const bondR = ws.getRow(row);
+  bondR.getCell(2).value = "BOND";
+  bondR.getCell(3).value = 0;
+  bondR.getCell(3).numFmt = FMT_USD;
+  bondR.getCell(4).value = budgetBondRateVal > 0
+    ? { formula: `D${subtotalRow}*${budgetBondRateVal}`, result: round2(grandSelling * budgetBondRateVal) }
+    : 0;
+  bondR.getCell(4).numFmt = FMT_USD;
+  bondR.getCell(5).value = budgetBondRateVal > 0 ? { formula: `D${row}-C${row}`, result: round2(grandSelling * budgetBondRateVal) } : 0;
+  bondR.getCell(5).numFmt = FMT_USD;
+  bondR.getCell(6).value = budgetBondRateVal;
+  bondR.getCell(6).numFmt = FMT_PCT;
+  stripe(bondR, 6, row % 2 === 0);
+  row++;
+
+  // Grand total — must match the authoritative Margin Analysis / Project Overview bottom line exactly
   const gtR = ws.getRow(row);
   gtR.getCell(2).value = "GRAND TOTAL";
-  gtR.getCell(3).value = { formula: `C${row - 2}`, result: grandCost }; gtR.getCell(3).numFmt = FMT_USD;
-  gtR.getCell(4).value = { formula: `D${row - 2}`, result: grandSelling }; gtR.getCell(4).numFmt = FMT_USD;
-  gtR.getCell(5).value = { formula: `IFERROR(D${row}-C${row},0)`, result: grandMargin }; gtR.getCell(5).numFmt = FMT_USD;
-  gtR.getCell(6).value = { formula: `IFERROR(1-C${row}/D${row},0)`, result: grandMarginPct }; gtR.getCell(6).numFmt = FMT_PCT;
+  const documentTotal = grandSelling;
+  const documentMargin = grandMargin;
+  const documentMarginPct = grandMarginPct;
+  gtR.getCell(3).value = { formula: `C${subtotalRow}`, result: grandCost }; gtR.getCell(3).numFmt = FMT_USD;
+  gtR.getCell(4).value = { formula: `D${subtotalRow}`, result: documentTotal }; gtR.getCell(4).numFmt = FMT_USD;
+  gtR.getCell(5).value = { formula: `IFERROR(D${row}-C${row},0)`, result: documentMargin }; gtR.getCell(5).numFmt = FMT_USD;
+  gtR.getCell(6).value = { formula: `IFERROR(1-C${row}/D${row},0)`, result: documentMarginPct }; gtR.getCell(6).numFmt = FMT_PCT;
   totalStyle(gtR, 6, C.ANC_BLUE);
   for (let c = 2; c <= 6; c++) {
     gtR.getCell(c).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
@@ -1143,11 +1179,15 @@ function buildMarginAnalysis(
     const taxRow = row;
     const txR = ws.getRow(row);
     txR.getCell(2).value = "    TAX"; txR.getCell(2).font = subFont;
+    txR.getCell(3).value = 0;
+    txR.getCell(3).numFmt = FMT_USD;
     const taxRateVal = ov?.taxRate ?? 0;
     txR.getCell(4).value = taxRateVal > 0
       ? { formula: `D${subtotalRow}*G${row}`, result: round2(d.sellingPrice * taxRateVal) }
       : 0;
     txR.getCell(4).numFmt = FMT_USD;
+    txR.getCell(5).value = 0;
+    txR.getCell(5).numFmt = FMT_USD;
     txR.getCell(7).value = taxRateVal; txR.getCell(7).numFmt = FMT_PCT; inputCell(txR.getCell(7));
     row++;
 
@@ -1155,11 +1195,15 @@ function buildMarginAnalysis(
     const bondRow = row;
     const bdR = ws.getRow(row);
     bdR.getCell(2).value = "    BOND"; bdR.getCell(2).font = subFont;
+    bdR.getCell(3).value = 0;
+    bdR.getCell(3).numFmt = FMT_USD;
     const bondRateVal = ov?.servicesMarginPct === 0 ? 0 : (ov?.bondRate ?? (includeBond ? rc("bond_tax.bond_rate", BOND_RATE) : 0));
     bdR.getCell(4).value = bondRateVal > 0
       ? { formula: `D${subtotalRow}*G${row}`, result: round2(d.sellingPrice * bondRateVal) }
       : 0;
     bdR.getCell(4).numFmt = FMT_USD;
+    bdR.getCell(5).value = 0;
+    bdR.getCell(5).numFmt = FMT_USD;
     bdR.getCell(7).value = bondRateVal; bdR.getCell(7).numFmt = FMT_PCT; inputCell(bdR.getCell(7));
     row++;
 
@@ -1167,8 +1211,12 @@ function buildMarginAnalysis(
     const tariffRow = row;
     const trR = ws.getRow(row);
     trR.getCell(2).value = "    TARIFF"; trR.getCell(2).font = subFont;
+    trR.getCell(3).value = 0;
+    trR.getCell(3).numFmt = FMT_USD;
     trR.getCell(4).value = 0;
     trR.getCell(4).numFmt = FMT_USD;
+    trR.getCell(5).value = 0;
+    trR.getCell(5).numFmt = FMT_USD;
     trR.getCell(7).value = 0; trR.getCell(7).numFmt = FMT_PCT; inputCell(trR.getCell(7));
     row++;
 
@@ -1664,7 +1712,7 @@ function buildInstallSheet(
     r.getCell(2).value = item;
     let cost = 0;
     if (i === 2) cost = d.structuralLaborCost; // INSTALL LED DISPLAYS
-    if (i === 5) { cost = d.pmCost; pmItemRow = row; } // PM/GC/TRAVEL
+    if (i === 5) { cost = d.pmCost + d.travelCost; pmItemRow = row; } // PM/GC/TRAVEL
     r.getCell(3).value = cost; r.getCell(3).numFmt = FMT_USD; inputCell(r.getCell(3));
     r.getCell(4).value = 0; r.getCell(4).numFmt = FMT_USD; inputCell(r.getCell(4));
     r.getCell(5).value = 0; r.getCell(5).numFmt = FMT_USD; inputCell(r.getCell(5));
@@ -1685,9 +1733,9 @@ function buildInstallSheet(
   const laborSubtotalRow = row;
   const lSubR = ws.getRow(row);
   lSubR.getCell(2).value = "SUBTOTAL";
-  lSubR.getCell(9).value = { formula: `SUM(I${laborStartRow}:I${row - 1})`, result: d.structuralLaborCost + d.pmCost };
+  lSubR.getCell(9).value = { formula: `SUM(I${laborStartRow}:I${row - 1})`, result: d.structuralLaborCost + d.pmCost + d.travelCost };
   lSubR.getCell(9).numFmt = FMT_USD;
-  lSubR.getCell(11).value = { formula: `SUM(K${laborStartRow}:K${row - 1})`, result: round2((d.structuralLaborCost + d.pmCost) / (1 - svcMargin)) };
+  lSubR.getCell(11).value = { formula: `SUM(K${laborStartRow}:K${row - 1})`, result: round2((d.structuralLaborCost + d.pmCost + d.travelCost) / (1 - svcMargin)) };
   lSubR.getCell(11).numFmt = FMT_USD;
   subtotalBorder(lSubR, 11);
   row += 2;

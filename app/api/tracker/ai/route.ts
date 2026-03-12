@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { log } from "@/lib/logger";
 
-const ANYTHING_LLM_URL = process.env.ANYTHING_LLM_URL || "https://basheer-anything-llm.prd42b.easypanel.host/api/v1";
+const ANYTHING_LLM_URL = process.env.ANYTHING_LLM_URL || "https://proposals.anc.com/api/llm";
 const ANYTHING_LLM_KEY = process.env.ANYTHING_LLM_KEY || "";
 const ANYTHING_LLM_WORKSPACE = process.env.TRACKER_LLM_WORKSPACE || "phase2";
 

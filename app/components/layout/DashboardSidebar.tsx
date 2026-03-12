@@ -64,15 +64,8 @@ const mainMenuItems: NavItem[] = [
 
 const toolsMenuItems: NavItem[] = [
     { icon: MessageSquare, label: "Chat", href: "/chat", allowedRoles: null, devOnly: true },
-    {
-        icon: Scan,
-        label: "RFP Analyzer",
-        href: "/tools/rfp-analyzer",
-        allowedRoles: null,
-        children: [
-            { label: "History", href: "/tools/rfp-analyzer/history", icon: History },
-        ],
-    },
+    { icon: Scan, label: "RFP Analyzer", href: "/tools/rfp-analyzer", allowedRoles: null },
+    { icon: History, label: "RFP History", href: "/tools/rfp-analyzer/history", allowedRoles: null },
     { icon: FileSignature, label: "SOW Builder", href: "/tools/sow-generator", allowedRoles: null },
     { icon: FileSpreadsheet, label: "Spec Generator", href: "/tools/spec-generator", allowedRoles: null, hidden: true },
     { icon: Calculator, label: "Estimator", href: "/estimator", allowedRoles: null },
