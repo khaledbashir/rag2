@@ -94,7 +94,7 @@ export default function DashboardSidebar() {
     const { data: session } = useSession();
     const { hasRole, userRole, isLoading } = useRbac();
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [expanded, setExpanded] = useState(false);
+    const [expanded, setExpanded] = useState(true);
     const [mounted, setMounted] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
@@ -111,7 +111,17 @@ export default function DashboardSidebar() {
         return hasRole(allowedRoles);
     };
 
-    useEffect(() => { setMounted(true); }, []);
+    useEffect(() => {
+        setMounted(true);
+        // Restore sidebar expanded state from localStorage
+        const saved = localStorage.getItem("anc-sidebar-expanded");
+        if (saved !== null) setExpanded(saved === "true");
+    }, []);
+
+    // Persist sidebar expanded state
+    useEffect(() => {
+        if (mounted) localStorage.setItem("anc-sidebar-expanded", String(expanded));
+    }, [expanded, mounted]);
 
     // Auto-expand groups whose children are active
     useEffect(() => {

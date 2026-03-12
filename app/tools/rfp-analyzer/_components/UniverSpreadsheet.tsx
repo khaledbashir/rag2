@@ -2044,7 +2044,7 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
 
         // Mark the initial build key so rebuild effect doesn't double-build
         lastBuiltRef.current = JSON.stringify({
-          screens: propsRef.current.screens.map(s => ({ n: s.name, q: s.quantity, p: s.pixelPitchMm })),
+          screens: propsRef.current.screens.map(s => ({ n: s.name, q: s.quantity, p: s.pixelPitchMm, h: s.heightFt, w: s.widthFt })),
           displays: propsRef.current.pricingDisplays.map(d => ({ n: d.name, c: d.hardwareCost, s: d.totalSellingPrice, m: d.blendedMarginPct })),
           docTables: getPricingDocumentFingerprint(propsRef.current.pricingDocument),
         });
@@ -2077,7 +2077,7 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
 
     // Serialize current props to detect changes
     const currentKey = JSON.stringify({
-      screens: props.screens.map(s => ({ n: s.name, q: s.quantity, p: s.pixelPitchMm })),
+      screens: props.screens.map(s => ({ n: s.name, q: s.quantity, p: s.pixelPitchMm, h: s.heightFt, w: s.widthFt })),
       displays: props.pricingDisplays.map(d => ({ n: d.name, c: d.hardwareCost, s: d.totalSellingPrice, m: d.blendedMarginPct })),
       docTables: getPricingDocumentFingerprint(props.pricingDocument),
     });

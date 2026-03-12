@@ -17,6 +17,7 @@ import type {
   ExtractedRequirement,
 } from "@/services/rfp/unified/types";
 import { buildProjectSummary, type ProjectSummaryInfo } from "@/services/proposal/server/exportMirrorUglySheetExcel";
+import { generateRateCardExcel } from "@/services/rfp/pipeline/generateRateCardExcel";
 import { log } from "@/lib/logger";
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
@@ -276,6 +277,109 @@ export async function POST(request: NextRequest) {
       r.getCell(2).font = { size: 10, name: "Calibri" };
       stripeRow(r, 2, idx % 2 === 0);
     });
+
+    // ━━━ SHEET 4: Margin Analysis ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    let pricedDisplays: any[] = [];
+    try {
+      const rateCardResult = await generateRateCardExcel({
+        project,
+        specs,
+        quotes: [],
+        zoneClass: "standard",
+        installComplexity: "standard",
+        includeBond: false,
+        currency: "USD",
+      });
+      pricedDisplays = rateCardResult.pricedDisplays || [];
+    } catch {
+      // If rate card fails, skip MA sheet
+    }
+
+    if (pricedDisplays.length > 0) {
+      const maSheet = workbook.addWorksheet("Margin Analysis", {
+        properties: { tabColor: { argb: "FF217346" } },
+      });
+
+      // Title
+      maSheet.mergeCells("A1:F1");
+      const maTitle = maSheet.getCell("A1");
+      maTitle.value = `MARGIN ANALYSIS — ${projectName.toUpperCase()}`;
+      maTitle.font = { size: 14, bold: true, color: { argb: COLORS.WHITE }, name: "Calibri" };
+      maTitle.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF217346" } };
+      maTitle.alignment = { horizontal: "center", vertical: "middle" };
+      maSheet.getRow(1).height = 32;
+
+      // Column widths
+      const maCols = [4, 40, 16, 16, 16, 12];
+      maCols.forEach((w, i) => { maSheet.getColumn(i + 1).width = w; });
+
+      // Headers
+      const maHeaders = ["#", "Line Item", "Cost", "Selling Price", "Margin $", "Margin %"];
+      const mahr = maSheet.getRow(3);
+      maHeaders.forEach((h, i) => {
+        mahr.getCell(i + 1).value = h;
+        styleHeaderCell(mahr.getCell(i + 1), "FF217346");
+      });
+      mahr.height = 28;
+
+      // Data rows
+      let totalCost = 0;
+      let totalSelling = 0;
+      pricedDisplays.forEach((d: any, idx: number) => {
+        const r = maSheet.getRow(4 + idx);
+        const cost = d.totalCost || 0;
+        const selling = d.totalSellingPrice || 0;
+        const marginDollar = d.marginDollars ?? (selling - cost);
+        const marginPct = d.blendedMarginPct ?? (selling > 0 ? (selling - cost) / selling : 0);
+
+        r.getCell(1).value = idx + 1;
+        r.getCell(2).value = d.spec?.name || `Display ${idx + 1}`;
+        r.getCell(2).font = { bold: true, size: 10, name: "Calibri" };
+        r.getCell(3).value = cost;
+        r.getCell(3).numFmt = "$#,##0";
+        r.getCell(4).value = selling;
+        r.getCell(4).numFmt = "$#,##0";
+        r.getCell(5).value = marginDollar;
+        r.getCell(5).numFmt = "$#,##0";
+        r.getCell(6).value = marginPct;
+        r.getCell(6).numFmt = "0.0%";
+
+        r.font = { size: 10, name: "Calibri" };
+        r.getCell(1).alignment = { horizontal: "center" };
+        r.getCell(3).alignment = { horizontal: "right" };
+        r.getCell(4).alignment = { horizontal: "right" };
+        r.getCell(5).alignment = { horizontal: "right" };
+        r.getCell(6).alignment = { horizontal: "center" };
+
+        totalCost += cost;
+        totalSelling += selling;
+
+        stripeRow(r, maCols.length, idx % 2 === 0);
+      });
+
+      // Total row
+      const totalRow = maSheet.getRow(4 + pricedDisplays.length + 1);
+      totalRow.getCell(2).value = "TOTAL";
+      totalRow.getCell(2).font = { bold: true, size: 11, name: "Calibri" };
+      totalRow.getCell(3).value = totalCost;
+      totalRow.getCell(3).numFmt = "$#,##0";
+      totalRow.getCell(3).font = { bold: true, size: 11, name: "Calibri" };
+      totalRow.getCell(4).value = totalSelling;
+      totalRow.getCell(4).numFmt = "$#,##0";
+      totalRow.getCell(4).font = { bold: true, size: 11, name: "Calibri" };
+      totalRow.getCell(5).value = totalSelling - totalCost;
+      totalRow.getCell(5).numFmt = "$#,##0";
+      totalRow.getCell(5).font = { bold: true, size: 11, name: "Calibri" };
+      totalRow.getCell(6).value = totalSelling > 0 ? (totalSelling - totalCost) / totalSelling : 0;
+      totalRow.getCell(6).numFmt = "0.0%";
+      totalRow.getCell(6).font = { bold: true, size: 11, name: "Calibri" };
+
+      // Bold border on total row
+      for (let i = 1; i <= maCols.length; i++) {
+        totalRow.getCell(i).border = { top: { style: "double", color: { argb: "FF217346" } } };
+      }
+    }
 
     // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer();

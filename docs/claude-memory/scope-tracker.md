@@ -133,6 +133,29 @@ _(none currently)_
 
 ---
 
+## From Natalia (March 12, 2026 — Live Testing Batch)
+
+### Bugs (FREE — reasonable fixes)
+1. **Missing underpass screens** — ✅ FIXED
+2. **#NAME? errors on Yaham rows** — ✅ FIXED
+3. **Processor/shipping $0 on RFP export** — ✅ FIXED
+4. **Unify LED sheet between Budget Builder and RFP** — ✅ FIXED
+5. **Manual add screen** — ✅ FIXED
+6. **Margin Analysis tab missing from RFP export** — RFP workbook doesn't generate an MA tab. Needs same MA sheet that Budget Builder produces (Cost, Selling Price, Margin $, Margin %). — QUEUED
+7. **H/W dimension edits don't recalculate pixels or price** — On LED sheet (both RFP and Budget Builder), editing height/width in feet doesn't update pixel dimensions, SqFt, modules, weight, power, or price. Must be reactive to manual edits. — QUEUED
+
+### Requested (QUEUED)
+8. **Spec sheets in navigation** — Natalia asked "where is spec sheets thingy on the engine?" Wants it added to navbar. — QUEUED
+
+---
+
+## From Jireh (March 12, 2026)
+
+### Requested (QUEUED)
+1. **Navigation labels / feature discovery** — "Is it possible to add to navigation the names of the different features or maybe a box that enlarges?" Wants clearer feature names in nav. — QUEUED
+
+---
+
 ## Reasonable Fixes (NOT scope creep — just making delivered features work)
 - Product dropdown selection bug — BUG FIX
 - QTY editing off-by-one — BUG FIX
