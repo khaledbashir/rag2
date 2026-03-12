@@ -149,7 +149,7 @@ export default function DashboardSidebar() {
             <aside
                 className={cn(
                     "h-screen border-r border-border bg-background flex flex-col z-50 transition-all duration-200 sticky top-0 overflow-hidden shrink-0",
-                    expanded ? "w-56" : "w-16",
+                    expanded ? "w-52" : "w-16",
                 )}
             >
                 {/* Logo + collapse toggle */}
@@ -464,30 +464,36 @@ function NavItemRow({ item, expanded, isActive, isParentActive, canAccess, isGro
     return (
         <div>
             <div className="flex items-center">
-                <Link
-                    href={isRestricted ? "#" : item.href}
-                    title={tooltipText}
-                    className={cn(
-                        "flex-1 flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150",
-                        (isActive || isParentActive) && canAccess
-                            ? "bg-primary/10 text-primary font-medium"
-                            : "text-foreground hover:bg-muted",
-                        (item.soon || isRestricted) && "pointer-events-none opacity-40",
-                    )}
-                >
-                    <Icon className="w-4.5 h-4.5 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                        <div className="truncate">{item.label}</div>
+                <TooltipProvider delayDuration={150}>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Link
+                                href={isRestricted ? "#" : item.href}
+                                className={cn(
+                                    "flex-1 flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150",
+                                    (isActive || isParentActive) && canAccess
+                                        ? "bg-primary/10 text-primary font-medium"
+                                        : "text-foreground hover:bg-muted",
+                                    (item.soon || isRestricted) && "pointer-events-none opacity-40",
+                                )}
+                            >
+                                <Icon className="w-4.5 h-4.5 shrink-0" />
+                                <span className="truncate flex-1">{item.label}</span>
+                                {item.soon && <span className="text-[10px] uppercase tracking-wider text-muted-foreground ml-auto">Soon</span>}
+                                {item.beta && <span className="text-[10px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded ml-auto">BETA</span>}
+                                {item.devOnly && <span className="text-[10px] bg-slate-500/20 text-slate-500 px-1.5 py-0.5 rounded ml-auto">Dev Only</span>}
+                            </Link>
+                        </TooltipTrigger>
                         {item.description && (
-                            <div className="truncate text-[11px] text-muted-foreground font-normal">
-                                {item.description}
-                            </div>
+                            <TooltipContent side="right" className="max-w-64">
+                                <div className="space-y-1">
+                                    <div className="text-xs font-semibold">{item.label}</div>
+                                    <div className="text-xs text-muted-foreground leading-relaxed">{item.description}</div>
+                                </div>
+                            </TooltipContent>
                         )}
-                    </div>
-                    {item.soon && <span className="text-[10px] uppercase tracking-wider text-muted-foreground ml-auto">Soon</span>}
-                    {item.beta && <span className="text-[10px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded ml-auto">BETA</span>}
-                    {item.devOnly && <span className="text-[10px] bg-slate-500/20 text-slate-500 px-1.5 py-0.5 rounded ml-auto">Dev Only</span>}
-                </Link>
+                    </Tooltip>
+                </TooltipProvider>
                 {hasChildren && !isRestricted && (
                     <button
                         onClick={onToggleGroup}
