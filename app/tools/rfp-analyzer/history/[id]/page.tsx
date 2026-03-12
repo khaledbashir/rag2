@@ -21,9 +21,7 @@ import {
   DollarSign,
   Download,
   FileSpreadsheet,
-  MessageSquare,
   Plus,
-  ExternalLink,
   ChevronDown,
   ChevronRight,
   RefreshCcw,
@@ -431,19 +429,7 @@ export default function AnalysisDetailPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            {a.aiWorkspaceSlug && (
-              <Link
-                href={`/chat?workspace=${a.aiWorkspaceSlug}`}
-                target="_blank"
-                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium border border-border text-muted-foreground rounded hover:bg-muted transition-colors"
-              >
-                <MessageSquare className="w-3 h-3" />
-                Cross-Check
-                <ExternalLink className="w-2.5 h-2.5 opacity-50" />
-              </Link>
-            )}
-          </div>
+          <div className="flex items-center gap-1.5" />
         </div>
       </header>
 

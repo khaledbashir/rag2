@@ -30,7 +30,6 @@ import {
   Shield,
   Loader2,
   History,
-  MessageSquare,
   ImageIcon,
   Plus,
   ToggleLeft,
@@ -2287,16 +2286,6 @@ export default function RfpAnalyzerClient() {
                 <div className="flex items-center justify-between px-3 py-1">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold tracking-wide truncate">{workbookData.fileName || "RFP Analysis"}</span>
-                    {result.aiWorkspaceSlug && (
-                      <Link
-                        href={`/chat?workspace=${result.aiWorkspaceSlug}`}
-                        target="_blank"
-                        className="flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition-colors"
-                      >
-                        <MessageSquare className="w-3 h-3" />
-                        Cross-Check
-                      </Link>
-                    )}
                   </div>
                   <div className="flex items-center gap-1">
                     {/* Primary action - always visible */}
