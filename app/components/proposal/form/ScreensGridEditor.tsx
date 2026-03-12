@@ -162,6 +162,9 @@ export default function ScreensGridEditor() {
       zoneComplexity,
       zoneSize,
       pitchMm: pitchMm > 0 ? pitchMm : product.pitchMm,
+      resolutionW,
+      resolutionH,
+      pixelResolution: resolutionW * resolutionH,
       calculatedExhibitG: {
         displayWidthFt: exhibitG.displayWidthFt,
         displayHeightFt: exhibitG.displayHeightFt,

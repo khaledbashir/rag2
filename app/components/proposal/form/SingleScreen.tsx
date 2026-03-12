@@ -92,12 +92,14 @@ const SingleScreen = ({
             const area = calculateArea(Number(width), Number(height));
             setValue(`${name}[${index}].areaSqFt`, area);
         }
-        if (width !== undefined && height !== undefined && pitch !== undefined) {
-            const pitchFeet = Number(pitch) / 304.8;
-            const pixelsHeight = Number(height) / pitchFeet;
-            const pixelsWidth = Number(width) / pitchFeet;
-            const pixelResolution = Math.round(pixelsHeight * pixelsWidth);
+        if (width !== undefined && height !== undefined && pitch !== undefined && Number(pitch) > 0) {
+            const pitchMm = Number(pitch);
+            const pixelsHeight = Math.round((Number(height) * 304.8) / pitchMm);
+            const pixelsWidth = Math.round((Number(width) * 304.8) / pitchMm);
+            const pixelResolution = pixelsHeight * pixelsWidth;
             setValue(`${name}[${index}].pixelResolution`, pixelResolution);
+            setValue(`${name}[${index}].resolutionW`, pixelsWidth);
+            setValue(`${name}[${index}].resolutionH`, pixelsHeight);
         }
     }, [width, height, pitch, name, index, setValue]);
 

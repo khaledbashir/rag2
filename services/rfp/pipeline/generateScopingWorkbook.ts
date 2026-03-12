@@ -419,8 +419,9 @@ function computeDisplays(
     const backupProcessorCost = areaSqFt > 300 ? BUNDLES.backupProcessor : 0;
     const weatherproofCost = spec.environment === "outdoor" ? round2(areaSqFt * BUNDLES.weatherproofPerSqFt) : 0;
 
-    // Shipping — override from cell edit or default $10/sqft
-    const shippingCost = co?.shipping != null ? co.shipping : (hasDimensions ? round2(areaSqFt * 10) : 0);
+    // Shipping — override from cell edit or default $10/sqft (minimum $500 for any real display)
+    const rawShipping = hasDimensions ? round2(areaSqFt * 10) : 0;
+    const shippingCost = co?.shipping != null ? co.shipping : (rawShipping > 0 ? Math.max(rawShipping, 500) : 0);
 
     // Apply union multiplier to labor-related costs
     const totalCost = round2(
@@ -1339,12 +1340,13 @@ function buildLedCostSheet(
     dr.getCell(13).numFmt = FMT_USD;
     // Display Cost (LED hardware + spare parts rolled in)
     dr.getCell(14).value = d.ledHardwareCost + d.sparePartsCost; dr.getCell(14).numFmt = FMT_USD;
-    // Processor
-    dr.getCell(15).value = d.sendingCardCost || 0; dr.getCell(15).numFmt = FMT_USD;
+    // Processor — full bundle equipment cost (sending card + signal cable + UPS + backup + weatherproof)
+    const bundleEquipmentCost = d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost;
+    dr.getCell(15).value = bundleEquipmentCost || 0; dr.getCell(15).numFmt = FMT_USD;
     // Shipping
     dr.getCell(16).value = d.shippingCost; dr.getCell(16).numFmt = FMT_USD;
-    // Total Cost = Display + Processor + Shipping
-    dr.getCell(17).value = { formula: `N${row}+O${row}+P${row}`, result: ledWithSpares + (d.sendingCardCost || 0) + d.shippingCost };
+    // Total Cost = Display + Processor Bundle + Shipping
+    dr.getCell(17).value = { formula: `N${row}+O${row}+P${row}`, result: ledWithSpares + bundleEquipmentCost + d.shippingCost };
     dr.getCell(17).numFmt = FMT_USD;
     dr.getCell(17).font = { bold: true, name: "Calibri" };
     // Margin %
