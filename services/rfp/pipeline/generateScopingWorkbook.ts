@@ -367,6 +367,9 @@ function computeDisplays(
       electricalCost = round2(areaSqFt * RATES.electricalPerSqFt);
     }
 
+    // Supply-only mode: when services margin is explicitly 0%, zero out all non-LED costs
+    const supplyOnly = ov?.servicesMarginPct === 0;
+
     // PM & Engineering — rate card backed, with complexity multiplier
     const pmMult = ov?.pmComplexity === "complex" ? 2 : ov?.pmComplexity === "major" ? 3 : 1;
     const pmBase = rc("other.pm_base_fee", PM_BASE_FEE);
@@ -383,9 +386,6 @@ function computeDisplays(
 
     // Union labor: 15% uplift on labor-related costs
     const unionMult = ov?.isUnionLabor ? 1.15 : 1.0;
-
-    // Supply-only mode: when services margin is explicitly 0%, zero out all non-LED costs
-    const supplyOnly = ov?.servicesMarginPct === 0;
 
     // Skip fixed costs if display has no dimensions (can't scope it)
     const hasDimensions = areaSqFt > 0 && !supplyOnly;
