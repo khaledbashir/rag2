@@ -1516,8 +1516,18 @@ function QuestionInput({
             const currentDisplay = (phase === "display" && answers?.displays) ? answers.displays[displayIndex ?? 0] : null;
             const currentProductId = currentDisplay?.productId;
             const currentProductSpec = currentProductId && productSpecs ? productSpecs[currentProductId] : null;
-            const snapLayout = (value?.widthFt > 0 && value?.heightFt > 0 && currentProductSpec)
-                ? calculateCabinetLayout(value.widthFt, value.heightFt, currentProductSpec, currentDisplay?.productName)
+            const currentPitch = parseFloat(currentDisplay?.pixelPitch || "4") || 4;
+            const effectiveProductSpec = currentProductSpec
+                ? { ...currentProductSpec, pixelPitch: currentPitch }
+                : null;
+            const estimatedResolution = (value?.widthFt > 0 && value?.heightFt > 0 && currentPitch > 0)
+                ? {
+                    widthPx: Math.round((value.widthFt * 304.8) / currentPitch),
+                    heightPx: Math.round((value.heightFt * 304.8) / currentPitch),
+                }
+                : null;
+            const snapLayout = (value?.widthFt > 0 && value?.heightFt > 0 && effectiveProductSpec)
+                ? calculateCabinetLayout(value.widthFt, value.heightFt, effectiveProductSpec, currentDisplay?.productName)
                 : null;
 
             return (
@@ -1606,6 +1616,24 @@ function QuestionInput({
                                 <span>{snapLayout.totalWeightLbs.toLocaleString()} lbs</span>
                                 <span>·</span>
                                 <span>{snapLayout.totalMaxPowerW.toLocaleString()} W</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Live pitch-based resolution fallback even before product reselection */}
+                    {!snapLayout && estimatedResolution && (
+                        <div className="rounded-lg border border-border bg-muted/20 p-3">
+                            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
+                                <Tv className="w-3 h-3" />
+                                Live Resolution Estimate
+                            </div>
+                            <div className="mt-2 flex items-center gap-2 text-sm">
+                                <span className="font-semibold text-foreground">
+                                    {estimatedResolution.widthPx.toLocaleString()} × {estimatedResolution.heightPx.toLocaleString()} px
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                    at {currentPitch}mm pitch
+                                </span>
                             </div>
                         </div>
                     )}
