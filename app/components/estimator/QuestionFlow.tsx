@@ -1032,7 +1032,7 @@ function getSectionLabel(questionId: string | undefined): string {
 function getFinancialSection(questionId: string | undefined): string {
     if (!questionId) return "Settings";
     const SECTION_MAP: Record<string, string> = {
-        marginTier: "Margins", ledMargin: "Margins", servicesMargin: "Margins", defaultMargin: "Margins",
+        marginTier: "Margins", ledMargin: "Margins", servicesMargin: "Margins",
         bondRate: "Rates", salesTaxRate: "Rates", costPerSqFtOverride: "Rates",
         pmComplexity: "Project Settings", targetPrice: "Project Settings",
         includeCms: "Add-ons", cmsAllocation: "Add-ons",

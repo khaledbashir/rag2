@@ -826,7 +826,7 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
 
         // Services — broken out by line item (primary displays only, services don't change for alts)
         const primaryCalcs = calcs.filter((c) => !c.isAlt);
-        const svcMarginPctBudget = ((answers.servicesMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
+        const svcMarginPctBudget = ((answers.servicesMargin ?? 20) || 1) / 100;
         rows.push({
             cells: [{ value: "2.0 INSTALLATION SERVICES", bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }],
         });
@@ -1315,7 +1315,7 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
     const rows: SheetRow[] = [];
     const COLS = 11;
 
-    const svcMarginPct = ((answers.servicesMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
+    const svcMarginPct = ((answers.servicesMargin ?? 20) || 1) / 100;
 
     rows.push({
         cells: [{ value: "INSTALLATION & LABOR COSTS", bold: true, header: true, span: COLS, align: "center" }],
@@ -1447,7 +1447,7 @@ function buildMarginAnalysisPreview(answers: EstimatorAnswers, calcs: ScreenCalc
     const rows: SheetRow[] = [];
     const COLS = 6;
     const ledMarginPct = ((answers.ledMargin ?? 15) || 1) / 100;
-    const svcMarginPct = ((answers.servicesMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
+    const svcMarginPct = ((answers.servicesMargin ?? 20) || 1) / 100;
     const bondRate = (answers.bondRate ?? 1.5) / 100;
     const taxRate = (answers.salesTaxRate ?? 9.5) / 100;
 
@@ -1641,7 +1641,7 @@ function buildTechSpecsPreview(answers: EstimatorAnswers, calcs: ScreenCalc[]): 
 // --- Per-Screen Install Preview ---
 function buildInstallPreview(answers: EstimatorAnswers, c: ScreenCalc, d: DisplayAnswers, idx: number): SheetTab {
     const rows: SheetRow[] = [];
-    const svcMarginPct = ((answers.servicesMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
+    const svcMarginPct = ((answers.servicesMargin ?? 20) || 1) / 100;
     const shortName = c.name.length > 20 ? c.name.substring(0, 20) + "…" : c.name;
 
     rows.push({
