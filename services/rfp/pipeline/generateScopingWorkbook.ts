@@ -729,11 +729,18 @@ export async function generateScopingWorkbook(
     { cms: cmsRefs, scoring: scoringRefs, bundle: bundleRefs, additional: additionalItemRefs },
   );
 
-  // Cross-sheet links: Project Overview → MA BASE BID GRAND TOTAL
+  // Cross-sheet links: Project Overview → MA BASE BID GRAND TOTAL + LED display count
+  const ledDataEndPO = 3 + displays.length;
   const overviewSheet = wb.getWorksheet("Project Overview");
   if (overviewSheet) {
     overviewSheet.eachRow((row) => {
       const label = String(row.getCell(2).value || "");
+      if (label === "Number of Displays") {
+        row.getCell(3).value = {
+          formula: `SUM('LED Cost Sheet'!I4:I${ledDataEndPO})`,
+          result: displays.reduce((sum, d) => sum + Math.max(d.spec.quantity || 1, 1), 0),
+        };
+      }
       if (label === "DOCUMENT TOTAL") {
         row.getCell(3).value = {
           formula: `'Margin Analysis'!D${maGrandTotalRow}`,
