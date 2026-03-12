@@ -106,11 +106,13 @@ const NUMBER_FMT = { n: { pattern: '#,##0' } };
 const NUMBER_FMT_2 = { n: { pattern: '#,##0.00' } };
 
 function guardedDivisionFormula(numerator: string, denominator: string, decimals = 2): string {
-  return `=ROUND(((${numerator})*(${denominator}<>0))/(((${denominator})+(${denominator}=0))),${decimals})`;
+  // Use IF() instead of boolean arithmetic — Univer doesn't support <>/= as number multipliers
+  return `=IF(${denominator}=0,0,ROUND(${numerator}/${denominator},${decimals}))`;
 }
 
 function guardedSellingFormula(costRef: string, marginRef: string, decimals = 2): string {
-  return `=ROUND(${costRef}/((((1-${marginRef})*(${marginRef}<1))+(${marginRef}>=1))),${decimals})`;
+  // Use IF() instead of boolean arithmetic — Univer doesn't support </>= as number multipliers
+  return `=IF(${marginRef}>=1,ROUND(${costRef},${decimals}),ROUND(${costRef}/(1-${marginRef}),${decimals}))`;
 }
 
 // ---------------------------------------------------------------------------
