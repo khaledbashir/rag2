@@ -314,16 +314,6 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
         const next = { ...answers };
         if (phase === "project" || phase === "financial") {
             (next as any)[currentQ.id] = val;
-            // Sync margin tier → individual margin fields
-            if (currentQ.id === "marginTier") {
-                if (val === "budget") {
-                    next.ledMargin = 20;
-                    next.servicesMargin = 20;
-                } else if (val === "proposal") {
-                    next.ledMargin = 30;
-                    next.servicesMargin = 20;
-                }
-            }
         } else if (phase === "display") {
             // Ensure display exists
             while (next.displays.length <= displayIndex) {
@@ -413,9 +403,19 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
     }, [answers, onChange]);
 
     const finishDisplays = useCallback(() => {
+        if (displayIndex < answers.displays.length - 1) {
+            setDisplayIndex((i) => i + 1);
+            setCurrentStep(0);
+            return;
+        }
         setPhase("financial");
         setCurrentStep(0);
-    }, []);
+    }, [answers.displays.length, displayIndex]);
+
+    const skipToFinalPage = useCallback(() => {
+        setPhase("complete");
+        onComplete?.();
+    }, [onComplete]);
 
     const jumpToPhase = useCallback((target: "project" | "display" | "financial") => {
         setPhase(target);
@@ -941,7 +941,7 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                         value={getValue()}
                         onChange={setValue}
                         onNext={goNext}
-                        onSkipToEnd={() => { setPhase("complete"); onComplete?.(); }}
+                        onSkipToEnd={skipToFinalPage}
                         setDisplayFields={setDisplayFields}
                         answers={answers}
                         displayIndex={displayIndex}
@@ -982,6 +982,15 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                             <span className="text-[10px] text-muted-foreground">
                                 press <kbd className="px-1 py-0.5 bg-accent rounded text-[10px]">Enter ↵</kbd>
                             </span>
+                            {(phase === "display" || phase === "financial") && (
+                                <button
+                                    onClick={skipToFinalPage}
+                                    className="ml-auto flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                                >
+                                    Skip to Final Page
+                                    <ArrowRight className="w-3.5 h-3.5" />
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>
@@ -1032,7 +1041,6 @@ function getSectionLabel(questionId: string | undefined): string {
 function getFinancialSection(questionId: string | undefined): string {
     if (!questionId) return "Settings";
     const SECTION_MAP: Record<string, string> = {
-        marginTier: "Margins", ledMargin: "Margins", servicesMargin: "Margins",
         bondRate: "Rates", salesTaxRate: "Rates", costPerSqFtOverride: "Rates",
         pmComplexity: "Project Settings", targetPrice: "Project Settings",
         includeCms: "Add-ons", cmsAllocation: "Add-ons",

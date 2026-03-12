@@ -502,47 +502,6 @@ export const DISPLAY_QUESTIONS: Question[] = [
 
 export const FINANCIAL_QUESTIONS: Question[] = [
     {
-        id: "marginTier",
-        phase: "financial",
-        type: "select",
-        label: "Margin Tier",
-        subtitle: "Budget = lower margins for early-stage. Proposal = full margins for client-facing.",
-        options: [
-            { value: "budget", label: "Budget Tier", description: "LED: 20%, Installation Services: 20% — for internal ROM estimates" },
-            { value: "proposal", label: "Proposal Tier", description: "LED: 30%, Installation Services: 20% — for client-facing quotes" },
-        ],
-        defaultValue: "budget",
-        required: true,
-        affectsSheet: "Budget Summary",
-    },
-    {
-        id: "ledMargin",
-        phase: "financial",
-        type: "number",
-        label: "LED Hardware Margin",
-        subtitle: "Margin on LED panels and hardware. Default: 15%.",
-        defaultValue: 15,
-        unit: "%",
-        min: 5,
-        max: 60,
-        step: 1,
-        affectsSheet: "Budget Summary",
-    },
-    {
-        id: "servicesMargin",
-        phase: "financial",
-        type: "number",
-        label: "Services Margin",
-        subtitle: "Margin on labor, install, PM, engineering. Standard: 20%.",
-        defaultValue: 20,
-        unit: "%",
-        min: 0,
-        max: 60,
-        step: 1,
-        affectsSheet: "Budget Summary",
-        quickActions: [{ label: "Supply Only", value: 0, skipToEnd: true }],
-    },
-    {
         id: "bondRate",
         phase: "financial",
         type: "number",
@@ -723,7 +682,7 @@ export interface EstimatorAnswers {
     isUnion: boolean;
     // Displays (array of per-display answers)
     displays: DisplayAnswers[];
-    // Financial — tiered margins
+    // Financial defaults are applied automatically; marginTier is legacy compat only.
     marginTier: "budget" | "proposal";
     ledMargin: number;       // LED hardware margin (separate from services)
     servicesMargin: number;  // Services/labor margin
