@@ -34,12 +34,14 @@ import {
 import { cn } from "@/lib/utils";
 import { useRbac } from "@/hooks/useRbac";
 import type { UserRole } from "@/lib/rbac";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ─── Navigation Data ────────────────────────────────────────────────────────
 
 interface NavItem {
     icon: typeof LayoutGrid;
     label: string;
+    description?: string;
     href: string;
     allowedRoles: UserRole[] | null;
     soon?: boolean;
@@ -57,16 +59,16 @@ interface NavChild {
 }
 
 const mainMenuItems: NavItem[] = [
-    { icon: LayoutGrid, label: "Projects", href: "/projects", allowedRoles: null },
-    { icon: Kanban, label: "Pipeline", href: "/pipeline", allowedRoles: null },
+    { icon: LayoutGrid, label: "Projects", description: "View all proposal, mirror, intelligence, and estimate records.", href: "/projects", allowedRoles: null },
+    { icon: Kanban, label: "Pipeline", description: "Track proposal stages, approvals, and deal movement.", href: "/pipeline", allowedRoles: null },
 ];
 
 const toolsMenuItems: NavItem[] = [
-    { icon: Scan, label: "RFP Analyzer", href: "/tools/rfp-analyzer", allowedRoles: null },
-    { icon: History, label: "RFP History", href: "/tools/rfp-analyzer/history", allowedRoles: null },
-    { icon: FileSignature, label: "SOW Builder", href: "/tools/sow-generator", allowedRoles: null },
-    { icon: FileSpreadsheet, label: "Spec Generator", href: "/tools/spec-generator", allowedRoles: null, hidden: true },
-    { icon: Calculator, label: "Estimator", href: "/estimator", allowedRoles: null },
+    { icon: Scan, label: "RFP Analyzer", description: "Upload bid documents and extract screens, requirements, and pricing.", href: "/tools/rfp-analyzer", allowedRoles: null },
+    { icon: History, label: "RFP History", description: "Reopen saved analyses and continue working from prior uploads.", href: "/tools/rfp-analyzer/history", allowedRoles: null },
+    { icon: FileSignature, label: "SOW Builder", description: "Generate scopes of work from project and pricing details.", href: "/tools/sow-generator", allowedRoles: null },
+    { icon: FileSpreadsheet, label: "Spec Sheets", description: "Generate per-display product spec sheets and submittal forms.", href: "/tools/spec-generator", allowedRoles: null },
+    { icon: Calculator, label: "Estimator", description: "Build budgets, swap products, and export scoping workbooks.", href: "/estimator", allowedRoles: null },
 ];
 
 const settingsMenuItems: NavItem[] = [
@@ -136,8 +138,9 @@ export default function DashboardSidebar() {
 
     const isActive = (href: string) => pathname === href;
     const isParentActive = (item: NavItem) =>
-        pathname === item.href || pathname.startsWith(item.href + "/") ||
-        item.children?.some((c) => pathname === c.href || pathname.startsWith(c.href));
+        pathname === item.href ||
+        pathname.startsWith(item.href + "/") ||
+        Boolean(item.children?.some((c) => pathname === c.href || pathname.startsWith(c.href + "/")));
 
     // ─── Render ─────────────────────────────────────────────────────────
 
@@ -412,37 +415,48 @@ function NavItemRow({ item, expanded, isActive, isParentActive, canAccess, isGro
     const hasChildren = item.children && item.children.length > 0;
     const Icon = isRestricted ? Lock : item.icon;
 
+    const tooltipText = item.description || item.label;
+
     // Collapsed mode — icon only with tooltip
     if (!expanded) {
         return (
-            <Link
-                href={isRestricted ? "#" : item.href}
-                className={cn(
-                    "group relative flex items-center justify-center p-2.5 rounded-lg transition-all duration-150",
-                    (isActive || isParentActive) && canAccess
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted",
-                    (item.soon || isRestricted) && "pointer-events-none opacity-40",
-                )}
-            >
-                <Icon className="w-5 h-5" />
-                {/* Tooltip */}
-                <div className="absolute left-full ml-3 px-2.5 py-1.5 rounded-md bg-popover border border-border text-popover-foreground text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-md">
-                    {item.label}
-                    {item.soon && " (Soon)"}
-                    {hasChildren && (
-                        <div className="mt-1 pt-1 border-t border-border space-y-0.5">
-                            {item.children!.map((c) => (
-                                <div key={c.href} className="text-muted-foreground">{c.label}</div>
-                            ))}
+            <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Link
+                            href={isRestricted ? "#" : item.href}
+                            className={cn(
+                                "group relative flex items-center justify-center p-2.5 rounded-lg transition-all duration-150",
+                                (isActive || isParentActive) && canAccess
+                                    ? "bg-primary/10 text-primary"
+                                    : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                                (item.soon || isRestricted) && "pointer-events-none opacity-40",
+                            )}
+                        >
+                            <Icon className="w-5 h-5" />
+                            {(isActive || isParentActive) && canAccess && (
+                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-primary rounded-r-full" />
+                            )}
+                        </Link>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="max-w-64">
+                        <div className="space-y-1">
+                            <div className="text-xs font-semibold">
+                                {item.label}
+                                {item.soon && " (Soon)"}
+                            </div>
+                            <div className="text-xs text-muted-foreground leading-relaxed">{tooltipText}</div>
+                            {hasChildren && (
+                                <div className="mt-1 pt-1 border-t border-border space-y-0.5">
+                                    {item.children!.map((c) => (
+                                        <div key={c.href} className="text-[11px] text-muted-foreground">{c.label}</div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                    )}
-                </div>
-                {/* Active indicator dot */}
-                {(isActive || isParentActive) && canAccess && (
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-primary rounded-r-full" />
-                )}
-            </Link>
+                    </TooltipContent>
+                </Tooltip>
+            </TooltipProvider>
         );
     }
 
@@ -452,6 +466,7 @@ function NavItemRow({ item, expanded, isActive, isParentActive, canAccess, isGro
             <div className="flex items-center">
                 <Link
                     href={isRestricted ? "#" : item.href}
+                    title={tooltipText}
                     className={cn(
                         "flex-1 flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150",
                         (isActive || isParentActive) && canAccess
@@ -461,7 +476,14 @@ function NavItemRow({ item, expanded, isActive, isParentActive, canAccess, isGro
                     )}
                 >
                     <Icon className="w-4.5 h-4.5 shrink-0" />
-                    <span className="truncate">{item.label}</span>
+                    <div className="min-w-0 flex-1">
+                        <div className="truncate">{item.label}</div>
+                        {item.description && (
+                            <div className="truncate text-[11px] text-muted-foreground font-normal">
+                                {item.description}
+                            </div>
+                        )}
+                    </div>
                     {item.soon && <span className="text-[10px] uppercase tracking-wider text-muted-foreground ml-auto">Soon</span>}
                     {item.beta && <span className="text-[10px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded ml-auto">BETA</span>}
                     {item.devOnly && <span className="text-[10px] bg-slate-500/20 text-slate-500 px-1.5 py-0.5 rounded ml-auto">Dev Only</span>}
