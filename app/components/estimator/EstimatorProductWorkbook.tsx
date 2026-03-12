@@ -11,6 +11,7 @@ interface ProductOption {
   pitch: number;
   name: string;
   manufacturer?: string;
+  nits?: number;
   widthMm?: number;
   heightMm?: number;
 }
@@ -18,11 +19,13 @@ interface ProductOption {
 interface EstimatorProductWorkbookProps {
   answers: EstimatorAnswers;
   onProductSelect: (displayIndex: number, product: ProductOption) => void;
+  onDisplayEdit: (displayIndex: number, field: "displayName" | "heightFt" | "widthFt", value: string) => void;
 }
 
 export default function EstimatorProductWorkbook({
   answers,
   onProductSelect,
+  onDisplayEdit,
 }: EstimatorProductWorkbookProps) {
   const [products, setProducts] = useState<ProductOption[]>([]);
 
@@ -37,19 +40,34 @@ export default function EstimatorProductWorkbook({
   const workbookData = useMemo<WorkbookData>(() => {
     const sortedProducts = [...products].sort((a, b) => a.label.localeCompare(b.label));
     return {
-      fileName: "Budget Builder — Inline Product Picker",
+      fileName: "Budget Builder — LED Cost Sheet",
       sheets: [
         {
-          name: "LED Product Picker",
+          name: "LED Cost Sheet",
           color: "#0A52EF",
-          columns: ["Display", "Product", "Pitch", "H (ft)", "W (ft)", "Qty"],
-          editableColumns: [],
+          columns: [
+            "Display", "Vendor", "Product", "Pitch",
+            "H (ft)", "W (ft)", "H (px)", "W (px)",
+            "SqFt/Screen", "Qty", "Total SqFt",
+            "NITs", "Service", "$/SqFt", "Display Cost", "Processor", "Shipping", "Total Cost",
+            "Margin %", "Selling Price",
+          ],
+          editableColumns: [0, 4, 5],
           rows: answers.displays.map((display, idx) => {
             const selectedProductId = display.productId || "";
             const product = products.find((p) => p.id === selectedProductId);
+            const widthFt = display.widthFt || 0;
+            const heightFt = display.heightFt || 0;
+            const qty = 1;
+            const pitch = product?.pitch ?? (parseFloat(display.pixelPitch || "0") || 0);
+            const widthPx = pitch > 0 ? Math.round(widthFt * 304.8 / pitch) : 0;
+            const heightPx = pitch > 0 ? Math.round(heightFt * 304.8 / pitch) : 0;
+            const sqFtPerScreen = Math.round(widthFt * heightFt * 100) / 100;
+            const totalSqFt = sqFtPerScreen * qty;
             return {
               cells: [
                 { value: display.displayName || `Display ${idx + 1}`, bold: true },
+                { value: product?.manufacturer || "—" },
                 {
                   value: selectedProductId,
                   dropdown: sortedProducts.map((p) => ({ value: p.id, label: p.label })),
@@ -59,9 +77,22 @@ export default function EstimatorProductWorkbook({
                   },
                 },
                 { value: product ? `${product.pitch}mm` : (display.pixelPitch ? `${display.pixelPitch}mm` : "—"), align: "center" },
-                { value: display.heightFt || 0, align: "right" },
-                { value: display.widthFt || 0, align: "right" },
-                { value: 1, align: "center" },
+                { value: heightFt || "", align: "right" },
+                { value: widthFt || "", align: "right" },
+                { value: heightPx || "", align: "right" },
+                { value: widthPx || "", align: "right" },
+                { value: sqFtPerScreen || "", align: "right" },
+                { value: qty, align: "center" },
+                { value: totalSqFt || "", align: "right" },
+                { value: product?.nits || "—", align: "center" },
+                { value: display.serviceType || "—", align: "center" },
+                { value: "", align: "right" },
+                { value: "", align: "right" },
+                { value: "", align: "right" },
+                { value: "", align: "right" },
+                { value: "", align: "right" },
+                { value: "", align: "center" },
+                { value: "", align: "right" },
               ],
             };
           }),
@@ -70,5 +101,15 @@ export default function EstimatorProductWorkbook({
     };
   }, [answers.displays, onProductSelect, products]);
 
-  return <WorkbookShell data={workbookData} />;
+  return (
+    <WorkbookShell
+      data={workbookData}
+      editable
+      onCellEdit={(_sheetIdx, rowIdx, colIdx, value) => {
+        if (colIdx === 0) onDisplayEdit(rowIdx, "displayName", value);
+        if (colIdx === 4) onDisplayEdit(rowIdx, "heightFt", value);
+        if (colIdx === 5) onDisplayEdit(rowIdx, "widthFt", value);
+      }}
+    />
+  );
 }

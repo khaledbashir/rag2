@@ -211,6 +211,19 @@ export default function EstimatorStudio({
         });
     }, []);
 
+    const handleInlineDisplayEdit = useCallback((displayIndex: number, field: "displayName" | "heightFt" | "widthFt", value: string) => {
+        setAnswers((prev) => {
+            if (displayIndex < 0 || displayIndex >= prev.displays.length) return prev;
+            const displays = [...prev.displays];
+            const current = { ...displays[displayIndex] } as any;
+            if (field === "displayName") current.displayName = value;
+            if (field === "heightFt") current.heightFt = parseFloat(value) || 0;
+            if (field === "widthFt") current.widthFt = parseFloat(value) || 0;
+            displays[displayIndex] = current;
+            return { ...prev, displays };
+        });
+    }, []);
+
     const handleConvert = useCallback(async () => {
         if (!projectId || converting) return;
         const ok = await confirm({ title: "Convert to Proposal", description: "Convert this estimate to a full Intelligence Mode proposal? This will create screens from your displays.", confirmLabel: "Convert", variant: "default" });
@@ -599,6 +612,7 @@ export default function EstimatorStudio({
                         <EstimatorProductWorkbook
                             answers={answers}
                             onProductSelect={handleInlineProductSelect}
+                            onDisplayEdit={handleInlineDisplayEdit}
                         />
                     </div>
                     <UniverPreview

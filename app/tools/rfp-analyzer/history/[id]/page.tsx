@@ -279,6 +279,88 @@ export default function AnalysisDetailPage() {
     });
   }, [availableProducts, pricingPreview, analysis?.screens]);
 
+  const handleAddScreen = useCallback(() => {
+    const name = prompt("Display name (e.g., 'Main Scoreboard'):");
+    if (!name?.trim()) return;
+
+    const newSpec: ExtractedLEDSpec = {
+      name: name.trim(),
+      location: "",
+      widthFt: 0,
+      heightFt: 0,
+      widthPx: null,
+      heightPx: null,
+      pixelPitchMm: null,
+      brightnessNits: null,
+      environment: "indoor",
+      quantity: 1,
+      serviceType: null,
+      mountingType: null,
+      maxPowerW: null,
+      weightLbs: null,
+      specialRequirements: [],
+      confidence: 1,
+      sourcePages: [],
+      sourceType: "text",
+      citation: "Manually added",
+      notes: null,
+      isAlternate: false,
+    };
+
+    setAnalysis((prev) => {
+      if (!prev) return prev;
+      const screens = [...prev.screens, newSpec];
+      autoSaveSpecs(screens, prev.id);
+      return { ...prev, screens };
+    });
+
+    setPricingPreview((prev: any) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        displays: [...prev.displays, {
+          name: name.trim(),
+          pixelPitch: null,
+          areaSqFt: 0,
+          quantity: 1,
+          hardwareCost: 0,
+          processorCost: 0,
+          shippingCost: 0,
+          installCost: 0,
+          structuralCost: 0,
+          pmCost: 0,
+          engCost: 0,
+          totalCost: 0,
+          totalSellingPrice: 0,
+          blendedMarginPct: 0.15,
+          costSource: "manual",
+          rateCardEstimate: null,
+          matchedProduct: null,
+          isCustom: false,
+        }],
+        summary: { ...prev.summary, displayCount: prev.summary.displayCount + 1 },
+      };
+    });
+  }, [autoSaveSpecs]);
+
+  const handleRemoveScreen = useCallback((screenName: string) => {
+    if (!confirm(`Remove "${screenName}" from the LED Cost Sheet?`)) return;
+    setAnalysis((prev) => {
+      if (!prev) return prev;
+      const screens = prev.screens.filter((s) => s.name !== screenName);
+      autoSaveSpecs(screens, prev.id);
+      return { ...prev, screens };
+    });
+    setPricingPreview((prev: any) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        displays: prev.displays.filter((d: any) => d.name !== screenName),
+        summary: { ...prev.summary, displayCount: Math.max(0, prev.summary.displayCount - 1) },
+      };
+    });
+  }, [autoSaveSpecs]);
+
   const workbookData = useMemo(() => {
     if (!analysis) return { fileName: "RFP Analysis", sheets: [] };
     return buildRfpWorkbook({
@@ -291,8 +373,10 @@ export default function AnalysisDetailPage() {
       bidFormResult: null,
       availableProducts,
       onProductSelect: handleProductSelect,
+      onAddScreen: handleAddScreen,
+      onRemoveScreen: handleRemoveScreen,
     });
-  }, [analysis, pricingPreview, availableProducts, handleProductSelect]);
+  }, [analysis, pricingPreview, availableProducts, handleProductSelect, handleAddScreen, handleRemoveScreen]);
 
   // Download helper
   const downloadBlob = async (url: string, body: object, fallbackName: string) => {

@@ -575,7 +575,12 @@ function normalizedSubstring(a: string[], b: string[]): boolean {
 function dimensionMatch(a: ExtractedLEDSpec, b: ExtractedLEDSpec): boolean {
   if (a.widthFt == null || a.heightFt == null) return false;
   if (b.widthFt == null || b.heightFt == null) return false;
-  return a.widthFt === b.widthFt && a.heightFt === b.heightFt && a.pixelPitchMm === b.pixelPitchMm;
+  const sameLocation = (a.location || "").trim().toLowerCase() === (b.location || "").trim().toLowerCase();
+  return sameLocation && a.widthFt === b.widthFt && a.heightFt === b.heightFt && a.pixelPitchMm === b.pixelPitchMm;
+}
+
+function extractOrdinalMarkers(name: string): string[] {
+  return [...name.toLowerCase().matchAll(/\b(\d+[a-z]?)(?:-\d+[a-z]?)?\b/g)].map((m) => m[1]);
 }
 
 function mergeSpecs(primary: ExtractedLEDSpec, secondary: ExtractedLEDSpec): ExtractedLEDSpec {
@@ -607,11 +612,23 @@ function screensMatch(a: ExtractedLEDSpec, b: ExtractedLEDSpec): boolean {
 
   const tokensA = normalizeForDedup(a.name);
   const tokensB = normalizeForDedup(b.name);
+  const ordinalsA = extractOrdinalMarkers(a.name);
+  const ordinalsB = extractOrdinalMarkers(b.name);
+
+  // Keep schedule rows distinct when the only difference is screen numbering.
+  if (ordinalsA.length > 0 && ordinalsB.length > 0 && ordinalsA.join(",") !== ordinalsB.join(",")) {
+    return false;
+  }
+
+  const locationA = normalizeForDedup(a.location || "");
+  const locationB = normalizeForDedup(b.location || "");
+  const nameSimilarity = tokenSimilarity(tokensA, tokensB);
+  const locationSimilarity = tokenSimilarity(locationA, locationB);
 
   // Check token similarity
-  if (tokenSimilarity(tokensA, tokensB) >= 0.6) return true;
+  if (nameSimilarity >= 0.6 && (locationA.length === 0 || locationB.length === 0 || locationSimilarity >= 0.6)) return true;
   // Check substring match
-  if (normalizedSubstring(tokensA, tokensB)) return true;
+  if (normalizedSubstring(tokensA, tokensB) && (locationA.length === 0 || locationB.length === 0 || normalizedSubstring(locationA, locationB))) return true;
   // Check dimension + pitch match (same physical display)
   if (dimensionMatch(a, b)) return true;
 
