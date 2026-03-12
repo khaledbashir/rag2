@@ -984,18 +984,18 @@ function buildBudgetSummary(
       sellFormulaRef: `SUM('LED Cost Sheet'!S4:S${ledDataEnd})`,
       result: displays.reduce((s, d) => s + d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost, 0),
     },
-    { label: "Structural Materials", marginPct: svcMargin, costFormula: installCostSum((tab) => `'${tab}'!I26`), sellFormulaRef: installCostSum((tab) => `'${tab}'!K26`), result: displays.reduce((s, d) => s + d.structuralMaterialsCost, 0) },
-    { label: "Structural Labor & LED Installation", marginPct: svcMargin, costFormula: installCostSum((tab) => `('${tab}'!I35-'${tab}'!I34)`), sellFormulaRef: installCostSum((tab) => `('${tab}'!K35-'${tab}'!K34)`), result: displays.reduce((s, d) => s + d.structuralLaborCost, 0) },
-    { label: "Electrical & Data", marginPct: svcMargin, costFormula: installCostSum((tab) => `'${tab}'!I44`), sellFormulaRef: installCostSum((tab) => `'${tab}'!K44`), result: displays.reduce((s, d) => s + d.electricalCost, 0) },
-    { label: "PM / General Conditions / Travel", marginPct: svcMargin, costFormula: installCostSum((tab) => `'${tab}'!I34`), sellFormulaRef: installCostSum((tab) => `'${tab}'!K34`), result: displays.reduce((s, d) => s + d.pmCost + d.travelCost, 0) },
-    { label: "Engineering & Permits", marginPct: svcMargin, costFormula: installCostSum((tab) => `'${tab}'!I52`), sellFormulaRef: installCostSum((tab) => `'${tab}'!K52`), result: displays.reduce((s, d) => s + d.engCost, 0) },
+    { label: "Structural Materials", marginPct: svcMargin, costFormula: installCostSum((tab) => `SUM('${tab}'!I26:I26)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K26:K26)`), result: displays.reduce((s, d) => s + d.structuralMaterialsCost, 0) },
+    { label: "Structural Labor & LED Installation", marginPct: svcMargin, costFormula: installCostSum((tab) => `(SUM('${tab}'!I35:I35)-SUM('${tab}'!I34:I34))`), sellFormulaRef: installCostSum((tab) => `(SUM('${tab}'!K35:K35)-SUM('${tab}'!K34:K34))`), result: displays.reduce((s, d) => s + d.structuralLaborCost, 0) },
+    { label: "Electrical & Data", marginPct: svcMargin, costFormula: installCostSum((tab) => `SUM('${tab}'!I44:I44)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K44:K44)`), result: displays.reduce((s, d) => s + d.electricalCost, 0) },
+    { label: "PM / General Conditions / Travel", marginPct: svcMargin, costFormula: installCostSum((tab) => `SUM('${tab}'!I34:I34)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K34:K34)`), result: displays.reduce((s, d) => s + d.pmCost + d.travelCost, 0) },
+    { label: "Engineering & Permits", marginPct: svcMargin, costFormula: installCostSum((tab) => `SUM('${tab}'!I52:I52)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K52:K52)`), result: displays.reduce((s, d) => s + d.engCost, 0) },
   ];
   if (costCenterRefs?.cms) {
     categories.push({
       label: "CMS (Content Management System)",
       marginPct: DEFAULT_MARGINS.cms,
-      costFormula: `'CMS'!${costCenterRefs.cms.subtotalCell}`,
-      sellFormulaRef: costCenterRefs.cms.sellCell ? `'CMS'!${costCenterRefs.cms.sellCell}` : undefined,
+      costFormula: `SUM(CMS!${costCenterRefs.cms.subtotalCell}:${costCenterRefs.cms.subtotalCell})`,
+      sellFormulaRef: costCenterRefs.cms.sellCell ? `SUM(CMS!${costCenterRefs.cms.sellCell}:${costCenterRefs.cms.sellCell})` : undefined,
       result: ov?.cmsAllocation ?? 0,
     });
   }
@@ -1003,8 +1003,8 @@ function buildBudgetSummary(
     categories.push({
       label: "Scoring System",
       marginPct: DEFAULT_MARGINS.scoring,
-      costFormula: `'Scoring'!${costCenterRefs.scoring.subtotalCell}`,
-      sellFormulaRef: costCenterRefs.scoring.sellCell ? `'Scoring'!${costCenterRefs.scoring.sellCell}` : undefined,
+      costFormula: `SUM(Scoring!${costCenterRefs.scoring.subtotalCell}:${costCenterRefs.scoring.subtotalCell})`,
+      sellFormulaRef: costCenterRefs.scoring.sellCell ? `SUM(Scoring!${costCenterRefs.scoring.sellCell}:${costCenterRefs.scoring.sellCell})` : undefined,
       result: ov?.scoringAllocation ?? 0,
     });
   }
@@ -1019,8 +1019,8 @@ function buildBudgetSummary(
       categories.push({
         label: label as string,
         marginPct: marginPct as number,
-        costFormula: `'Additional Items'!F${sheetRow}`,
-        sellFormulaRef: `'Additional Items'!H${sheetRow}`,
+        costFormula: `SUM('Additional Items'!F${sheetRow}:F${sheetRow})`,
+        sellFormulaRef: `SUM('Additional Items'!H${sheetRow}:H${sheetRow})`,
         result: 0,
       });
     });
@@ -1245,11 +1245,11 @@ function buildMarginAnalysis(
     const ledSellResult = hwMargin < 1 ? round2(ledCostResult / (1 - hwMargin)) : ledCostResult;
     const ledRow = row;
     writeCategory("LED Hardware", ledCostResult, hwMargin, `'LED Cost Sheet'!Q${ledSheetRow}`);
-    ws.getCell(ledRow, 4).value = { formula: `'LED Cost Sheet'!S${ledSheetRow}`, result: ledSellResult };
+    ws.getCell(ledRow, 4).value = { formula: `SUM('LED Cost Sheet'!S${ledSheetRow}:S${ledSheetRow})`, result: ledSellResult };
     ws.getCell(ledRow, 4).numFmt = FMT_USD; ws.getCell(ledRow, 4).font = subFont;
     ws.getCell(ledRow, 5).value = { formula: marginDollarFormula(ledRow), result: round2(ledSellResult - ledCostResult) };
     ws.getCell(ledRow, 5).numFmt = FMT_USD; ws.getCell(ledRow, 5).font = subFont;
-    ws.getCell(ledRow, 6).value = { formula: `'LED Cost Sheet'!R${ledSheetRow}`, result: hwMargin };
+    ws.getCell(ledRow, 6).value = { formula: `SUM('LED Cost Sheet'!R${ledSheetRow}:R${ledSheetRow})`, result: hwMargin };
     ws.getCell(ledRow, 6).numFmt = FMT_PCT; ws.getCell(ledRow, 6).font = subFont;
     writeCategory("Structural Materials", d.structuralMaterialsCost, svcMargin, instRef ? `${instRef}!I26` : undefined);
     writeCategory("Structural Labor & LED Installation", d.structuralLaborCost, svcMargin, instRef ? `${instRef}!I35-${instRef}!I34` : undefined);
@@ -1395,18 +1395,18 @@ function buildMarginAnalysis(
   cmsR.getCell(2).value = "CMS (Content Management System)";
   cmsR.getCell(2).font = { bold: true, name: "Calibri" };
   cmsR.getCell(3).value = costCenterRefs?.cms
-    ? { formula: `'CMS'!${costCenterRefs.cms.subtotalCell}`, result: cmsCost }
+    ? { formula: `SUM(CMS!${costCenterRefs.cms.subtotalCell}:${costCenterRefs.cms.subtotalCell})`, result: cmsCost }
     : cmsCost;
   cmsR.getCell(3).numFmt = FMT_USD;
   cmsR.getCell(6).value = DEFAULT_MARGINS.cms; cmsR.getCell(6).numFmt = FMT_PCT; inputCell(cmsR.getCell(6));
   cmsR.getCell(4).value = costCenterRefs?.cms?.sellCell
-    ? { formula: `'CMS'!${costCenterRefs.cms.sellCell}`, result: round2(cmsCost / (1 - DEFAULT_MARGINS.cms)) }
+    ? { formula: `SUM(CMS!${costCenterRefs.cms.sellCell}:${costCenterRefs.cms.sellCell})`, result: round2(cmsCost / (1 - DEFAULT_MARGINS.cms)) }
     : cmsCost > 0
     ? { formula: sellFormula(row), result: round2(cmsCost / (1 - DEFAULT_MARGINS.cms)) }
     : 0;
   cmsR.getCell(4).numFmt = FMT_USD;
   cmsR.getCell(5).value = costCenterRefs?.cms?.marginCell
-    ? { formula: `'CMS'!${costCenterRefs.cms.marginCell}`, result: round2(cmsCost / (1 - DEFAULT_MARGINS.cms) - cmsCost) }
+    ? { formula: `SUM(CMS!${costCenterRefs.cms.marginCell}:${costCenterRefs.cms.marginCell})`, result: round2(cmsCost / (1 - DEFAULT_MARGINS.cms) - cmsCost) }
     : cmsCost > 0
     ? { formula: marginDollarFormula(row), result: round2(cmsCost / (1 - DEFAULT_MARGINS.cms) - cmsCost) }
     : 0;
@@ -1421,18 +1421,18 @@ function buildMarginAnalysis(
   scR.getCell(2).value = "Scoring System";
   scR.getCell(2).font = { bold: true, name: "Calibri" };
   scR.getCell(3).value = costCenterRefs?.scoring
-    ? { formula: `'Scoring'!${costCenterRefs.scoring.subtotalCell}`, result: scoringCost }
+    ? { formula: `SUM(Scoring!${costCenterRefs.scoring.subtotalCell}:${costCenterRefs.scoring.subtotalCell})`, result: scoringCost }
     : scoringCost;
   scR.getCell(3).numFmt = FMT_USD;
   scR.getCell(6).value = DEFAULT_MARGINS.scoring; scR.getCell(6).numFmt = FMT_PCT; inputCell(scR.getCell(6));
   scR.getCell(4).value = costCenterRefs?.scoring?.sellCell
-    ? { formula: `'Scoring'!${costCenterRefs.scoring.sellCell}`, result: round2(scoringCost / (1 - DEFAULT_MARGINS.scoring)) }
+    ? { formula: `SUM(Scoring!${costCenterRefs.scoring.sellCell}:${costCenterRefs.scoring.sellCell})`, result: round2(scoringCost / (1 - DEFAULT_MARGINS.scoring)) }
     : scoringCost > 0
     ? { formula: sellFormula(row), result: round2(scoringCost / (1 - DEFAULT_MARGINS.scoring)) }
     : 0;
   scR.getCell(4).numFmt = FMT_USD;
   scR.getCell(5).value = costCenterRefs?.scoring?.marginCell
-    ? { formula: `'Scoring'!${costCenterRefs.scoring.marginCell}`, result: round2(scoringCost / (1 - DEFAULT_MARGINS.scoring) - scoringCost) }
+    ? { formula: `SUM(Scoring!${costCenterRefs.scoring.marginCell}:${costCenterRefs.scoring.marginCell})`, result: round2(scoringCost / (1 - DEFAULT_MARGINS.scoring) - scoringCost) }
     : scoringCost > 0
     ? { formula: marginDollarFormula(row), result: round2(scoringCost / (1 - DEFAULT_MARGINS.scoring) - scoringCost) }
     : 0;
@@ -1450,13 +1450,13 @@ function buildMarginAnalysis(
       const addR = ws.getRow(row);
       addR.getCell(2).value = label;
       addR.getCell(2).font = { bold: true, name: "Calibri" };
-      addR.getCell(3).value = { formula: `'Additional Items'!F${sourceRow}`, result: 0 };
+      addR.getCell(3).value = { formula: `SUM('Additional Items'!F${sourceRow}:F${sourceRow})`, result: 0 };
       addR.getCell(3).numFmt = FMT_USD;
-      addR.getCell(4).value = { formula: `'Additional Items'!H${sourceRow}`, result: 0 };
+      addR.getCell(4).value = { formula: `SUM('Additional Items'!H${sourceRow}:H${sourceRow})`, result: 0 };
       addR.getCell(4).numFmt = FMT_USD;
-      addR.getCell(5).value = { formula: `'Additional Items'!I${sourceRow}`, result: 0 };
+      addR.getCell(5).value = { formula: `SUM('Additional Items'!I${sourceRow}:I${sourceRow})`, result: 0 };
       addR.getCell(5).numFmt = FMT_USD;
-      addR.getCell(6).value = { formula: `'Additional Items'!G${sourceRow}`, result: DEFAULT_MARGINS.equipment };
+      addR.getCell(6).value = { formula: `SUM('Additional Items'!G${sourceRow}:G${sourceRow})`, result: DEFAULT_MARGINS.equipment };
       addR.getCell(6).numFmt = FMT_PCT;
       screenGrandTotalRows.push(row);
       row++;
@@ -1608,7 +1608,7 @@ function buildLedCostSheet(
     // Processor — linked to the processor/equipment breakdown sheet subtotal for this zone
     const bundleEquipmentCost = d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost;
     dr.getCell(15).value = bundleSubtotalRow
-      ? { formula: `'Bundle Equipment'!E${bundleSubtotalRow}`, result: bundleEquipmentCost || 0 }
+      ? { formula: `SUM('Bundle Equipment'!E${bundleSubtotalRow}:E${bundleSubtotalRow})`, result: bundleEquipmentCost || 0 }
       : (bundleEquipmentCost || 0);
     dr.getCell(15).numFmt = FMT_USD;
     // Shipping
