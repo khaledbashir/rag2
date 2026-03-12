@@ -1391,16 +1391,22 @@ function buildLedCostSheet(
 
   // Master LED Margin Override (yellow cell) — changing this overrides all display margins
   const masterMarginRow = 2;
-  const masterMarginLabel = ws.getCell(masterMarginRow, 17); // column Q
+  const masterMarginLabel = ws.getCell(masterMarginRow, 18); // column R
   masterMarginLabel.value = "LED Margin Override →";
   masterMarginLabel.font = { bold: true, name: "Calibri", size: 11 };
   masterMarginLabel.alignment = { horizontal: "right", vertical: "middle" };
-  const masterMarginCell = ws.getCell(masterMarginRow, 18); // column R
+  const masterMarginCell = ws.getCell(masterMarginRow, 19); // column S
   masterMarginCell.value = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
   masterMarginCell.numFmt = FMT_PCT;
   masterMarginCell.font = { bold: true, name: "Calibri", size: 12 };
   masterMarginCell.alignment = { horizontal: "center", vertical: "middle" };
-  inputCell(masterMarginCell);
+  masterMarginCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } };
+  masterMarginCell.border = {
+    top: { style: "thin", color: { argb: "FFD9D9D9" } },
+    bottom: { style: "thin", color: { argb: "FFD9D9D9" } },
+    left: { style: "thin", color: { argb: "FFD9D9D9" } },
+    right: { style: "thin", color: { argb: "FFD9D9D9" } },
+  };
 
   let row = 3;
 
@@ -1489,8 +1495,8 @@ function buildLedCostSheet(
     dr.getCell(17).value = { formula: `N${row}+O${row}+P${row}`, result: ledWithSpares + bundleEquipmentCost + d.shippingCost };
     dr.getCell(17).numFmt = FMT_USD;
     dr.getCell(17).font = { bold: true, name: "Calibri" };
-    // Margin % — references master override cell R2
-    dr.getCell(18).value = { formula: `R$${masterMarginRow}`, result: d.marginPct }; dr.getCell(18).numFmt = FMT_PCT;
+    // Margin % — references master override cell S2
+    dr.getCell(18).value = { formula: `S$${masterMarginRow}`, result: d.marginPct }; dr.getCell(18).numFmt = FMT_PCT;
     // Selling Price = Total Cost / (1 - Margin%)
     dr.getCell(19).value = { formula: `Q${row}/(1-R${row})`, result: d.sellingPrice };
     dr.getCell(19).numFmt = FMT_USD;
