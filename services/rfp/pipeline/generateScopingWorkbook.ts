@@ -624,7 +624,7 @@ export async function generateScopingWorkbook(
   buildBudgetSummary(wb, projectName, clientName, today, displays, grandCost, grandSelling, grandMargin, grandMarginPct, ov);
 
   // 4. LED Cost Sheet
-  buildLedCostSheet(wb, projectName, displays);
+  buildLedCostSheet(wb, projectName, displays, ov);
 
   // 5. Tech Specs (no pricing — for installers/subs)
   buildTechSpecsSheet(wb, projectName, displays);
@@ -1265,6 +1265,7 @@ function buildLedCostSheet(
   wb: ExcelJS.Workbook,
   projectName: string,
   displays: ComputedDisplay[],
+  ov?: FinancialOverrides,
 ): void {
   const ws = wb.addWorksheet("LED Cost Sheet", {
     properties: { tabColor: { argb: C.GREEN_TAB } },
