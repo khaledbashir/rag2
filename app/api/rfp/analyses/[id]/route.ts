@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { needsWestfieldReextract, reextractSavedPdfAnalysis } from "@/services/rfp/unified/healSavedAnalysis";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,28 @@ export async function GET(
 
   if (!analysis) {
     return NextResponse.json({ error: "Analysis not found" }, { status: 404 });
+  }
+
+  if (needsWestfieldReextract(analysis)) {
+    try {
+      const healed = await reextractSavedPdfAnalysis(analysis);
+      const updated = await prisma.rfpAnalysis.update({
+        where: { id },
+        data: {
+          screens: JSON.parse(JSON.stringify(healed.screens)),
+          requirements: JSON.parse(JSON.stringify(healed.requirements)),
+          incompleteSpecs: JSON.parse(JSON.stringify(healed.incompleteSpecs)),
+          project: JSON.parse(JSON.stringify({
+            ...(analysis.project as any || {}),
+            ...healed.project,
+          })),
+          specsFound: healed.screens.length,
+        },
+      });
+      return NextResponse.json(updated);
+    } catch {
+      // Fall back to the saved row if healing fails.
+    }
   }
 
   return NextResponse.json(analysis);

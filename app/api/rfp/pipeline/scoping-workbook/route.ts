@@ -26,6 +26,7 @@ import { generateScopingWorkbook } from "@/services/rfp/pipeline/generateScoping
 import { generateRateCardExcel } from "@/services/rfp/pipeline/generateRateCardExcel";
 import type { ExtractedLEDSpec, ExtractedProjectInfo, ExtractedRequirement } from "@/services/rfp/unified/types";
 import { log } from "@/lib/logger";
+import { needsWestfieldReextract, reextractSavedPdfAnalysis } from "@/services/rfp/unified/healSavedAnalysis";
 
 export const maxDuration = 60;
 
@@ -54,9 +55,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Analysis not found" }, { status: 404 });
     }
 
-    const specs = (analysis.screens as unknown as ExtractedLEDSpec[]) || [];
-    const project = (analysis.project as unknown as ExtractedProjectInfo) || {};
-    const requirements = (analysis.requirements as unknown as ExtractedRequirement[]) || [];
+    let specs = (analysis.screens as unknown as ExtractedLEDSpec[]) || [];
+    let project = (analysis.project as unknown as ExtractedProjectInfo) || {};
+    let requirements = (analysis.requirements as unknown as ExtractedRequirement[]) || [];
+
+    if (needsWestfieldReextract(analysis)) {
+      try {
+        const healed = await reextractSavedPdfAnalysis(analysis);
+        specs = healed.screens;
+        requirements = healed.requirements;
+        project = { ...project, ...healed.project };
+        await prisma.rfpAnalysis.update({
+          where: { id: analysis.id },
+          data: {
+            screens: JSON.parse(JSON.stringify(healed.screens)),
+            requirements: JSON.parse(JSON.stringify(healed.requirements)),
+            incompleteSpecs: JSON.parse(JSON.stringify(healed.incompleteSpecs)),
+            project: JSON.parse(JSON.stringify(project)),
+            specsFound: healed.screens.length,
+          },
+        });
+      } catch (err) {
+        log.warn("[scoping-workbook] Westfield re-extract failed, using saved analysis");
+      }
+    }
 
     if (specs.length === 0) {
       return NextResponse.json({ error: "No LED specs found in this analysis" }, { status: 400 });
@@ -85,6 +107,7 @@ export async function POST(request: NextRequest) {
       specs,
       requirements,
       pricedDisplays,
+      includeAlternatesInBase: true,
       zoneClass,
       installComplexity,
       includeBond,

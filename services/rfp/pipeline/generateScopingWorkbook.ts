@@ -108,6 +108,7 @@ export interface ScopingWorkbookOptions {
   specs: ExtractedLEDSpec[];
   requirements?: ExtractedRequirement[];
   pricedDisplays?: PricedDisplay[];
+  includeAlternatesInBase?: boolean;
   zoneClass?: ZoneClass;
   installComplexity?: InstallComplexity;
   includeBond?: boolean;
@@ -561,6 +562,7 @@ export async function generateScopingWorkbook(
     specs: allSpecs,
     requirements = [],
     pricedDisplays: allPricedDisplays,
+    includeAlternatesInBase = false,
     zoneClass = "standard",
     installComplexity = "standard",
     includeBond = false,
@@ -586,13 +588,15 @@ export async function generateScopingWorkbook(
   const supplyOnlyProject = ov?.servicesMarginPct === 0;
   const effectiveIncludeBond = includeBond && !supplyOnlyProject;
 
-  // Split base bid vs alternates — budget sheets only see base bid
-  const baseSpecs = allSpecs.filter((s) => !s.isAlternate);
-  const altSpecs = allSpecs.filter((s) => s.isAlternate);
+  // Split base bid vs alternates.
+  // Analyzer export can include alternates directly in the main workbook so the
+  // exported LED Cost Sheet matches the interactive analyzer view.
+  const baseSpecs = includeAlternatesInBase ? allSpecs : allSpecs.filter((s) => !s.isAlternate);
+  const altSpecs = includeAlternatesInBase ? [] : allSpecs.filter((s) => s.isAlternate);
 
   // Match pricedDisplays to base specs only
   const basePricedDisplays = allPricedDisplays
-    ? allPricedDisplays.filter((pd) => !pd.spec.isAlternate)
+    ? (includeAlternatesInBase ? allPricedDisplays : allPricedDisplays.filter((pd) => !pd.spec.isAlternate))
     : undefined;
 
   // Compute base bid display data (used by all budget sheets)
@@ -600,7 +604,7 @@ export async function generateScopingWorkbook(
 
   // Compute alternate display data (for reference sheet only)
   const altPricedDisplays = allPricedDisplays
-    ? allPricedDisplays.filter((pd) => pd.spec.isAlternate)
+    ? (includeAlternatesInBase ? [] : allPricedDisplays.filter((pd) => pd.spec.isAlternate))
     : undefined;
   const altDisplays = altSpecs.length > 0
     ? computeDisplays(altSpecs, altPricedDisplays, installComplexity)
