@@ -10,6 +10,38 @@ import type { ExtractedLEDSpec, ExtractedProjectInfo } from "@/services/rfp/unif
 import type { ScopingWorkbookOptions, FinancialOverrides } from "./generateScopingWorkbook";
 import { type InstallComplexity, getProduct } from "@/services/rfp/productCatalog";
 
+const DISPLAY_TYPE_LABELS: Record<string, string> = {
+  "main-scoreboard": "Main Scoreboard",
+  "center-hung": "Center-Hung",
+  "ribbon-board": "Ribbon Board",
+  "fascia-board": "Fascia Board",
+  "concourse-display": "Concourse Display",
+  "end-zone": "End Zone Board",
+  marquee: "Marquee",
+  auxiliary: "Auxiliary Board",
+  "pitch-clock": "Pitch Clock",
+  "shot-clock": "Shot Clock",
+  custom: "Custom Display",
+};
+
+const LOCATION_TYPE_LABELS: Record<string, string> = {
+  scoreboard: "Scoreboard / Center-Hung",
+  ribbon: "Ribbon Board",
+  fascia: "Fascia Board",
+  wall: "Wall Mounted",
+  freestanding: "Freestanding",
+  outdoor: "Outdoor",
+  courtside: "Courtside",
+  stanchion: "Stanchion",
+};
+
+function humanizeType(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return DISPLAY_TYPE_LABELS[value] || LOCATION_TYPE_LABELS[value] || value
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
 // ---------------------------------------------------------------------------
 // Display mapping: DisplayAnswers → ExtractedLEDSpec
 // ---------------------------------------------------------------------------
@@ -37,9 +69,11 @@ function mapDisplay(d: DisplayAnswers, env: "indoor" | "outdoor"): ExtractedLEDS
   // Compute pixel resolution from pitch + physical size
   const widthPx = pitch && widthFt ? Math.round((widthFt * 304.8) / pitch) : null;
   const heightPx = pitch && heightFt ? Math.round((heightFt * 304.8) / pitch) : null;
+  const displayLabel = d.displayName?.trim() || humanizeType(d.displayType) || "Unnamed Display";
+  const mountingLabel = humanizeType(d.locationType);
 
   return {
-    name: d.displayName || d.displayType || "Unnamed Display",
+    name: displayLabel,
     location: d.locationType || "",
     widthFt,
     heightFt,
@@ -50,7 +84,7 @@ function mapDisplay(d: DisplayAnswers, env: "indoor" | "outdoor"): ExtractedLEDS
     environment: env,
     quantity: 1,
     serviceType: (d.serviceType as "front" | "rear" | "top") || null,
-    mountingType: null,
+    mountingType: mountingLabel,
     maxPowerW: null,
     weightLbs: null,
     specialRequirements: [],
@@ -74,7 +108,7 @@ function mapAltPitchVariants(d: DisplayAnswers, env: "indoor" | "outdoor"): Extr
 
   return d.altPitches.map((altPitch) => {
     const spec = mapDisplay({ ...d, pixelPitch: altPitch }, env);
-    spec.name = `${d.displayName || d.displayType} — Alt ${altPitch}mm`;
+    spec.name = `${d.displayName?.trim() || humanizeType(d.displayType) || "Unnamed Display"} — Alt ${altPitch}mm`;
     spec.isAlternate = true;
     spec.alternateDescription = `Alternate pixel pitch: ${altPitch}mm (base: ${d.pixelPitch}mm)`;
     return spec;

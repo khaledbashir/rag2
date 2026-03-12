@@ -278,6 +278,16 @@ function inputCell(cell: ExcelJS.Cell): void {
   };
 }
 
+function getDisplayClassificationText(spec: ExtractedLEDSpec): string {
+  return [
+    spec.name,
+    spec.location,
+    spec.mountingType,
+    spec.selectedProductName,
+    spec.notes,
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
 // ─── Compute Display Data ───────────────────────────────────────────────────
 
 function computeDisplays(
@@ -332,15 +342,16 @@ function computeDisplays(
       } else if (spec.pixelPitchMm) {
         // No explicit product — pitch-based lookup with outdoor/indoor awareness
         // Round pitches (6, 10) map to outdoor variants for outdoor/perimeter displays
+    const displayText = getDisplayClassificationText(spec);
         const isOutdoor = spec.environment === "outdoor"
-          || /outdoor|perimeter|field.?pitch|fascia|exterior/i.test(spec.name + " " + (spec.mountingType || ""));
+          || /outdoor|perimeter|field.?pitch|fascia|exterior/i.test(displayText);
         const OUTDOOR_PITCH_MAP: Record<string, string> = {
           '6': '5.95',     // 6mm outdoor → Yaham R6 ($260.14) not C6 ($136.51)
           '8': '8.33',     // 8mm outdoor → Yaham R8 ($194.07) not C8 ($148)
           '10': '10.417',  // 10mm outdoor → Yaham R10 ($154.79) not C10 ($112.22)
         };
         // Perimeter/ribbon boards at 10mm → Yaham A10 ($206.59) which is the actual field pitch product
-        const isPerimeter = /perimeter|field.?pitch|ribbon/i.test(spec.name + " " + (spec.mountingType || ""));
+        const isPerimeter = /perimeter|field.?pitch|ribbon/i.test(displayText);
         const PERIMETER_PITCH_MAP: Record<string, number> = {
           '10': 206.59,    // Yaham A10 outdoor perimeter. Denver Cost Analysis 03/04/2026.
         };
@@ -371,9 +382,10 @@ function computeDisplays(
 
     // Structural / Labor / Electrical: use priced data when available (Mirror path),
     // otherwise compute from budget rates (Estimator/RFP path).
-    const isCeiling = /center.?hung|scoreboard|hanging|ribbon|fascia/i.test(spec.name + " " + (spec.mountingType || ""));
-    const isScoreboardType = /scoreboard|center.?hung|hanging|jumbotron/i.test(spec.name + " " + (spec.mountingType || ""));
-    const isFasciaType = /fascia|ribbon|perimeter.*board|banner/i.test(spec.name + " " + (spec.mountingType || ""));
+    const displayText = getDisplayClassificationText(spec);
+    const isCeiling = /center.?hung|scoreboard|hanging|ribbon|fascia/i.test(displayText);
+    const isScoreboardType = /scoreboard|center.?hung|hanging|jumbotron/i.test(displayText);
+    const isFasciaType = /fascia|ribbon|perimeter.*board|banner/i.test(displayText);
     let structuralMaterialsCost: number;
     let structuralLaborCost: number;
     let electricalCost: number;
