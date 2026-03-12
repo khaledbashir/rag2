@@ -1936,8 +1936,6 @@ export default function RfpAnalyzerClient() {
   // ========================================================================
   // Render
   // ========================================================================
-
-  const requirements = result?.requirements || [];
   const isSpreadsheetVisible = phase === "results" && result && pricingPreview && spreadsheetMode;
 
   return (
