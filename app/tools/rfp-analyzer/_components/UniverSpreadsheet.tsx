@@ -410,6 +410,8 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   const grandTotalSellRows: number[] = [];
   // Track section name → MA grand total row (0-indexed) for cross-sheet LED → MA linking
   const sectionGrandTotalMap: Record<string, number> = {};
+  // Track zone grand total rows per display for cross-sheet linking from MA fallback path
+  const installZoneGtRows: Record<string, number> = {}; // display name → 1-based row of ZONE GRAND TOTAL (cost col G)
 
   if (hasPricingTables) {
     // ══════════════════════════════════════════════════════════════════════
@@ -839,8 +841,6 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   };
 
   let installRow = 0;
-  // Track zone grand total rows per display for cross-sheet linking from MA
-  const installZoneGtRows: Record<string, number> = {}; // display name → 1-based row of ZONE GRAND TOTAL (cost col G)
   // Title
   installCellData[installRow++] = { 1: { v: `${projectName} — Install (Base)`, s: { bl: 1, fs: 14 } } };
   installRow++; // blank
