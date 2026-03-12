@@ -1951,6 +1951,8 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
   const [mounted, setMounted] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Guard: true only after redi DI container is fully resolved (post-500ms delay)
+  const diResolvedRef = useRef(false);
 
   // Build workbook data from current props
   const workbookDataRef = useRef(buildWorkbookData(props));
@@ -2028,9 +2030,11 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
 
         // Give Univer's DI container time to fully resolve before marking ready.
         // Without this delay, accessing getActiveWorkbook() in subsequent effects
-        // triggers cyclic dependency errors in redi.
+        // triggers cyclic dependency errors in redi (manifests as
+        // "Cannot access 'ed' before initialization" in minified production builds).
         await new Promise((r) => setTimeout(r, 500));
         if (disposed) { univerAPI.dispose(); return; }
+        diResolvedRef.current = true;
 
         // Mark the initial build key so rebuild effect doesn't double-build
         lastBuiltRef.current = JSON.stringify({
@@ -2050,6 +2054,7 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
 
     return () => {
       disposed = true;
+      diResolvedRef.current = false;
       if (apiRef.current) {
         try { apiRef.current.dispose(); } catch { /* ignore */ }
         apiRef.current = null;
@@ -2060,7 +2065,9 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
 
   // Rebuild workbook when props change (screens/pricing data arriving after mount)
   useEffect(() => {
-    if (!ready || !apiRef.current) return;
+    // Wait until redi DI is fully resolved — accessing getActiveWorkbook() before
+    // this triggers cyclic dependency errors in the minified production bundle.
+    if (!ready || !apiRef.current || !diResolvedRef.current) return;
 
     // Serialize current props to detect changes
     const currentKey = JSON.stringify({
