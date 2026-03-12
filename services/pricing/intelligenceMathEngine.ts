@@ -35,7 +35,7 @@ export interface PricingPreset {
 }
 
 export interface CategoryMargins {
-    led?: number;       // Hardware margin (default 0.30)
+    led?: number;       // Hardware margin (default 0.15)
     services?: number;  // Services margin (default 0.20)
     cms?: number;       // CMS/Software margin (default 0.35)
 }
@@ -71,7 +71,7 @@ export interface IntelligencePricingResult {
 
 export const MARGIN_PRESETS: PricingPreset[] = [
     { name: "Services",    margin: 0.20, description: "20% — Standard services margin (install, electrical, PM, engineering)" },
-    { name: "LED Hardware", margin: 0.30, description: "30% — Validated LED hardware margin (NBCU all displays)" },
+    { name: "LED Hardware", margin: 0.15, description: "15% — LED hardware margin (March 11 team decision)" },
     { name: "CMS/Software", margin: 0.35, description: "35% — LiveSync/CMS margin (NBCU Margin Analysis)" },
 ];
 

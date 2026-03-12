@@ -527,7 +527,7 @@ export function executeEstimatorIntent(
 
         case "set_margin_tier": {
             const tier = intent.params.tier as "budget" | "proposal";
-            const ledMargin = tier === "proposal" ? 38 : 15;
+            const ledMargin = 15;
             const servicesMargin = 20;
             return {
                 success: true,
@@ -551,7 +551,7 @@ export function executeEstimatorIntent(
             msg += `| | Amount |\n|---|---|\n`;
             msg += `| Total Cost | ${fmt(grandCost)} |\n`;
             msg += `| Sell Price | ${fmt(grandSell)} |\n`;
-            msg += `| Blended Margin | ${blendedMargin}% |\n`;
+            msg += `| Project Margin | ${blendedMargin}% |\n`;
             msg += `| Bond | ${fmt(grandBond)} |\n`;
             msg += `| Sales Tax | ${fmt(grandTax)} |\n`;
             msg += `| **Grand Total** | **${fmt(grandFinal)}** |\n`;
@@ -612,7 +612,7 @@ export function executeEstimatorIntent(
                 msg += `- Total cost: ${fmt(c.totalCost)}\n`;
                 msg += `- Sell price: ${fmt(c.sellPrice)}\n`;
                 msg += `- Formula: sellPrice = cost / (1 - marginPct)\n`;
-                msg += `- Blended margin: ${(c.marginPct * 100).toFixed(1)}%\n`;
+                msg += `- Project margin: ${(c.marginPct * 100).toFixed(1)}%\n`;
             }
             if (!msg) msg = "Specify a cost category: hardware, structural, install, electrical, or margin.";
             return { success: true, message: msg };

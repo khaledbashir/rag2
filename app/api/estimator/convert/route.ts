@@ -109,8 +109,8 @@ function calcDisplay(d: Record<string, any>, answers: Record<string, any>): Disp
     + equipmentCost + pmCost + engineeringCost + shippingCost;
   const totalCost = hardware + serviceCost;
 
-  const ledMarginPct = (answers.ledMargin || answers.defaultMargin || 30) / 100;
-  const svcMarginPct = (answers.servicesMargin || answers.defaultMargin || 30) / 100;
+  const ledMarginPct = (answers.ledMargin || 15) / 100;
+  const svcMarginPct = (answers.servicesMargin || 20) / 100;
   const hardwareSell = hardware / (1 - ledMarginPct);
   const servicesSell = serviceCost / (1 - svcMarginPct);
   const sellPrice = hardwareSell + servicesSell;

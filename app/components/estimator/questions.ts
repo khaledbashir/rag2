@@ -520,7 +520,7 @@ export const FINANCIAL_QUESTIONS: Question[] = [
         phase: "financial",
         type: "number",
         label: "LED Hardware Margin",
-        subtitle: "Margin on LED panels and hardware. Budget: 15%, Proposal: 38%.",
+        subtitle: "Margin on LED panels and hardware. Default: 15%.",
         defaultValue: 15,
         unit: "%",
         min: 5,
@@ -541,19 +541,6 @@ export const FINANCIAL_QUESTIONS: Question[] = [
         step: 1,
         affectsSheet: "Budget Summary",
         quickActions: [{ label: "Supply Only", value: 0, skipToEnd: true }],
-    },
-    {
-        id: "defaultMargin",
-        phase: "financial",
-        type: "number",
-        label: "Blended Margin (Fallback)",
-        subtitle: "Fallback if you prefer a single margin. Divisor model: Sell = Cost / (1 - margin).",
-        defaultValue: 30,
-        unit: "%",
-        min: 5,
-        max: 60,
-        step: 1,
-        affectsSheet: "Budget Summary",
     },
     {
         id: "bondRate",
@@ -740,7 +727,7 @@ export interface EstimatorAnswers {
     marginTier: "budget" | "proposal";
     ledMargin: number;       // LED hardware margin (separate from services)
     servicesMargin: number;  // Services/labor margin
-    defaultMargin: number;   // Blended fallback
+    defaultMargin?: number;  // Legacy — no longer asked, kept for backward compat
     bondRate: number;
     salesTaxRate: number;
     costPerSqFtOverride: number;
@@ -798,9 +785,8 @@ export function getDefaultAnswers(): EstimatorAnswers {
         isUnion: false,
         displays: [],
         marginTier: "budget",
-        ledMargin: 20,
+        ledMargin: 15,
         servicesMargin: 20,
-        defaultMargin: 20,
         bondRate: 1.5,
         salesTaxRate: 9.5,
         costPerSqFtOverride: 0,

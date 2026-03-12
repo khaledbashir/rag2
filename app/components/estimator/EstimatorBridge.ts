@@ -440,10 +440,10 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
 
     // Tiered margins: separate LED hardware vs services margins
     // Small project tier: <100sqft gets higher services margin per rate card
-    const ledMarginPct = ((answers.ledMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
+    const ledMarginPct = ((answers.ledMargin ?? 15) || 1) / 100;
     const smallProjectThreshold = 100; // sqft
     const smallSvcMargin = rc(rates, "margin.services_small", 0.30);
-    const baseSvcMarginPct = ((answers.servicesMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
+    const baseSvcMarginPct = ((answers.servicesMargin ?? 20) || 1) / 100;
     const svcMarginPct = (area < smallProjectThreshold && baseSvcMarginPct < smallSvcMargin)
         ? smallSvcMargin : baseSvcMarginPct;
     const serviceCost = adjStructureCost + adjInstallCost + adjElectricalCost
@@ -700,10 +700,8 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
     });
 
     const financialRows: [string, string | number][] = [
-        ["Margin Tier", `${answers.marginTier === "proposal" ? "Proposal" : "Budget"} (LED ${answers.ledMargin ?? 15}%, Svc ${answers.servicesMargin ?? 20}%)`],
         ["LED Hardware Margin", `${answers.ledMargin ?? 15}%`],
         ["Installation Services Margin", answers.servicesMargin === 0 ? "Supply Only" : `${answers.servicesMargin ?? 20}%`],
-        ["Default Blended Margin", `${answers.defaultMargin ?? 30}%`],
         ["Bond Rate", `${answers.bondRate ?? 1.5}%`],
         ["Sales Tax Rate", `${answers.salesTaxRate ?? 9.5}%`],
         ["Cost/sqft Override", answers.costPerSqFtOverride > 0 ? `$${answers.costPerSqFtOverride}` : "None (catalog pricing)"],
@@ -731,7 +729,7 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
         });
 
         // Include CMS, Scoring, Warranty add-on costs
-        const svcMPct = ((answers.servicesMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
+        const svcMPct = ((answers.servicesMargin ?? 20) || 1) / 100;
         const addOnCost = (answers.includeCms ? answers.cmsAllocation : 0)
             + (answers.includeScoring ? answers.scoringAllocation : 0)
             + (answers.includeWarranty === "priced" ? (answers.warrantyAllocation > 0 ? answers.warrantyAllocation : calcs.reduce((s, c) => s + c.hardwareCost, 0) * 0.03 * (parseInt(answers.warrantyYears) || 1)) : 0);
@@ -746,8 +744,8 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
 
         rows.push({ cells: [{ value: "Total Cost", bold: true }, { value: totalCost, currency: true }] });
         rows.push({ cells: [{ value: "Total Sell Price", bold: true }, { value: totalSell, currency: true }] });
-        rows.push({ cells: [{ value: "Blended Margin %", bold: true }, { value: `${blended}%` }] });
-        rows.push({ cells: [{ value: "Blended Margin $", bold: true }, { value: totalSell - totalCost, currency: true }] });
+        rows.push({ cells: [{ value: "Project Margin %", bold: true }, { value: `${blended}%` }] });
+        rows.push({ cells: [{ value: "Project Margin $", bold: true }, { value: totalSell - totalCost, currency: true }] });
         rows.push({
             cells: [{ value: "Grand Total", bold: true }, { value: grandTotal, currency: true, bold: true, highlight: true }],
             isTotal: true,
@@ -1060,7 +1058,7 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
             });
             rows.push({
                 cells: [
-                    { value: "Required Blended Margin", bold: true },
+                    { value: "Required Project Margin", bold: true },
                     { value: "" },
                     { value: "" },
                     { value: "" },
@@ -1448,7 +1446,7 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
 function buildMarginAnalysisPreview(answers: EstimatorAnswers, calcs: ScreenCalc[]): SheetTab {
     const rows: SheetRow[] = [];
     const COLS = 6;
-    const ledMarginPct = ((answers.ledMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
+    const ledMarginPct = ((answers.ledMargin ?? 15) || 1) / 100;
     const svcMarginPct = ((answers.servicesMargin ?? answers.defaultMargin ?? 30) || 1) / 100;
     const bondRate = (answers.bondRate ?? 1.5) / 100;
     const taxRate = (answers.salesTaxRate ?? 9.5) / 100;

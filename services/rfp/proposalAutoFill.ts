@@ -166,7 +166,7 @@ export function buildAutoFillValues(
             widthFt,
             heightFt,
             pitchMm: pitchMm ?? 0,
-            desiredMargin: 0.25, // Default 25%
+            desiredMargin: 0.15, // Default 15% LED margin
             isManualLineItem: !productId,
             manualCost: 0,
             isReplacement: false,

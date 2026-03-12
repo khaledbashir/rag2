@@ -305,7 +305,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     const totalCostKnown = (pd?.hardwareCost ?? 0) + (pd?.processorCost ?? 0) + (pd?.shippingCost ?? 0);
     const marginPct = (sellingPrice > 0 && totalCostKnown > 0)
       ? 1 - totalCostKnown / sellingPrice
-      : (pd?.blendedMarginPct ?? 0.30);
+      : (pd?.blendedMarginPct ?? 0.15);
     
     // Debug: log pricing resolution for every screen
     console.log(`[UniverSpreadsheet] LED row ${si} pricing:`, {
@@ -848,7 +848,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   // Per-display install sections
   screens.forEach((spec) => {
     const pd = pricingDisplays.find((d) => d.name === spec.name);
-    const margin = pd?.blendedMarginPct ?? 0.20;
+    const margin = pd?.blendedMarginPct ?? 0.15;
 
     // Display header
     installCellData[installRow++] = {
@@ -1633,8 +1633,8 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   }
 
   const avgMarginPct = pricingDisplays.length > 0
-    ? pricingDisplays.reduce((s, d) => s + (d.blendedMarginPct ?? 0.25), 0) / pricingDisplays.length
-    : 0.25;
+    ? pricingDisplays.reduce((s, d) => s + (d.blendedMarginPct ?? 0.15), 0) / pricingDisplays.length
+    : 0.15;
   const bsHwMargin = avgMarginPct > 0 ? avgMarginPct : 0.30;
   const bsSvcMargin = avgMarginPct > 0 ? Math.max(avgMarginPct * 0.67, 0.15) : 0.20;
 

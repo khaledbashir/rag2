@@ -184,13 +184,13 @@ function buildPricedDisplay(
     pmCost,
     engCost,
     totalCost,
-    ledMarginPct: blendedMarginPct,
-    svcMarginPct: Math.max(blendedMarginPct * 0.67, 0.15),
-    hardwareSellingPrice: hardwareCost > 0 ? Math.round(hardwareCost / (1 - blendedMarginPct)) : 0,
+    ledMarginPct: 0.15,
+    svcMarginPct: 0.20,
+    hardwareSellingPrice: hardwareCost > 0 ? Math.round(hardwareCost / (1 - 0.15)) : 0,
     servicesSellingPrice: installCost + pmCost + engCost > 0
-      ? Math.round((installCost + pmCost + engCost) / (1 - Math.max(blendedMarginPct * 0.67, 0.15)))
+      ? Math.round((installCost + pmCost + engCost) / (1 - 0.20))
       : 0,
-    totalSellingPrice: sellPrice || (totalCost > 0 ? Math.round(totalCost / (1 - blendedMarginPct)) : 0),
+    totalSellingPrice: sellPrice || (totalCost > 0 ? Math.round(totalCost / (1 - 0.15)) : 0),
     marginDollars,
     blendedMarginPct,
     leadTimeWeeks: null,

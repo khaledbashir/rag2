@@ -405,7 +405,7 @@ function buildMarginAnalysis(input: RfpWorkbookInput): SheetTab {
   ];
 
   // Use first display's margin as default for services, or 10%
-  const defaultServiceMargin = input.pricingDisplays[0]?.blendedMarginPct ?? 0.10;
+  const defaultServiceMargin = 0.20;
 
   for (const cat of serviceCategories) {
     const cost = input.pricingDisplays.reduce((s, d) => s + ((d as any)[cat.field] ?? 0), 0);

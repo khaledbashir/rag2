@@ -717,10 +717,10 @@ export function calculateExhibitG(
 // NOT doc-type driven. Margin varies by COST CATEGORY and DISPLAY SCALE.
 
 export const MARGIN_PRESETS = {
-    ledHardware:      0.30,  // NBCU LED Cost Sheet: column V=0.3, ALL 9 displays. Universal.
-    servicesDefault:  0.20,  // Indiana Fever (6 sheets), USC (1 sheet), NBCU 9C Install. 8 of 11 sheets.
-    servicesSmall:    0.30,  // NBCU Ribbon/History/Lounge Install sheets. Displays <100 sqft.
-    livesync:         0.35,  // NBCU Margin Analysis rows 44-48 (CMS/Software).
+    ledHardware:      0.15,  // LED hardware default — 15% per Natalia (March 11 decision)
+    servicesDefault:  0.20,  // Install/structural/electrical/PM/eng — 20%
+    servicesSmall:    0.30,  // Small displays <100 sqft get higher services margin
+    livesync:         0.35,  // CMS/Software
 } as const;
 
 export type MarginCategory = keyof typeof MARGIN_PRESETS;

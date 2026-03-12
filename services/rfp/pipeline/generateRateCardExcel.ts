@@ -77,7 +77,7 @@ export interface PricedDisplay {
   totalSellingPrice: number;
   /** Margin dollars */
   marginDollars: number;
-  /** Blended margin % */
+  /** Project margin % */
   blendedMarginPct: number;
   /** Subcontractor lead time */
   leadTimeWeeks: number | null;

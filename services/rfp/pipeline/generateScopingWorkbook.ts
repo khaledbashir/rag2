@@ -436,7 +436,7 @@ function computeDisplays(
 
     // Margin: per-category approach (override > priced > default)
     // Hardware and services get separate margins, then sum for blended selling price
-    const hwMarginPct = co?.marginPct != null ? co.marginPct : (ov?.ledMarginPct ?? priced?.blendedMarginPct ?? DEFAULT_MARGINS.ledHardware);
+    const hwMarginPct = co?.marginPct != null ? co.marginPct : (ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware);
     const svcMarginPct = ov?.servicesMarginPct ?? DEFAULT_MARGINS.install;
     const hwCosts = ledHardwareCost + sparePartsCost;
     const svcCosts = round2(structuralMaterialsCost * unionMult)
@@ -882,8 +882,8 @@ function buildBudgetSummary(
   const avgMargin = displays.length > 0
     ? displays.reduce((s, d) => s + d.marginPct, 0) / displays.length
     : 0.25;
-  const hwMargin = ov?.ledMarginPct ?? (avgMargin > 0 ? avgMargin : DEFAULT_MARGINS.ledHardware);
-  const svcMargin = ov?.servicesMarginPct ?? (avgMargin > 0 ? Math.max(avgMargin * 0.67, 0.15) : DEFAULT_MARGINS.install);
+  const hwMargin = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
+  const svcMargin = ov?.servicesMarginPct ?? DEFAULT_MARGINS.install;
 
   // Category rows — each with cost, selling (formula), margin$, margin%
   // LED Hardware uses cross-sheet SUM from LED Cost Sheet col N (Display Cost)
@@ -968,13 +968,13 @@ function buildBudgetSummary(
 // Default margin rates — used ONLY when display has no priced margin data.
 // When a display has marginPct from the pricing engine, that takes priority.
 const DEFAULT_MARGINS: Record<string, number> = {
-  ledHardware: 0.30,
+  ledHardware: 0.15,
   structural: 0.20,
   install: 0.20,
   electrical: 0.20,
   pm: 0.20,
   engineering: 0.20,
-  equipment: 0.30,
+  equipment: 0.15,
   cms: 0.35,
   scoring: 0.10,
 };
@@ -1065,8 +1065,8 @@ function buildMarginAnalysis(
     // Margin priority: financial override > display priced > default
     const catStartRow = row;
     const ledHardwareWithSpares = d.ledHardwareCost + d.sparePartsCost;
-    const hwMargin = ov?.ledMarginPct ?? (d.marginPct > 0 ? d.marginPct : DEFAULT_MARGINS.ledHardware);
-    const svcMargin = ov?.servicesMarginPct ?? (d.marginPct > 0 ? Math.max(d.marginPct * 0.67, 0.15) : DEFAULT_MARGINS.install);
+    const hwMargin = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
+    const svcMargin = ov?.servicesMarginPct ?? DEFAULT_MARGINS.install;
 
     // Cross-sheet formula refs: LED Cost Sheet data row = 4 + display index
     const ledSheetRow = 4 + idx;

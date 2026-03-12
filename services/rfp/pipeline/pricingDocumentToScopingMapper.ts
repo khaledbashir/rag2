@@ -222,13 +222,13 @@ function buildPricedDisplay(
     pmCost,
     engCost,
     totalCost,
-    ledMarginPct: blendedMarginPct,
-    svcMarginPct: Math.max(blendedMarginPct * 0.67, 0.15),
-    hardwareSellingPrice: hardwareCost > 0 ? Math.round(hardwareCost / (1 - blendedMarginPct)) : 0,
+    ledMarginPct: 0.15,
+    svcMarginPct: 0.20,
+    hardwareSellingPrice: hardwareCost > 0 ? Math.round(hardwareCost / (1 - 0.15)) : 0,
     servicesSellingPrice: (structuralCost + installCost + electricalCost + pmCost + engCost) > 0
-      ? Math.round((structuralCost + installCost + electricalCost + pmCost + engCost) / (1 - Math.max(blendedMarginPct * 0.67, 0.15)))
+      ? Math.round((structuralCost + installCost + electricalCost + pmCost + engCost) / (1 - 0.20))
       : 0,
-    totalSellingPrice: subtotalSell || (totalCost > 0 ? Math.round(totalCost / (1 - blendedMarginPct)) : 0),
+    totalSellingPrice: subtotalSell || (totalCost > 0 ? Math.round(totalCost / (1 - 0.15)) : 0),
     marginDollars: subtotalSell - totalCost,
     blendedMarginPct,
     leadTimeWeeks: null,
@@ -270,7 +270,7 @@ function deriveOverrides(tables: PricingTable[], internalAudit: any): FinancialO
 
   return {
     ledMarginPct,
-    servicesMarginPct: ledMarginPct != null ? Math.max(ledMarginPct * 0.67, 0.15) : undefined,
+    servicesMarginPct: 0.20,
     taxRate,
     bondRate,
   };

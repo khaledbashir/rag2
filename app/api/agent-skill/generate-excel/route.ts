@@ -383,7 +383,7 @@ export async function POST(request: NextRequest) {
       return sum + Number(sqft);
     }, 0);
 
-    ws3.addRow(["Blended Margin", `${grandMarginPct}%`]);
+    ws3.addRow(["Project Margin", `${grandMarginPct}%`]);
     ws3.addRow(["Total Profit", fmt(grandMargin)]);
     if (totalSqFt > 0) {
       ws3.addRow(["Cost per Sq Ft", fmt(Math.round(grandCost / totalSqFt))]);
