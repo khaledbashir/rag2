@@ -76,6 +76,9 @@ export default function EstimatorStudio({
     const customSheets: SheetTab[] = [];
     // Rate card from DB (replaces hardcoded constants)
     const { rates, loading: ratesLoading } = useRateCard();
+    // WYSIWYG preview: call the same server-side generator that produces the export.
+    // No fake preview. No client-side approximation. Loading state shown until ready.
+    const { data: serverPreview, loading: serverPreviewLoading, error: serverPreviewError, projectTotal } = useServerPreview(answers);
     // Auto-save to DB when projectId is provided
     const { status: saveStatus } = useEstimatorAutoSave({
         projectId,
@@ -101,10 +104,6 @@ export default function EstimatorStudio({
             return calculateDisplay(d, answers, rates ?? undefined, spec);
         });
     }, [answers, rates, productSpecs]);
-
-    // WYSIWYG preview: call the same server-side generator that produces the export.
-    // No fake preview. No client-side approximation. Loading state shown until ready.
-    const { data: serverPreview, loading: serverPreviewLoading, error: serverPreviewError, projectTotal } = useServerPreview(answers);
 
     // Univer handles all editing natively — no client-side cell override logic needed.
 
