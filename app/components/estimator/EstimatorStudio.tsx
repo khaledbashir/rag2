@@ -56,6 +56,7 @@ export default function EstimatorStudio({
     const [answers, setAnswers] = useState<EstimatorAnswers>(initialAnswers || getDefaultAnswers());
     const [exporting, setExporting] = useState(false);
     const [questionsComplete, setQuestionsComplete] = useState(!!initialAnswers);
+    const [editingAnswers, setEditingAnswers] = useState(!initialAnswers);
     const [copilotOpen, setCopilotOpen] = useState(false);
     const [converting, setConverting] = useState(false);
     const [duplicating, setDuplicating] = useState(false);
@@ -151,7 +152,10 @@ export default function EstimatorStudio({
 
     const handleComplete = useCallback(() => {
         setQuestionsComplete(true);
+        setEditingAnswers(true);
     }, []);
+
+    const questionPanelOpen = editingAnswers && !copilotOpen;
 
     // Active display index for vendor panel (use first display or 0)
     const activeDisplayIndex = Math.max(0, answers.displays.length - 1);
@@ -290,13 +294,28 @@ export default function EstimatorStudio({
                             <span className="text-[10px] text-muted-foreground">
                                 {answers.displays.length} display{answers.displays.length !== 1 ? "s" : ""}
                             </span>
-                            {questionsComplete && (
+                            {questionsComplete && !editingAnswers && (
                                 <button
-                                    onClick={() => setQuestionsComplete(false)}
+                                    onClick={() => {
+                                        setQuestionsComplete(false);
+                                        setEditingAnswers(true);
+                                    }}
                                     className="flex items-center gap-1 px-2.5 py-1.5 border border-border rounded text-xs text-muted-foreground hover:bg-muted transition-colors"
                                 >
                                     <PenLine className="w-3 h-3" />
                                     Edit Answers
+                                </button>
+                            )}
+                            {editingAnswers && (
+                                <button
+                                    onClick={() => {
+                                        setQuestionsComplete(true);
+                                        setEditingAnswers(false);
+                                    }}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 border border-border rounded text-xs text-muted-foreground hover:bg-muted transition-colors"
+                                >
+                                    <PenLine className="w-3 h-3" />
+                                    Hide Questions
                                 </button>
                             )}
                             <button
@@ -534,21 +553,21 @@ export default function EstimatorStudio({
             {/* Split screen — responsive grid: Questions | Excel | Activity/Copilot */}
             <main className={`flex-1 min-h-0 overflow-hidden grid transition-all duration-500 ease-in-out ${
                 copilotOpen && activityOpen
-                    ? questionsComplete
+                    ? !questionPanelOpen
                         ? 'grid-cols-[1fr_minmax(320px,380px)_320px]'
                         : 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(320px,380px)_320px]'
                     : copilotOpen
                         ? 'grid-cols-[minmax(0,1fr)_minmax(320px,380px)]'
-                        : activityOpen
-                            ? questionsComplete
+                    : activityOpen
+                            ? !questionPanelOpen
                                 ? 'grid-cols-[1fr_320px]'
                                 : 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)_320px]'
-                            : questionsComplete
+                            : !questionPanelOpen
                                 ? 'grid-cols-[1fr]'
                                 : 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)]'
             }`}>
                 {/* Left: Questions (hidden when Lux is open or questions complete) */}
-                {!copilotOpen && !questionsComplete ? (
+                {questionPanelOpen ? (
                     <section className="relative min-w-0 min-h-0 flex flex-col overflow-hidden bg-background border-r border-border">
                         <QuestionFlow
                             answers={answers}
