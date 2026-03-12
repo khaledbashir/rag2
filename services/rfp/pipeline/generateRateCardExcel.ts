@@ -338,6 +338,7 @@ export async function generateRateCardExcel(
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ANC Proposal Engine";
   workbook.created = new Date();
+  workbook.calcProperties = { fullCalcOnLoad: true };
 
   // ━━━ SHEET 1: Pricing Summary ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

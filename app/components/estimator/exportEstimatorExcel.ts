@@ -40,6 +40,7 @@ export async function exportEstimatorExcel(data: ExcelPreviewData): Promise<Blob
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "ANC Proposal Engine";
     workbook.created = new Date();
+    workbook.calcProperties = { fullCalcOnLoad: true };
 
     for (const sheet of data.sheets) {
         const ws = workbook.addWorksheet(sheet.name, {

@@ -115,6 +115,7 @@ export async function generateMarginAnalysisExcel(data: ProjectData): Promise<Bu
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ANC Intelligence Engine";
   workbook.created = new Date();
+  workbook.calcProperties = { fullCalcOnLoad: true };
 
   const fmt = currencyFormat(data.currency);
 

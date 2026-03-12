@@ -372,9 +372,15 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                 setDisplayIndex(0);
                 setCurrentStep(0);
             } else if (phase === "display") {
-                // This shouldn't happen normally (display-loop handles it)
-                setPhase("financial");
-                setCurrentStep(0);
+                // If more displays exist, advance to the next one
+                if (displayIndex < answers.displays.length - 1) {
+                    setDisplayIndex((i) => i + 1);
+                    setCurrentStep(0);
+                } else {
+                    // Last display done — go to financial
+                    setPhase("financial");
+                    setCurrentStep(0);
+                }
             } else if (phase === "financial") {
                 setPhase("complete");
                 onComplete?.();
@@ -408,6 +414,18 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
 
     const finishDisplays = useCallback(() => {
         setPhase("financial");
+        setCurrentStep(0);
+    }, []);
+
+    const jumpToPhase = useCallback((target: "project" | "display" | "financial") => {
+        setPhase(target);
+        setCurrentStep(0);
+        if (target === "display") setDisplayIndex(0);
+    }, []);
+
+    const jumpToDisplay = useCallback((idx: number) => {
+        setPhase("display");
+        setDisplayIndex(idx);
         setCurrentStep(0);
     }, []);
 
@@ -448,12 +466,31 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                     Your cost analysis is ready. Review the Excel preview on the right,
                     then export the workbook.
                 </p>
-                <button
-                    onClick={() => { setPhase("project"); setCurrentStep(0); }}
-                    className="text-sm text-[#0A52EF] hover:underline"
-                >
-                    Edit answers
-                </button>
+                <div className="flex flex-col gap-3 items-center">
+                    <div className="flex flex-wrap gap-2 justify-center">
+                        <button
+                            onClick={() => jumpToPhase("project")}
+                            className="px-3 py-1.5 rounded-lg border border-border text-xs hover:bg-muted transition-colors"
+                        >
+                            Edit Project
+                        </button>
+                        {answers.displays.map((_, i) => (
+                            <button
+                                key={i}
+                                onClick={() => jumpToDisplay(i)}
+                                className="px-3 py-1.5 rounded-lg border border-border text-xs hover:bg-muted transition-colors"
+                            >
+                                Display {i + 1}
+                            </button>
+                        ))}
+                        <button
+                            onClick={() => jumpToPhase("financial")}
+                            className="px-3 py-1.5 rounded-lg border border-border text-xs hover:bg-muted transition-colors"
+                        >
+                            Edit Financials
+                        </button>
+                    </div>
+                </div>
             </div>
         );
     }
@@ -488,6 +525,8 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                         displayIndex={displayIndex}
                         displayCount={Math.max(answers.displays.length, 1)}
                         progress={progress}
+                        onJumpToPhase={jumpToPhase}
+                        onJumpToDisplay={jumpToDisplay}
                     />
                 </div>
             )}
@@ -1182,22 +1221,27 @@ function StageIndicator({
     displayIndex,
     displayCount,
     progress,
+    onJumpToPhase,
+    onJumpToDisplay,
 }: {
     phase: string;
     displayIndex: number;
     displayCount: number;
     progress: number;
+    onJumpToPhase?: (phase: "project" | "display" | "financial") => void;
+    onJumpToDisplay?: (idx: number) => void;
 }) {
     const currentIdx = STAGES.findIndex((s) => s.key === phase);
 
     return (
         <div className="space-y-3">
-            {/* Stage pills */}
+            {/* Stage pills — clickable for navigation */}
             <div className="flex items-center gap-1">
                 {STAGES.map((stage, i) => {
                     const isActive = stage.key === phase;
                     const isDone = i < currentIdx;
                     const Icon = stage.icon;
+                    const canJump = isDone && onJumpToPhase && stage.key !== "complete";
 
                     return (
                         <React.Fragment key={stage.key}>
@@ -1207,12 +1251,16 @@ function StageIndicator({
                                     isDone ? "bg-[#0A52EF]" : isActive ? "bg-[#0A52EF]/30" : "bg-border"
                                 )} />
                             )}
-                            <div className={cn(
-                                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-all duration-300 whitespace-nowrap",
-                                isActive && "bg-[#0A52EF] text-white shadow-sm shadow-[#0A52EF]/25",
-                                isDone && "bg-[#0A52EF]/10 text-[#0A52EF]",
-                                !isActive && !isDone && "text-muted-foreground/50"
-                            )}>
+                            <div
+                                onClick={() => canJump && onJumpToPhase(stage.key as "project" | "display" | "financial")}
+                                className={cn(
+                                    "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-all duration-300 whitespace-nowrap",
+                                    isActive && "bg-[#0A52EF] text-white shadow-sm shadow-[#0A52EF]/25",
+                                    isDone && "bg-[#0A52EF]/10 text-[#0A52EF]",
+                                    !isActive && !isDone && "text-muted-foreground/50",
+                                    canJump && "cursor-pointer hover:bg-[#0A52EF]/20"
+                                )}
+                            >
                                 {isDone ? (
                                     <Check className="w-3 h-3" />
                                 ) : (
@@ -1229,6 +1277,29 @@ function StageIndicator({
                     );
                 })}
             </div>
+
+            {/* Display picker — click any display to jump directly */}
+            {phase === "display" && displayCount > 1 && onJumpToDisplay && (
+                <div className="flex items-center gap-1 overflow-x-auto scrollbar-none pb-0.5">
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50 whitespace-nowrap mr-1">Screens:</span>
+                    {Array.from({ length: displayCount }, (_, i) => (
+                        <button
+                            key={i}
+                            onClick={() => onJumpToDisplay(i)}
+                            className={cn(
+                                "px-2 py-0.5 rounded text-[10px] font-medium transition-colors whitespace-nowrap",
+                                i === displayIndex
+                                    ? "bg-[#0A52EF] text-white"
+                                    : i < displayIndex
+                                        ? "bg-[#0A52EF]/10 text-[#0A52EF] hover:bg-[#0A52EF]/20"
+                                        : "border border-border text-muted-foreground hover:text-foreground hover:border-[#0A52EF]/40"
+                            )}
+                        >
+                            Display {i + 1}
+                        </button>
+                    ))}
+                </div>
+            )}
 
             {/* Thin progress bar */}
             <div className="h-0.5 bg-border rounded-full overflow-hidden">

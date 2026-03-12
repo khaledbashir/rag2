@@ -75,6 +75,7 @@ export async function generateAuditExcel(
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'ANC Natalia Intelligence Core';
     workbook.created = new Date();
+    workbook.calcProperties = { fullCalcOnLoad: true };
 
     // 0. Project Summary (first tab) — placeholder, will backfill document total after MA
     const summarySheet = workbook.addWorksheet('Project Summary');

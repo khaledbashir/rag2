@@ -521,6 +521,7 @@ export async function generateScopingWorkbook(
   const wb = new ExcelJS.Workbook();
   wb.creator = "ANC Proposal Engine";
   wb.created = new Date();
+  wb.calcProperties = { fullCalcOnLoad: true };
 
   const projectName = project.projectName || project.venue || "Untitled Project";
   const clientName = project.clientName || "Client";
@@ -865,14 +866,16 @@ function buildBudgetSummary(
   let totalElectrical = 0, totalPm = 0, totalEng = 0, totalEquip = 0;
 
   for (const d of displays) {
-    totalLedHw += d.ledHardwareCost + d.sparePartsCost;
+    // LED total = display + spares + full processor bundle + shipping (per Natalia: "total cost baked in")
+    const bundleEquip = d.sendingCardCost + d.signalCableCost + d.upsCost
+      + d.backupProcessorCost + d.weatherproofCost;
+    totalLedHw += d.ledHardwareCost + d.sparePartsCost + bundleEquip + d.shippingCost;
     totalStructMat += d.structuralMaterialsCost;
     totalInstall += d.structuralLaborCost;
     totalElectrical += d.electricalCost;
     totalPm += d.pmCost + d.travelCost;
     totalEng += d.engCost;
-    totalEquip += d.sendingCardCost + d.signalCableCost + d.upsCost
-      + d.backupProcessorCost + d.weatherproofCost;
+    totalEquip += bundleEquip;
   }
 
   // Guarded formulas: IFERROR prevents #VALUE! / #DIV/0! on zero-cost or empty rows
@@ -887,19 +890,16 @@ function buildBudgetSummary(
   const svcMargin = ov?.servicesMarginPct ?? DEFAULT_MARGINS.install;
 
   // Category rows — each with cost, selling (formula), margin$, margin%
-  // LED Hardware uses cross-sheet SUM from LED Cost Sheet col N (Display Cost)
+  // LED Hardware uses cross-sheet SUM from LED Cost Sheet col Q (Total Cost = Display + Processor + Shipping)
   const ledDataEnd = 3 + displays.length; // LED Cost Sheet rows: 4..4+len-1
   const categories: [string, number, number, string | undefined][] = [
-    ["LED Hardware (all displays)", totalLedHw, hwMargin, `SUM('LED Cost Sheet'!N4:N${ledDataEnd})`],
+    ["LED Hardware (all displays)", totalLedHw, hwMargin, `SUM('LED Cost Sheet'!Q4:Q${ledDataEnd})`],
     ["Structural Materials", totalStructMat, svcMargin, undefined],
     ["Structural Labor & LED Installation", totalInstall, svcMargin, undefined],
     ["Electrical & Data", totalElectrical, svcMargin, undefined],
     ["PM / General Conditions / Travel", totalPm, svcMargin, undefined],
     ["Engineering & Permits", totalEng, svcMargin, undefined],
   ];
-  if (totalEquip > 0) {
-    categories.push(["Processor & Equipment", totalEquip, hwMargin, undefined]);
-  }
 
   // CMS and Scoring allocations (from financial overrides)
   const cmsBudget = ov?.cmsAllocation ?? 0;
@@ -1271,6 +1271,19 @@ function buildLedCostSheet(
 
   setTitle(ws, "T", `${projectName} — LED Cost Sheet`);
 
+  // Master LED Margin Override (yellow cell) — changing this overrides all display margins
+  const masterMarginRow = 2;
+  const masterMarginLabel = ws.getCell(masterMarginRow, 17); // column Q
+  masterMarginLabel.value = "LED Margin Override →";
+  masterMarginLabel.font = { bold: true, name: "Calibri", size: 11 };
+  masterMarginLabel.alignment = { horizontal: "right", vertical: "middle" };
+  const masterMarginCell = ws.getCell(masterMarginRow, 18); // column R
+  masterMarginCell.value = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
+  masterMarginCell.numFmt = FMT_PCT;
+  masterMarginCell.font = { bold: true, name: "Calibri", size: 12 };
+  masterMarginCell.alignment = { horizontal: "center", vertical: "middle" };
+  inputCell(masterMarginCell);
+
   let row = 3;
 
   // Header row — matches online format
@@ -1349,8 +1362,8 @@ function buildLedCostSheet(
     dr.getCell(17).value = { formula: `N${row}+O${row}+P${row}`, result: ledWithSpares + bundleEquipmentCost + d.shippingCost };
     dr.getCell(17).numFmt = FMT_USD;
     dr.getCell(17).font = { bold: true, name: "Calibri" };
-    // Margin %
-    dr.getCell(18).value = d.marginPct; dr.getCell(18).numFmt = FMT_PCT;
+    // Margin % — references master override cell R2
+    dr.getCell(18).value = { formula: `R$${masterMarginRow}`, result: d.marginPct }; dr.getCell(18).numFmt = FMT_PCT;
     // Selling Price = Total Cost / (1 - Margin%)
     dr.getCell(19).value = { formula: `Q${row}/(1-R${row})`, result: d.sellingPrice };
     dr.getCell(19).numFmt = FMT_USD;
