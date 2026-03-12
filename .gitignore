@@ -124,3 +124,4 @@ services/rfp/pipeline/*.xlsx
 # Local context files (credentials, reference docs)
 contexts/
 run
+natexcel/
