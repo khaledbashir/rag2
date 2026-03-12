@@ -291,6 +291,18 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
             ? PROJECT_QUESTIONS.length + (displayIndex * DISPLAY_QUESTIONS.length) + currentStep
             : PROJECT_QUESTIONS.length + (answers.displays.length * DISPLAY_QUESTIONS.length) + currentStep;
     const progress = Math.min((globalStep / totalSteps) * 100, 100);
+    const activeDisplay = answers.displays[displayIndex];
+    const questionInputKey = phase === "display"
+        ? [
+            phase,
+            displayIndex,
+            currentQ?.id,
+            activeDisplay?.pixelPitch || "",
+            activeDisplay?.productId || "",
+            activeDisplay?.widthFt || 0,
+            activeDisplay?.heightFt || 0,
+        ].join(":")
+        : `${phase}:${currentQ?.id ?? ""}:${currentStep}`;
 
     // Get current answer value
     const getValue = useCallback(() => {
@@ -937,6 +949,7 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
 
                     {/* Input */}
                     <QuestionInput
+                        key={questionInputKey}
                         question={currentQ}
                         value={getValue()}
                         onChange={setValue}
