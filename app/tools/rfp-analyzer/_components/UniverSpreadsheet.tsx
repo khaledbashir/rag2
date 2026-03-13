@@ -338,15 +338,6 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       ? 1 - totalCostKnown / sellingPrice
       : (pd?.blendedMarginPct ?? 0.15);
     
-    // Debug: log pricing resolution for every screen
-    console.log(`[UniverSpreadsheet] LED row ${si} pricing:`, {
-      specName: spec.name,
-      docMatch: docPricing ? docPricing.sellingPrice : "NO_MATCH",
-      pdSell: pd?.totalSellingPrice ?? "N/A",
-      resolved: sellingPrice,
-      margin: marginPct,
-    });
-
     const sqFtPerScreen = h > 0 && w > 0 ? Math.round(h * w * 100) / 100 : 0;
     const totalSqFt = sqFtPerScreen > 0 ? Math.round(sqFtPerScreen * qty * 100) / 100 : 0;
     const displayCost = ratePerSqFt > 0 && totalSqFt > 0 ? Math.round(ratePerSqFt * totalSqFt * 100) / 100 : 0;
@@ -2140,6 +2131,8 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
 
   // Ref for rebuild deduplication
   const lastBuiltRef = useRef("");
+  // Guard: suppress value-change callbacks during programmatic rebuilds
+  const rebuildingRef = useRef(false);
 
   // Hydration safety: don't render until client-side mount
   useEffect(() => {
@@ -2204,8 +2197,9 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
         // Create workbook with pre-built data
         univerAPI.createWorkbook(workbookDataRef.current);
 
-        // Listen for cell value changes
+        // Listen for cell value changes (skip during programmatic rebuilds)
         univerAPI.addEvent(univerAPI.Event.SheetValueChanged, (params: any) => {
+          if (rebuildingRef.current) return;
           handleValueChanged(params, propsRef);
         });
 
@@ -2285,9 +2279,8 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
     if (currentKey === lastBuiltRef.current) return;
     lastBuiltRef.current = currentKey;
 
-    console.log("[UniverSpreadsheet] Rebuilding workbook with", props.screens.length, "screens");
-
     const api = apiRef.current;
+    rebuildingRef.current = true;
     try {
       const newData = buildWorkbookData(props);
       workbookDataRef.current = newData;
@@ -2298,6 +2291,9 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
       api.createWorkbook(newData);
     } catch (err) {
       console.warn("[UniverSpreadsheet] Rebuild failed:", err);
+    } finally {
+      // Allow value-change events again after a tick (createWorkbook fires sync events)
+      requestAnimationFrame(() => { rebuildingRef.current = false; });
     }
   });
 
