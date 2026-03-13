@@ -9,7 +9,7 @@
  * Same pattern as Mirror Mode (form + PDF preview) but for building estimates.
  */
 
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { useConfirm } from "@/hooks/useConfirm";
 import dynamic from "next/dynamic";
 import { FileSpreadsheet, ArrowLeft, Download, Loader2, MessageSquare, Copy, ArrowRightLeft, Package, Boxes, Search, Shield, Send, GitCompare, FileText, Box, Zap, ChevronDown, PenLine, Activity } from "lucide-react";
@@ -34,9 +34,10 @@ import { useRateCard } from "@/hooks/useRateCard";
 import { useEstimatorAutoSave } from "@/hooks/useEstimatorAutoSave";
 import { useServerPreview } from "@/hooks/useServerPreview";
 import { usePresence } from "@/hooks/usePresence";
+import type { ExtractedLEDSpec } from "@/services/rfp/unified/types";
 
 const EstimatorVenuePanel = dynamic(() => import("./EstimatorVenuePanel"), { ssr: false });
-const UniverPreview = dynamic(() => import("./UniverPreview"), { ssr: false });
+const EditableWorkbook = dynamic(() => import("@/app/tools/rfp-analyzer/_components/UniverSpreadsheet"), { ssr: false });
 const EstimatorActivityPanel = dynamic(() => import("./EstimatorActivityPanel"), { ssr: false });
 
 // Sheet colors no longer needed — Univer renders tab colors from the workbook data.
@@ -71,6 +72,7 @@ export default function EstimatorStudio({
     const [venueOpen, setVenueOpen] = useState(false);
     const [toolbarOpen, setToolbarOpen] = useState(false);
     const [activityOpen, setActivityOpen] = useState(false);
+    const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string }>>([]);
     const { activeUsers } = usePresence(projectId);
     // Legacy cell overrides / custom sheets kept for auto-save compatibility
     const cellOverrides: Record<string, string | number> = {};
@@ -98,6 +100,29 @@ export default function EstimatorStudio({
     );
     const { specs: productSpecs } = useProductSpecs(productIds);
 
+    useEffect(() => {
+        const env = answers.isIndoor ? "indoor" : "outdoor";
+        let cancelled = false;
+        fetch(`/api/rfp/pipeline/products?environment=${env}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => {
+                if (cancelled) return;
+                const products = (data?.products || []).map((p: any) => ({
+                    id: p.id,
+                    label: p.label || p.displayName || p.modelNumber || "Unknown Product",
+                    pitch: Number(p.pitch ?? p.pixelPitch ?? p.pixelPitchMm ?? 0) || 0,
+                    name: p.name || p.displayName || p.modelNumber || "Unknown Product",
+                }));
+                setAvailableProducts(products);
+            })
+            .catch(() => {
+                if (!cancelled) setAvailableProducts([]);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [answers.isIndoor]);
+
     // Calculate per-display cost breakdowns (used by copilot for query responses)
     const calcs = useMemo(() => {
         return answers.displays.map((d) => {
@@ -105,6 +130,100 @@ export default function EstimatorStudio({
             return calculateDisplay(d, answers, rates ?? undefined, spec);
         });
     }, [answers, rates, productSpecs]);
+
+    const workbookScreens = useMemo<ExtractedLEDSpec[]>(() => {
+        return answers.displays.map((display, index) => {
+            const product = display.productId ? productSpecs[display.productId] : null;
+            const pitch = Number(display.pixelPitch || 0) || null;
+            return {
+                name: display.displayName || `Display ${index + 1}`,
+                location: display.locationType || "",
+                widthFt: display.widthFt || 0,
+                heightFt: display.heightFt || 0,
+                widthPx: pitch && display.widthFt ? Math.round(display.widthFt * 304.8 / pitch) : null,
+                heightPx: pitch && display.heightFt ? Math.round(display.heightFt * 304.8 / pitch) : null,
+                pixelPitchMm: pitch,
+                brightnessNits: (product as any)?.maxNits ?? (product as any)?.typicalNits ?? null,
+                environment: answers.isIndoor ? "indoor" : "outdoor",
+                quantity: 1,
+                serviceType: display.serviceType?.toLowerCase().includes("front")
+                    ? "front"
+                    : display.serviceType?.toLowerCase().includes("rear")
+                        ? "rear"
+                        : null,
+                mountingType: display.locationType || null,
+                maxPowerW: null,
+                weightLbs: null,
+                specialRequirements: [],
+                confidence: 1,
+                sourcePages: [],
+                sourceType: "text",
+                citation: "Estimator",
+                notes: null,
+                selectedProductId: display.productId || null,
+                selectedProductName: display.productName || null,
+            };
+        });
+    }, [answers, productSpecs]);
+
+    const workbookPricingDisplays = useMemo(() => {
+        return calcs.map((calc, index) => {
+            const display = answers.displays[index];
+            const spec = display?.productId ? productSpecs[display.productId] : null;
+            return {
+                name: calc.name,
+                location: display?.locationType || "",
+                pixelPitch: calc.pixelPitch || null,
+                areaSqFt: calc.areaSqFt,
+                quantity: 1,
+                hardwareCost: calc.hardwareCost,
+                processorCost: calc.equipmentCost,
+                shippingCost: calc.shippingCost,
+                installCost: calc.installCost,
+                structuralCost: calc.structureCost,
+                electricalCost: calc.electricalCost,
+                pmCost: calc.pmCost,
+                engCost: calc.engineeringCost,
+                totalCost: calc.totalCost,
+                totalSellingPrice: calc.sellPrice,
+                blendedMarginPct: calc.marginPct,
+                costSource: "estimator",
+                rateCardEstimate: calc.costPerSqFt || null,
+                matchedProduct: spec ? {
+                    manufacturer: (spec as any).manufacturer || "",
+                    model: (spec as any).displayName || display?.productName || "",
+                    pitch: Number((spec as any).pixelPitch ?? calc.pixelPitch ?? 0),
+                    fitScore: 100,
+                    activeWidthFt: calc.cabinetLayout?.actualWidthFt,
+                    activeHeightFt: calc.cabinetLayout?.actualHeightFt,
+                    resolutionX: calc.pixelsW,
+                    resolutionY: calc.pixelsH,
+                    totalModules: calc.cabinetLayout?.totalCabinets,
+                    weightKgPerCab: (spec as any).weightKgPerCabinet,
+                    maxPowerWPerCab: (spec as any).maxPowerWattsPerCab,
+                    totalWeightLbs: calc.cabinetLayout?.totalWeightLbs,
+                    totalMaxPowerW: calc.cabinetLayout?.totalPowerWatts,
+                    nits: (spec as any).maxNits ?? (spec as any).typicalNits ?? undefined,
+                  } : null,
+            };
+        });
+    }, [answers.displays, calcs, productSpecs]);
+
+    const workbookPricingSummary = useMemo(() => {
+        const totalCost = workbookPricingDisplays.reduce((sum, d) => sum + d.totalCost, 0);
+        const totalSellingPrice = workbookPricingDisplays.reduce((sum, d) => sum + d.totalSellingPrice, 0);
+        const totalMargin = totalSellingPrice - totalCost;
+        const blendedMarginPct = totalSellingPrice > 0 ? totalMargin / totalSellingPrice : 0;
+        return {
+            totalCost,
+            totalSellingPrice,
+            totalMargin,
+            blendedMarginPct,
+            displayCount: workbookPricingDisplays.length,
+            quotedCount: workbookPricingDisplays.length,
+            rateCardCount: 0,
+        };
+    }, [workbookPricingDisplays]);
 
     // Univer handles all editing natively — no client-side cell override logic needed.
 
@@ -152,7 +271,7 @@ export default function EstimatorStudio({
 
     const handleComplete = useCallback(() => {
         setQuestionsComplete(true);
-        setEditingAnswers(true);
+        setEditingAnswers(false);
     }, []);
 
     const questionPanelOpen = editingAnswers && !copilotOpen;
@@ -222,6 +341,50 @@ export default function EstimatorStudio({
             return { ...prev, displays };
         });
     }, []);
+
+    const handleWorkbookSpecEdit = useCallback((displayIndex: number, field: string, value: number) => {
+        setAnswers((prev) => {
+            if (displayIndex < 0 || displayIndex >= prev.displays.length) return prev;
+            const displays = [...prev.displays];
+            const current = { ...displays[displayIndex] } as any;
+            if (field === "heightFt") current.heightFt = value || 0;
+            if (field === "widthFt") current.widthFt = value || 0;
+            displays[displayIndex] = current;
+            return { ...prev, displays };
+        });
+    }, []);
+
+    const handleWorkbookPricingEdit = useCallback((displayIndex: number, field: string, value: number) => {
+        setAnswers((prev) => {
+            if (displayIndex < 0 || displayIndex >= prev.displays.length) return prev;
+            const displays = [...prev.displays];
+            const current = { ...displays[displayIndex] };
+            const nextOverrides = { ...(current.costOverrides || {}) };
+            if (field === "hardwareCost") nextOverrides.displayCost = value;
+            if (field === "processorCost") nextOverrides.processor = value;
+            if (field === "shippingCost") nextOverrides.shipping = value;
+            if (field === "blendedMarginPct") nextOverrides.marginPct = value;
+            current.costOverrides = nextOverrides;
+            displays[displayIndex] = current;
+            return { ...prev, displays };
+        });
+    }, []);
+
+    const handleWorkbookProductSelect = useCallback((displayName: string, productId: string) => {
+        const product = availableProducts.find((p) => p.id === productId);
+        setAnswers((prev) => {
+            const index = prev.displays.findIndex((d, idx) => (d.displayName || `Display ${idx + 1}`) === displayName);
+            if (index === -1) return prev;
+            const displays = [...prev.displays];
+            displays[index] = {
+                ...displays[index],
+                productId,
+                productName: product?.name || displays[index].productName,
+                pixelPitch: product?.pitch ? String(product.pitch) : displays[index].pixelPitch,
+            };
+            return { ...prev, displays };
+        });
+    }, [availableProducts]);
 
     const handleConvert = useCallback(async () => {
         if (!projectId || converting) return;
@@ -607,10 +770,22 @@ export default function EstimatorStudio({
 
                 {/* Center/Right: Excel Preview */}
                 <section className="relative min-w-0 min-h-0 bg-zinc-100 dark:bg-zinc-950 overflow-hidden flex flex-col p-3">
-                    <UniverPreview
-                        workbookData={serverPreview}
-                        loading={serverPreviewLoading}
-                        error={serverPreviewError}
+                    <EditableWorkbook
+                        className="w-full h-full"
+                        screens={workbookScreens}
+                        pricingDisplays={workbookPricingDisplays}
+                        pricingSummary={workbookPricingSummary}
+                        projectInfo={{
+                            projectName: answers.projectName || null,
+                            clientName: answers.clientName || null,
+                            venue: null,
+                            location: answers.location || null,
+                            documentMode: answers.docType || "budget",
+                        }}
+                        availableProducts={availableProducts}
+                        onSpecEdit={handleWorkbookSpecEdit}
+                        onPricingEdit={handleWorkbookPricingEdit}
+                        onProductSelect={handleWorkbookProductSelect}
                     />
                     {/* Bundle panel overlay */}
                     {bundleOpen && (
