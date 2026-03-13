@@ -213,6 +213,14 @@ export default function EstimatorStudio({
         return answers.displays.map((display, index) => {
             const product = display.productId ? productSpecs[display.productId] : null;
             const pitch = Number(display.pixelPitch || 0) || null;
+            const productBrightness = product
+                ? (
+                    (product as any).brightnessNits
+                    ?? (product as any).maxNits
+                    ?? (product as any).typicalNits
+                    ?? null
+                )
+                : null;
             return {
                 name: display.displayName || `Display ${index + 1}`,
                 location: display.locationType || "",
@@ -221,7 +229,7 @@ export default function EstimatorStudio({
                 widthPx: pitch && display.widthFt ? Math.round(display.widthFt * 304.8 / pitch) : null,
                 heightPx: pitch && display.heightFt ? Math.round(display.heightFt * 304.8 / pitch) : null,
                 pixelPitchMm: pitch,
-                brightnessNits: (product as any)?.maxNits ?? (product as any)?.typicalNits ?? null,
+                brightnessNits: productBrightness,
                 environment: answers.isIndoor ? "indoor" : "outdoor",
                 quantity: display.quantity || 1,
                 serviceType: display.serviceType?.toLowerCase().includes("front")
@@ -248,6 +256,14 @@ export default function EstimatorStudio({
         return calcs.map((calc, index) => {
             const display = answers.displays[index];
             const spec = display?.productId ? productSpecs[display.productId] : null;
+            const productBrightness = spec
+                ? (
+                    (spec as any).brightnessNits
+                    ?? (spec as any).maxNits
+                    ?? (spec as any).typicalNits
+                    ?? undefined
+                )
+                : undefined;
             return {
                 name: calc.name,
                 location: display?.locationType || "",
@@ -284,7 +300,7 @@ export default function EstimatorStudio({
                     maxPowerWPerCab: (spec as any).maxPowerWattsPerCab,
                     totalWeightLbs: calc.cabinetLayout?.totalWeightLbs,
                     totalMaxPowerW: calc.cabinetLayout?.totalPowerWatts,
-                    nits: (spec as any).maxNits ?? (spec as any).typicalNits ?? undefined,
+                    nits: productBrightness,
                   } : null,
             };
         });

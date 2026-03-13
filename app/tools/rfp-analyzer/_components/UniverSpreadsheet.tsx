@@ -199,7 +199,17 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   psRow++;
   psCellData[psRow] = {
     0: { v: "Document Total", s: { bl: 1, fs: 12 } },
-    1: { f: "='Margin Analysis'!C" + (getMarginAnalysisTotalRow(pricingDocument, pricingDisplays) + 1), s: { bl: 1, fs: 12, ...CURRENCY_FMT } },
+    1: {
+      f: "='Margin Analysis'!C" + (
+        getMarginAnalysisTotalRow(
+          pricingDocument,
+          pricingDisplays,
+          manualAdditions.length,
+          venueServices?.totalCost ?? 0,
+        ) + 1
+      ),
+      s: { bl: 1, fs: 12, ...CURRENCY_FMT },
+    },
   };
   
   const psColWidths: Record<number, { w: number }> = {
@@ -343,7 +353,12 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     const processorCost = pd?.processorCost ?? 0;
     const shippingCost = pd?.shippingCost ?? 0;
     const totalLedCost = Math.round((displayCost + processorCost + shippingCost) * 100) / 100;
-    const resolvedNits = Number(mp?.nits ?? spec.brightnessNits ?? 0) || "";
+    const resolvedNits = Number(
+      mp?.nits
+      ?? (mp as any)?.brightnessNits
+      ?? spec.brightnessNits
+      ?? 0
+    ) || "";
 
     ledCellData[row] = {
       0: { v: spec.name, s: "bold" },
@@ -2006,7 +2021,12 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
 }
 
 // Helper to get Margin Analysis total row for cross-sheet reference
-function getMarginAnalysisTotalRow(pricingDocument: any, pricingDisplays: PricingDisplay[]): number {
+function getMarginAnalysisTotalRow(
+  pricingDocument: any,
+  pricingDisplays: PricingDisplay[],
+  manualAdditionCount = 0,
+  venueServicesTotalCost = 0,
+): number {
   const pricingTables = pricingDocument?.tables || [];
   const hasPricingTables = pricingTables.length > 0 && pricingTables.some((t: any) => t.items?.length > 0);
   
@@ -2021,8 +2041,9 @@ function getMarginAnalysisTotalRow(pricingDocument: any, pricingDisplays: Pricin
     }
     return row; // DOCUMENT TOTAL row
   } else {
-    // Fallback: 4 header rows + header + displays + total + tax + bond + subtotal
-    return 4 + 1 + pricingDisplays.length + 4;
+    // Fallback: 4 header rows + header + displays + manual additions + venue services row + total + tax + bond + subtotal
+    const venueServiceRows = venueServicesTotalCost > 0 ? 1 : 0;
+    return 4 + 1 + pricingDisplays.length + manualAdditionCount + venueServiceRows + 4;
   }
 }
 
