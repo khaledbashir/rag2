@@ -24,6 +24,13 @@ export interface UniverSpreadsheetProps {
   screens: ExtractedLEDSpec[];
   pricingDisplays: PricingDisplay[];
   pricingSummary: PricingSummary | null;
+  manualAdditions?: Array<{
+    key: string;
+    label: string;
+    cost: number;
+    marginPct: number;
+    sellingPrice: number;
+  }>;
   // Mirror Mode pricing data from Excel uploads
   pricingDocument?: {
     tables: Array<{
@@ -120,7 +127,7 @@ function guardedSellingFormula(costRef: string, marginRef: string, decimals = 2)
 // ---------------------------------------------------------------------------
 
 function buildWorkbookData(props: UniverSpreadsheetProps) {
-  const { screens, pricingDisplays, pricingDocument, projectInfo, internalAudit } = props;
+  const { screens, pricingDisplays, pricingDocument, projectInfo, internalAudit, manualAdditions = [] } = props;
   const styles: Record<string, any> = {
     header: HEADER_STYLE,
     bold: BOLD_STYLE,
@@ -622,6 +629,18 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         2: { f: guardedSellingFormula(`B${r}`, `E${r}`), s: "currency" },
         3: { f: `=C${r}-B${r}`, s: "currency" },
         4: { f: guardedDivisionFormula(`D${r}`, `C${r}`, 4), s: "percent" },
+      };
+      maRow++;
+    }
+
+    for (const item of manualAdditions) {
+      const r = maRow + 1;
+      maCellData[maRow] = {
+        0: { v: item.label, s: "bold" },
+        1: { v: item.cost || 0, s: "currency" },
+        2: { f: guardedSellingFormula(`B${r}`, `E${r}`), s: "currency" },
+        3: { f: `=C${r}-B${r}`, s: "currency" },
+        4: { v: item.marginPct, s: "percent" },
       };
       maRow++;
     }
@@ -1655,6 +1674,10 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   if (bsTotalEquip > 0) {
     bsCategories.push(["Processor & Equipment", bsTotalEquip, bsHwMargin]);
   }
+  const manualAdditionsCost = manualAdditions.reduce((sum, item) => sum + (item.cost || 0), 0);
+  if (manualAdditionsCost > 0) {
+    bsCategories.push(["Additional Items", manualAdditionsCost, 0.15]);
+  }
 
   const bsDataStart = 4;
   bsCategories.forEach(([label, cost, margin], i) => {
@@ -1935,7 +1958,8 @@ function getMarginAnalysisEditTarget(
 
   const firstDataRow = 6; // 5 title/header rows + data starts after table header
   const itemIdx = row - firstDataRow;
-  if (itemIdx < 0 || itemIdx >= props.pricingDisplays.length) return null;
+  const totalEditableRows = props.pricingDisplays.length + (props.manualAdditions?.length || 0);
+  if (itemIdx < 0 || itemIdx >= totalEditableRows) return null;
   if (column === 1) return { itemIdx, field: "cost" };
   if (column === 2) return { itemIdx, field: "sellingPrice" };
   return null;

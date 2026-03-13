@@ -129,6 +129,10 @@ export interface FinancialOverrides {
   pmComplexity?: "standard" | "complex" | "major";
   cmsAllocation?: number;         // CMS cost in dollars
   scoringAllocation?: number;     // Scoring cost in dollars
+  gameClockAllocation?: number;   // Additional Items sheet
+  pitchClocksAllocation?: number; // Additional Items sheet
+  oesAllocation?: number;         // Additional Items sheet
+  miscEquipmentAllocation?: number; // Additional Items sheet
   isUnionLabor?: boolean;         // 15% uplift on labor costs
   perDisplayComplexity?: InstallComplexity[];  // parallel to specs array
   /** Per-display cost overrides from direct cell edits — parallel to specs array */
@@ -688,7 +692,7 @@ export async function generateScopingWorkbook(
   const scoringRefs = buildScoring(wb, projectName, displays);
 
   // 11b. Additional non-LED items
-  const additionalItemRefs = buildAdditionalItems(wb, projectName);
+  const additionalItemRefs = buildAdditionalItems(wb, projectName, ov);
 
   // 12. Resp Matrix
   buildRespMatrix(wb, projectName, project);
@@ -2793,6 +2797,7 @@ function buildScoring(
 function buildAdditionalItems(
   wb: ExcelJS.Workbook,
   projectName: string,
+  ov?: FinancialOverrides,
 ): AdditionalItemsSheetRefs {
   const ws = wb.addWorksheet("Additional Items", {
     properties: { tabColor: { argb: C.GREEN_TAB } },
@@ -2821,14 +2826,19 @@ function buildAdditionalItems(
   items.forEach(([category, item], idx) => {
     const currentRow = row;
     const r = ws.getRow(currentRow);
+    const defaultCost =
+      category === "GAME CLOCK" ? (ov?.gameClockAllocation ?? 0)
+      : category === "PITCH CLOCK" ? (ov?.pitchClocksAllocation ?? 0)
+      : category === "OES / MIS" ? (ov?.oesAllocation ?? 0)
+      : (ov?.miscEquipmentAllocation ?? 0);
     r.getCell(2).value = category;
     r.getCell(3).value = item;
-    r.getCell(4).value = 0; r.getCell(4).numFmt = FMT_USD; inputCell(r.getCell(4));
+    r.getCell(4).value = defaultCost; r.getCell(4).numFmt = FMT_USD; inputCell(r.getCell(4));
     r.getCell(5).value = 1; inputCell(r.getCell(5));
-    r.getCell(6).value = { formula: `D${currentRow}*E${currentRow}`, result: 0 }; r.getCell(6).numFmt = FMT_USD;
+    r.getCell(6).value = { formula: `D${currentRow}*E${currentRow}`, result: defaultCost }; r.getCell(6).numFmt = FMT_USD;
     r.getCell(7).value = DEFAULT_MARGINS.equipment; r.getCell(7).numFmt = FMT_PCT; inputCell(r.getCell(7));
-    r.getCell(8).value = { formula: `IFERROR(F${currentRow}/(1-G${currentRow}),0)`, result: 0 }; r.getCell(8).numFmt = FMT_USD;
-    r.getCell(9).value = { formula: `IFERROR(H${currentRow}-F${currentRow},0)`, result: 0 }; r.getCell(9).numFmt = FMT_USD;
+    r.getCell(8).value = { formula: `IFERROR(F${currentRow}/(1-G${currentRow}),0)`, result: defaultCost > 0 ? round2(defaultCost / (1 - DEFAULT_MARGINS.equipment)) : 0 }; r.getCell(8).numFmt = FMT_USD;
+    r.getCell(9).value = { formula: `IFERROR(H${currentRow}-F${currentRow},0)`, result: defaultCost > 0 ? round2((defaultCost / (1 - DEFAULT_MARGINS.equipment)) - defaultCost) : 0 }; r.getCell(9).numFmt = FMT_USD;
     stripe(r, 9, idx % 2 === 0);
     if (category === "GAME CLOCK") rows.gameClock = currentRow;
     if (category === "PITCH CLOCK") rows.pitchClocks = currentRow;

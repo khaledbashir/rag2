@@ -702,6 +702,11 @@ export interface EstimatorAnswers {
     includeWarranty: "none" | "included" | "priced";
     warrantyYears: string;
     warrantyAllocation: number;
+    // Additional non-LED items
+    gameClockAllocation: number;
+    pitchClocksAllocation: number;
+    oesAllocation: number;
+    miscEquipmentAllocation: number;
 }
 
 export interface DisplayAnswers {
@@ -759,6 +764,10 @@ export function getDefaultAnswers(): EstimatorAnswers {
         includeWarranty: "none",
         warrantyYears: "1",
         warrantyAllocation: 0,
+        gameClockAllocation: 0,
+        pitchClocksAllocation: 0,
+        oesAllocation: 0,
+        miscEquipmentAllocation: 0,
     };
 }
 

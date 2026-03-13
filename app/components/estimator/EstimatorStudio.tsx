@@ -53,6 +53,7 @@ export default function EstimatorStudio({
     projectId,
     initialAnswers,
 }: EstimatorStudioProps = {}) {
+    const ADDITIONAL_ITEM_MARGIN = 0.15;
     const router = useRouter();
     const [answers, setAnswers] = useState<EstimatorAnswers>(initialAnswers || getDefaultAnswers());
     const [exporting, setExporting] = useState(false);
@@ -210,8 +211,15 @@ export default function EstimatorStudio({
     }, [answers.displays, calcs, productSpecs]);
 
     const workbookPricingSummary = useMemo(() => {
-        const totalCost = workbookPricingDisplays.reduce((sum, d) => sum + d.totalCost, 0);
-        const totalSellingPrice = workbookPricingDisplays.reduce((sum, d) => sum + d.totalSellingPrice, 0);
+        const additionalCost = answers.gameClockAllocation
+            + answers.pitchClocksAllocation
+            + answers.oesAllocation
+            + answers.miscEquipmentAllocation;
+        const additionalSellingPrice = additionalCost > 0
+            ? additionalCost / (1 - ADDITIONAL_ITEM_MARGIN)
+            : 0;
+        const totalCost = workbookPricingDisplays.reduce((sum, d) => sum + d.totalCost, 0) + additionalCost;
+        const totalSellingPrice = workbookPricingDisplays.reduce((sum, d) => sum + d.totalSellingPrice, 0) + additionalSellingPrice;
         const totalMargin = totalSellingPrice - totalCost;
         const blendedMarginPct = totalSellingPrice > 0 ? totalMargin / totalSellingPrice : 0;
         return {
@@ -223,7 +231,17 @@ export default function EstimatorStudio({
             quotedCount: workbookPricingDisplays.length,
             rateCardCount: 0,
         };
-    }, [workbookPricingDisplays]);
+    }, [ADDITIONAL_ITEM_MARGIN, answers.gameClockAllocation, answers.miscEquipmentAllocation, answers.oesAllocation, answers.pitchClocksAllocation, workbookPricingDisplays]);
+
+    const workbookManualAdditions = useMemo(() => {
+        const toSellingPrice = (cost: number) => (cost > 0 ? cost / (1 - ADDITIONAL_ITEM_MARGIN) : 0);
+        return [
+            { key: "gameClockAllocation", label: "Game Clock", cost: answers.gameClockAllocation, marginPct: ADDITIONAL_ITEM_MARGIN, sellingPrice: toSellingPrice(answers.gameClockAllocation) },
+            { key: "pitchClocksAllocation", label: "Pitch Clocks", cost: answers.pitchClocksAllocation, marginPct: ADDITIONAL_ITEM_MARGIN, sellingPrice: toSellingPrice(answers.pitchClocksAllocation) },
+            { key: "oesAllocation", label: "OES / MIS / Timing", cost: answers.oesAllocation, marginPct: ADDITIONAL_ITEM_MARGIN, sellingPrice: toSellingPrice(answers.oesAllocation) },
+            { key: "miscEquipmentAllocation", label: "DMX / Misc Equipment", cost: answers.miscEquipmentAllocation, marginPct: ADDITIONAL_ITEM_MARGIN, sellingPrice: toSellingPrice(answers.miscEquipmentAllocation) },
+        ];
+    }, [ADDITIONAL_ITEM_MARGIN, answers.gameClockAllocation, answers.miscEquipmentAllocation, answers.oesAllocation, answers.pitchClocksAllocation]);
 
     // Univer handles all editing natively — no client-side cell override logic needed.
 
@@ -372,7 +390,17 @@ export default function EstimatorStudio({
 
     const handleWorkbookMarginAnalysisEdit = useCallback((itemIdx: number, field: string, value: number) => {
         setAnswers((prev) => {
-            if (itemIdx < 0 || itemIdx >= prev.displays.length) return prev;
+            if (itemIdx < 0) return prev;
+            if (itemIdx >= prev.displays.length) {
+                const manualKeys = ["gameClockAllocation", "pitchClocksAllocation", "oesAllocation", "miscEquipmentAllocation"] as const;
+                const targetKey = manualKeys[itemIdx - prev.displays.length];
+                if (!targetKey) return prev;
+                const nextValue = field === "sellingPrice"
+                    ? Math.max(0, value * (1 - ADDITIONAL_ITEM_MARGIN))
+                    : Math.max(0, value);
+                return { ...prev, [targetKey]: nextValue };
+            }
+
             const currentCalc = calcs[itemIdx];
             if (!currentCalc) return prev;
 
@@ -394,7 +422,7 @@ export default function EstimatorStudio({
             displays[itemIdx] = current;
             return { ...prev, displays };
         });
-    }, [calcs]);
+    }, [ADDITIONAL_ITEM_MARGIN, calcs]);
 
     const handleWorkbookProductSelect = useCallback((displayName: string, productId: string) => {
         const product = availableProducts.find((p) => p.id === productId);
@@ -801,6 +829,7 @@ export default function EstimatorStudio({
                         screens={workbookScreens}
                         pricingDisplays={workbookPricingDisplays}
                         pricingSummary={workbookPricingSummary}
+                        manualAdditions={workbookManualAdditions}
                         projectInfo={{
                             projectName: answers.projectName || null,
                             clientName: answers.clientName || null,
