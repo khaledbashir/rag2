@@ -73,6 +73,7 @@ export default function EstimatorStudio({
     const [venueOpen, setVenueOpen] = useState(false);
     const [toolbarOpen, setToolbarOpen] = useState(false);
     const [activityOpen, setActivityOpen] = useState(false);
+    const [workbookSyncMessage, setWorkbookSyncMessage] = useState<string>("");
     const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string }>>([]);
     const { activeUsers } = usePresence(projectId);
     // Legacy cell overrides / custom sheets kept for auto-save compatibility
@@ -93,6 +94,10 @@ export default function EstimatorStudio({
         totalAmount: projectTotal,
     });
     const { confirm, alert: showAlert } = useConfirm();
+
+    const noteWorkbookSync = useCallback((message: string) => {
+        setWorkbookSyncMessage(message);
+    }, []);
 
     const venueServices = useMemo(() => {
         const enabled = answers.includeVenueServices && answers.venueServiceAnnualFee > 0;
@@ -405,7 +410,8 @@ export default function EstimatorStudio({
             };
             return { ...prev, displays };
         });
-    }, []);
+        noteWorkbookSync(`Workbook edit synced: Display ${displayIndex + 1} product -> ${product.name}`);
+    }, [noteWorkbookSync]);
 
     const handleInlineDisplayEdit = useCallback((displayIndex: number, field: "displayName" | "heightFt" | "widthFt", value: string) => {
         setAnswers((prev) => {
@@ -435,7 +441,17 @@ export default function EstimatorStudio({
             displays[displayIndex] = current;
             return { ...prev, displays };
         });
-    }, [normalizeLocationType, normalizeServiceType]);
+        const labelMap: Record<string, string> = {
+            displayName: "name",
+            heightFt: "height",
+            widthFt: "width",
+            quantity: "quantity",
+            pixelPitch: "pitch",
+            serviceType: "service",
+            locationType: "location",
+        };
+        noteWorkbookSync(`Workbook edit synced: Display ${displayIndex + 1} ${labelMap[field] || field} updated`);
+    }, [normalizeLocationType, normalizeServiceType, noteWorkbookSync]);
 
     const handleWorkbookPricingEdit = useCallback((displayIndex: number, field: string, value: number) => {
         setAnswers((prev) => {
@@ -451,7 +467,14 @@ export default function EstimatorStudio({
             displays[displayIndex] = current;
             return { ...prev, displays };
         });
-    }, []);
+        const labelMap: Record<string, string> = {
+            hardwareCost: "display cost",
+            processorCost: "processor cost",
+            shippingCost: "shipping",
+            blendedMarginPct: "margin",
+        };
+        noteWorkbookSync(`Workbook edit synced: Display ${displayIndex + 1} ${labelMap[field] || field} updated`);
+    }, [noteWorkbookSync]);
 
     const handleWorkbookMarginAnalysisEdit = useCallback((itemIdx: number, field: string, value: number) => {
         setAnswers((prev) => {
@@ -463,6 +486,13 @@ export default function EstimatorStudio({
                 const nextValue = field === "sellingPrice"
                     ? Math.max(0, value * (1 - ADDITIONAL_ITEM_MARGIN))
                     : Math.max(0, value);
+                const labelMap: Record<typeof manualKeys[number], string> = {
+                    gameClockAllocation: "Game Clock",
+                    pitchClocksAllocation: "Pitch Clocks",
+                    oesAllocation: "OES / MIS / Timing",
+                    miscEquipmentAllocation: "DMX / Misc Equipment",
+                };
+                noteWorkbookSync(`Workbook edit synced: ${labelMap[targetKey]} updated`);
                 return { ...prev, [targetKey]: nextValue };
             }
 
@@ -487,7 +517,10 @@ export default function EstimatorStudio({
             displays[itemIdx] = current;
             return { ...prev, displays };
         });
-    }, [ADDITIONAL_ITEM_MARGIN, calcs]);
+        if (itemIdx < calcs.length) {
+            noteWorkbookSync(`Workbook edit synced: Display ${itemIdx + 1} margin analysis updated`);
+        }
+    }, [ADDITIONAL_ITEM_MARGIN, calcs, noteWorkbookSync]);
 
     const handleVenueServicesEdit = useCallback((field: string, value: number) => {
         setAnswers((prev) => {
@@ -505,7 +538,14 @@ export default function EstimatorStudio({
             }
             return prev;
         });
-    }, []);
+        const labelMap: Record<string, string> = {
+            venueServiceYears: "contract years",
+            venueServiceAnnualFee: "year 1 cost",
+            venueServiceEscalationPct: "annual escalation",
+            venueServiceMarginPct: "venue services margin",
+        };
+        noteWorkbookSync(`Workbook edit synced: Venue Services ${labelMap[field] || field} updated`);
+    }, [noteWorkbookSync]);
 
     const handleWorkbookProductSelect = useCallback((displayName: string, productId: string) => {
         const product = availableProducts.find((p) => p.id === productId);
@@ -521,7 +561,8 @@ export default function EstimatorStudio({
             };
             return { ...prev, displays };
         });
-    }, [availableProducts]);
+        noteWorkbookSync(`Workbook edit synced: ${displayName} product -> ${product?.name || productId}`);
+    }, [availableProducts, noteWorkbookSync]);
 
     const handleConvert = useCallback(async () => {
         if (!projectId || converting) return;
@@ -615,6 +656,11 @@ export default function EstimatorStudio({
                     )}
                     {projectId && saveStatus === "error" && (
                         <span className="text-[10px] text-destructive">Save failed</span>
+                    )}
+                    {workbookSyncMessage && (
+                        <span className="max-w-[280px] truncate text-[10px] text-[#0A52EF]">
+                            {workbookSyncMessage}
+                        </span>
                     )}
                     {answers.displays.length > 0 && (
                         <>
@@ -907,27 +953,37 @@ export default function EstimatorStudio({
 
                 {/* Center/Right: Excel Preview */}
                 <section className="relative min-w-0 min-h-0 bg-zinc-100 dark:bg-zinc-950 overflow-hidden flex flex-col p-3">
-                    <EditableWorkbook
-                        className="w-full h-full"
-                        screens={workbookScreens}
-                        pricingDisplays={workbookPricingDisplays}
-                        pricingSummary={workbookPricingSummary}
-                        manualAdditions={workbookManualAdditions}
-                        venueServices={venueServices}
-                        projectInfo={{
-                            projectName: answers.projectName || null,
-                            clientName: answers.clientName || null,
-                            venue: null,
-                            location: answers.location || null,
-                            documentMode: answers.docType || "budget",
-                        }}
-                        availableProducts={availableProducts}
-                        onSpecEdit={handleWorkbookSpecEdit}
-                        onPricingEdit={handleWorkbookPricingEdit}
-                        onMarginAnalysisEdit={handleWorkbookMarginAnalysisEdit}
-                        onVenueServicesEdit={handleVenueServicesEdit}
-                        onProductSelect={handleWorkbookProductSelect}
-                    />
+                    <div className="shrink-0 mb-2 flex items-center justify-between rounded-md border border-border bg-background/90 px-3 py-2 text-[11px] text-muted-foreground">
+                        <span>Workbook edits now sync directly into estimator state and autosave.</span>
+                        {workbookSyncMessage ? (
+                            <span className="truncate text-[#0A52EF]">{workbookSyncMessage}</span>
+                        ) : (
+                            <span className="text-emerald-600">Ready</span>
+                        )}
+                    </div>
+                    <div className="relative min-h-0 flex-1">
+                        <EditableWorkbook
+                            className="w-full h-full"
+                            screens={workbookScreens}
+                            pricingDisplays={workbookPricingDisplays}
+                            pricingSummary={workbookPricingSummary}
+                            manualAdditions={workbookManualAdditions}
+                            venueServices={venueServices}
+                            projectInfo={{
+                                projectName: answers.projectName || null,
+                                clientName: answers.clientName || null,
+                                venue: null,
+                                location: answers.location || null,
+                                documentMode: answers.docType || "budget",
+                            }}
+                            availableProducts={availableProducts}
+                            onSpecEdit={handleWorkbookSpecEdit}
+                            onPricingEdit={handleWorkbookPricingEdit}
+                            onMarginAnalysisEdit={handleWorkbookMarginAnalysisEdit}
+                            onVenueServicesEdit={handleVenueServicesEdit}
+                            onProductSelect={handleWorkbookProductSelect}
+                        />
+                    </div>
                     {/* Bundle panel overlay */}
                     {bundleOpen && (
                         <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-md rounded-lg border border-border shadow-lg">
