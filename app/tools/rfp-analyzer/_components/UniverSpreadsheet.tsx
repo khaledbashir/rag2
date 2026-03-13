@@ -2214,6 +2214,30 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
     const currentKey = JSON.stringify({
       screens: props.screens.map(s => ({ n: s.name, q: s.quantity, p: s.pixelPitchMm, h: s.heightFt, w: s.widthFt })),
       displays: props.pricingDisplays.map(d => ({ n: d.name, c: d.hardwareCost, s: d.totalSellingPrice, m: d.blendedMarginPct })),
+      projectInfo: props.projectInfo ? {
+        projectName: props.projectInfo.projectName,
+        clientName: props.projectInfo.clientName,
+        venue: props.projectInfo.venue,
+        location: props.projectInfo.location,
+        documentMode: props.projectInfo.documentMode,
+        createdAt: props.projectInfo.createdAt,
+        updatedAt: props.projectInfo.updatedAt,
+      } : null,
+      manualAdditions: (props.manualAdditions || []).map(item => ({
+        k: item.key,
+        c: item.cost,
+        s: item.sellingPrice,
+        m: item.marginPct,
+      })),
+      venueServices: props.venueServices ? {
+        enabled: props.venueServices.enabled,
+        years: props.venueServices.years,
+        annualFee: props.venueServices.annualFee,
+        escalationPct: props.venueServices.escalationPct,
+        marginPct: props.venueServices.marginPct,
+        totalCost: props.venueServices.totalCost,
+        totalSellingPrice: props.venueServices.totalSellingPrice,
+      } : null,
       docTables: getPricingDocumentFingerprint(props.pricingDocument),
     });
 
