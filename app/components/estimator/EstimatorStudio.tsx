@@ -94,6 +94,45 @@ export default function EstimatorStudio({
     });
     const { confirm, alert: showAlert } = useConfirm();
 
+    const venueServices = useMemo(() => {
+        const enabled = answers.includeVenueServices && answers.venueServiceAnnualFee > 0;
+        const years = Math.max(1, parseInt(answers.venueServiceYears || "1", 10) || 1);
+        const escalationPct = Math.max(0, answers.venueServiceEscalationPct || 0) / 100;
+        const marginPct = Math.max(0, Math.min(0.95, (answers.venueServiceMarginPct || 0) / 100));
+        const annualFee = Math.max(0, answers.venueServiceAnnualFee || 0);
+        const rows = Array.from({ length: years }, (_, index) => {
+            const year = index + 1;
+            const cost = annualFee * Math.pow(1 + escalationPct, index);
+            const sellingPrice = marginPct < 1 ? cost / (1 - marginPct) : cost;
+            return {
+                year,
+                cost,
+                sellingPrice,
+                margin: sellingPrice - cost,
+            };
+        });
+        const totalCost = rows.reduce((sum, row) => sum + row.cost, 0);
+        const totalSellingPrice = rows.reduce((sum, row) => sum + row.sellingPrice, 0);
+        const totalMargin = totalSellingPrice - totalCost;
+        return {
+            enabled,
+            years,
+            annualFee,
+            escalationPct,
+            marginPct,
+            rows,
+            totalCost,
+            totalSellingPrice,
+            totalMargin,
+        };
+    }, [
+        answers.includeVenueServices,
+        answers.venueServiceAnnualFee,
+        answers.venueServiceEscalationPct,
+        answers.venueServiceMarginPct,
+        answers.venueServiceYears,
+    ]);
+
     const normalizeLocationType = useCallback((value: string) => {
         const normalized = value.trim().toLowerCase();
         if (!normalized) return "wall";
@@ -239,8 +278,8 @@ export default function EstimatorStudio({
         const additionalSellingPrice = additionalCost > 0
             ? additionalCost / (1 - ADDITIONAL_ITEM_MARGIN)
             : 0;
-        const totalCost = workbookPricingDisplays.reduce((sum, d) => sum + d.totalCost, 0) + additionalCost;
-        const totalSellingPrice = workbookPricingDisplays.reduce((sum, d) => sum + d.totalSellingPrice, 0) + additionalSellingPrice;
+        const totalCost = workbookPricingDisplays.reduce((sum, d) => sum + d.totalCost, 0) + additionalCost + venueServices.totalCost;
+        const totalSellingPrice = workbookPricingDisplays.reduce((sum, d) => sum + d.totalSellingPrice, 0) + additionalSellingPrice + venueServices.totalSellingPrice;
         const totalMargin = totalSellingPrice - totalCost;
         const blendedMarginPct = totalSellingPrice > 0 ? totalMargin / totalSellingPrice : 0;
         return {
@@ -252,7 +291,7 @@ export default function EstimatorStudio({
             quotedCount: workbookPricingDisplays.length,
             rateCardCount: 0,
         };
-    }, [ADDITIONAL_ITEM_MARGIN, answers.gameClockAllocation, answers.miscEquipmentAllocation, answers.oesAllocation, answers.pitchClocksAllocation, workbookPricingDisplays]);
+    }, [ADDITIONAL_ITEM_MARGIN, answers.gameClockAllocation, answers.miscEquipmentAllocation, answers.oesAllocation, answers.pitchClocksAllocation, venueServices.totalCost, venueServices.totalSellingPrice, workbookPricingDisplays]);
 
     const workbookManualAdditions = useMemo(() => {
         const toSellingPrice = (cost: number) => (cost > 0 ? cost / (1 - ADDITIONAL_ITEM_MARGIN) : 0);
@@ -449,6 +488,24 @@ export default function EstimatorStudio({
             return { ...prev, displays };
         });
     }, [ADDITIONAL_ITEM_MARGIN, calcs]);
+
+    const handleVenueServicesEdit = useCallback((field: string, value: number) => {
+        setAnswers((prev) => {
+            if (field === "venueServiceYears") {
+                return { ...prev, includeVenueServices: true, venueServiceYears: String(Math.max(1, Math.round(value || 1))) };
+            }
+            if (field === "venueServiceAnnualFee") {
+                return { ...prev, includeVenueServices: true, venueServiceAnnualFee: Math.max(0, value) };
+            }
+            if (field === "venueServiceEscalationPct") {
+                return { ...prev, includeVenueServices: true, venueServiceEscalationPct: Math.max(0, value) };
+            }
+            if (field === "venueServiceMarginPct") {
+                return { ...prev, includeVenueServices: true, venueServiceMarginPct: Math.max(0, Math.min(95, value)) };
+            }
+            return prev;
+        });
+    }, []);
 
     const handleWorkbookProductSelect = useCallback((displayName: string, productId: string) => {
         const product = availableProducts.find((p) => p.id === productId);
@@ -856,6 +913,7 @@ export default function EstimatorStudio({
                         pricingDisplays={workbookPricingDisplays}
                         pricingSummary={workbookPricingSummary}
                         manualAdditions={workbookManualAdditions}
+                        venueServices={venueServices}
                         projectInfo={{
                             projectName: answers.projectName || null,
                             clientName: answers.clientName || null,
@@ -867,6 +925,7 @@ export default function EstimatorStudio({
                         onSpecEdit={handleWorkbookSpecEdit}
                         onPricingEdit={handleWorkbookPricingEdit}
                         onMarginAnalysisEdit={handleWorkbookMarginAnalysisEdit}
+                        onVenueServicesEdit={handleVenueServicesEdit}
                         onProductSelect={handleWorkbookProductSelect}
                     />
                     {/* Bundle panel overlay */}

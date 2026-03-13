@@ -24,6 +24,17 @@ export interface UniverSpreadsheetProps {
   screens: ExtractedLEDSpec[];
   pricingDisplays: PricingDisplay[];
   pricingSummary: PricingSummary | null;
+  venueServices?: {
+    enabled: boolean;
+    years: number;
+    annualFee: number;
+    escalationPct: number;
+    marginPct: number;
+    rows: Array<{ year: number; cost: number; sellingPrice: number; margin: number }>;
+    totalCost: number;
+    totalSellingPrice: number;
+    totalMargin: number;
+  };
   manualAdditions?: Array<{
     key: string;
     label: string;
@@ -77,6 +88,7 @@ export interface UniverSpreadsheetProps {
   onSpecEdit?: (screenIdx: number, field: string, value: number | string) => void;
   onPricingEdit?: (displayIdx: number, field: string, value: number) => void;
   onMarginAnalysisEdit?: (itemIdx: number, field: string, value: number) => void;
+  onVenueServicesEdit?: (field: string, value: number) => void;
   onProductSelect?: (displayName: string, productId: string) => void;
   className?: string;
 }
@@ -127,7 +139,7 @@ function guardedSellingFormula(costRef: string, marginRef: string, decimals = 2)
 // ---------------------------------------------------------------------------
 
 function buildWorkbookData(props: UniverSpreadsheetProps) {
-  const { screens, pricingDisplays, pricingDocument, projectInfo, internalAudit, manualAdditions = [] } = props;
+  const { screens, pricingDisplays, pricingDocument, projectInfo, internalAudit, manualAdditions = [], venueServices } = props;
   const styles: Record<string, any> = {
     header: HEADER_STYLE,
     bold: BOLD_STYLE,
@@ -641,6 +653,18 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
         2: { f: guardedSellingFormula(`B${r}`, `E${r}`), s: "currency" },
         3: { f: `=C${r}-B${r}`, s: "currency" },
         4: { v: item.marginPct, s: "percent" },
+      };
+      maRow++;
+    }
+
+    if (venueServices && venueServices.totalCost > 0) {
+      const r = maRow + 1;
+      maCellData[maRow] = {
+        0: { v: "Venue Services", s: "bold" },
+        1: { v: venueServices.totalCost, s: "currency" },
+        2: { v: venueServices.totalSellingPrice, s: "currency" },
+        3: { v: venueServices.totalMargin, s: "currency" },
+        4: { v: venueServices.marginPct, s: "percent" },
       };
       maRow++;
     }
@@ -1680,6 +1704,9 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   if (manualAdditionsCost > 0) {
     bsCategories.push(["Additional Items", manualAdditionsCost, 0.15, false]);
   }
+  if (venueServices && venueServices.totalCost > 0) {
+    bsCategories.push(["Venue Services", venueServices.totalCost, venueServices.marginPct, false]);
+  }
 
   const bsDataStart = 4;
   bsCategories.forEach(([label, cost, margin, showPricePerSqFt], i) => {
@@ -1825,11 +1852,88 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     showGridlines: 1,
   };
 
+  // === Venue Services ===
+  sheetOrder.push("venue-services");
+  const venueCellData: Record<number, Record<number, any>> = {};
+  venueCellData[0] = { 0: { v: `${projectName} — Venue Services`, s: { bl: 1, fs: 14 } } };
+  venueCellData[1] = { 0: { v: "Multi-year service agreement calculator", s: "italic" } };
+  venueCellData[3] = {
+    0: { v: "Setting", s: "header" },
+    1: { v: "Value", s: "header" },
+    2: { v: "Notes", s: "header" },
+  };
+  venueCellData[4] = {
+    0: { v: "Contract Years" },
+    1: { v: venueServices?.years ?? 3, s: "number" },
+    2: { v: "Number of renewal years included in the contract" },
+  };
+  venueCellData[5] = {
+    0: { v: "Year 1 Cost" },
+    1: { v: venueServices?.annualFee ?? 0, s: "currency" },
+    2: { v: "Base annual service contract cost before escalation" },
+  };
+  venueCellData[6] = {
+    0: { v: "Annual Escalation %" },
+    1: { v: venueServices?.escalationPct ?? 0.03, s: "percent" },
+    2: { v: "Applied to each renewal year" },
+  };
+  venueCellData[7] = {
+    0: { v: "Margin %" },
+    1: { v: venueServices?.marginPct ?? 0.20, s: "percent" },
+    2: { v: "Target service-contract margin" },
+  };
+  venueCellData[9] = {
+    0: { v: "Year", s: "header" },
+    1: { v: "Cost", s: "header" },
+    2: { v: "Selling Price", s: "header" },
+    3: { v: "Margin $", s: "header" },
+  };
+  const venueRows = venueServices?.rows ?? [];
+  for (let i = 0; i < Math.max(5, venueRows.length); i++) {
+    const rowIdx = 10 + i;
+    const rowNo = rowIdx + 1;
+    const year = i + 1;
+    const visible = year <= (venueServices?.years ?? 3);
+    venueCellData[rowIdx] = {
+      0: { v: visible ? `Year ${year}` : "" },
+      1: visible
+        ? year === 1
+          ? { f: `=B6`, s: "currency" }
+          : { f: `=IF(A${rowNo}=\"\",0,B${rowNo - 1}*(1+$B$7))`, s: "currency" }
+        : { v: "" },
+      2: visible
+        ? { f: guardedSellingFormula(`B${rowNo}`, `$B$8`), s: "currency" }
+        : { v: "" },
+      3: visible
+        ? { f: `=ROUND(C${rowNo}-B${rowNo},2)`, s: "currency" }
+        : { v: "" },
+    };
+  }
+  venueCellData[16] = {
+    0: { v: "TOTAL", s: "total" },
+    1: { f: `=ROUND(SUM(B11:B15),2)`, s: "totalCurrency" },
+    2: { f: `=ROUND(SUM(C11:C15),2)`, s: "totalCurrency" },
+    3: { f: `=ROUND(SUM(D11:D15),2)`, s: "totalCurrency" },
+  };
+  sheets["venue-services"] = {
+    id: "venue-services",
+    name: "Venue Services",
+    tabColor: "#0F766E",
+    rowCount: 22,
+    columnCount: 4,
+    defaultColumnWidth: 140,
+    defaultRowHeight: 28,
+    cellData: venueCellData,
+    columnData: { 0: { w: 180 }, 1: { w: 130 }, 2: { w: 160 }, 3: { w: 120 } },
+    mergeData: [],
+    showGridlines: 1,
+  };
+
   // ═══════════════════════════════════════════════════════════════════════════
   // REORDER TABS — Natalia's FINAL confirmed order (March 6, 2026)
   // 1 Project Overview | 2 Margin Analysis | 3 Budget Summary | 4 LED Cost
   // 5 Tech Specs | 6 Install | 7 Processor Count | 8 Bundle Equipment
-  // 9 Travel | 10 CMS | 11 Scoring | 12 Resp Matrix | 13 P&L | 14 Cash Flow
+  // 9 Travel | 10 CMS | 11 Scoring | 12 Venue Services | 13 Resp Matrix | 14 P&L | 15 Cash Flow
   // Then: internal/utility tabs
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1850,9 +1954,10 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     "travel-anc",            // 9. Travel
     "margin-analysis-cms",   // 10. CMS
     "scoring",               // 11. Scoring
-    "resp-matrix",           // 12. Resp Matrix
-    "pnl",                   // 13. P&L
-    "cash-flow",             // 14. Cash Flow
+    "venue-services",        // 12. Venue Services
+    "resp-matrix",           // 13. Resp Matrix
+    "pnl",                   // 14. P&L
+    "cash-flow",             // 15. Cash Flow
     // Internal/utility tabs after the main ones
     "pos",
     "bid-form",
@@ -2229,6 +2334,21 @@ function handleValueChanged(params: any, propsRef: React.MutableRefObject<Univer
       if (specFieldMap[column]) {
         const field = specFieldMap[column];
         props.onSpecEdit?.(screenIdx, field, numericSpecFields.has(field) ? numValue : textValue);
+      }
+    } else if (sheetId === "venue-services") {
+      if (column !== 1) continue;
+      if (row === 4) {
+        props.onVenueServicesEdit?.("venueServiceYears", Math.max(1, Math.round(numValue || 1)));
+      } else if (row === 5) {
+        props.onVenueServicesEdit?.("venueServiceAnnualFee", Math.max(0, numValue));
+      } else if (row === 6) {
+        let escalation = numValue;
+        if (escalation <= 1) escalation = escalation * 100;
+        props.onVenueServicesEdit?.("venueServiceEscalationPct", Math.max(0, escalation));
+      } else if (row === 7) {
+        let margin = numValue;
+        if (margin <= 1) margin = margin * 100;
+        props.onVenueServicesEdit?.("venueServiceMarginPct", Math.max(0, Math.min(95, margin)));
       }
     } else if (sheetId === "margin-analysis") {
       const target = getMarginAnalysisEditTarget(row, column, props);

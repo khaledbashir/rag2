@@ -663,6 +663,72 @@ export const FINANCIAL_QUESTIONS: Question[] = [
         showIf: (answers) => answers.includeWarranty === "priced",
         affectsSheet: "Budget Summary",
     },
+    {
+        id: "includeVenueServices",
+        phase: "financial",
+        type: "yes-no",
+        label: "Venue Services",
+        subtitle: "Add a multi-year service contract calculator",
+        defaultValue: false,
+        affectsSheet: "Venue Services",
+    },
+    {
+        id: "venueServiceYears",
+        phase: "financial",
+        type: "select",
+        label: "Venue Services Term",
+        subtitle: "Length of the service agreement",
+        options: [
+            { value: "1", label: "1 Year" },
+            { value: "3", label: "3 Years" },
+            { value: "5", label: "5 Years" },
+        ],
+        defaultValue: "3",
+        showIf: (answers) => answers.includeVenueServices === true,
+        affectsSheet: "Venue Services",
+    },
+    {
+        id: "venueServiceAnnualFee",
+        phase: "financial",
+        type: "number",
+        label: "Year 1 Service Value",
+        subtitle: "Base annual service contract cost before escalation",
+        defaultValue: 0,
+        unit: "$",
+        min: 0,
+        max: 5000000,
+        step: 1000,
+        showIf: (answers) => answers.includeVenueServices === true,
+        affectsSheet: "Venue Services",
+    },
+    {
+        id: "venueServiceEscalationPct",
+        phase: "financial",
+        type: "number",
+        label: "Annual Escalation",
+        subtitle: "Escalation applied to each renewal year",
+        defaultValue: 3,
+        unit: "%",
+        min: 0,
+        max: 100,
+        step: 0.5,
+        showIf: (answers) => answers.includeVenueServices === true,
+        affectsSheet: "Venue Services",
+    },
+    {
+        id: "venueServiceMarginPct",
+        phase: "financial",
+        type: "number",
+        label: "Venue Services Margin",
+        subtitle: "Target margin for the service contract",
+        defaultValue: 20,
+        unit: "%",
+        min: 0,
+        max: 95,
+        step: 0.5,
+        showIf: (answers) => answers.includeVenueServices === true,
+        affectsSheet: "Venue Services",
+    },
 ];
 
 // ============================================================================
@@ -702,6 +768,11 @@ export interface EstimatorAnswers {
     includeWarranty: "none" | "included" | "priced";
     warrantyYears: string;
     warrantyAllocation: number;
+    includeVenueServices: boolean;
+    venueServiceYears: string;
+    venueServiceAnnualFee: number;
+    venueServiceEscalationPct: number;
+    venueServiceMarginPct: number;
     // Additional non-LED items
     gameClockAllocation: number;
     pitchClocksAllocation: number;
@@ -765,6 +836,11 @@ export function getDefaultAnswers(): EstimatorAnswers {
         includeWarranty: "none",
         warrantyYears: "1",
         warrantyAllocation: 0,
+        includeVenueServices: false,
+        venueServiceYears: "3",
+        venueServiceAnnualFee: 0,
+        venueServiceEscalationPct: 3,
+        venueServiceMarginPct: 20,
         gameClockAllocation: 0,
         pitchClocksAllocation: 0,
         oesAllocation: 0,

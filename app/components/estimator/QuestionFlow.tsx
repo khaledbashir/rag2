@@ -1078,6 +1078,8 @@ function getFinancialSection(questionId: string | undefined): string {
         includeCms: "Add-ons", cmsAllocation: "Add-ons",
         includeScoring: "Add-ons", scoringAllocation: "Add-ons",
         includeWarranty: "Add-ons", warrantyYears: "Add-ons", warrantyAllocation: "Add-ons",
+        includeVenueServices: "Add-ons", venueServiceYears: "Add-ons", venueServiceAnnualFee: "Add-ons",
+        venueServiceEscalationPct: "Add-ons", venueServiceMarginPct: "Add-ons",
     };
     return SECTION_MAP[questionId] || "Settings";
 }

@@ -129,6 +129,10 @@ export interface FinancialOverrides {
   pmComplexity?: "standard" | "complex" | "major";
   cmsAllocation?: number;         // CMS cost in dollars
   scoringAllocation?: number;     // Scoring cost in dollars
+  venueServiceYears?: number;
+  venueServiceAnnualFee?: number;
+  venueServiceEscalationPct?: number;
+  venueServiceMarginPct?: number;
   gameClockAllocation?: number;   // Additional Items sheet
   pitchClocksAllocation?: number; // Additional Items sheet
   oesAllocation?: number;         // Additional Items sheet
@@ -691,6 +695,9 @@ export async function generateScopingWorkbook(
   // 11. Scoring
   const scoringRefs = buildScoring(wb, projectName, displays);
 
+  // 12. Venue Services
+  const venueServicesRefs = buildVenueServices(wb, projectName, ov);
+
   // 11b. Additional non-LED items
   const additionalItemRefs = buildAdditionalItems(wb, projectName, ov);
 
@@ -718,7 +725,7 @@ export async function generateScopingWorkbook(
     effectiveIncludeBond,
     ov,
     installTabNames,
-    { cms: cmsRefs, scoring: scoringRefs, bundle: bundleRefs, additional: additionalItemRefs },
+    { cms: cmsRefs, scoring: scoringRefs, venueServices: venueServicesRefs, bundle: bundleRefs, additional: additionalItemRefs },
   );
 
   // 3. Budget Summary
@@ -734,7 +741,7 @@ export async function generateScopingWorkbook(
     grandMarginPct,
     ov,
     installTabNames,
-    { cms: cmsRefs, scoring: scoringRefs, bundle: bundleRefs, additional: additionalItemRefs },
+    { cms: cmsRefs, scoring: scoringRefs, venueServices: venueServicesRefs, bundle: bundleRefs, additional: additionalItemRefs },
   );
 
   // Cross-sheet links: Project Overview → MA BASE BID GRAND TOTAL + LED display count
@@ -948,6 +955,7 @@ function buildBudgetSummary(
   costCenterRefs?: {
     cms?: CostCenterSheetRefs;
     scoring?: CostCenterSheetRefs;
+    venueServices?: CostCenterSheetRefs;
     bundle?: CostCenterSheetRefs;
     additional?: AdditionalItemsSheetRefs;
   },
@@ -1016,6 +1024,15 @@ function buildBudgetSummary(
       costFormula: `SUM(Scoring!${costCenterRefs.scoring.subtotalCell}:${costCenterRefs.scoring.subtotalCell})`,
       sellFormulaRef: costCenterRefs.scoring.sellCell ? `SUM(Scoring!${costCenterRefs.scoring.sellCell}:${costCenterRefs.scoring.sellCell})` : undefined,
       result: ov?.scoringAllocation ?? 0,
+    });
+  }
+  if (costCenterRefs?.venueServices) {
+    categories.push({
+      label: "Venue Services",
+      marginPct: ov?.venueServiceMarginPct ?? DEFAULT_MARGINS.install,
+      costFormula: `SUM('Venue Services'!${costCenterRefs.venueServices.subtotalCell}:${costCenterRefs.venueServices.subtotalCell})`,
+      sellFormulaRef: costCenterRefs.venueServices.sellCell ? `SUM('Venue Services'!${costCenterRefs.venueServices.sellCell}:${costCenterRefs.venueServices.sellCell})` : undefined,
+      result: 0,
     });
   }
   if (costCenterRefs?.additional) {
@@ -1166,6 +1183,7 @@ function buildMarginAnalysis(
   costCenterRefs?: {
     cms?: CostCenterSheetRefs;
     scoring?: CostCenterSheetRefs;
+    venueServices?: CostCenterSheetRefs;
     bundle?: CostCenterSheetRefs;
     additional?: AdditionalItemsSheetRefs;
   },
@@ -1455,6 +1473,25 @@ function buildMarginAnalysis(
   scR.getCell(5).numFmt = FMT_USD;
   screenGrandTotalRows.push(scoringRow);
   row++;
+  if (costCenterRefs?.venueServices) {
+    const venueR = ws.getRow(row);
+    venueR.getCell(2).value = "Venue Services";
+    venueR.getCell(2).font = { bold: true, name: "Calibri" };
+    venueR.getCell(3).value = { formula: `SUM('Venue Services'!${costCenterRefs.venueServices.subtotalCell}:${costCenterRefs.venueServices.subtotalCell})`, result: 0 };
+    venueR.getCell(3).numFmt = FMT_USD;
+    venueR.getCell(6).value = ov?.venueServiceMarginPct ?? DEFAULT_MARGINS.install;
+    venueR.getCell(6).numFmt = FMT_PCT;
+    venueR.getCell(4).value = costCenterRefs.venueServices.sellCell
+      ? { formula: `SUM('Venue Services'!${costCenterRefs.venueServices.sellCell}:${costCenterRefs.venueServices.sellCell})`, result: 0 }
+      : 0;
+    venueR.getCell(4).numFmt = FMT_USD;
+    venueR.getCell(5).value = costCenterRefs.venueServices.marginCell
+      ? { formula: `SUM('Venue Services'!${costCenterRefs.venueServices.marginCell}:${costCenterRefs.venueServices.marginCell})`, result: 0 }
+      : 0;
+    venueR.getCell(5).numFmt = FMT_USD;
+    screenGrandTotalRows.push(row);
+    row++;
+  }
   if (costCenterRefs?.additional) {
     const additionalRows: Array<[string, number]> = [
       ["Game Clock", costCenterRefs.additional.rows.gameClock],
@@ -2800,6 +2837,89 @@ function buildScoring(
   subR.getCell(8).font = { bold: true, color: { argb: C.WHITE }, name: "Calibri" };
   subR.getCell(9).font = { bold: true, color: { argb: C.WHITE }, name: "Calibri" };
   return { totalRow: row, subtotalCell: `F${row}`, sellCell: `H${row}`, marginCell: `I${row}` };
+}
+
+function buildVenueServices(
+  wb: ExcelJS.Workbook,
+  projectName: string,
+  ov?: FinancialOverrides,
+): CostCenterSheetRefs {
+  const ws = wb.addWorksheet("Venue Services", {
+    properties: { tabColor: { argb: "FF0F766E" } },
+  });
+
+  const colWidths = [24, 18, 16, 16, 16];
+  colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  setTitle(ws, "E", `${projectName} — Venue Services`);
+  setMeta(ws, "E", "Multi-year service contract calculator");
+
+  let row = 4;
+  const years = Math.max(1, ov?.venueServiceYears ?? 3);
+  const annualFee = ov?.venueServiceAnnualFee ?? 0;
+  const escalationPct = ov?.venueServiceEscalationPct ?? 0.03;
+  const marginPct = ov?.venueServiceMarginPct ?? DEFAULT_MARGINS.install;
+
+  const settings: Array<[string, number, string]> = [
+    ["Contract Years", years, "Editable service term"],
+    ["Year 1 Cost", annualFee, "Base annual contract value"],
+    ["Annual Escalation %", escalationPct, "Applied to each renewal year"],
+    ["Margin %", marginPct, "Target service-contract margin"],
+  ];
+
+  settings.forEach(([label, value, note], idx) => {
+    const r = ws.getRow(row + idx);
+    r.getCell(1).value = label;
+    r.getCell(2).value = value;
+    if (label.includes("%")) {
+      r.getCell(2).numFmt = FMT_PCT;
+    } else if (label.includes("Cost")) {
+      r.getCell(2).numFmt = FMT_USD;
+    }
+    inputCell(r.getCell(2));
+    r.getCell(3).value = note;
+    r.getCell(3).font = { italic: true, color: { argb: C.MEDIUM_GRAY }, name: "Calibri", size: 10 };
+  });
+
+  row += settings.length + 2;
+  const headers = ["Year", "Cost", "Selling Price", "Margin $", "Notes"];
+  headers.forEach((h, i) => {
+    ws.getCell(row, i + 1).value = h;
+    hdr(ws.getCell(row, i + 1), C.DARK_HEADER);
+  });
+  row++;
+
+  const firstYearRow = row;
+  for (let year = 1; year <= 5; year++) {
+    const currentRow = row;
+    const r = ws.getRow(currentRow);
+    const enabledFormula = `IF($B$4>=${year},"Year ${year}","")`;
+    r.getCell(1).value = { formula: enabledFormula, result: year <= years ? `Year ${year}` : "" };
+    r.getCell(2).value = year === 1
+      ? { formula: `$B$5`, result: annualFee }
+      : { formula: `IF(A${currentRow}="",0,B${currentRow - 1}*(1+$B$6))`, result: 0 };
+    r.getCell(2).numFmt = FMT_USD;
+    r.getCell(3).value = { formula: `IF(A${currentRow}="",0,IFERROR(B${currentRow}/(1-$B$7),0))`, result: 0 };
+    r.getCell(3).numFmt = FMT_USD;
+    r.getCell(4).value = { formula: `IF(A${currentRow}="",0,IFERROR(C${currentRow}-B${currentRow},0))`, result: 0 };
+    r.getCell(4).numFmt = FMT_USD;
+    r.getCell(5).value = year <= years ? "Escalated annual term" : "";
+    stripe(r, 5, year % 2 === 1);
+    row++;
+  }
+
+  const totalRow = row + 1;
+  const totalR = ws.getRow(totalRow);
+  totalR.getCell(1).value = "VENUE SERVICES TOTAL";
+  totalR.getCell(2).value = { formula: `SUM(B${firstYearRow}:B${row - 1})`, result: 0 };
+  totalR.getCell(2).numFmt = FMT_USD;
+  totalR.getCell(3).value = { formula: `SUM(C${firstYearRow}:C${row - 1})`, result: 0 };
+  totalR.getCell(3).numFmt = FMT_USD;
+  totalR.getCell(4).value = { formula: `IFERROR(C${totalRow}-B${totalRow},0)`, result: 0 };
+  totalR.getCell(4).numFmt = FMT_USD;
+  totalStyle(totalR, 5, C.GREEN_BG);
+
+  return { totalRow, subtotalCell: `B${totalRow}`, sellCell: `C${totalRow}`, marginCell: `D${totalRow}` };
 }
 
 function buildAdditionalItems(
