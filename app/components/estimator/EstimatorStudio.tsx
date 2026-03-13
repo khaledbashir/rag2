@@ -37,7 +37,6 @@ import { usePresence } from "@/hooks/usePresence";
 
 const EstimatorVenuePanel = dynamic(() => import("./EstimatorVenuePanel"), { ssr: false });
 const UniverPreview = dynamic(() => import("./UniverPreview"), { ssr: false });
-const EstimatorProductWorkbook = dynamic(() => import("./EstimatorProductWorkbook"), { ssr: false });
 const EstimatorActivityPanel = dynamic(() => import("./EstimatorActivityPanel"), { ssr: false });
 
 // Sheet colors no longer needed — Univer renders tab colors from the workbook data.
@@ -608,13 +607,6 @@ export default function EstimatorStudio({
 
                 {/* Center/Right: Excel Preview */}
                 <section className="relative min-w-0 min-h-0 bg-zinc-100 dark:bg-zinc-950 overflow-hidden flex flex-col p-3">
-                    <div className="shrink-0 h-[220px] mb-3">
-                        <EstimatorProductWorkbook
-                            answers={answers}
-                            onProductSelect={handleInlineProductSelect}
-                            onDisplayEdit={handleInlineDisplayEdit}
-                        />
-                    </div>
                     <UniverPreview
                         workbookData={serverPreview}
                         loading={serverPreviewLoading}
