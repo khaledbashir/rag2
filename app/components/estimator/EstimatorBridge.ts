@@ -214,6 +214,7 @@ export interface ScreenCalc {
     structureCost: number;
     installCost: number;
     electricalCost: number;
+    processorCost: number;
     equipmentCost: number;
     dataCablingCost: number;
     pmCost: number;
@@ -255,6 +256,7 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
     const h = d.heightFt || 0;
     const area = w * h;
     const pitch = parseFloat(d.pixelPitch) || 4;
+    const overrides = d.costOverrides || {};
 
     const pixelsW = Math.round((w * 304.8) / pitch);
     const pixelsH = Math.round((h * 304.8) / pitch);
@@ -293,6 +295,7 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
             structureCost: 0,
             installCost,
             electricalCost: 0,
+            processorCost: 0,
             equipmentCost: 0,
             dataCablingCost: 0,
             pmCost: 0,
@@ -352,7 +355,7 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
     const sparePartsPct = rc(rates, "spare_parts.led_pct", 0.05);
     const hardwareBase = area * costPerSqFt;
     const spareParts = d.includeSpareParts ? hardwareBase * sparePartsPct : 0;
-    const hardware = hardwareBase + spareParts;
+    const hardware = overrides.displayCost ?? (hardwareBase + spareParts);
 
     // Steel scope: existing = 5%, secondary = 12%, full = service-type based (20% or 10%)
     const steelScope = d.steelScope || "full";
@@ -396,7 +399,7 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
     const pmCost = rc(rates, "other.pm_base_fee", 5882.35) * pmMult * complexMod;
     const engineeringCost = rc(rates, "other.eng_base_fee", 4705.88) * pmMult * complexMod;
     const rawShippingCost = area > 0 ? Math.round(area * 10 * 100) / 100 : 0;
-    const shippingCost = rawShippingCost > 0 ? Math.max(rawShippingCost, 500) : 0;
+    const shippingCost = overrides.shipping ?? (rawShippingCost > 0 ? Math.max(rawShippingCost, 500) : 0);
     const demolitionCost = d.isReplacement ? 5000 : 0;
 
     // Supply Only mode: servicesMargin === 0 means hardware only, no install services
@@ -434,10 +437,15 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         excludedIds: d.excludedBundleItems || [],
     };
     const bundle = calculateBundle(bundleInput);
-    const adjBundleCost = supplyOnly ? 0 : bundle.totalCost;
+    const activeSignalBundleCost = bundle.items
+        .filter((item) => item.category === "signal" && !(d.excludedBundleItems || []).includes(item.id))
+        .reduce((sum, item) => sum + item.totalCost, 0);
+    const activeNonSignalBundleCost = bundle.totalCost - activeSignalBundleCost;
+    const processorCost = overrides.processor ?? activeSignalBundleCost;
+    const adjBundleCost = supplyOnly ? 0 : activeNonSignalBundleCost;
 
     const totalCost = hardware + adjStructureCost + adjInstallCost + adjElectricalCost
-        + adjEquipmentCost + adjDataCablingCost + adjPmCost + adjEngineeringCost + adjShippingCost + adjDemolitionCost
+        + processorCost + adjEquipmentCost + adjDataCablingCost + adjPmCost + adjEngineeringCost + adjShippingCost + adjDemolitionCost
         + adjBundleCost;
 
     const ledMarginPct = ((answers.ledMargin ?? 20) || 1) / 100;
@@ -446,9 +454,14 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         + adjEquipmentCost + adjDataCablingCost + adjPmCost + adjEngineeringCost + adjShippingCost + adjDemolitionCost
         + adjBundleCost;
     const hardwareSell = hardware / (1 - ledMarginPct);
+    const processorSell = processorCost / (1 - ledMarginPct);
     const servicesSell = serviceCost / (1 - svcMarginPct);
-    const sellPrice = hardwareSell + servicesSell;
-    const marginPct = totalCost > 0 ? 1 - (totalCost / sellPrice) : 0;
+    const sellPriceFromBuckets = hardwareSell + processorSell + servicesSell;
+    const manualMarginPct = overrides.marginPct;
+    const sellPrice = typeof manualMarginPct === "number" && manualMarginPct >= 0 && manualMarginPct < 1
+        ? totalCost / (1 - manualMarginPct)
+        : sellPriceFromBuckets;
+    const marginPct = totalCost > 0 && sellPrice > 0 ? 1 - (totalCost / sellPrice) : 0;
 
     const bondRate = (answers.bondRate ?? 1.5) / 100;
     const bondCost = sellPrice * bondRate;
@@ -482,6 +495,7 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         structureCost: adjStructureCost,
         installCost: adjInstallCost,
         electricalCost: adjElectricalCost,
+        processorCost,
         equipmentCost: adjEquipmentCost,
         dataCablingCost: adjDataCablingCost,
         pmCost: adjPmCost,
@@ -1488,8 +1502,8 @@ function buildMarginAnalysisPreview(answers: EstimatorAnswers, calcs: ScreenCalc
             ["PM / Travel", c.pmCost + c.shippingCost, svcMarginPct],
             ["Engineering", c.engineeringCost, svcMarginPct],
         ];
-        if (c.equipmentCost > 0 || c.bundleCost > 0) {
-            categories.push(["Processor & Equipment", c.equipmentCost + c.bundleCost, ledMarginPct]);
+        if (c.processorCost > 0 || c.equipmentCost > 0 || c.bundleCost > 0) {
+            categories.push(["Processor & Equipment", c.processorCost + c.equipmentCost + c.bundleCost, ledMarginPct]);
         }
 
         let screenCost = 0;
@@ -1744,7 +1758,7 @@ function buildProcessorCountPreview(calcs: ScreenCalc[]): SheetTab {
     let totalPorts = 0;
     for (const c of calcs) {
         const portsNeeded = c.totalPixels > 0 ? Math.ceil(c.totalPixels / 650000) : 0;
-        const processorsNeeded = Math.ceil(portsNeeded / 8); // NovaStar 660 Pro: 8 ports
+        const processorsNeeded = portsNeeded > 8 ? Math.ceil(portsNeeded / 16) : Math.ceil(portsNeeded / 8);
         totalPorts += portsNeeded;
         rows.push({
             cells: [
@@ -2301,7 +2315,7 @@ function buildCostCategoryBreakdown(answers: EstimatorAnswers, calcs: ScreenCalc
                     ],
                 });
             }
-            const cat3gTotal = c.equipmentCost + c.shippingCost + c.spareParts;
+            const cat3gTotal = c.processorCost + c.equipmentCost + c.shippingCost + c.spareParts;
             rows.push({
                 cells: [
                     { value: "" }, { value: "3G SUBTOTAL", bold: true },
@@ -2358,7 +2372,7 @@ function buildCostCategoryBreakdown(answers: EstimatorAnswers, calcs: ScreenCalc
             electrical: calcs.reduce((s, c) => s + c.electricalCost + c.dataCablingCost, 0),
             pm: calcs.reduce((s, c) => s + c.pmCost, 0),
             engineering: calcs.reduce((s, c) => s + c.engineeringCost, 0),
-            equipment: calcs.reduce((s, c) => s + c.equipmentCost + c.shippingCost + c.spareParts, 0),
+            equipment: calcs.reduce((s, c) => s + c.processorCost + c.equipmentCost + c.shippingCost + c.spareParts, 0),
         };
         const servicesGrand = Object.values(totals).reduce((a, b) => a + b, 0);
 

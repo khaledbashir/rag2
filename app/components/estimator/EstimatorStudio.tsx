@@ -177,7 +177,7 @@ export default function EstimatorStudio({
                 areaSqFt: calc.areaSqFt,
                 quantity: 1,
                 hardwareCost: calc.hardwareCost,
-                processorCost: calc.equipmentCost,
+                processorCost: calc.processorCost,
                 shippingCost: calc.shippingCost,
                 installCost: calc.installCost,
                 structuralCost: calc.structureCost,
@@ -369,6 +369,32 @@ export default function EstimatorStudio({
             return { ...prev, displays };
         });
     }, []);
+
+    const handleWorkbookMarginAnalysisEdit = useCallback((itemIdx: number, field: string, value: number) => {
+        setAnswers((prev) => {
+            if (itemIdx < 0 || itemIdx >= prev.displays.length) return prev;
+            const currentCalc = calcs[itemIdx];
+            if (!currentCalc) return prev;
+
+            const displays = [...prev.displays];
+            const current = { ...displays[itemIdx] };
+            const nextOverrides = { ...(current.costOverrides || {}) };
+
+            if (field === "cost") {
+                const nonHardwareCost = currentCalc.totalCost - currentCalc.hardwareCost;
+                nextOverrides.displayCost = Math.max(0, value - nonHardwareCost);
+            }
+
+            if (field === "sellingPrice" && value > 0) {
+                const nextMarginPct = 1 - (currentCalc.totalCost / value);
+                nextOverrides.marginPct = Math.max(0, Math.min(0.95, nextMarginPct));
+            }
+
+            current.costOverrides = nextOverrides;
+            displays[itemIdx] = current;
+            return { ...prev, displays };
+        });
+    }, [calcs]);
 
     const handleWorkbookProductSelect = useCallback((displayName: string, productId: string) => {
         const product = availableProducts.find((p) => p.id === productId);
@@ -785,6 +811,7 @@ export default function EstimatorStudio({
                         availableProducts={availableProducts}
                         onSpecEdit={handleWorkbookSpecEdit}
                         onPricingEdit={handleWorkbookPricingEdit}
+                        onMarginAnalysisEdit={handleWorkbookMarginAnalysisEdit}
                         onProductSelect={handleWorkbookProductSelect}
                     />
                     {/* Bundle panel overlay */}

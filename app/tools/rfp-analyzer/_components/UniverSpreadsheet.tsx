@@ -1718,6 +1718,8 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     const qty = spec.quantity ?? 1;
     const totalPx = wPx * hPx * qty;
     const portsNeeded = totalPx > 0 ? Math.ceil(totalPx / 650000) : 0;
+    const processorsNeeded = portsNeeded > 8 ? Math.ceil(portsNeeded / 16) : Math.ceil(portsNeeded / 8);
+    const processorLabel = portsNeeded > 8 ? "MCTRL4K" : "NovaStar 660 Pro";
     const r = si + 3;
     pcCellData[r] = {
       0: { v: spec.name },
@@ -1725,7 +1727,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       2: { v: hPx, s: "number" },
       3: { v: totalPx, s: "number" },
       4: { v: portsNeeded },
-      5: { v: "NovaStar 660 Pro" },
+      5: { v: processorsNeeded > 1 ? `${processorLabel} x${processorsNeeded}` : processorLabel },
     };
   });
 
