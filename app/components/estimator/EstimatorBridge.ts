@@ -305,6 +305,7 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
 
     const pixelsW = Math.round((w * 304.8) / pitch);
     const pixelsH = Math.round((h * 304.8) / pitch);
+    const totalPixels = pixelsW * pixelsH;
 
     // ── Add-on products (courtside/stanchion): unit pricing, Screen + Install only ──
     const isAddon = isAddonDisplayType(d.displayType);
@@ -536,7 +537,7 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         pixelPitch: pitch,
         pixelsW,
         pixelsH,
-        totalPixels: pixelsW * pixelsH,
+        totalPixels,
         costPerSqFt,
         hardwareCost: hardware,
         spareParts,
