@@ -814,7 +814,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   sheetOrder.push("bundle-equipment");
   const beCellData: Record<number, Record<number, any>> = {};
   const beColWidths: Record<number, { w: number }> = {
-    0: { w: 250 }, 1: { w: 70 }, 2: { w: 110 }, 3: { w: 110 },
+    0: { w: 320 }, 1: { w: 70 }, 2: { w: 110 }, 3: { w: 110 },
   };
 
   beCellData[0] = { 0: { v: `${projectName} — Processor & Equipment Bundle`, s: { bl: 1, fs: 14, cl: { rgb: "#0A52EF" } } } };
@@ -840,6 +840,16 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   // Use processor costs from pricing if available
   const totalProcessorCost = pricingDisplays.reduce((s, d) => s + (d.processorCost ?? 0), 0);
   if (totalProcessorCost > 0) {
+    const processorSummary = pricingDisplays
+      .filter((d) => (d.processorCost ?? 0) > 0)
+      .map((d) => {
+        const label = d.processorLabel || "Video Processor";
+        const qty = d.processorsNeeded && d.processorsNeeded > 1 ? ` x${d.processorsNeeded}` : "";
+        return `${d.name}: ${label}${qty}`;
+      });
+    defaultEquipment[0].name = processorSummary.length > 0
+      ? `Video Processor (${processorSummary.join(" | ")})`
+      : "Video Processor";
     defaultEquipment[0].unitCost = totalProcessorCost; // Main processor cost
     for (let i = 1; i < defaultEquipment.length; i++) defaultEquipment[i].unitCost = 0;
   }
@@ -1753,7 +1763,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   sheetOrder.push("processor-count");
   const pcCellData: Record<number, Record<number, any>> = {};
   const pcColWidths: Record<number, { w: number }> = {
-    0: { w: 220 }, 1: { w: 90 }, 2: { w: 90 }, 3: { w: 110 }, 4: { w: 110 }, 5: { w: 110 },
+    0: { w: 220 }, 1: { w: 90 }, 2: { w: 90 }, 3: { w: 130 }, 4: { w: 110 }, 5: { w: 130 }, 6: { w: 110 }, 7: { w: 120 },
   };
 
   pcCellData[0] = { 0: { v: `${projectName} — Processor Count`, s: { bl: 1, fs: 14 } } };
@@ -1764,16 +1774,20 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     3: { v: "Total Pixels", s: "header" },
     4: { v: "Ports Needed", s: "header" },
     5: { v: "Processor", s: "header" },
+    6: { v: "Units Needed", s: "header" },
+    7: { v: "Processor Cost", s: "header" },
   };
 
   screens.forEach((spec, si) => {
+    const pd = pricingDisplays.find((d) => d.name === spec.name);
     const wPx = spec.widthPx ?? (spec.pixelPitchMm && spec.widthFt ? Math.round(spec.widthFt * 304.8 / spec.pixelPitchMm) : 0);
     const hPx = spec.heightPx ?? (spec.pixelPitchMm && spec.heightFt ? Math.round(spec.heightFt * 304.8 / spec.pixelPitchMm) : 0);
     const qty = spec.quantity ?? 1;
     const totalPx = wPx * hPx * qty;
-    const portsNeeded = totalPx > 0 ? Math.ceil(totalPx / 650000) : 0;
-    const processorsNeeded = portsNeeded > 8 ? Math.ceil(portsNeeded / 16) : Math.ceil(portsNeeded / 8);
-    const processorLabel = portsNeeded > 8 ? "MCTRL4K" : "NovaStar 660 Pro";
+    const portsNeeded = pd?.portsNeeded ?? (totalPx > 0 ? Math.ceil(totalPx / 650000) : 0);
+    const processorsNeeded = pd?.processorsNeeded ?? (portsNeeded > 8 ? Math.ceil(portsNeeded / 16) : Math.ceil(portsNeeded / 8));
+    const processorLabel = pd?.processorLabel ?? (portsNeeded > 8 ? "MCTRL4K" : "NovaStar 660 Pro");
+    const processorCost = pd?.processorCost ?? 0;
     const r = si + 3;
     pcCellData[r] = {
       0: { v: spec.name },
@@ -1782,6 +1796,8 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       3: { v: totalPx, s: "number" },
       4: { v: portsNeeded },
       5: { v: processorsNeeded > 1 ? `${processorLabel} x${processorsNeeded}` : processorLabel },
+      6: { v: processorsNeeded, s: "number" },
+      7: { v: processorCost, s: "currency" },
     };
   });
 
@@ -1790,7 +1806,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     name: "Processor Count",
     tabColor: "#17A2B8",
     rowCount: Math.max(screens.length + 5, 15),
-    columnCount: 6,
+    columnCount: 8,
     defaultColumnWidth: 100,
     defaultRowHeight: 28,
     cellData: pcCellData,
@@ -1852,7 +1868,9 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     showGridlines: 1,
   };
 
-  // === Venue Services ===
+  // === Venue Services (Phase 3 — only show when explicitly enabled) ===
+  const venueServicesEnabled = venueServices && venueServices.enabled && venueServices.totalCost > 0;
+  if (venueServicesEnabled) {
   sheetOrder.push("venue-services");
   const venueCellData: Record<number, Record<number, any>> = {};
   venueCellData[0] = { 0: { v: `${projectName} — Venue Services`, s: { bl: 1, fs: 14 } } };
@@ -1928,6 +1946,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     mergeData: [],
     showGridlines: 1,
   };
+  } // end venueServicesEnabled gate
 
   // ═══════════════════════════════════════════════════════════════════════════
   // REORDER TABS — Natalia's FINAL confirmed order (March 6, 2026)

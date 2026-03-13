@@ -20,6 +20,9 @@ export interface PricingDisplay {
   quantity: number;
   hardwareCost: number;
   processorCost?: number;
+  portsNeeded?: number;
+  processorsNeeded?: number;
+  processorLabel?: string;
   shippingCost?: number;
   installCost?: number;
   structuralCost?: number;

@@ -215,6 +215,9 @@ export interface ScreenCalc {
     installCost: number;
     electricalCost: number;
     processorCost: number;
+    portsNeeded: number;
+    processorsNeeded: number;
+    processorLabel: string;
     equipmentCost: number;
     dataCablingCost: number;
     pmCost: number;
@@ -547,6 +550,9 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         installCost: adjInstallCost,
         electricalCost: adjElectricalCost,
         processorCost,
+        portsNeeded: processorPricing.portsNeeded,
+        processorsNeeded: processorPricing.processorsNeeded,
+        processorLabel: processorPricing.processorLabel,
         equipmentCost: adjEquipmentCost,
         dataCablingCost: adjDataCablingCost,
         pmCost: adjPmCost,
