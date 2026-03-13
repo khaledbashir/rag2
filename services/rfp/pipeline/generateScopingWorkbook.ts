@@ -956,14 +956,14 @@ function buildBudgetSummary(
     properties: { tabColor: { argb: C.GREEN_TAB } },
   });
 
-  const colWidths = [4, 44, 16, 16, 16, 12];
+  const colWidths = [4, 40, 16, 16, 16, 12, 14];
   colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
-  setTitle(ws, "F", `${projectName} — Budget Summary`);
-  setMeta(ws, "F", `${clientName} | ${date} | By Category`);
+  setTitle(ws, "G", `${projectName} — Budget Summary`);
+  setMeta(ws, "G", `${clientName} | ${date} | By Category`);
 
   let row = 4;
-  const headers = ["", "Category", "Cost", "Selling Price", "Margin $", "Margin %"];
+  const headers = ["", "Category", "Cost", "Selling Price", "Margin $", "Margin %", "Price / SqFt"];
   headers.forEach((h, i) => {
     const cell = ws.getCell(row, i + 1);
     cell.value = h;
@@ -984,17 +984,19 @@ function buildBudgetSummary(
     ? installTabNames.map((tab) => builder(tab)).join("+")
     : "0";
 
-  const categories: Array<{ label: string; marginPct: number; costFormula?: string; sellFormulaRef?: string; result: number }> = [
+  const totalDisplaySqFt = displays.reduce((sum, d) => sum + d.areaSqFt, 0);
+  const categories: Array<{ label: string; marginPct: number; costFormula?: string; sellFormulaRef?: string; result: number; showPricePerSqFt?: boolean }> = [
     {
       label: "LED Hardware (all displays)",
       marginPct: hwMargin,
       costFormula: `SUM('LED Cost Sheet'!Q4:Q${ledDataEnd})`,
       sellFormulaRef: `SUM('LED Cost Sheet'!S4:S${ledDataEnd})`,
       result: displays.reduce((s, d) => s + d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost, 0),
+      showPricePerSqFt: true,
     },
-    { label: "Structural Materials", marginPct: svcMargin, costFormula: installCostSum((tab) => `SUM('${tab}'!I26:I26)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K26:K26)`), result: displays.reduce((s, d) => s + d.structuralMaterialsCost, 0) },
-    { label: "Structural Labor & LED Installation", marginPct: svcMargin, costFormula: installCostSum((tab) => `(SUM('${tab}'!I35:I35)-SUM('${tab}'!I34:I34))`), sellFormulaRef: installCostSum((tab) => `(SUM('${tab}'!K35:K35)-SUM('${tab}'!K34:K34))`), result: displays.reduce((s, d) => s + d.structuralLaborCost, 0) },
-    { label: "Electrical & Data", marginPct: svcMargin, costFormula: installCostSum((tab) => `SUM('${tab}'!I44:I44)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K44:K44)`), result: displays.reduce((s, d) => s + d.electricalCost, 0) },
+    { label: "Structural Materials", marginPct: svcMargin, costFormula: installCostSum((tab) => `SUM('${tab}'!I26:I26)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K26:K26)`), result: displays.reduce((s, d) => s + d.structuralMaterialsCost, 0), showPricePerSqFt: true },
+    { label: "Structural Labor & LED Installation", marginPct: svcMargin, costFormula: installCostSum((tab) => `(SUM('${tab}'!I35:I35)-SUM('${tab}'!I34:I34))`), sellFormulaRef: installCostSum((tab) => `(SUM('${tab}'!K35:K35)-SUM('${tab}'!K34:K34))`), result: displays.reduce((s, d) => s + d.structuralLaborCost, 0), showPricePerSqFt: true },
+    { label: "Electrical & Data", marginPct: svcMargin, costFormula: installCostSum((tab) => `SUM('${tab}'!I44:I44)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K44:K44)`), result: displays.reduce((s, d) => s + d.electricalCost, 0), showPricePerSqFt: true },
     { label: "PM / General Conditions / Travel", marginPct: svcMargin, costFormula: installCostSum((tab) => `SUM('${tab}'!I34:I34)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K34:K34)`), result: displays.reduce((s, d) => s + d.pmCost + d.travelCost, 0) },
     { label: "Engineering & Permits", marginPct: svcMargin, costFormula: installCostSum((tab) => `SUM('${tab}'!I52:I52)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K52:K52)`), result: displays.reduce((s, d) => s + d.engCost, 0) },
   ];
@@ -1035,7 +1037,7 @@ function buildBudgetSummary(
   }
 
   const catStartRow = row;
-  for (const { label, result, marginPct, costFormula, sellFormulaRef } of categories) {
+  for (const { label, result, marginPct, costFormula, sellFormulaRef, showPricePerSqFt } of categories) {
     const r = ws.getRow(row);
     r.getCell(2).value = label;
     r.getCell(2).font = { name: "Calibri", size: 10 };
@@ -1052,7 +1054,9 @@ function buildBudgetSummary(
     r.getCell(5).value = { formula: marginFormula(row), result: result > 0 ? round2(result / (1 - marginPct) - result) : 0 };
     r.getCell(5).numFmt = FMT_USD;
     r.getCell(6).value = marginPct; r.getCell(6).numFmt = FMT_PCT;
-    stripe(r, 6, row % 2 === 0);
+    r.getCell(7).value = showPricePerSqFt && totalDisplaySqFt > 0 ? { formula: `IFERROR(C${row}/${totalDisplaySqFt},0)`, result: round2(result / totalDisplaySqFt) } : "";
+    r.getCell(7).numFmt = FMT_USD;
+    stripe(r, 7, row % 2 === 0);
     row++;
   }
   const catEndRow = row - 1;
@@ -1069,7 +1073,9 @@ function buildBudgetSummary(
   stR.getCell(5).numFmt = FMT_USD;
   stR.getCell(6).value = { formula: `IFERROR(1-C${row}/D${row},0)`, result: grandMarginPct };
   stR.getCell(6).numFmt = FMT_PCT;
-  totalStyle(stR, 6, C.MEDIUM_GRAY);
+  stR.getCell(7).value = totalDisplaySqFt > 0 ? { formula: `IFERROR(C${row}/${totalDisplaySqFt},0)`, result: round2(grandCost / totalDisplaySqFt) } : "";
+  stR.getCell(7).numFmt = FMT_USD;
+  totalStyle(stR, 7, C.MEDIUM_GRAY);
   const subtotalRow = row;
   row++;
 
@@ -1088,7 +1094,7 @@ function buildBudgetSummary(
   taxR.getCell(5).numFmt = FMT_USD;
   taxR.getCell(6).value = taxRateVal;
   taxR.getCell(6).numFmt = FMT_PCT;
-  stripe(taxR, 6, row % 2 === 0);
+  stripe(taxR, 7, row % 2 === 0);
   row++;
 
   const bondR = ws.getRow(row);
@@ -1103,7 +1109,7 @@ function buildBudgetSummary(
   bondR.getCell(5).numFmt = FMT_USD;
   bondR.getCell(6).value = budgetBondRateVal;
   bondR.getCell(6).numFmt = FMT_PCT;
-  stripe(bondR, 6, row % 2 === 0);
+  stripe(bondR, 7, row % 2 === 0);
   row++;
 
   // Grand total — must match the authoritative Margin Analysis / Project Overview bottom line exactly
@@ -1116,8 +1122,10 @@ function buildBudgetSummary(
   gtR.getCell(4).value = { formula: `D${subtotalRow}`, result: documentTotal }; gtR.getCell(4).numFmt = FMT_USD;
   gtR.getCell(5).value = { formula: `IFERROR(D${row}-C${row},0)`, result: documentMargin }; gtR.getCell(5).numFmt = FMT_USD;
   gtR.getCell(6).value = { formula: `IFERROR(1-C${row}/D${row},0)`, result: documentMarginPct }; gtR.getCell(6).numFmt = FMT_PCT;
-  totalStyle(gtR, 6, C.ANC_BLUE);
-  for (let c = 2; c <= 6; c++) {
+  gtR.getCell(7).value = totalDisplaySqFt > 0 ? { formula: `IFERROR(C${row}/${totalDisplaySqFt},0)`, result: round2(grandCost / totalDisplaySqFt) } : "";
+  gtR.getCell(7).numFmt = FMT_USD;
+  totalStyle(gtR, 7, C.ANC_BLUE);
+  for (let c = 2; c <= 7; c++) {
     gtR.getCell(c).font = { bold: true, size: 12, color: { argb: C.WHITE }, name: "Calibri" };
   }
 

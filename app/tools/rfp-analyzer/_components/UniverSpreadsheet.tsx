@@ -1630,7 +1630,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   sheetOrder.push("budget-summary");
   const bsCellData: Record<number, Record<number, any>> = {};
   const bsColWidths: Record<number, { w: number }> = {
-    0: { w: 30 }, 1: { w: 280 }, 2: { w: 120 }, 3: { w: 120 }, 4: { w: 120 }, 5: { w: 90 },
+    0: { w: 30 }, 1: { w: 260 }, 2: { w: 120 }, 3: { w: 120 }, 4: { w: 120 }, 5: { w: 90 }, 6: { w: 110 },
   };
 
   bsCellData[0] = { 1: { v: `${projectName} — Budget Summary`, s: { bl: 1, fs: 14, cl: { rgb: "#217346" } } } };
@@ -1641,11 +1641,13 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     3: { v: "Selling Price", s: "header" },
     4: { v: "Margin $", s: "header" },
     5: { v: "Margin %", s: "header" },
+    6: { v: "Price / SqFt", s: "header" },
   };
 
   // Aggregate costs across all displays by category
   let bsTotalLedHw = 0, bsTotalStruct = 0, bsTotalInstall = 0;
   let bsTotalElec = 0, bsTotalPm = 0, bsTotalEng = 0, bsTotalEquip = 0;
+  const totalDisplaySqFt = pricingDisplays.reduce((sum, d) => sum + ((d.areaSqFt ?? 0) * (d.quantity ?? 1)), 0);
 
   for (const d of pricingDisplays) {
     bsTotalLedHw += d.hardwareCost || 0;
@@ -1663,24 +1665,24 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   const bsHwMargin = avgMarginPct > 0 ? avgMarginPct : 0.30;
   const bsSvcMargin = avgMarginPct > 0 ? Math.max(avgMarginPct * 0.67, 0.15) : 0.20;
 
-  const bsCategories: [string, number, number][] = [
-    ["LED Hardware (all displays)", bsTotalLedHw, bsHwMargin],
-    ["Structural Materials", bsTotalStruct, bsSvcMargin],
-    ["Installation Labor", bsTotalInstall, bsSvcMargin],
-    ["Electrical & Data", bsTotalElec, bsSvcMargin],
-    ["PM / General Conditions", bsTotalPm, bsSvcMargin],
-    ["Engineering & Permits", bsTotalEng, bsSvcMargin],
+  const bsCategories: Array<[string, number, number, boolean]> = [
+    ["LED Hardware (all displays)", bsTotalLedHw, bsHwMargin, true],
+    ["Structural Materials", bsTotalStruct, bsSvcMargin, true],
+    ["Installation Labor", bsTotalInstall, bsSvcMargin, true],
+    ["Electrical & Data", bsTotalElec, bsSvcMargin, true],
+    ["PM / General Conditions", bsTotalPm, bsSvcMargin, false],
+    ["Engineering & Permits", bsTotalEng, bsSvcMargin, false],
   ];
   if (bsTotalEquip > 0) {
-    bsCategories.push(["Processor & Equipment", bsTotalEquip, bsHwMargin]);
+    bsCategories.push(["Processor & Equipment", bsTotalEquip, bsHwMargin, false]);
   }
   const manualAdditionsCost = manualAdditions.reduce((sum, item) => sum + (item.cost || 0), 0);
   if (manualAdditionsCost > 0) {
-    bsCategories.push(["Additional Items", manualAdditionsCost, 0.15]);
+    bsCategories.push(["Additional Items", manualAdditionsCost, 0.15, false]);
   }
 
   const bsDataStart = 4;
-  bsCategories.forEach(([label, cost, margin], i) => {
+  bsCategories.forEach(([label, cost, margin, showPricePerSqFt], i) => {
     const r = bsDataStart + i;
     const r1 = r + 1;
     bsCellData[r] = {
@@ -1689,6 +1691,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       3: { f: guardedSellingFormula(`C${r1}`, `F${r1}`), s: "currency" },
       4: { f: `=ROUND(D${r1}-C${r1},2)`, s: "currency" },
       5: { v: margin, s: "percent" },
+      6: showPricePerSqFt && totalDisplaySqFt > 0 ? { v: cost / totalDisplaySqFt, s: "currency2" } : { v: "" },
     };
   });
 
@@ -1702,6 +1705,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     3: { f: `=ROUND(SUM(D${bsFirstR}:D${bsLastR}),2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
     4: { f: `=ROUND(D${bsTotalR}-C${bsTotalR},2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
     5: { f: guardedDivisionFormula(`E${bsTotalR}`, `D${bsTotalR}`, 4), s: { ...BOLD_STYLE, ...PERCENT_FMT } },
+    6: totalDisplaySqFt > 0 ? { f: `=ROUND(C${bsTotalR}/${totalDisplaySqFt},2)`, s: { ...BOLD_STYLE, ...CURRENCY_FMT_2 } } : { v: "" },
   };
 
   sheets["budget-summary"] = {
