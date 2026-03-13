@@ -73,10 +73,11 @@ export async function parseANCExcel(buffer: Buffer, fileName?: string): Promise<
         const row = ledData[i] || [];
         const first = (row[0] ?? "").toString().trim().toUpperCase();
         const hasOption = first === "OPTION" || row.some((c) => (c ?? "").toString().trim().toUpperCase() === "OPTION");
+        const hasDisplay = first === "DISPLAY" || row.some((c) => /^DISPLAY(\s+NAME)?$/i.test((c ?? "").toString().trim()));
         const hasPitch = row.some((c) => (c ?? "").toString().trim().toUpperCase() === "PITCH");
         const hasDisplayName = row.some((c) => (c ?? "").toString().trim().toUpperCase() === "DISPLAY NAME");
 
-        if ((hasOption && hasPitch) || hasDisplayName) {
+        if ((hasOption && hasPitch) || hasDisplayName || (hasDisplay && hasPitch)) {
             headerRowIndex = i;
             break;
         }
