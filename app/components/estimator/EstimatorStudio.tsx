@@ -74,6 +74,12 @@ export default function EstimatorStudio({
     const [toolbarOpen, setToolbarOpen] = useState(false);
     const [activityOpen, setActivityOpen] = useState(false);
     const [workbookSyncMessage, setWorkbookSyncMessage] = useState<string>("");
+    const [uiFeedback, setUiFeedback] = useState<{ tone: "info" | "success" | "error"; message: string } | null>(null);
+    const [questionResumeTarget, setQuestionResumeTarget] = useState<{
+        phase: "project" | "display" | "financial";
+        step: number;
+        displayIndex: number;
+    } | null>(null);
     const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string }>>([]);
     const { activeUsers } = usePresence(projectId);
     // Legacy cell overrides / custom sheets kept for auto-save compatibility
@@ -98,6 +104,12 @@ export default function EstimatorStudio({
     const noteWorkbookSync = useCallback((message: string) => {
         setWorkbookSyncMessage(message);
     }, []);
+
+    useEffect(() => {
+        if (!uiFeedback) return;
+        const timer = window.setTimeout(() => setUiFeedback(null), 4000);
+        return () => window.clearTimeout(timer);
+    }, [uiFeedback]);
 
     const venueServices = useMemo(() => {
         const enabled = answers.includeVenueServices && answers.venueServiceAnnualFee > 0;
@@ -322,6 +334,7 @@ export default function EstimatorStudio({
             return;
         }
         setExporting(true);
+        setUiFeedback({ tone: "info", message: "Preparing Excel export..." });
         try {
             // Use unified server-side export (same generator as RFP path)
             const res = await fetch("/api/estimator/export-unified", {
@@ -339,13 +352,16 @@ export default function EstimatorStudio({
             a.href = url;
             const clientName = answers.clientName || "Client";
             const defaultName = `ANC_${clientName.replace(/\s+/g, "_")}_Cost_Analysis.xlsx`;
-            a.download = res.headers.get("Content-Disposition")?.split("filename=")[1]?.replace(/"/g, "") || defaultName;
+            const downloadName = res.headers.get("Content-Disposition")?.split("filename=")[1]?.replace(/"/g, "") || defaultName;
+            a.download = downloadName;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+            setUiFeedback({ tone: "success", message: `Export started: ${downloadName}` });
         } catch (err) {
             console.error("Export error:", err);
+            setUiFeedback({ tone: "error", message: err instanceof Error ? err.message : "Export failed" });
             void showAlert({ title: "Export Failed", description: err instanceof Error ? err.message : "Unknown error" });
         } finally {
             setExporting(false);
@@ -355,6 +371,7 @@ export default function EstimatorStudio({
     const handleComplete = useCallback(() => {
         setQuestionsComplete(true);
         setEditingAnswers(false);
+        setQuestionResumeTarget(null);
     }, []);
 
     const questionPanelOpen = editingAnswers && !copilotOpen;
@@ -670,11 +687,16 @@ export default function EstimatorStudio({
                             {questionsComplete && !editingAnswers && (
                                 <button
                                     onClick={() => {
-                                        setQuestionsComplete(false);
-                                        setEditingAnswers(true);
-                                    }}
-                                    className="flex items-center gap-1 px-2.5 py-1.5 border border-border rounded text-xs text-muted-foreground hover:bg-muted transition-colors"
-                                >
+                                    setQuestionsComplete(false);
+                                    setEditingAnswers(true);
+                                    setQuestionResumeTarget({
+                                        phase: answers.displays.length > 0 ? "financial" : "project",
+                                        step: 0,
+                                        displayIndex: Math.max(answers.displays.length - 1, 0),
+                                    });
+                                }}
+                                className="flex items-center gap-1 px-2.5 py-1.5 border border-border rounded text-xs text-muted-foreground hover:bg-muted transition-colors"
+                            >
                                     <PenLine className="w-3 h-3" />
                                     Edit Answers
                                 </button>
@@ -684,6 +706,7 @@ export default function EstimatorStudio({
                                     onClick={() => {
                                         setQuestionsComplete(true);
                                         setEditingAnswers(false);
+                                        setQuestionResumeTarget(null);
                                     }}
                                     className="flex items-center gap-1 px-2.5 py-1.5 border border-border rounded text-xs text-muted-foreground hover:bg-muted transition-colors"
                                 >
@@ -947,6 +970,9 @@ export default function EstimatorStudio({
                             onChange={handleChange}
                             onComplete={handleComplete}
                             productSpecs={productSpecs}
+                            initialPhase={questionResumeTarget?.phase}
+                            initialStep={questionResumeTarget?.step}
+                            initialDisplayIndex={questionResumeTarget?.displayIndex}
                         />
                     </section>
                 ) : null}
@@ -955,7 +981,19 @@ export default function EstimatorStudio({
                 <section className="relative min-w-0 min-h-0 bg-zinc-100 dark:bg-zinc-950 overflow-hidden flex flex-col p-3">
                     <div className="shrink-0 mb-2 flex items-center justify-between rounded-md border border-border bg-background/90 px-3 py-2 text-[11px] text-muted-foreground">
                         <span>Workbook edits now sync directly into estimator state and autosave.</span>
-                        {workbookSyncMessage ? (
+                        {uiFeedback ? (
+                            <span
+                                className={
+                                    uiFeedback.tone === "error"
+                                        ? "truncate text-destructive"
+                                        : uiFeedback.tone === "success"
+                                            ? "truncate text-emerald-600"
+                                            : "truncate text-[#0A52EF]"
+                                }
+                            >
+                                {uiFeedback.message}
+                            </span>
+                        ) : workbookSyncMessage ? (
                             <span className="truncate text-[#0A52EF]">{workbookSyncMessage}</span>
                         ) : (
                             <span className="text-emerald-600">Ready</span>

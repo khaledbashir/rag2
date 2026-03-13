@@ -130,7 +130,7 @@ export default function EstimatorListPage() {
                     ) : (
                         <Plus className="w-3.5 h-3.5" />
                     )}
-                    New Estimate
+                    {creating ? "Creating estimate..." : "New Estimate"}
                 </button>
             </header>
 
@@ -167,7 +167,7 @@ export default function EstimatorListPage() {
                                     className="px-4 py-2 bg-emerald-500 text-white rounded-md hover:bg-emerald-600 text-xs font-medium inline-flex items-center gap-1.5"
                                 >
                                     <Plus className="w-3.5 h-3.5" />
-                                    New Estimate
+                                    {creating ? "Creating estimate..." : "New Estimate"}
                                 </button>
                             )}
                         </div>

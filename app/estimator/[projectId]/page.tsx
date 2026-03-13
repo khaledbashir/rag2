@@ -40,12 +40,18 @@ export default async function EstimatorProjectPage({
         redirect(`/projects/${projectId}`);
     }
 
+    const estimateLabel = (
+        (project.estimatorAnswers as { projectName?: string } | null)?.projectName
+        || project.clientName
+        || "Untitled Estimate"
+    ).trim();
+
     return (
         <div className="min-h-screen bg-background">
             <div className="px-4 sm:px-6 pt-3 pb-1">
                 <Breadcrumbs items={[
                     { label: "Estimates", href: "/estimator" },
-                    { label: project.clientName || "Untitled Estimate" },
+                    { label: estimateLabel },
                 ]} />
             </div>
             <EstimatorStudio

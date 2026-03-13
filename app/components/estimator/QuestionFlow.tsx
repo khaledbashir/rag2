@@ -35,12 +35,23 @@ interface QuestionFlowProps {
     onChange: (answers: EstimatorAnswers) => void;
     onComplete?: () => void;
     productSpecs?: Record<string, ProductSpec>;
+    initialPhase?: "project" | "display" | "financial";
+    initialStep?: number;
+    initialDisplayIndex?: number;
 }
 
-export default function QuestionFlow({ answers, onChange, onComplete, productSpecs }: QuestionFlowProps) {
-    const [currentStep, setCurrentStep] = useState(0);
-    const [phase, setPhase] = useState<"project" | "display" | "financial" | "complete">("project");
-    const [displayIndex, setDisplayIndex] = useState(0);
+export default function QuestionFlow({
+    answers,
+    onChange,
+    onComplete,
+    productSpecs,
+    initialPhase = "project",
+    initialStep = 0,
+    initialDisplayIndex = 0,
+}: QuestionFlowProps) {
+    const [currentStep, setCurrentStep] = useState(initialStep);
+    const [phase, setPhase] = useState<"project" | "display" | "financial" | "complete">(initialPhase);
+    const [displayIndex, setDisplayIndex] = useState(initialDisplayIndex);
     const [aiMode, setAiMode] = useState(false);
     const [manualChosen, setManualChosen] = useState(true); // Manual-first: structured checklist is the default
     const [aiDescription, setAiDescription] = useState("");

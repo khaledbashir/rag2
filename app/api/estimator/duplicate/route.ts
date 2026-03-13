@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
 
         const duplicate = await prisma.proposal.create({
             data: {
-                clientName: `${source.clientName} (Copy)`,
+                clientName: source.clientName,
                 calculationMode: "ESTIMATE",
                 status: "DRAFT",
                 workspaceId: source.workspaceId,
