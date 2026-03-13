@@ -117,7 +117,7 @@ function calcDisplay(d: Record<string, any>, answers: Record<string, any>): Disp
   const sellPrice = hardwareSell + servicesSell;
   const marginPct = totalCost > 0 ? 1 - (totalCost / sellPrice) : 0;
 
-  const bondRate = (answers.bondRate ?? 1.5) / 100;
+  const bondRate = answers.servicesMargin === 0 ? 0 : (answers.bondRate ?? 1.5) / 100;
   const bondCost = sellPrice * bondRate;
   const taxRate = (answers.salesTaxRate ?? 9.5) / 100;
   const salesTaxCost = (sellPrice + bondCost) * taxRate;
@@ -318,7 +318,7 @@ export async function POST(req: NextRequest) {
         internalAudit,
         paymentTerms: project.paymentTerms || paymentTerms,
         taxRateOverride: (answers.salesTaxRate ?? 9.5) / 100,
-        bondRateOverride: (answers.bondRate ?? 1.5) / 100,
+        bondRateOverride: answers.servicesMargin === 0 ? 0 : (answers.bondRate ?? 1.5) / 100,
       },
     });
 

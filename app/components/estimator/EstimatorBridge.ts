@@ -292,6 +292,10 @@ function getMarginRate(value: number | undefined, fallback: number) {
     return (value ?? fallback) / 100;
 }
 
+function getBondRatePct(answers: EstimatorAnswers) {
+    return answers.servicesMargin === 0 ? 0 : (answers.bondRate ?? 1.5) / 100;
+}
+
 export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, rates?: RateCard, productSpec?: ProductSpec | null): ScreenCalc {
     const w = d.widthFt || 0;
     const h = d.heightFt || 0;
@@ -316,7 +320,7 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         const totalCost = unitCost + installCost;
         const sellPrice = unitSalePrice + (installCost > 0 ? installCost / (1 - getMarginRate(answers.servicesMargin, SERVICES_MARGIN_DEFAULT)) : 0);
 
-        const bondRate = (answers.bondRate ?? 1.5) / 100;
+        const bondRate = getBondRatePct(answers);
         const bondCost = sellPrice * bondRate;
         const taxRate = (answers.salesTaxRate ?? 9.5) / 100;
         const salesTaxCost = (sellPrice + bondCost) * taxRate;
@@ -507,7 +511,7 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         : sellPriceFromBuckets;
     const marginPct = totalCost > 0 && sellPrice > 0 ? 1 - (totalCost / sellPrice) : 0;
 
-    const bondRate = (answers.bondRate ?? 1.5) / 100;
+    const bondRate = getBondRatePct(answers);
     const bondCost = sellPrice * bondRate;
 
     const taxRate = (answers.salesTaxRate ?? 9.5) / 100;
@@ -596,7 +600,7 @@ function calculateAltPitchVariants(
         const sellPrice = hwSell + svcSell;
         const marginPct = totalCost > 0 ? 1 - (totalCost / sellPrice) : 0;
 
-        const bondRate = (answers.bondRate ?? 1.5) / 100;
+        const bondRate = getBondRatePct(answers);
         const bondCost = sellPrice * bondRate;
         const taxRate = (answers.salesTaxRate ?? 9.5) / 100;
         const salesTaxCost = (sellPrice + bondCost) * taxRate;
@@ -756,7 +760,7 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
     const financialRows: [string, string | number][] = [
         ["LED Hardware Margin", `${answers.ledMargin ?? LED_MARGIN_DEFAULT}%`],
         ["Installation Services Margin", answers.servicesMargin === 0 ? "Supply Only" : `${answers.servicesMargin ?? SERVICES_MARGIN_DEFAULT}%`],
-        ["Bond Rate", `${answers.bondRate ?? 1.5}%`],
+        ["Bond Rate", answers.servicesMargin === 0 ? "N/A" : `${answers.bondRate ?? 1.5}%`],
         ["Sales Tax Rate", `${answers.salesTaxRate ?? 9.5}%`],
         ["Cost/sqft Override", answers.costPerSqFtOverride > 0 ? `$${answers.costPerSqFtOverride}` : "None (catalog pricing)"],
         ["PM Complexity", (answers.pmComplexity || "standard").charAt(0).toUpperCase() + (answers.pmComplexity || "standard").slice(1)],
@@ -791,7 +795,7 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
 
         const totalCost = calcs.reduce((s, c) => s + c.totalCost, 0) + addOnCost;
         const totalSell = calcs.reduce((s, c) => s + c.sellPrice, 0) + addOnSellPI;
-        const bRate = (answers.bondRate ?? 1.5) / 100;
+        const bRate = getBondRatePct(answers);
         const tRate = (answers.salesTaxRate ?? 9.5) / 100;
         const grandTotal = totalSell + (totalSell * bRate) + ((totalSell + totalSell * bRate) * tRate);
         const blended = totalCost > 0 ? ((1 - totalCost / totalSell) * 100).toFixed(1) : "0";
@@ -1057,7 +1061,7 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
         const totalCost = primaryCalcs.reduce((s, c) => s + c.totalCost, 0) + cmsCost + scoringCost + warrantyCost;
         const totalSell = primaryCalcs.reduce((s, c) => s + c.sellPrice, 0) + cmsSell + scoringSell + warrantySell;
         const addOnSell = cmsSell + scoringSell + warrantySell;
-        const bondRate = (answers.bondRate ?? 1.5) / 100;
+        const bondRate = getBondRatePct(answers);
         const taxRate = (answers.salesTaxRate ?? 9.5) / 100;
         const baseBond = primaryCalcs.reduce((s, c) => s + c.bondCost, 0);
         const totalBond = baseBond + (addOnSell * bondRate);
@@ -1077,7 +1081,7 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
             isTotal: true,
         });
         rows.push({
-            cells: [{ value: `BOND (${answers.bondRate ?? 1.5}%)`, bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" },
+            cells: [{ value: bondRate > 0 ? `BOND (${(bondRate * 100).toFixed(1)}%)` : "BOND (N/A)", bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" },
                 { value: totalBond, currency: true, align: "right" }, { value: "" }, { value: "" }],
         });
         rows.push({
@@ -1502,7 +1506,7 @@ function buildMarginAnalysisPreview(answers: EstimatorAnswers, calcs: ScreenCalc
     const COLS = 6;
     const ledMarginPct = getMarginRate(answers.ledMargin, LED_MARGIN_DEFAULT);
     const svcMarginPct = getMarginRate(answers.servicesMargin, SERVICES_MARGIN_DEFAULT);
-    const bondRate = (answers.bondRate ?? 1.5) / 100;
+    const bondRate = getBondRatePct(answers);
     const taxRate = (answers.salesTaxRate ?? 9.5) / 100;
 
     rows.push({
@@ -1586,7 +1590,7 @@ function buildMarginAnalysisPreview(answers: EstimatorAnswers, calcs: ScreenCalc
         const taxAmt = screenSell * taxRate;
         const bondAmt = screenSell * bondRate;
         rows.push({ cells: [{ value: `    TAX (${(taxRate * 100).toFixed(1)}%)` }, { value: "" }, { value: taxAmt, currency: true, align: "right" }, { value: "" }, { value: "" }, { value: "" }] });
-        rows.push({ cells: [{ value: `    BOND (${(bondRate * 100).toFixed(1)}%)` }, { value: "" }, { value: bondAmt, currency: true, align: "right" }, { value: "" }, { value: "" }, { value: "" }] });
+        rows.push({ cells: [{ value: bondRate > 0 ? `    BOND (${(bondRate * 100).toFixed(1)}%)` : "    BOND (N/A)" }, { value: "" }, { value: bondAmt, currency: true, align: "right" }, { value: "" }, { value: "" }, { value: "" }] });
 
         // Grand total
         const screenGrand = screenSell + taxAmt + bondAmt;
