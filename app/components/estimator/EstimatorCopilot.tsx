@@ -68,13 +68,13 @@ function getSuggestions(answers: EstimatorAnswers, calcs: ScreenCalc[]): string[
             "What's the total?",
             "Add another display",
             "Explain the costs",
-            "Set all margins to 20%",
+            "Set LED margin to 15%",
         ];
     }
     return [
         "What's the total?",
-        "Set LED margin to 20%",
-        "Set all margins to 20%",
+        "Set LED margin to 15%",
+        "Set service margin to 20%",
     ];
 }
 
@@ -288,7 +288,7 @@ export default function EstimatorCopilot({
                             <div className="space-y-1 text-[11px] text-zinc-600">
                                 <p>I can help you build estimates quickly:</p>
                                 <p>- "Add a 20x10 scoreboard at 4mm"</p>
-                                <p>- "Set all margins to 20%"</p>
+                                <p>- "Set LED margin to 15%"</p>
                                 <p>- "What's the total?"</p>
                                 <p>- "Explain structural costs"</p>
                             </div>
@@ -455,11 +455,11 @@ function buildLocalResponse(query: string, answers: EstimatorAnswers, calcs: Scr
     if (lower.includes("what can you do") || lower.includes("help")) {
         return `I'm Lux, your estimator copilot. I can:\n\n` +
             `- **Add displays**: "Add a 20x10 scoreboard at 4mm"\n` +
-            `- **Set margins**: "Set LED margin to 20%" or "Set all margins to 20%"\n` +
+            `- **Set margins**: "Set LED margin to 15%" or "Set service margin to 20%"\n` +
             `- **Adjust rates**: "Set bond rate to 1.5%" or "Set tax to 8.5%"\n` +
             `- **Change settings**: "Union labor", "Outdoor install", "Switch to CAD"\n` +
             `- **Get info**: "What's the total?", "Explain structural costs"\n` +
-            `- **Quick setup**: "Set all margins to 20%"`;
+            `- **Quick setup**: "Set LED margin to 15% and service margin to 20%"`;
     }
 
     if (lower.includes("status") || lower.includes("where am i") || lower.includes("current")) {

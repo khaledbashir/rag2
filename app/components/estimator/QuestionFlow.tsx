@@ -164,8 +164,8 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
         if (a.location) next.location = a.location;
         if (a.docType) next.docType = a.docType;
         if (a.currency) next.currency = a.currency;
-        next.ledMargin = 20;
-        next.defaultMargin = 20;
+        next.ledMargin = 15;
+        next.defaultMargin = 15;
         if (typeof a.isIndoor === "boolean") next.isIndoor = a.isIndoor;
         if (typeof a.isNewInstall === "boolean") {
             next.isNewInstall = a.isNewInstall;

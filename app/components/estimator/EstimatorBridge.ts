@@ -247,8 +247,49 @@ export interface ScreenCalc {
 
 /** Courtside tables and stanchions use per-unit pricing, not per-sqft */
 const ADDON_DISPLAY_TYPES = ["courtside-table", "stanchion"];
+const LED_MARGIN_DEFAULT = 15;
+const SERVICES_MARGIN_DEFAULT = 20;
+const SMALL_PROCESSOR_PORTS = 8;
+const LARGE_PROCESSOR_PORTS = 16;
+const SMALL_PROCESSOR_COST = 450;
+const LARGE_PROCESSOR_COST = 8400;
+
 function isAddonDisplayType(displayType: string): boolean {
     return ADDON_DISPLAY_TYPES.includes(displayType);
+}
+
+function getProcessorPricing(totalPixels: number) {
+    const portsNeeded = totalPixels > 0 ? Math.ceil(totalPixels / 650000) : 0;
+    if (portsNeeded === 0) {
+        return {
+            portsNeeded: 0,
+            processorsNeeded: 0,
+            processorCost: 0,
+            processorLabel: "NovaStar 660 Pro",
+        };
+    }
+
+    if (portsNeeded > SMALL_PROCESSOR_PORTS) {
+        const processorsNeeded = Math.ceil(portsNeeded / LARGE_PROCESSOR_PORTS);
+        return {
+            portsNeeded,
+            processorsNeeded,
+            processorCost: processorsNeeded * LARGE_PROCESSOR_COST,
+            processorLabel: "MCTRL4K",
+        };
+    }
+
+    const processorsNeeded = Math.ceil(portsNeeded / SMALL_PROCESSOR_PORTS);
+    return {
+        portsNeeded,
+        processorsNeeded,
+        processorCost: processorsNeeded * SMALL_PROCESSOR_COST,
+        processorLabel: "NovaStar 660 Pro",
+    };
+}
+
+function getMarginRate(value: number | undefined, fallback: number) {
+    return (value ?? fallback) / 100;
 }
 
 export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, rates?: RateCard, productSpec?: ProductSpec | null): ScreenCalc {
@@ -273,7 +314,7 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         const installCost = rc(rates, `install.addon.${d.displayType}`, 0);
 
         const totalCost = unitCost + installCost;
-        const sellPrice = unitSalePrice + (installCost > 0 ? installCost / (1 - (answers.servicesMargin || 20) / 100) : 0);
+        const sellPrice = unitSalePrice + (installCost > 0 ? installCost / (1 - getMarginRate(answers.servicesMargin, SERVICES_MARGIN_DEFAULT)) : 0);
 
         const bondRate = (answers.bondRate ?? 1.5) / 100;
         const bondCost = sellPrice * bondRate;
@@ -437,19 +478,22 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         excludedIds: d.excludedBundleItems || [],
     };
     const bundle = calculateBundle(bundleInput);
-    const activeSignalBundleCost = bundle.items
+    const processorPricing = getProcessorPricing(totalPixels);
+    const activeNonProcessorSignalCost = bundle.items
+        .filter((item) => item.category === "signal" && item.id !== "video_processor" && item.id !== "backup_processor" && !(d.excludedBundleItems || []).includes(item.id))
+        .reduce((sum, item) => sum + item.totalCost, 0);
+    const activeNonSignalBundleCost = bundle.totalCost - bundle.items
         .filter((item) => item.category === "signal" && !(d.excludedBundleItems || []).includes(item.id))
         .reduce((sum, item) => sum + item.totalCost, 0);
-    const activeNonSignalBundleCost = bundle.totalCost - activeSignalBundleCost;
-    const processorCost = overrides.processor ?? activeSignalBundleCost;
-    const adjBundleCost = supplyOnly ? 0 : activeNonSignalBundleCost;
+    const processorCost = overrides.processor ?? processorPricing.processorCost;
+    const adjBundleCost = supplyOnly ? 0 : (activeNonProcessorSignalCost + activeNonSignalBundleCost);
 
     const totalCost = hardware + adjStructureCost + adjInstallCost + adjElectricalCost
         + processorCost + adjEquipmentCost + adjDataCablingCost + adjPmCost + adjEngineeringCost + adjShippingCost + adjDemolitionCost
         + adjBundleCost;
 
-    const ledMarginPct = ((answers.ledMargin ?? 20) || 1) / 100;
-    const svcMarginPct = ((answers.servicesMargin ?? 20) || 1) / 100;
+    const ledMarginPct = getMarginRate(answers.ledMargin, LED_MARGIN_DEFAULT);
+    const svcMarginPct = getMarginRate(answers.servicesMargin, SERVICES_MARGIN_DEFAULT);
     const serviceCost = adjStructureCost + adjInstallCost + adjElectricalCost
         + adjEquipmentCost + adjDataCablingCost + adjPmCost + adjEngineeringCost + adjShippingCost + adjDemolitionCost
         + adjBundleCost;
@@ -710,8 +754,8 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
     });
 
     const financialRows: [string, string | number][] = [
-        ["LED Hardware Margin", `${answers.ledMargin ?? 20}%`],
-        ["Installation Services Margin", answers.servicesMargin === 0 ? "Supply Only" : `${answers.servicesMargin ?? 20}%`],
+        ["LED Hardware Margin", `${answers.ledMargin ?? LED_MARGIN_DEFAULT}%`],
+        ["Installation Services Margin", answers.servicesMargin === 0 ? "Supply Only" : `${answers.servicesMargin ?? SERVICES_MARGIN_DEFAULT}%`],
         ["Bond Rate", `${answers.bondRate ?? 1.5}%`],
         ["Sales Tax Rate", `${answers.salesTaxRate ?? 9.5}%`],
         ["Cost/sqft Override", answers.costPerSqFtOverride > 0 ? `$${answers.costPerSqFtOverride}` : "None (catalog pricing)"],
@@ -739,7 +783,7 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
         });
 
         // Include CMS, Scoring, Warranty add-on costs
-        const svcMPct = ((answers.servicesMargin ?? 20) || 1) / 100;
+        const svcMPct = getMarginRate(answers.servicesMargin, SERVICES_MARGIN_DEFAULT);
         const addOnCost = (answers.includeCms ? answers.cmsAllocation : 0)
             + (answers.includeScoring ? answers.scoringAllocation : 0)
             + (answers.includeWarranty === "priced" ? (answers.warrantyAllocation > 0 ? answers.warrantyAllocation : calcs.reduce((s, c) => s + c.hardwareCost, 0) * 0.03 * (parseInt(answers.warrantyYears) || 1)) : 0);
@@ -836,7 +880,7 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
 
         // Services — broken out by line item (primary displays only, services don't change for alts)
         const primaryCalcs = calcs.filter((c) => !c.isAlt);
-        const svcMarginPctBudget = ((answers.servicesMargin ?? 20) || 1) / 100;
+        const svcMarginPctBudget = ((answers.servicesMargin ?? SERVICES_MARGIN_DEFAULT) || 1) / 100;
         rows.push({
             cells: [{ value: "2.0 INSTALLATION SERVICES", bold: true }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }, { value: "" }],
         });
@@ -1325,7 +1369,7 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
     const rows: SheetRow[] = [];
     const COLS = 11;
 
-    const svcMarginPct = ((answers.servicesMargin ?? 20) || 1) / 100;
+    const svcMarginPct = getMarginRate(answers.servicesMargin, SERVICES_MARGIN_DEFAULT);
 
     rows.push({
         cells: [{ value: "INSTALLATION & LABOR COSTS", bold: true, header: true, span: COLS, align: "center" }],
@@ -1409,7 +1453,7 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                     { value: `${Math.round(c.areaSqFt)} sqft×$125${powerMultLabel !== "1.0×" ? `×${powerMultLabel}` : ""}`, align: "right", className: "text-muted-foreground" },
                     { value: d?.liftType === "none" ? "No equip" : `${(d?.liftType || "scissor")}${c.dataCablingCost > 0 ? "+fiber" : ""}`, align: "right", className: "text-muted-foreground" },
                     { value: `PM+Eng (${answers.pmComplexity || "standard"})`, align: "right", className: "text-muted-foreground" },
-                    { value: `${weightEst.toLocaleString()} lbs×$0.50`, align: "right", className: "text-muted-foreground" },
+                    { value: `${Math.round(c.areaSqFt)} sqft×$10 (min $500)`, align: "right", className: "text-muted-foreground" },
                     { value: "=SUM(B:G)", align: "right", className: "text-muted-foreground" },
                     { value: "", className: "text-muted-foreground" },
                     { value: "", className: "text-muted-foreground" },
@@ -1456,8 +1500,8 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
 function buildMarginAnalysisPreview(answers: EstimatorAnswers, calcs: ScreenCalc[]): SheetTab {
     const rows: SheetRow[] = [];
     const COLS = 6;
-    const ledMarginPct = ((answers.ledMargin ?? 20) || 1) / 100;
-    const svcMarginPct = ((answers.servicesMargin ?? 20) || 1) / 100;
+    const ledMarginPct = getMarginRate(answers.ledMargin, LED_MARGIN_DEFAULT);
+    const svcMarginPct = getMarginRate(answers.servicesMargin, SERVICES_MARGIN_DEFAULT);
     const bondRate = (answers.bondRate ?? 1.5) / 100;
     const taxRate = (answers.salesTaxRate ?? 9.5) / 100;
 
@@ -1651,7 +1695,7 @@ function buildTechSpecsPreview(answers: EstimatorAnswers, calcs: ScreenCalc[]): 
 // --- Per-Screen Install Preview ---
 function buildInstallPreview(answers: EstimatorAnswers, c: ScreenCalc, d: DisplayAnswers, idx: number): SheetTab {
     const rows: SheetRow[] = [];
-    const svcMarginPct = ((answers.servicesMargin ?? 20) || 1) / 100;
+    const svcMarginPct = getMarginRate(answers.servicesMargin, SERVICES_MARGIN_DEFAULT);
     const shortName = c.name.length > 20 ? c.name.substring(0, 20) + "…" : c.name;
 
     rows.push({
@@ -2299,8 +2343,8 @@ function buildCostCategoryBreakdown(answers: EstimatorAnswers, calcs: ScreenCalc
             }
             rows.push({
                 cells: [
-                    { value: "Shipping & Freight" }, { value: "Estimated from weight" },
-                    { value: `${Math.round(estimatedWeightLbs)} lbs` }, { value: "$0.50/lb", align: "right" },
+                    { value: "Shipping & Freight" }, { value: "Area-based freight estimate" },
+                    { value: `${Math.round(c.areaSqFt)} sqft` }, { value: "$10/sqft (min $500)", align: "right" },
                     { value: c.shippingCost, currency: true, align: "right" },
                     { value: "" },
                 ],

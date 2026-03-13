@@ -110,16 +110,16 @@ function calcDisplay(d: Record<string, any>, answers: Record<string, any>): Disp
     + equipmentCost + pmCost + engineeringCost + shippingCost;
   const totalCost = hardware + serviceCost;
 
-  const ledMarginPct = (answers.ledMargin || answers.defaultMargin || 20) / 100;
-  const svcMarginPct = (answers.servicesMargin || answers.defaultMargin || 20) / 100;
+  const ledMarginPct = (answers.ledMargin ?? answers.defaultMargin ?? 15) / 100;
+  const svcMarginPct = (answers.servicesMargin ?? 20) / 100;
   const hardwareSell = hardware / (1 - ledMarginPct);
   const servicesSell = serviceCost / (1 - svcMarginPct);
   const sellPrice = hardwareSell + servicesSell;
   const marginPct = totalCost > 0 ? 1 - (totalCost / sellPrice) : 0;
 
-  const bondRate = (answers.bondRate || 1.5) / 100;
+  const bondRate = (answers.bondRate ?? 1.5) / 100;
   const bondCost = sellPrice * bondRate;
-  const taxRate = (answers.salesTaxRate || 9.5) / 100;
+  const taxRate = (answers.salesTaxRate ?? 9.5) / 100;
   const salesTaxCost = (sellPrice + bondCost) * taxRate;
   const finalTotal = sellPrice + bondCost + salesTaxCost;
 
@@ -195,20 +195,20 @@ export async function POST(req: NextRequest) {
       name: c.name,
       currency,
       items: [
-        { description: `LED Hardware (${c.pixelPitch}mm)`, sellingPrice: round2(c.hardwareCost / (1 - (answers.ledMargin || answers.defaultMargin || 20) / 100)), isIncluded: false },
-        { description: "Structural Steel", sellingPrice: round2(c.structureCost / (1 - (answers.servicesMargin || answers.defaultMargin || 20) / 100)), isIncluded: false },
-        { description: "LED Installation", sellingPrice: round2(c.installCost / (1 - (answers.servicesMargin || answers.defaultMargin || 20) / 100)), isIncluded: false },
-        { description: "Electrical", sellingPrice: round2(c.electricalCost / (1 - (answers.servicesMargin || answers.defaultMargin || 20) / 100)), isIncluded: false },
-        ...(c.equipmentCost > 0 ? [{ description: "Equipment Rental", sellingPrice: round2(c.equipmentCost / (1 - (answers.servicesMargin || answers.defaultMargin || 20) / 100)), isIncluded: false }] : []),
-        { description: "Project Management", sellingPrice: round2(c.pmCost / (1 - (answers.servicesMargin || answers.defaultMargin || 20) / 100)), isIncluded: false },
-        { description: "Engineering", sellingPrice: round2(c.engineeringCost / (1 - (answers.servicesMargin || answers.defaultMargin || 20) / 100)), isIncluded: false },
-        { description: "Shipping & Logistics", sellingPrice: round2(c.shippingCost / (1 - (answers.servicesMargin || answers.defaultMargin || 20) / 100)), isIncluded: false },
+        { description: `LED Hardware (${c.pixelPitch}mm)`, sellingPrice: round2(c.hardwareCost / (1 - (answers.ledMargin ?? answers.defaultMargin ?? 15) / 100)), isIncluded: false },
+        { description: "Structural Steel", sellingPrice: round2(c.structureCost / (1 - (answers.servicesMargin ?? 20) / 100)), isIncluded: false },
+        { description: "LED Installation", sellingPrice: round2(c.installCost / (1 - (answers.servicesMargin ?? 20) / 100)), isIncluded: false },
+        { description: "Electrical", sellingPrice: round2(c.electricalCost / (1 - (answers.servicesMargin ?? 20) / 100)), isIncluded: false },
+        ...(c.equipmentCost > 0 ? [{ description: "Equipment Rental", sellingPrice: round2(c.equipmentCost / (1 - (answers.servicesMargin ?? 20) / 100)), isIncluded: false }] : []),
+        { description: "Project Management", sellingPrice: round2(c.pmCost / (1 - (answers.servicesMargin ?? 20) / 100)), isIncluded: false },
+        { description: "Engineering", sellingPrice: round2(c.engineeringCost / (1 - (answers.servicesMargin ?? 20) / 100)), isIncluded: false },
+        { description: "Shipping & Logistics", sellingPrice: round2(c.shippingCost / (1 - (answers.servicesMargin ?? 20) / 100)), isIncluded: false },
       ],
       alternates: [],
       subtotal: round2(c.sellPrice),
       tax: {
-        label: `Tax ${answers.salesTaxRate || 9.5}%`,
-        rate: (answers.salesTaxRate || 9.5) / 100,
+        label: `Tax ${answers.salesTaxRate ?? 9.5}%`,
+        rate: (answers.salesTaxRate ?? 9.5) / 100,
         amount: round2(c.salesTaxCost),
       },
       bond: round2(c.bondCost),
@@ -229,8 +229,8 @@ export async function POST(req: NextRequest) {
       alternates: [],
       subtotal: round2(projectSellPrice),
       tax: {
-        label: `Tax ${answers.salesTaxRate || 9.5}%`,
-        rate: (answers.salesTaxRate || 9.5) / 100,
+        label: `Tax ${answers.salesTaxRate ?? 9.5}%`,
+        rate: (answers.salesTaxRate ?? 9.5) / 100,
         amount: round2(projectTax),
       },
       bond: round2(projectBond),
@@ -317,8 +317,8 @@ export async function POST(req: NextRequest) {
         masterTableIndex: 0,
         internalAudit,
         paymentTerms: project.paymentTerms || paymentTerms,
-        taxRateOverride: (answers.salesTaxRate || 9.5) / 100,
-        bondRateOverride: (answers.bondRate || 1.5) / 100,
+        taxRateOverride: (answers.salesTaxRate ?? 9.5) / 100,
+        bondRateOverride: (answers.bondRate ?? 1.5) / 100,
       },
     });
 
@@ -330,8 +330,8 @@ export async function POST(req: NextRequest) {
     for (let i = 0; i < displays.length; i++) {
       const d = displays[i];
       const c = calcs[i];
-      const svcMarginPct = (answers.servicesMargin || answers.defaultMargin || 20) / 100;
-      const ledMarginPct = (answers.ledMargin || answers.defaultMargin || 20) / 100;
+      const svcMarginPct = (answers.servicesMargin ?? 20) / 100;
+      const ledMarginPct = (answers.ledMargin ?? answers.defaultMargin ?? 15) / 100;
 
       const screen = await prisma.screenConfig.create({
         data: {
