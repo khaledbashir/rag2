@@ -999,41 +999,11 @@ export default function EstimatorStudio({
 
                 {/* Center/Right: Excel Preview */}
                 <section className="relative min-w-0 min-h-0 bg-zinc-100 dark:bg-zinc-950 overflow-hidden flex flex-col p-3">
-                    <div className="shrink-0 mb-2 flex items-center justify-between rounded-md border border-border bg-background/90 px-3 py-2 text-[11px] text-muted-foreground">
-                        <span>Live workbook — edits sync into estimator state.</span>
-                        {uiFeedback ? (
-                            <span className={uiFeedback.tone === "error" ? "truncate text-destructive" : uiFeedback.tone === "success" ? "truncate text-emerald-600" : "truncate text-[#0A52EF]"}>
-                                {uiFeedback.message}
-                            </span>
-                        ) : workbookSyncMessage ? (
-                            <span className="truncate text-[#0A52EF]">{workbookSyncMessage}</span>
-                        ) : (
-                            <span className="text-emerald-600">Ready</span>
-                        )}
-                    </div>
-                    <div className="relative min-h-0 flex-1">
-                        <EditableWorkbook
-                            className="w-full h-full"
-                            screens={workbookScreens}
-                            pricingDisplays={workbookPricingDisplays}
-                            pricingSummary={workbookPricingSummary}
-                            manualAdditions={workbookManualAdditions}
-                            venueServices={venueServices}
-                            projectInfo={{
-                                projectName: answers.projectName || null,
-                                clientName: answers.clientName || null,
-                                venue: null,
-                                location: answers.location || null,
-                                documentMode: answers.docType || "budget",
-                            }}
-                            availableProducts={availableProducts}
-                            onSpecEdit={handleWorkbookSpecEdit}
-                            onPricingEdit={handleWorkbookPricingEdit}
-                            onMarginAnalysisEdit={handleWorkbookMarginAnalysisEdit}
-                            onVenueServicesEdit={handleVenueServicesEdit}
-                            onProductSelect={handleWorkbookProductSelect}
-                        />
-                    </div>
+                    <UniverPreview
+                        workbookData={serverPreview}
+                        loading={serverPreviewLoading}
+                        error={serverPreviewError}
+                    />
                     {/* Bundle panel overlay */}
                     {bundleOpen && (
                         <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-md rounded-lg border border-border shadow-lg">
