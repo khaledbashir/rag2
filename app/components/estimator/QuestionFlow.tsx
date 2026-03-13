@@ -182,6 +182,7 @@ export default function QuestionFlow({ answers, onChange, onComplete, productSpe
                 locationType: d.locationType || "wall",
                 widthFt: d.widthFt || 0,
                 heightFt: d.heightFt || 0,
+                quantity: d.quantity || 1,
                 pixelPitch: String(d.pixelPitch || "4"),
                 installComplexity: d.installComplexity || "standard",
                 serviceType: d.serviceType || "Front/Rear",

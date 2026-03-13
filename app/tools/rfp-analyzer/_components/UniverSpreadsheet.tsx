@@ -74,7 +74,7 @@ export interface UniverSpreadsheetProps {
     totals?: any;
   };
   availableProducts?: Array<{ id: string; label: string; pitch: number; name: string }>;
-  onSpecEdit?: (screenIdx: number, field: string, value: number) => void;
+  onSpecEdit?: (screenIdx: number, field: string, value: number | string) => void;
   onPricingEdit?: (displayIdx: number, field: string, value: number) => void;
   onMarginAnalysisEdit?: (itemIdx: number, field: string, value: number) => void;
   onProductSelect?: (displayName: string, productId: string) => void;
@@ -2167,32 +2167,68 @@ function handleValueChanged(params: any, propsRef: React.MutableRefObject<Univer
     if (row == null || column == null) continue;
 
     // Get the raw value from the range
+    let rawValue: unknown = "";
     let numValue = 0;
     try {
-      const val = fRange.getValue?.();
-      if (typeof val === "number") {
-        numValue = val;
-      } else if (val != null) {
-        numValue = parseFloat(String(val)) || 0;
+      rawValue = fRange.getValue?.();
+      if (typeof rawValue === "number") {
+        numValue = rawValue;
+      } else if (rawValue != null) {
+        numValue = parseFloat(String(rawValue)) || 0;
       }
     } catch { /* ignore */ }
+
+    const textValue = typeof rawValue === "string"
+      ? rawValue.trim()
+      : rawValue == null
+        ? ""
+        : String(rawValue).trim();
 
     if (sheetId === "led-cost-sheet") {
       const screenIdx = row - 1; // row 0 is header
       if (screenIdx < 0 || screenIdx >= props.screens.length) continue;
 
-      // LED Cost Sheet editable columns: H(ft)=4, W(ft)=5, Qty=9, DisplayCost=14, Processor=15, Shipping=16, Margin%=18
-      const specFieldMap: Record<number, string> = { 4: "heightFt", 5: "widthFt", 9: "quantity" };
+      // LED Cost Sheet editable columns: Name=0, Pitch=3, H(ft)=4, W(ft)=5, Qty=9, Service=12,
+      // DisplayCost=14, Processor=15, Shipping=16, Margin%=18
+      const specFieldMap: Record<number, string> = {
+        0: "displayName",
+        3: "pixelPitch",
+        4: "heightFt",
+        5: "widthFt",
+        9: "quantity",
+        12: "serviceType",
+      };
       const pricingFieldMap: Record<number, string> = { 14: "hardwareCost", 15: "processorCost", 16: "shippingCost" };
+      const numericSpecFields = new Set(["heightFt", "widthFt", "quantity", "pixelPitch"]);
 
       if (specFieldMap[column]) {
-        props.onSpecEdit?.(screenIdx, specFieldMap[column], numValue);
+        const field = specFieldMap[column];
+        props.onSpecEdit?.(screenIdx, field, numericSpecFields.has(field) ? numValue : textValue);
       } else if (pricingFieldMap[column]) {
         props.onPricingEdit?.(screenIdx, pricingFieldMap[column], numValue);
       } else if (column === 18) {
         let margin = numValue;
         if (margin > 1) margin = margin / 100;
         props.onPricingEdit?.(screenIdx, "blendedMarginPct", margin);
+      }
+    } else if (sheetId === "led-display-request") {
+      const screenIdx = row - 3; // row 2 is header
+      if (screenIdx < 0 || screenIdx >= props.screens.length) continue;
+
+      const specFieldMap: Record<number, string> = {
+        0: "displayName",
+        1: "locationType",
+        2: "widthFt",
+        3: "heightFt",
+        4: "pixelPitch",
+        5: "serviceType",
+        7: "quantity",
+      };
+      const numericSpecFields = new Set(["heightFt", "widthFt", "quantity", "pixelPitch"]);
+
+      if (specFieldMap[column]) {
+        const field = specFieldMap[column];
+        props.onSpecEdit?.(screenIdx, field, numericSpecFields.has(field) ? numValue : textValue);
       }
     } else if (sheetId === "margin-analysis") {
       const target = getMarginAnalysisEditTarget(row, column, props);

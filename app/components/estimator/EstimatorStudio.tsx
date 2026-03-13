@@ -94,6 +94,27 @@ export default function EstimatorStudio({
     });
     const { confirm, alert: showAlert } = useConfirm();
 
+    const normalizeLocationType = useCallback((value: string) => {
+        const normalized = value.trim().toLowerCase();
+        if (!normalized) return "wall";
+        if (normalized.includes("score")) return "scoreboard";
+        if (normalized.includes("ribbon")) return "ribbon";
+        if (normalized.includes("fascia")) return "fascia";
+        if (normalized.includes("court")) return "courtside";
+        if (normalized.includes("stanch")) return "stanchion";
+        if (normalized.includes("outdoor")) return "outdoor";
+        if (normalized.includes("wall")) return "wall";
+        return normalized;
+    }, []);
+
+    const normalizeServiceType = useCallback((value: string) => {
+        const normalized = value.trim().toLowerCase();
+        if (!normalized) return "Front/Rear";
+        if (normalized.includes("top")) return "Top";
+        if (normalized.includes("front") || normalized.includes("rear")) return "Front/Rear";
+        return value.trim();
+    }, []);
+
     // Fetch product specs for cabinet layout calculations
     const productIds = useMemo(() =>
         answers.displays.map((d) => d.productId).filter(Boolean),
@@ -146,7 +167,7 @@ export default function EstimatorStudio({
                 pixelPitchMm: pitch,
                 brightnessNits: (product as any)?.maxNits ?? (product as any)?.typicalNits ?? null,
                 environment: answers.isIndoor ? "indoor" : "outdoor",
-                quantity: 1,
+                quantity: display.quantity || 1,
                 serviceType: display.serviceType?.toLowerCase().includes("front")
                     ? "front"
                     : display.serviceType?.toLowerCase().includes("rear")
@@ -176,7 +197,7 @@ export default function EstimatorStudio({
                 location: display?.locationType || "",
                 pixelPitch: calc.pixelPitch || null,
                 areaSqFt: calc.areaSqFt,
-                quantity: 1,
+                quantity: display?.quantity || 1,
                 hardwareCost: calc.hardwareCost,
                 processorCost: calc.processorCost,
                 shippingCost: calc.shippingCost,
@@ -360,17 +381,22 @@ export default function EstimatorStudio({
         });
     }, []);
 
-    const handleWorkbookSpecEdit = useCallback((displayIndex: number, field: string, value: number) => {
+    const handleWorkbookSpecEdit = useCallback((displayIndex: number, field: string, value: number | string) => {
         setAnswers((prev) => {
             if (displayIndex < 0 || displayIndex >= prev.displays.length) return prev;
             const displays = [...prev.displays];
             const current = { ...displays[displayIndex] } as any;
-            if (field === "heightFt") current.heightFt = value || 0;
-            if (field === "widthFt") current.widthFt = value || 0;
+            if (field === "displayName") current.displayName = typeof value === "string" ? value : String(value || "");
+            if (field === "heightFt") current.heightFt = typeof value === "number" ? value || 0 : parseFloat(value) || 0;
+            if (field === "widthFt") current.widthFt = typeof value === "number" ? value || 0 : parseFloat(value) || 0;
+            if (field === "quantity") current.quantity = Math.max(1, Math.round(typeof value === "number" ? value || 1 : parseFloat(value) || 1));
+            if (field === "pixelPitch") current.pixelPitch = String(typeof value === "number" ? value || 0 : parseFloat(value) || 0);
+            if (field === "serviceType") current.serviceType = normalizeServiceType(typeof value === "string" ? value : String(value || ""));
+            if (field === "locationType") current.locationType = normalizeLocationType(typeof value === "string" ? value : String(value || ""));
             displays[displayIndex] = current;
             return { ...prev, displays };
         });
-    }, []);
+    }, [normalizeLocationType, normalizeServiceType]);
 
     const handleWorkbookPricingEdit = useCallback((displayIndex: number, field: string, value: number) => {
         setAnswers((prev) => {

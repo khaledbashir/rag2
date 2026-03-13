@@ -715,6 +715,7 @@ export interface DisplayAnswers {
     locationType: string;
     widthFt: number;
     heightFt: number;
+    quantity: number;
     pixelPitch: string;
     productId: string;         // ManufacturerProduct ID from catalog
     productName: string;       // Cached product display name
@@ -778,6 +779,7 @@ export function getDefaultDisplayAnswers(): DisplayAnswers {
         locationType: "wall",
         widthFt: 0,
         heightFt: 0,
+        quantity: 1,
         pixelPitch: "4",
         productId: "",
         productName: "",

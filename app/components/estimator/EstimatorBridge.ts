@@ -300,12 +300,14 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
     const w = d.widthFt || 0;
     const h = d.heightFt || 0;
     const area = w * h;
+    const quantity = Math.max(1, d.quantity || 1);
+    const totalArea = area * quantity;
     const pitch = parseFloat(d.pixelPitch) || 4;
     const overrides = d.costOverrides || {};
 
     const pixelsW = Math.round((w * 304.8) / pitch);
     const pixelsH = Math.round((h * 304.8) / pitch);
-    const totalPixels = pixelsW * pixelsH;
+    const totalPixels = pixelsW * pixelsH * quantity;
 
     // ── Add-on products (courtside/stanchion): unit pricing, Screen + Install only ──
     const isAddon = isAddonDisplayType(d.displayType);
@@ -318,8 +320,8 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         // Install cost = manual entry (stored in rate card or zero for them to fill in)
         const installCost = rc(rates, `install.addon.${d.displayType}`, 0);
 
-        const totalCost = unitCost + installCost;
-        const sellPrice = unitSalePrice + (installCost > 0 ? installCost / (1 - getMarginRate(answers.servicesMargin, SERVICES_MARGIN_DEFAULT)) : 0);
+        const totalCost = (unitCost * quantity) + (installCost * quantity);
+        const sellPrice = (unitSalePrice * quantity) + ((installCost * quantity) > 0 ? (installCost * quantity) / (1 - getMarginRate(answers.servicesMargin, SERVICES_MARGIN_DEFAULT)) : 0);
 
         const bondRate = getBondRatePct(answers);
         const bondCost = sellPrice * bondRate;
@@ -334,9 +336,9 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
             pixelPitch: pitch,
             pixelsW: extSpecs.pixelsW || pixelsW,
             pixelsH: extSpecs.pixelsH || pixelsH,
-            totalPixels: (extSpecs.pixelsW || pixelsW) * (extSpecs.pixelsH || pixelsH),
+            totalPixels: (extSpecs.pixelsW || pixelsW) * (extSpecs.pixelsH || pixelsH) * quantity,
             costPerSqFt: area > 0 ? unitCost / area : 0,
-            hardwareCost: unitCost,
+            hardwareCost: unitCost * quantity,
             spareParts: 0,
             structureCost: 0,
             installCost,
@@ -399,7 +401,7 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
     const costPerSqFt = resolvedCostPerSqFt;
 
     const sparePartsPct = rc(rates, "spare_parts.led_pct", 0.05);
-    const hardwareBase = area * costPerSqFt;
+    const hardwareBase = totalArea * costPerSqFt;
     const spareParts = d.includeSpareParts ? hardwareBase * sparePartsPct : 0;
     const hardware = overrides.displayCost ?? (hardwareBase + spareParts);
 
@@ -413,14 +415,14 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
     const structureCost = hardware * structPct;
 
     // Weight estimate: ~45 lbs/m² average, area in sqft → m² = area * 0.0929
-    const estimatedWeightLbs = area * 0.0929 * 45;
+    const estimatedWeightLbs = totalArea * 0.0929 * 45;
     const steelRate = rc(rates, `install.steel_fab.${d.installComplexity}`, STEEL_RATES[d.installComplexity] || 35);
     const ledInstallRate = rc(rates, `install.led_panel.${d.installComplexity}`, LED_INSTALL_RATES[d.installComplexity] || 105);
 
-    const installCost = (estimatedWeightLbs * steelRate) + (area * ledInstallRate);
+    const installCost = (estimatedWeightLbs * steelRate) + (totalArea * ledInstallRate);
 
     // Electrical: base rate + power distance multiplier
-    const elecBase = area * rc(rates, "electrical.materials_per_sqft", 125);
+    const elecBase = totalArea * rc(rates, "electrical.materials_per_sqft", 125);
     const powerMult = (d.powerDistance || "near") === "near" ? 1.0
         : (d.powerDistance === "medium" ? 1.3 : 1.8);
     const electricalCost = elecBase * powerMult;
@@ -444,7 +446,7 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         ? rc(rates, "other.complex_modifier", 1.2) : 1.0;
     const pmCost = rc(rates, "other.pm_base_fee", 5882.35) * pmMult * complexMod;
     const engineeringCost = rc(rates, "other.eng_base_fee", 4705.88) * pmMult * complexMod;
-    const rawShippingCost = area > 0 ? Math.round(area * 10 * 100) / 100 : 0;
+    const rawShippingCost = totalArea > 0 ? Math.round(totalArea * 10 * 100) / 100 : 0;
     const shippingCost = overrides.shipping ?? (rawShippingCost > 0 ? Math.max(rawShippingCost, 500) : 0);
     const demolitionCost = d.isReplacement ? 5000 : 0;
 
@@ -478,8 +480,8 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         dataRunDistance: d.dataRunDistance || "copper",
         liftType: d.liftType || "scissor",
         installComplexity: d.installComplexity || "standard",
-        totalCabinets: productSpec ? (calculateCabinetLayout(w, h, productSpec)?.totalCabinets || 0) : 0,
-        areaSqFt: area,
+        totalCabinets: productSpec ? ((calculateCabinetLayout(w, h, productSpec)?.totalCabinets || 0) * quantity) : 0,
+        areaSqFt: totalArea,
         excludedIds: d.excludedBundleItems || [],
     };
     const bundle = calculateBundle(bundleInput);
