@@ -785,6 +785,46 @@ export async function generateScopingWorkbook(
     buildAlternatesSheet(wb, projectName, altDisplays);
   }
 
+  // ── Tab ordering: move key sheets to the front ──
+  // Desired order: Overview, MA, Budget Summary, LED, Tech Specs, Install…,
+  // Processor, Bundle, Travel, CMS, Scoring, Venue Services, Additional Items,
+  // Resp Matrix, P&L, Cash Flow, PO's, Alternates
+  const TAB_ORDER = [
+    "Project Overview",
+    "Margin Analysis",
+    "Budget Summary",
+    "LED Cost Sheet",
+    "Tech Specs (Installers)",
+  ];
+  // Install sheets go after Tech Specs — keep their relative creation order
+  const installSheetNames = wb.worksheets
+    .filter((s) => s.name.toLowerCase().includes("instal") && !TAB_ORDER.includes(s.name))
+    .map((s) => s.name);
+  const TAIL_ORDER = [
+    "Processor Count",
+    "Bundle Equipment",
+    "ANC Travel",
+    "CMS",
+    "Scoring",
+    "Venue Services",
+    "Additional Items",
+    "Resp Matrix",
+    "P&L",
+    "Cash Flow",
+    "PO's",
+    "Alternates",
+  ];
+  const desiredOrder = [...TAB_ORDER, ...installSheetNames, ...TAIL_ORDER];
+  let orderNo = 0;
+  for (const name of desiredOrder) {
+    const ws = wb.getWorksheet(name);
+    if (ws) ws.orderNo = orderNo++;
+  }
+  // Any remaining sheets not in our list go at the end
+  for (const ws of wb.worksheets) {
+    if (!desiredOrder.includes(ws.name)) ws.orderNo = orderNo++;
+  }
+
   const buffer = await wb.xlsx.writeBuffer();
   return { buffer: buffer as unknown as Buffer, displays, workbook: wb };
 }

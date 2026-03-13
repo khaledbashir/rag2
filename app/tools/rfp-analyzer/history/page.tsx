@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { useSession } from "next-auth/react";
 import {
   Search,
   FileText,
@@ -10,7 +9,6 @@ import {
   Clock,
   MapPin,
   Building2,
-  ChevronRight,
   ArrowLeft,
   Loader2,
   CheckCircle2,
@@ -47,7 +45,6 @@ interface AnalysisSummary {
 // ============================================================================
 
 export default function RfpHistoryPage() {
-  const { data: session } = useSession();
   const [analyses, setAnalyses] = useState<AnalysisSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -224,7 +221,6 @@ export default function RfpHistoryPage() {
                       isLatest={i === 0 && offset === 0 && !debouncedSearch}
                       onDelete={handleDelete}
                       deleting={deleting}
-                      currentUserLabel={session?.user?.name || session?.user?.email || null}
                     />
                   ))}
                   {emptyAnalyses.length > 0 && (
@@ -245,7 +241,6 @@ export default function RfpHistoryPage() {
                           dimmed
                           onDelete={handleDelete}
                           deleting={deleting}
-                          currentUserLabel={session?.user?.name || session?.user?.email || null}
                         />
                       ))}
                     </>
@@ -278,7 +273,6 @@ export default function RfpHistoryPage() {
                     isLatest={i === 0 && offset === 0 && !debouncedSearch}
                     onDelete={handleDelete}
                     deleting={deleting}
-                    currentUserLabel={session?.user?.name || session?.user?.email || null}
                   />
                 ))}
             </div>
@@ -295,7 +289,6 @@ export default function RfpHistoryPage() {
                       isLatest={false}
                       onDelete={handleDelete}
                       deleting={deleting}
-                      currentUserLabel={session?.user?.name || session?.user?.email || null}
                     />
                   ))}
                 </div>
@@ -331,7 +324,6 @@ function TableRow({
   dimmed,
   onDelete,
   deleting,
-  currentUserLabel,
 }: {
   analysis: AnalysisSummary;
   index: number;
@@ -339,12 +331,11 @@ function TableRow({
   dimmed?: boolean;
   onDelete: (id: string, e: React.MouseEvent) => void;
   deleting: string | null;
-  currentUserLabel: string | null;
 }) {
   const date = new Date(a.createdAt);
   const timeAgo = getTimeAgo(date);
   const title = a.projectName || a.venue || a.filename;
-  const createdByLabel = a.createdBy || currentUserLabel;
+  const createdByLabel = a.createdBy || null;
 
   return (
     <tr className={`group hover:bg-muted/30 transition-colors ${dimmed ? "opacity-50" : ""} ${isLatest ? "bg-primary/[0.03]" : ""}`}>
@@ -435,18 +426,16 @@ function AnalysisCard({
   isLatest,
   onDelete,
   deleting,
-  currentUserLabel,
 }: {
   analysis: AnalysisSummary;
   isLatest: boolean;
   onDelete: (id: string, e: React.MouseEvent) => void;
   deleting: string | null;
-  currentUserLabel: string | null;
 }) {
   const date = new Date(a.createdAt);
   const timeAgo = getTimeAgo(date);
   const title = a.projectName || a.venue || a.filename;
-  const createdByLabel = a.createdBy || currentUserLabel;
+  const createdByLabel = a.createdBy || null;
 
   return (
     <Link href={`/tools/rfp-analyzer/history/${a.id}`}>
