@@ -76,7 +76,7 @@ export default function ProposalLayout({ data, children, disableFixedFooter = fa
                         html, body {
                             margin: 0;
                             padding: 0;
-                            font-family: 'Work Sans', Arial, Helvetica, sans-serif;
+                            font-family: Arial, Helvetica, sans-serif;
                         }
                         
                         /* Ensure table headers repeat on each page */
@@ -141,7 +141,7 @@ export default function ProposalLayout({ data, children, disableFixedFooter = fa
     return (
         <>
             {head}
-            <section style={{ fontFamily: "'Work Sans', Arial, Helvetica, sans-serif", position: 'relative' }}>
+            <section style={{ fontFamily: "Arial, Helvetica, sans-serif", position: 'relative' }}>
                 <div className="block p-3 sm:p-6 bg-white dark:bg-white !bg-white text-[#1a1a1a] dark:text-[#1a1a1a] !text-black relative overflow-hidden print:bg-white">
                     <div className="absolute" style={{ top: `${slashTop}px`, right: `${slashRight}px` }}>
                         <BrandSlashes
