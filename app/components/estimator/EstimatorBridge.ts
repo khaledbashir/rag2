@@ -395,7 +395,8 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         ? rc(rates, "other.complex_modifier", 1.2) : 1.0;
     const pmCost = rc(rates, "other.pm_base_fee", 5882.35) * pmMult * complexMod;
     const engineeringCost = rc(rates, "other.eng_base_fee", 4705.88) * pmMult * complexMod;
-    const shippingCost = estimatedWeightLbs * 0.5; // ~$0.50/lb shipping estimate
+    const rawShippingCost = area > 0 ? Math.round(area * 10 * 100) / 100 : 0;
+    const shippingCost = rawShippingCost > 0 ? Math.max(rawShippingCost, 500) : 0;
     const demolitionCost = d.isReplacement ? 5000 : 0;
 
     // Supply Only mode: servicesMargin === 0 means hardware only, no install services
@@ -410,7 +411,8 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
     const adjDataCablingCost = supplyOnly ? 0 : dataCablingCost;
     const adjPmCost = supplyOnly ? 0 : pmCost;
     const adjEngineeringCost = supplyOnly ? 0 : engineeringCost;
-    const adjShippingCost = supplyOnly ? 0 : shippingCost;
+    // Supply-only should still carry freight/logistics for the shipped hardware.
+    const adjShippingCost = shippingCost;
     const adjDemolitionCost = supplyOnly ? 0 : demolitionCost;
 
     // Smart Assembly Bundle — auto-suggested accessories
@@ -438,14 +440,8 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
         + adjEquipmentCost + adjDataCablingCost + adjPmCost + adjEngineeringCost + adjShippingCost + adjDemolitionCost
         + adjBundleCost;
 
-    // Tiered margins: separate LED hardware vs services margins
-    // Small project tier: <100sqft gets higher services margin per rate card
-    const ledMarginPct = ((answers.ledMargin ?? 15) || 1) / 100;
-    const smallProjectThreshold = 100; // sqft
-    const smallSvcMargin = rc(rates, "margin.services_small", 0.30);
-    const baseSvcMarginPct = ((answers.servicesMargin ?? 20) || 1) / 100;
-    const svcMarginPct = (area < smallProjectThreshold && baseSvcMarginPct < smallSvcMargin)
-        ? smallSvcMargin : baseSvcMarginPct;
+    const ledMarginPct = ((answers.ledMargin ?? 20) || 1) / 100;
+    const svcMarginPct = ((answers.servicesMargin ?? 20) || 1) / 100;
     const serviceCost = adjStructureCost + adjInstallCost + adjElectricalCost
         + adjEquipmentCost + adjDataCablingCost + adjPmCost + adjEngineeringCost + adjShippingCost + adjDemolitionCost
         + adjBundleCost;
@@ -700,7 +696,7 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
     });
 
     const financialRows: [string, string | number][] = [
-        ["LED Hardware Margin", `${answers.ledMargin ?? 15}%`],
+        ["LED Hardware Margin", `${answers.ledMargin ?? 20}%`],
         ["Installation Services Margin", answers.servicesMargin === 0 ? "Supply Only" : `${answers.servicesMargin ?? 20}%`],
         ["Bond Rate", `${answers.bondRate ?? 1.5}%`],
         ["Sales Tax Rate", `${answers.salesTaxRate ?? 9.5}%`],
@@ -1446,7 +1442,7 @@ function buildLaborWorksheet(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
 function buildMarginAnalysisPreview(answers: EstimatorAnswers, calcs: ScreenCalc[]): SheetTab {
     const rows: SheetRow[] = [];
     const COLS = 6;
-    const ledMarginPct = ((answers.ledMargin ?? 15) || 1) / 100;
+    const ledMarginPct = ((answers.ledMargin ?? 20) || 1) / 100;
     const svcMarginPct = ((answers.servicesMargin ?? 20) || 1) / 100;
     const bondRate = (answers.bondRate ?? 1.5) / 100;
     const taxRate = (answers.salesTaxRate ?? 9.5) / 100;
@@ -2404,5 +2400,3 @@ function buildCostCategoryBreakdown(answers: EstimatorAnswers, calcs: ScreenCalc
         rows,
     };
 }
-
-

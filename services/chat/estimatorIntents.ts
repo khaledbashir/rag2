@@ -527,12 +527,12 @@ export function executeEstimatorIntent(
 
         case "set_margin_tier": {
             const tier = intent.params.tier as "budget" | "proposal";
-            const ledMargin = 15;
+            const ledMargin = 20;
             const servicesMargin = 20;
             return {
                 success: true,
-                message: `Switched to **${tier}** tier: LED ${ledMargin}%, Services ${servicesMargin}%.`,
-                updatedAnswers: { ...answers, marginTier: tier, ledMargin, servicesMargin },
+                message: `Tier selection is legacy now. Kept **${tier}** as a label, but margins stay flat at **20% / 20%**.`,
+                updatedAnswers: { ...answers, marginTier: tier, ledMargin, servicesMargin, defaultMargin: 20 },
             };
         }
 

@@ -113,15 +113,7 @@ export default function DashboardSidebar() {
 
     useEffect(() => {
         setMounted(true);
-        // Restore sidebar expanded state from localStorage
-        const saved = localStorage.getItem("anc-sidebar-expanded");
-        if (saved !== null) setExpanded(saved === "true");
     }, []);
-
-    // Persist sidebar expanded state
-    useEffect(() => {
-        if (mounted) localStorage.setItem("anc-sidebar-expanded", String(expanded));
-    }, [expanded, mounted]);
 
     // Auto-expand groups whose children are active
     useEffect(() => {

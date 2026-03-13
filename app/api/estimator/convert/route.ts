@@ -98,7 +98,8 @@ function calcDisplay(d: Record<string, any>, answers: Record<string, any>): Disp
   const pmMult = pmComplexity === "standard" ? 1 : pmComplexity === "complex" ? 2 : 3;
   const pmCost = 5882.35 * pmMult;
   const engineeringCost = 4705.88 * pmMult;
-  const shippingCost = estimatedWeightLbs * 0.5;
+  const rawShippingCost = area > 0 ? round2(area * 10) : 0;
+  const shippingCost = rawShippingCost > 0 ? Math.max(rawShippingCost, 500) : 0;
 
   const unionMult = answers.isUnion ? 1.15 : 1.0;
   const adjInstall = installCost * unionMult;
@@ -109,8 +110,8 @@ function calcDisplay(d: Record<string, any>, answers: Record<string, any>): Disp
     + equipmentCost + pmCost + engineeringCost + shippingCost;
   const totalCost = hardware + serviceCost;
 
-  const ledMarginPct = (answers.ledMargin || 15) / 100;
-  const svcMarginPct = (answers.servicesMargin || 20) / 100;
+  const ledMarginPct = (answers.ledMargin || answers.defaultMargin || 20) / 100;
+  const svcMarginPct = (answers.servicesMargin || answers.defaultMargin || 20) / 100;
   const hardwareSell = hardware / (1 - ledMarginPct);
   const servicesSell = serviceCost / (1 - svcMarginPct);
   const sellPrice = hardwareSell + servicesSell;
@@ -194,14 +195,14 @@ export async function POST(req: NextRequest) {
       name: c.name,
       currency,
       items: [
-        { description: `LED Hardware (${c.pixelPitch}mm)`, sellingPrice: round2(c.hardwareCost / (1 - (answers.ledMargin || 30) / 100)), isIncluded: false },
-        { description: "Structural Steel", sellingPrice: round2(c.structureCost / (1 - (answers.servicesMargin || 30) / 100)), isIncluded: false },
-        { description: "LED Installation", sellingPrice: round2(c.installCost / (1 - (answers.servicesMargin || 30) / 100)), isIncluded: false },
-        { description: "Electrical", sellingPrice: round2(c.electricalCost / (1 - (answers.servicesMargin || 30) / 100)), isIncluded: false },
-        ...(c.equipmentCost > 0 ? [{ description: "Equipment Rental", sellingPrice: round2(c.equipmentCost / (1 - (answers.servicesMargin || 30) / 100)), isIncluded: false }] : []),
-        { description: "Project Management", sellingPrice: round2(c.pmCost / (1 - (answers.servicesMargin || 30) / 100)), isIncluded: false },
-        { description: "Engineering", sellingPrice: round2(c.engineeringCost / (1 - (answers.servicesMargin || 30) / 100)), isIncluded: false },
-        { description: "Shipping & Logistics", sellingPrice: round2(c.shippingCost / (1 - (answers.servicesMargin || 30) / 100)), isIncluded: false },
+        { description: `LED Hardware (${c.pixelPitch}mm)`, sellingPrice: round2(c.hardwareCost / (1 - (answers.ledMargin || answers.defaultMargin || 20) / 100)), isIncluded: false },
+        { description: "Structural Steel", sellingPrice: round2(c.structureCost / (1 - (answers.servicesMargin || answers.defaultMargin || 20) / 100)), isIncluded: false },
+        { description: "LED Installation", sellingPrice: round2(c.installCost / (1 - (answers.servicesMargin || answers.defaultMargin || 20) / 100)), isIncluded: false },
+        { description: "Electrical", sellingPrice: round2(c.electricalCost / (1 - (answers.servicesMargin || answers.defaultMargin || 20) / 100)), isIncluded: false },
+        ...(c.equipmentCost > 0 ? [{ description: "Equipment Rental", sellingPrice: round2(c.equipmentCost / (1 - (answers.servicesMargin || answers.defaultMargin || 20) / 100)), isIncluded: false }] : []),
+        { description: "Project Management", sellingPrice: round2(c.pmCost / (1 - (answers.servicesMargin || answers.defaultMargin || 20) / 100)), isIncluded: false },
+        { description: "Engineering", sellingPrice: round2(c.engineeringCost / (1 - (answers.servicesMargin || answers.defaultMargin || 20) / 100)), isIncluded: false },
+        { description: "Shipping & Logistics", sellingPrice: round2(c.shippingCost / (1 - (answers.servicesMargin || answers.defaultMargin || 20) / 100)), isIncluded: false },
       ],
       alternates: [],
       subtotal: round2(c.sellPrice),
@@ -329,8 +330,8 @@ export async function POST(req: NextRequest) {
     for (let i = 0; i < displays.length; i++) {
       const d = displays[i];
       const c = calcs[i];
-      const svcMarginPct = (answers.servicesMargin || answers.defaultMargin || 30) / 100;
-      const ledMarginPct = (answers.ledMargin || answers.defaultMargin || 30) / 100;
+      const svcMarginPct = (answers.servicesMargin || answers.defaultMargin || 20) / 100;
+      const ledMarginPct = (answers.ledMargin || answers.defaultMargin || 20) / 100;
 
       const screen = await prisma.screenConfig.create({
         data: {
