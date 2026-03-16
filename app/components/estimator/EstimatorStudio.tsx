@@ -1020,7 +1020,7 @@ export default function EstimatorStudio({
                 ) : null}
 
                 {/* Center/Right: Excel Preview */}
-                <section className="relative min-w-0 min-h-0 bg-zinc-100 dark:bg-zinc-950 overflow-hidden flex flex-col p-3 pb-1">
+                <section className="relative min-w-0 min-h-0 bg-zinc-100 dark:bg-zinc-950 flex flex-col p-3 pb-0">
                     <UniverPreview
                         workbookData={serverPreview}
                         loading={serverPreviewLoading}
