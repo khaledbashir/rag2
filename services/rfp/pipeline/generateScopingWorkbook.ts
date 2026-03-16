@@ -1745,6 +1745,7 @@ function buildLedCostSheet(
     dr.getCell(6).numFmt = "0.00";   // W (ft)
     dr.getCell(7).numFmt = "0";      // H (px) — plain integer
     dr.getCell(8).numFmt = "0";      // W (px) — plain integer
+    dr.getCell(9).numFmt = "0";      // Qty — plain integer (missing caused #VALUE! in Total SqFt formula)
     dr.getCell(10).numFmt = "#,##0"; // Total SqFt
 
     row++;
