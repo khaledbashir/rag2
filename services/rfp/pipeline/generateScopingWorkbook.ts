@@ -1695,10 +1695,12 @@ function buildLedCostSheet(
     // Service
     dr.getCell(12).value = d.spec.serviceType || "Front";
     dr.getCell(12).alignment = { horizontal: "center" };
-    // $/SqFt = Display Cost / Total SqFt
+    // $/SqFt = Display Cost / Total SqFt (guard against #DIV/0! when cost is $0)
     const ledWithSpares = d.ledHardwareCost + d.sparePartsCost;
     const costPerSqFt = d.areaSqFt > 0 ? round2(ledWithSpares / d.areaSqFt) : 0;
-    dr.getCell(13).value = { formula: `N${row}/J${row}`, result: costPerSqFt };
+    dr.getCell(13).value = ledWithSpares > 0 && d.areaSqFt > 0
+      ? { formula: `N${row}/J${row}`, result: costPerSqFt }
+      : 0;
     dr.getCell(13).numFmt = FMT_USD;
     // Display Cost (LED hardware + spare parts rolled in)
     dr.getCell(14).value = d.ledHardwareCost + d.sparePartsCost; dr.getCell(14).numFmt = FMT_USD;
