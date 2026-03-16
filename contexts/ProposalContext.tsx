@@ -606,13 +606,20 @@ export const ProposalContextProvider = ({
 
     const watchedDocumentType = watch("details.documentType");
     const watchedPricingType = watch("details.pricingType");
+    const watchedDocumentMode = watch("details.documentMode");
     const headerType = useMemo(() => {
+        // documentMode is the canonical source — check it first
+        if (watchedDocumentMode === "CONTRACT") return "CONTRACT";
+        if (watchedDocumentMode === "LOI") return "LOI";
+        if (watchedDocumentMode === "PROPOSAL") return "PROPOSAL";
+        if (watchedDocumentMode === "BUDGET") return "BUDGET";
+        // Fallback: infer from legacy fields
         return watchedDocumentType === "LOI"
             ? "LOI"
             : watchedPricingType === "Hard Quoted"
                 ? "PROPOSAL"
                 : "BUDGET";
-    }, [watchedDocumentType, watchedPricingType]);
+    }, [watchedDocumentMode, watchedDocumentType, watchedPricingType]);
 
     const mirrorMode = watch("details.mirrorMode") || false;
 
