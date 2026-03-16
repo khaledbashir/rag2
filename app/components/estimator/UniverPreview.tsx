@@ -218,7 +218,7 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
   return (
     <div
       ref={containerRef}
-      className="flex-1 w-full h-full min-h-0 rounded-lg overflow-hidden border border-border bg-white"
+      className="flex-1 w-full h-full min-h-0 rounded-lg border border-border bg-white"
     />
   );
 }
