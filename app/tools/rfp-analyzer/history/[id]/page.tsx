@@ -144,7 +144,7 @@ export default function AnalysisDetailPage() {
   // Cell edit handler for LED Cost Sheet
   const handleCellEdit = useCallback((sheetIdx: number, rowIdx: number, colIdx: number, value: string) => {
     if (sheetIdx !== 0) return;
-    const fieldMap: Record<number, string> = { 0: "name", 3: "heightFt", 4: "widthFt", 7: "quantity" };
+    const fieldMap: Record<number, string> = { 0: "name", 4: "heightFt", 5: "widthFt", 9: "quantity" };
     const field = fieldMap[colIdx];
     if (!field) return;
     setAnalysis(prev => {

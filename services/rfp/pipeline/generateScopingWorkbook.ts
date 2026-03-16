@@ -319,9 +319,9 @@ function computeDisplays(
 ): ComputedDisplay[] {
   return specs.map((spec, idx) => {
     const priced = pricedDisplays?.[idx] ?? null;
-    const widthFt = spec.widthFt || 0;
-    const heightFt = spec.heightFt || 0;
-    const areaSqFt = round2(widthFt * heightFt * (spec.quantity || 1));
+    const widthFt = Number(spec.widthFt) || 0;
+    const heightFt = Number(spec.heightFt) || 0;
+    const areaSqFt = round2(widthFt * heightFt * (Number(spec.quantity) || 1));
 
     // Per-display install complexity: override > per-display array > global
     const displayComplexity = ov?.perDisplayComplexity?.[idx] ?? installComplexity;
@@ -1670,19 +1670,22 @@ function buildLedCostSheet(
     // Pitch
     dr.getCell(4).value = d.spec.pixelPitchMm ? `${d.spec.pixelPitchMm}mm` : "—";
     dr.getCell(4).alignment = { horizontal: "center" };
-    // H (ft), W (ft)
-    dr.getCell(5).value = d.heightFt || 0; dr.getCell(5).numFmt = "0.00";
-    dr.getCell(6).value = d.widthFt || 0; dr.getCell(6).numFmt = "0.00";
+    // H (ft), W (ft) — must be numeric for formulas to work
+    const cellH = Number(d.heightFt) || 0;
+    const cellW = Number(d.widthFt) || 0;
+    dr.getCell(5).value = cellH; dr.getCell(5).numFmt = "0.00";
+    dr.getCell(6).value = cellW; dr.getCell(6).numFmt = "0.00";
     // H (px), W (px) — plain integers, NOT currency
     const hPx = d.spec.heightPx || (d.spec.pixelPitchMm && d.heightFt ? Math.round(d.heightFt * 304.8 / d.spec.pixelPitchMm) : 0);
     const wPx = d.spec.widthPx || (d.spec.pixelPitchMm && d.widthFt ? Math.round(d.widthFt * 304.8 / d.spec.pixelPitchMm) : 0);
     dr.getCell(7).value = hPx;
     dr.getCell(8).value = wPx;
     // Qty
-    const qty = d.spec.quantity || 1;
+    const qty = Number(d.spec.quantity) || 1;
     dr.getCell(9).value = qty; dr.getCell(9).alignment = { horizontal: "center" };
     // Total SqFt formula: =E{row}*F{row}*I{row}
-    dr.getCell(10).value = { formula: `E${row}*F${row}*I${row}`, result: d.areaSqFt };
+    const sqFtResult = Number(d.areaSqFt) || 0;
+    dr.getCell(10).value = { formula: `E${row}*F${row}*I${row}`, result: isFinite(sqFtResult) ? sqFtResult : 0 };
     dr.getCell(10).numFmt = "#,##0";
     // NITs
     dr.getCell(11).value = isClockLike ? "" : (d.match?.module?.nits ?? d.spec.brightnessNits ?? "");
