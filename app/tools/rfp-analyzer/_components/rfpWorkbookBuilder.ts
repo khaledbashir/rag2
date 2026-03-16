@@ -159,14 +159,14 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
     const mp = pd?.matchedProduct;
 
-    // When user overrides product via dropdown, show the actual active dimensions
-    // from the matched product (cabinet grid). Otherwise show RFP requested dims.
-    const hasProductOverride = mp?.activeWidthFt && mp?.activeHeightFt;
-    const displayH = hasProductOverride ? mp.activeHeightFt : bidH;
-    const displayW = hasProductOverride ? mp.activeWidthFt : bidW;
-    const activePitch = hasProductOverride && mp.pitch ? mp.pitch : bidPitch;
-    const displayPxH = hasProductOverride && mp.resolutionY ? mp.resolutionY : bidHPx;
-    const displayPxW = hasProductOverride && mp.resolutionX ? mp.resolutionX : bidWPx;
+    // User-edited spec dimensions (bidH/bidW) always take priority.
+    // Only fall back to product cabinet-snapped dims when spec has no dimensions.
+    const hasProductDims = mp?.activeWidthFt && mp?.activeHeightFt;
+    const displayH = bidH > 0 ? bidH : (hasProductDims ? mp.activeHeightFt : 0);
+    const displayW = bidW > 0 ? bidW : (hasProductDims ? mp.activeWidthFt : 0);
+    const activePitch = hasProductDims && mp.pitch ? mp.pitch : bidPitch;
+    const displayPxH = bidHPx > 0 ? bidHPx : (hasProductDims && mp.resolutionY ? mp.resolutionY : 0);
+    const displayPxW = bidWPx > 0 ? bidWPx : (hasProductDims && mp.resolutionX ? mp.resolutionX : 0);
     const sqFtPerScreen = displayH * displayW;
     const totalSqFt = sqFtPerScreen * qty;
 
