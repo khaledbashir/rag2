@@ -158,16 +158,25 @@ export async function extractWithOpenClaw(
 
   options?.onProgress?.("Sending PDF to OpenClaw agent...");
 
-  // Call OpenClaw CLI
+  // Call OpenClaw CLI — trigger the "RFP to Excel Proposal" skill
+  // The skill uses pdftotext → extract tables → structured JSON output.
+  // Key: tell it to save JSON so we can reliably parse the output.
   const message = [
-    `Using your 'ANC RFP Analyzer' skill, extract ALL LED display specs from this PDF: ${pdfPath}`,
-    `Return structured JSON. Rules:`,
-    `- Each row in any display table is its own display (no grouping)`,
-    `- First column (Location/Scoreboard/Display) = screen name, use exactly as written`,
-    `- Convert all dimensions to feet (decimal)`,
-    `- Include pixel pitch, brightness, quantity for each display`,
-    `- Separate indoor vs outdoor displays`,
-    `- Save the JSON to /tmp/openclaw-rfp-extract.json`,
+    `I have an RFP PDF at: ${pdfPath}`,
+    ``,
+    `Extract ALL LED display specs from this document. Use pdftotext to read it.`,
+    `Look for display schedule tables — they usually have columns like Location, Pixel Pitch, Brightness, Width, Height.`,
+    ``,
+    `IMPORTANT RULES:`,
+    `- Each row in the table is its OWN display — do NOT group or combine`,
+    `- First column = screen name — use EXACTLY as written (even if it just says "NW")`,
+    `- Convert dimensions to decimal feet (22'8" = 22.67)`,
+    `- Check for BOTH indoor and outdoor sections`,
+    ``,
+    `Save the results as JSON to /tmp/openclaw-rfp-extract.json with this format:`,
+    `{ "project": { "name": "...", "client": "...", "venue": "..." }, "displays": [ { "name": "...", "location": "...", "pixel_pitch_mm": 3.9, "brightness_nits": 8000, "width_ft_decimal": 14.0, "height_ft_decimal": 8.0, "quantity": 1, "application": "Indoor" } ] }`,
+    ``,
+    `Do NOT generate an Excel file. Just extract and save the JSON.`,
   ].join("\n");
 
   try {
