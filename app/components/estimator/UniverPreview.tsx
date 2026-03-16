@@ -132,6 +132,16 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
           });
         }
 
+        // Fix Tailwind/Univer CSS conflict — ensure sheet tab bar is fully visible
+        try {
+          const fixStyle = document.createElement("style");
+          fixStyle.textContent = `
+            .sheet-bar { min-height: 32px !important; overflow: visible !important; }
+            .sheet-bar * { box-sizing: content-box !important; }
+          `;
+          el.appendChild(fixStyle);
+        } catch { /* ignore */ }
+
         // Listen for cell edits via SheetValueChanged event
         try {
           univerAPI.addEvent(univerAPI.Event.SheetValueChanged, (params: any) => {
