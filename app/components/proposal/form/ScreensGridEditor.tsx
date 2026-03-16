@@ -3,12 +3,17 @@
 import type { CellValueChangedEvent, ColDef, GetRowIdParams } from "ag-grid-community";
 import { ModuleRegistry, AllCommunityModule } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useCallback } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { ProposalType } from "@/types";
+import { calculateArea } from "@/lib/math";
+import { calculateProposalAudit } from "@/lib/estimator";
 
 // Register AG Grid modules (required for v35+)
 ModuleRegistry.registerModules([AllCommunityModule]);
+
+// Fields that trigger audit recalculation
+const AUDIT_TRIGGER_FIELDS = ["heightFt", "widthFt", "quantity", "pitchMm", "costPerSqFt", "desiredMargin", "serviceType"];
 
 function toKey(screen: any) {
   if (screen?.id) return `id:${screen.id}`;
@@ -28,7 +33,7 @@ function parseOptionalNumber(value: unknown) {
 }
 
 export default function ScreensGridEditor() {
-  const { control, setValue } = useFormContext<ProposalType>();
+  const { control, setValue, getValues } = useFormContext<ProposalType>();
   const screens = useWatch({ control, name: "details.screens" }) || [];
   const themeClass = useMemo(
     () => (typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "ag-theme-quartz-dark" : "ag-theme-quartz"),
@@ -97,6 +102,39 @@ export default function ScreensGridEditor() {
 
   const getRowId = (params: GetRowIdParams) => toKey(params.data);
 
+  const recalculateAudit = useCallback((updatedScreens: any[]) => {
+    try {
+      const normalized = updatedScreens.map((s: any) => ({
+        name: s.name ?? s.externalName ?? "Screen",
+        productType: s.productType,
+        widthFt: s.widthFt ?? s.width,
+        heightFt: s.heightFt ?? s.height,
+        quantity: s.quantity ?? 1,
+        pitchMm: s.pitchMm ?? s.pixelPitch ?? undefined,
+        costPerSqFt: s.costPerSqFt,
+        desiredMargin: s.desiredMargin,
+        serviceType: s.serviceType,
+        formFactor: s.formFactor,
+        includeSpareParts: s.includeSpareParts !== false,
+      }));
+
+      const projectAddress = `${getValues("receiver.address") ?? ""} ${getValues("receiver.city") ?? ""} ${getValues("receiver.zipCode") ?? ""} ${getValues("details.location") ?? ""}`.trim();
+      const { clientSummary, internalAudit } = calculateProposalAudit(normalized, {
+        taxRate: getValues("details.taxRateOverride"),
+        bondPct: getValues("details.bondRateOverride"),
+        structuralTonnage: getValues("details.metadata.structuralTonnage"),
+        reinforcingTonnage: getValues("details.metadata.reinforcingTonnage"),
+        projectAddress,
+        venue: getValues("details.venue"),
+      });
+
+      setValue("details.internalAudit", internalAudit);
+      setValue("details.clientSummary", clientSummary);
+    } catch (e) {
+      console.error("ScreensGridEditor: Audit recalc failed", e);
+    }
+  }, [getValues, setValue]);
+
   const onCellValueChanged = (event: CellValueChangedEvent) => {
     const field = event.colDef.field as string | undefined;
     if (!field) return;
@@ -108,6 +146,27 @@ export default function ScreensGridEditor() {
 
     const nextValue = (event.data as any)[field];
     setValue(`details.screens.${idx}.${field}` as any, nextValue, { shouldDirty: true, shouldValidate: true });
+
+    // If height or width changed, recalculate areaSqFt for this screen
+    if (field === "heightFt" || field === "widthFt") {
+      const screen = currentScreens[idx];
+      const height = field === "heightFt" ? nextValue : screen?.heightFt;
+      const width = field === "widthFt" ? nextValue : screen?.widthFt;
+      const area = calculateArea(Number(width) || 0, Number(height) || 0);
+      setValue(`details.screens.${idx}.areaSqFt` as any, area, { shouldDirty: true });
+    }
+
+    // Recalculate full audit when relevant fields change
+    if (AUDIT_TRIGGER_FIELDS.includes(field)) {
+      // Build updated screens array with the new value
+      const updatedScreens = currentScreens.map((s: any, i: number) => {
+        if (i === idx) {
+          return { ...s, [field]: nextValue };
+        }
+        return s;
+      });
+      recalculateAudit(updatedScreens);
+    }
   };
 
   return (
