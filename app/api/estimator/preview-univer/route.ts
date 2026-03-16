@@ -60,10 +60,16 @@ function convertCell(cell: ExcelJS.Cell): UniverCell | null {
   if (cellValue === null || cellValue === undefined) return null;
 
   if (typeof cellValue === "object" && cellValue !== null && "formula" in cellValue) {
-    // Formula cell — only pass `f`, NOT `v`. Univer skips recalculation
-    // if a cached `v` is present. Let the formula engine compute values live.
+    // Formula cell — pass both `f` (formula) and `v` (cached result).
+    // Univer's formula engine can recalculate, but if evaluation fails
+    // (e.g. cell ordering, type inference), the cached result ensures
+    // correct values are always displayed.
     const fObj = cellValue as { formula: string; result?: any };
     result.f = `=${fObj.formula}`;
+    if (fObj.result != null && typeof fObj.result === "number" && isFinite(fObj.result)) {
+      result.v = fObj.result;
+      result.t = 2; // CellValueType.NUMBER
+    }
   } else if (typeof cellValue === "object" && cellValue !== null && "richText" in cellValue) {
     // Rich text — flatten to plain string
     const rt = cellValue as { richText: { text: string }[] };
