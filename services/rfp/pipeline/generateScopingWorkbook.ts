@@ -395,7 +395,24 @@ function computeDisplays(
           const pitchKey = `led_cost.${effectivePitch.replace(".", "_")}mm`;
           const rcRate = rc(pitchKey, 0);
           const catalogRate = LED_COST_PER_SQFT_BY_PITCH[effectivePitch];
-          const rate = rcRate > 0 ? rcRate : catalogRate;
+          let rate = rcRate > 0 ? rcRate : catalogRate;
+
+          // Fallback: find nearest pitch within 1mm tolerance when exact match is $0
+          if (!rate) {
+            const targetPitch = parseFloat(effectivePitch);
+            if (targetPitch > 0) {
+              let bestDelta = Infinity;
+              for (const [p, cost] of Object.entries(LED_COST_PER_SQFT_BY_PITCH)) {
+                if (!cost || cost <= 0) continue;
+                const delta = Math.abs(parseFloat(p) - targetPitch);
+                if (delta < bestDelta && delta <= 1.0) {
+                  bestDelta = delta;
+                  rate = cost;
+                }
+              }
+            }
+          }
+
           if (rate) ledHardwareCost = round2(areaSqFt * rate);
         }
       }
@@ -1751,39 +1768,52 @@ function buildLedCostSheet(
     row++;
   });
 
-  // Total row with SUM formulas
+  // Total row with SUM formulas — only base displays, not alternates
+  // When includeAlternatesInBase is true, alternates are mixed in with base displays.
+  // The TOTAL should only count base (non-alternate) displays per ANC rules.
+  const baseDisplays = displays.filter((d) => !d.spec.isAlternate);
+  const baseRowIndices: number[] = [];
+  displays.forEach((d, idx) => {
+    if (!d.spec.isAlternate) baseRowIndices.push(dataStartRow + idx);
+  });
+  // Build SUMPRODUCT formula that only sums base display rows (skip alternates)
+  const baseSumFormula = (col: string) =>
+    baseRowIndices.length > 0
+      ? baseRowIndices.map((r) => `${col}${r}`).join("+")
+      : `SUM(${col}${dataStartRow}:${col}${dataStartRow})`;
+
   row++;
   const gtR = ws.getRow(row);
-  gtR.getCell(1).value = `TOTAL (${displays.length} displays)`;
+  gtR.getCell(1).value = `TOTAL (${baseDisplays.length} displays)`;
   gtR.getCell(1).font = { bold: true, name: "Calibri" };
-  gtR.getCell(10).value = { formula: `SUM(J${dataStartRow}:J${row - 2})`, result: displays.reduce((s, d) => s + d.areaSqFt, 0) };
+  gtR.getCell(10).value = { formula: baseSumFormula("J"), result: baseDisplays.reduce((s, d) => s + d.areaSqFt, 0) };
   gtR.getCell(10).numFmt = "#,##0";
-  gtR.getCell(14).value = { formula: `SUM(N${dataStartRow}:N${row - 2})`, result: displays.reduce((s, d) => s + d.ledHardwareCost + d.sparePartsCost, 0) };
+  gtR.getCell(14).value = { formula: baseSumFormula("N"), result: baseDisplays.reduce((s, d) => s + d.ledHardwareCost + d.sparePartsCost, 0) };
   gtR.getCell(14).numFmt = FMT_USD;
-  gtR.getCell(15).value = { formula: `SUM(O${dataStartRow}:O${row - 2})`, result: displays.reduce((s, d) => s + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost, 0) };
+  gtR.getCell(15).value = { formula: baseSumFormula("O"), result: baseDisplays.reduce((s, d) => s + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost, 0) };
   gtR.getCell(15).numFmt = FMT_USD;
-  gtR.getCell(16).value = { formula: `SUM(P${dataStartRow}:P${row - 2})`, result: displays.reduce((s, d) => s + d.shippingCost, 0) };
+  gtR.getCell(16).value = { formula: baseSumFormula("P"), result: baseDisplays.reduce((s, d) => s + d.shippingCost, 0) };
   gtR.getCell(16).numFmt = FMT_USD;
-  gtR.getCell(17).value = { formula: `SUM(Q${dataStartRow}:Q${row - 2})`, result: displays.reduce((s, d) => s + d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost, 0) };
+  gtR.getCell(17).value = { formula: baseSumFormula("Q"), result: baseDisplays.reduce((s, d) => s + d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost, 0) };
   gtR.getCell(17).numFmt = FMT_USD;
-  gtR.getCell(19).value = { formula: `SUM(S${dataStartRow}:S${row - 2})`, result: displays.reduce((s, d) => {
+  gtR.getCell(19).value = { formula: baseSumFormula("S"), result: baseDisplays.reduce((s, d) => {
     const totalLedCost = d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost;
     const ledMargin = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
     return s + (ledMargin < 1 ? round2(totalLedCost / (1 - ledMargin)) : totalLedCost);
   }, 0) };
   gtR.getCell(19).numFmt = FMT_USD;
-  gtR.getCell(20).value = { formula: `SUM(T${dataStartRow}:T${row - 2})`, result: displays.reduce((s, d) => {
+  gtR.getCell(20).value = { formula: baseSumFormula("T"), result: baseDisplays.reduce((s, d) => {
     const totalLedCost = d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost;
     const ledMargin = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
     const selling = ledMargin < 1 ? round2(totalLedCost / (1 - ledMargin)) : totalLedCost;
     return s + (selling - totalLedCost);
   }, 0) };
   gtR.getCell(20).numFmt = FMT_USD;
-  gtR.getCell(21).value = { formula: `SUM(U${dataStartRow}:U${row - 2})`, result: 0 };
+  gtR.getCell(21).value = { formula: baseSumFormula("U"), result: 0 };
   gtR.getCell(21).numFmt = "#,##0";
-  gtR.getCell(22).value = { formula: `SUM(V${dataStartRow}:V${row - 2})`, result: 0 };
+  gtR.getCell(22).value = { formula: baseSumFormula("V"), result: 0 };
   gtR.getCell(22).numFmt = "#,##0";
-  gtR.getCell(23).value = { formula: `SUM(W${dataStartRow}:W${row - 2})`, result: 0 };
+  gtR.getCell(23).value = { formula: baseSumFormula("W"), result: 0 };
   gtR.getCell(23).numFmt = "#,##0";
   totalStyle(gtR, COLS, C.GREEN_BG);
 }
