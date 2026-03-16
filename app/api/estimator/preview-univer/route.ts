@@ -22,6 +22,8 @@ interface UniverCell {
   v?: string | number | boolean;
   f?: string;
   s?: Record<string, any> | null;
+  /** Cell value type: 1=String, 2=Number, 3=Boolean */
+  t?: number;
 }
 
 interface UniverSheet {
@@ -72,6 +74,16 @@ function convertCell(cell: ExcelJS.Cell): UniverCell | null {
     result.v = (cellValue.getTime() - epoch) / 86400000;
   } else {
     result.v = cellValue as string | number | boolean;
+  }
+
+  // Explicit cell value type — Univer needs this to treat numbers as numbers
+  // in formula evaluation (without it, cells with numFmt can be misread as text)
+  if (typeof result.v === "number") {
+    result.t = 2; // CellValueType.NUMBER
+  } else if (typeof result.v === "boolean") {
+    result.t = 3; // CellValueType.BOOLEAN
+  } else if (typeof result.v === "string") {
+    result.t = 1; // CellValueType.STRING
   }
 
   // Number format
