@@ -29,8 +29,8 @@ import { extractWithOpenClaw, isOpenClawAvailable } from "@/services/rfp/unified
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 
-/** PDFs above this page count use OpenClaw as primary extractor */
-const OPENCLAW_PAGE_THRESHOLD = 80;
+/** OpenClaw is primary for ALL PDFs. Mistral/Gemini only as fallback. */
+const OPENCLAW_PAGE_THRESHOLD = 1;
 
 const execFileAsync = promisify(execFile);
 import type {
@@ -571,7 +571,7 @@ export async function POST(request: NextRequest) {
           lastHeartbeatStage = "extracting";
           send("stage", {
             stage: "extracting",
-            message: `Large PDF (${totalPages} pages) — using OpenClaw AI agent for extraction...`,
+            message: `Using OpenClaw AI agent for extraction (${totalPages} pages)...`,
           });
 
           const clawHeartbeat = setInterval(() => {
