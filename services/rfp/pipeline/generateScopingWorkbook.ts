@@ -395,24 +395,9 @@ function computeDisplays(
           const pitchKey = `led_cost.${effectivePitch.replace(".", "_")}mm`;
           const rcRate = rc(pitchKey, 0);
           const catalogRate = LED_COST_PER_SQFT_BY_PITCH[effectivePitch];
-          let rate = rcRate > 0 ? rcRate : catalogRate;
-
-          // Fallback: find nearest pitch within 1mm tolerance when exact match is $0
-          if (!rate) {
-            const targetPitch = parseFloat(effectivePitch);
-            if (targetPitch > 0) {
-              let bestDelta = Infinity;
-              for (const [p, cost] of Object.entries(LED_COST_PER_SQFT_BY_PITCH)) {
-                if (!cost || cost <= 0) continue;
-                const delta = Math.abs(parseFloat(p) - targetPitch);
-                if (delta < bestDelta && delta <= 1.0) {
-                  bestDelta = delta;
-                  rate = cost;
-                }
-              }
-            }
-          }
-
+          const rate = rcRate > 0 ? rcRate : catalogRate;
+          // $0 is intentional for pitches without vendor quotes (e.g. 1.875mm).
+          // Natalia uses $0 to flag missing pricing info to the team. No fallback.
           if (rate) ledHardwareCost = round2(areaSqFt * rate);
         }
       }
