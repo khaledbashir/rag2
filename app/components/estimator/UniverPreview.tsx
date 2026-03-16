@@ -28,6 +28,8 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
   const [initError, setInitError] = useState<string | null>(null);
   const workbookDataRef = useRef(workbookData);
   workbookDataRef.current = workbookData;
+  /** Preserve active sheet tab across workbook re-renders */
+  const lastActiveSheetRef = useRef<string | null>(null);
   const onCellEditRef = useRef(onCellEdit);
   onCellEditRef.current = onCellEdit;
 
@@ -47,8 +49,15 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
       const el = containerRef.current;
       if (!el || disposed) return;
 
-      // Dispose previous instance
+      // Save active sheet tab before disposing
       if (apiRef.current) {
+        try {
+          const wb = apiRef.current.getActiveWorkbook?.();
+          const activeSheet = wb?.getActiveSheet?.();
+          if (activeSheet) {
+            lastActiveSheetRef.current = activeSheet.getSheetName?.() || null;
+          }
+        } catch { /* ignore */ }
         try { apiRef.current.dispose(); } catch { /* ignore */ }
         apiRef.current = null;
       }
@@ -97,6 +106,22 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
 
         apiRef.current = univerAPI;
         univerAPI.createWorkbook(workbookDataRef.current);
+
+        // Restore previously active sheet tab
+        if (lastActiveSheetRef.current) {
+          try {
+            const wb = univerAPI.getActiveWorkbook?.();
+            if (wb) {
+              const sheets = wb.getSheets?.() || [];
+              for (const s of sheets) {
+                if (s.getSheetName?.() === lastActiveSheetRef.current) {
+                  s.activate?.();
+                  break;
+                }
+              }
+            }
+          } catch { /* ignore — will just show first tab */ }
+        }
 
         // Listen for cell edits via SheetValueChanged event
         try {
