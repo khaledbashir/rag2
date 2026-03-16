@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vertical Sheet Tabs — Concept Demo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f4f4f5; height: 100vh; overflow: hidden; }
+
+  .container { display: flex; height: 100vh; }
+
+  /* Fake spreadsheet area */
+  .spreadsheet {
+    flex: 1;
+    background: white;
+    border: 1px solid #e4e4e7;
+    margin: 12px;
+    margin-right: 0;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+  .spreadsheet-header {
+    background: #217346;
+    color: white;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 8px 8px 0 0;
+  }
+  .spreadsheet-grid {
+    flex: 1;
+    background: white;
+    display: grid;
+    grid-template-columns: 40px repeat(10, 1fr);
+    grid-template-rows: 28px repeat(12, 24px);
+    border-bottom: 1px solid #e4e4e7;
+    font-size: 11px;
+    overflow: hidden;
+  }
+  .cell {
+    border-right: 1px solid #e8e8e8;
+    border-bottom: 1px solid #e8e8e8;
+    padding: 2px 6px;
+    display: flex;
+    align-items: center;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .cell.header {
+    background: #0A52EF;
+    color: white;
+    font-weight: 600;
+    font-size: 10px;
+    justify-content: center;
+  }
+  .cell.row-num {
+    background: #f9f9f9;
+    color: #999;
+    font-size: 10px;
+    justify-content: center;
+  }
+  .cell.col-letter {
+    background: #f9f9f9;
+    color: #999;
+    font-size: 10px;
+    justify-content: center;
+  }
+  .cell.data { font-family: 'Calibri', sans-serif; }
+  .cell.number { justify-content: flex-end; font-family: monospace; font-size: 11px; }
+  .cell.total-row { background: #E8F5E9; font-weight: 600; }
+
+  /* Toggle button */
+  .tab-toggle {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 80px;
+    background: #0A52EF;
+    border-radius: 8px 0 0 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: white;
+    font-size: 14px;
+    z-index: 10;
+    transition: all 0.2s;
+    box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+  }
+  .tab-toggle:hover { width: 28px; background: #0845cc; }
+  .tab-toggle svg { width: 14px; height: 14px; transition: transform 0.3s; }
+  .tab-toggle.open svg { transform: rotate(180deg); }
+
+  /* Vertical tab panel */
+  .tab-panel {
+    width: 0;
+    overflow: hidden;
+    background: #fafafa;
+    border-left: 1px solid #e4e4e7;
+    margin: 12px 12px 12px 0;
+    border-radius: 8px;
+    transition: width 0.3s ease;
+    display: flex;
+    flex-direction: column;
+  }
+  .tab-panel.open {
+    width: 220px;
+  }
+  .tab-panel-header {
+    padding: 12px 16px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #999;
+    border-bottom: 1px solid #e4e4e7;
+    white-space: nowrap;
+  }
+  .tab-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+  .tab-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #666;
+    transition: all 0.15s;
+    margin-bottom: 2px;
+    white-space: nowrap;
+  }
+  .tab-item:hover { background: #f0f0f0; color: #333; }
+  .tab-item.active {
+    background: #0A52EF10;
+    color: #0A52EF;
+    font-weight: 600;
+    border-left: 3px solid #0A52EF;
+  }
+  .tab-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .tab-count {
+    margin-left: auto;
+    font-size: 9px;
+    color: #bbb;
+    background: #f0f0f0;
+    padding: 1px 6px;
+    border-radius: 8px;
+  }
+
+  /* Instructions */
+  .instructions {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1c1c1c;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 12px;
+    opacity: 0.9;
+    z-index: 100;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Spreadsheet -->
+  <div class="spreadsheet">
+    <div class="spreadsheet-header">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      AIO screen Concourse — LED Cost Sheet
+    </div>
+    <div class="spreadsheet-grid">
+      <!-- Column letters -->
+      <div class="cell col-letter"></div>
+      <div class="cell col-letter">A</div>
+      <div class="cell col-letter">B</div>
+      <div class="cell col-letter">C</div>
+      <div class="cell col-letter">D</div>
+      <div class="cell col-letter">E</div>
+      <div class="cell col-letter">F</div>
+      <div class="cell col-letter">G</div>
+      <div class="cell col-letter">H</div>
+      <div class="cell col-letter">I</div>
+      <div class="cell col-letter">J</div>
+      <!-- Header row -->
+      <div class="cell row-num">3</div>
+      <div class="cell header">Display</div>
+      <div class="cell header">Vendor</div>
+      <div class="cell header">Product</div>
+      <div class="cell header">Pitch</div>
+      <div class="cell header">H (ft)</div>
+      <div class="cell header">W (ft)</div>
+      <div class="cell header">Qty</div>
+      <div class="cell header">Total SqFt</div>
+      <div class="cell header">$/SqFt</div>
+      <div class="cell header">Display Cost</div>
+      <!-- Data row 1 -->
+      <div class="cell row-num">4</div>
+      <div class="cell data" style="font-weight:600">Concourse Display</div>
+      <div class="cell data">LG/Yaham</div>
+      <div class="cell data">-</div>
+      <div class="cell data" style="text-align:center">1.875mm</div>
+      <div class="cell number">25.00</div>
+      <div class="cell number">18.00</div>
+      <div class="cell number">1</div>
+      <div class="cell number">450</div>
+      <div class="cell number">$0</div>
+      <div class="cell number">$0</div>
+      <!-- Data row 2 -->
+      <div class="cell row-num">5</div>
+      <div class="cell data">Alt 1.5mm</div>
+      <div class="cell data">LG/Yaham</div>
+      <div class="cell data">-</div>
+      <div class="cell data" style="text-align:center">1.5mm</div>
+      <div class="cell number">25.00</div>
+      <div class="cell number">18.00</div>
+      <div class="cell number">1</div>
+      <div class="cell number">450</div>
+      <div class="cell number">$976</div>
+      <div class="cell number">$438,976</div>
+      <!-- Data row 3 -->
+      <div class="cell row-num">6</div>
+      <div class="cell data">Alt 2.5mm</div>
+      <div class="cell data">LG/Yaham</div>
+      <div class="cell data">-</div>
+      <div class="cell data" style="text-align:center">2.5mm</div>
+      <div class="cell number">25.00</div>
+      <div class="cell number">18.00</div>
+      <div class="cell number">1</div>
+      <div class="cell number">450</div>
+      <div class="cell number">$264</div>
+      <div class="cell number">$118,867</div>
+      <!-- Separator -->
+      <div class="cell row-num">7</div>
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <!-- Total -->
+      <div class="cell row-num">8</div>
+      <div class="cell total-row" style="font-weight:700">TOTAL (1 display)</div>
+      <div class="cell total-row"></div>
+      <div class="cell total-row"></div>
+      <div class="cell total-row"></div>
+      <div class="cell total-row"></div>
+      <div class="cell total-row"></div>
+      <div class="cell total-row"></div>
+      <div class="cell total-row number">450</div>
+      <div class="cell total-row"></div>
+      <div class="cell total-row number">$0</div>
+      <!-- Empty rows -->
+      <div class="cell row-num">9</div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell row-num">10</div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell row-num">11</div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell row-num">12</div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell row-num">13</div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell row-num">14</div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+    </div>
+
+    <!-- Toggle button -->
+    <div class="tab-toggle" id="toggle" onclick="togglePanel()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    </div>
+  </div>
+
+  <!-- Vertical tab panel -->
+  <div class="tab-panel" id="panel">
+    <div class="tab-panel-header">Sheets</div>
+    <div class="tab-list">
+      <div class="tab-item" onclick="selectTab(this)">
+        <div class="tab-dot" style="background:#0A52EF"></div>
+        Project Overview
+      </div>
+      <div class="tab-item" onclick="selectTab(this)">
+        <div class="tab-dot" style="background:#F59E0B"></div>
+        Margin Analysis
+      </div>
+      <div class="tab-item" onclick="selectTab(this)">
+        <div class="tab-dot" style="background:#EF4444"></div>
+        Budget Summary
+      </div>
+      <div class="tab-item active" onclick="selectTab(this)">
+        <div class="tab-dot" style="background:#10B981"></div>
+        LED Cost Sheet
+      </div>
+      <div class="tab-item" onclick="selectTab(this)">
+        <div class="tab-dot" style="background:#8B5CF6"></div>
+        Tech Specs
+      </div>
+      <div class="tab-item" onclick="selectTab(this)">
+        <div class="tab-dot" style="background:#06B6D4"></div>
+        Concourse - Install
+      </div>
+      <div class="tab-item" onclick="selectTab(this)">
+        <div class="tab-dot" style="background:#F97316"></div>
+        Processor/Equipment
+      </div>
+      <div class="tab-item" onclick="selectTab(this)">
+        <div class="tab-dot" style="background:#EC4899"></div>
+        Travel
+      </div>
+      <div class="tab-item" onclick="selectTab(this)">
+        <div class="tab-dot" style="background:#6366F1"></div>
+        P&L Summary
+      </div>
+      <div class="tab-item" onclick="selectTab(this)">
+        <div class="tab-dot" style="background:#D97706"></div>
+        Cash Flow
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="instructions">Click the blue tab on the right edge to toggle the sheet panel</div>
+
+<script>
+function togglePanel() {
+  const panel = document.getElementById('panel');
+  const toggle = document.getElementById('toggle');
+  panel.classList.toggle('open');
+  toggle.classList.toggle('open');
+}
+
+function selectTab(el) {
+  document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// Auto-open after 1s
+setTimeout(() => togglePanel(), 800);
+</script>
+</body>
+</html>
