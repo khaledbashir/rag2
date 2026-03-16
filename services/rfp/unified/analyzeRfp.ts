@@ -15,6 +15,7 @@ import { extractWithMistral, type MistralOcrPage } from "./mistralOcrClient";
 import { classifyAllPages, getPagesNeedingVision } from "./pageClassifier";
 import { analyzeDrawings, extractSpecsFromText } from "./geminiVision";
 import { isLlamaVisionAvailable, extractSpecsWithLlama } from "./llamaVision";
+import { scanTocFromOcrPages } from "./tocScanner";
 import type {
   RFPAnalysisResult,
   AnalyzedPage,
@@ -23,6 +24,11 @@ import type {
   AnalysisPipelineOptions,
   IncompleteSpec,
 } from "./types";
+
+/** PDFs larger than this trigger TOC-first scanning */
+const LARGE_PDF_PAGE_THRESHOLD = 100;
+/** Number of TOC pages to scan at the start of the document */
+const TOC_SCAN_PAGES = 20;
 
 // ---------------------------------------------------------------------------
 // Main entry point
@@ -60,9 +66,57 @@ export async function analyzeRfp(
 
   for (const file of files) {
     try {
-      const ocrResult = await extractWithMistral(file.buffer, file.filename);
+      // Phase 1: Quick OCR to determine document size
+      // For small PDFs (<100 pages), process everything.
+      // For large PDFs (>100 pages), scan TOC first, then target specific pages.
+      const fullOcr = await extractWithMistral(file.buffer, file.filename);
+      const totalDocPages = fullOcr.pages.length;
+      let pages = fullOcr.pages;
 
-      let pages = ocrResult.pages;
+      if (totalDocPages > LARGE_PDF_PAGE_THRESHOLD) {
+        // --- LARGE PDF: TOC-first strategy ---
+        // Works like a human estimator: read the TOC, find LED sections, go to those pages.
+        console.log(`[AnalyzeRFP] Large PDF detected (${totalDocPages} pages) — scanning TOC first`);
+        onProgress?.({
+          stage: "ocr",
+          percent: 15,
+          message: `Large document (${totalDocPages} pages) — scanning table of contents...`,
+        });
+
+        // Scan OCR'd pages for Table of Contents and LED section locations
+        const tocResult = scanTocFromOcrPages(fullOcr.pages, totalDocPages, TOC_SCAN_PAGES);
+
+        if (tocResult.targetPages.length > 0) {
+          console.log(`[AnalyzeRFP] TOC strategy: ${tocResult.strategy}`);
+          console.log(`[AnalyzeRFP] LED sections: ${tocResult.ledSectionNumbers.join(", ") || "N/A"}`);
+          console.log(`[AnalyzeRFP] LED pages: ${tocResult.ledPages.join(", ")}`);
+          console.log(`[AnalyzeRFP] Target pages (with context): ${tocResult.targetPages.length} (of ${totalDocPages})`);
+          onProgress?.({
+            stage: "ocr",
+            percent: 20,
+            message: `Found LED sections — targeting ${tocResult.targetPages.length} pages (strategy: ${tocResult.strategy})`,
+          });
+
+          // Keep TOC pages (first 20) + targeted LED pages from the full OCR
+          const keepIndices = new Set<number>();
+          // Always keep first pages (project info, TOC)
+          for (let i = 0; i < Math.min(TOC_SCAN_PAGES, totalDocPages); i++) {
+            keepIndices.add(i);
+          }
+          // Add targeted LED pages (convert 1-indexed → 0-indexed)
+          for (const p of tocResult.targetPages) {
+            if (p - 1 >= 0 && p - 1 < totalDocPages) {
+              keepIndices.add(p - 1);
+            }
+          }
+
+          pages = [...keepIndices].sort((a, b) => a - b).map((i) => fullOcr.pages[i]);
+          console.log(`[AnalyzeRFP] Processing ${pages.length} pages (${totalDocPages - pages.length} skipped)`);
+        } else {
+          console.log(`[AnalyzeRFP] No LED sections found via TOC — falling back to full scan`);
+        }
+      }
+
       if (maxPages) {
         pages = pages.slice(0, maxPages - globalPageOffset);
       }
