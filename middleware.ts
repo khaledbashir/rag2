@@ -94,6 +94,6 @@ export default auth((req) => {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/pdf-triage|api/rfp/analyze|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/pdf-triage|api/rfp/analyze|.*\\.(?:svg|png|jpg|jpeg|gif|webp|html|css)$).*)",
   ],
 };
