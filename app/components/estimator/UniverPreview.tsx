@@ -107,20 +107,29 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
         apiRef.current = univerAPI;
         univerAPI.createWorkbook(workbookDataRef.current);
 
-        // Restore previously active sheet tab
+        // Restore previously active sheet tab (after a frame so Univer is fully rendered)
         if (lastActiveSheetRef.current) {
-          try {
-            const wb = univerAPI.getActiveWorkbook?.();
-            if (wb) {
-              const sheets = wb.getSheets?.() || [];
-              for (const s of sheets) {
-                if (s.getSheetName?.() === lastActiveSheetRef.current) {
-                  s.activate?.();
-                  break;
+          const savedTab = lastActiveSheetRef.current;
+          requestAnimationFrame(() => {
+            if (disposed) return;
+            try {
+              const wb = univerAPI.getActiveWorkbook?.();
+              if (wb) {
+                // Try setActiveSheet with name first, fall back to iterating sheets
+                try {
+                  wb.setActiveSheet(savedTab);
+                } catch {
+                  const sheets = wb.getSheets?.() || [];
+                  for (const s of sheets) {
+                    if (s.getSheetName?.() === savedTab) {
+                      s.activate?.();
+                      break;
+                    }
+                  }
                 }
               }
-            }
-          } catch { /* ignore — will just show first tab */ }
+            } catch { /* ignore — will just show first tab */ }
+          });
         }
 
         // Listen for cell edits via SheetValueChanged event
