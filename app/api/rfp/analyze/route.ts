@@ -25,8 +25,12 @@ import { extractLEDSpecsBatched, deduplicateScreens } from "@/services/rfp/unifi
 import { convertPageToImage } from "@/services/rfp/unified/pdfToImages";
 import { provisionRfpWorkspace } from "@/services/rfp/unified/rfpWorkspaceProvisioner";
 import { ensureAnythingLlmUser } from "@/services/anythingllm/userProvisioner";
+import { extractWithOpenClaw, isOpenClawAvailable } from "@/services/rfp/unified/openclawExtractor";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
+
+/** PDFs above this page count use OpenClaw as primary extractor */
+const OPENCLAW_PAGE_THRESHOLD = 80;
 
 const execFileAsync = promisify(execFile);
 import type {
@@ -547,7 +551,7 @@ export async function POST(request: NextRequest) {
         }
 
         // =============================================================
-        // STEP 5: Batched AI extraction
+        // STEP 5: AI extraction — OpenClaw for large PDFs, Mistral for small
         // =============================================================
 
         let screens: ExtractedLEDSpec[] = [];
@@ -557,7 +561,58 @@ export async function POST(request: NextRequest) {
         let extractionFailed = false;
         let incompleteSpecs: any[] = [];
 
-        if (analyzedPages.length > 0) {
+        // --- OpenClaw extraction for large PDFs ---
+        // OpenClaw has ANC-specific skills with Natalia's extraction rules.
+        // For large construction manuals (>80 pages), it's more reliable than
+        // the Mistral→Gemini pipeline because it handles the full document.
+        const useOpenClaw = totalPages >= OPENCLAW_PAGE_THRESHOLD && isOpenClawAvailable();
+
+        if (useOpenClaw) {
+          lastHeartbeatStage = "extracting";
+          send("stage", {
+            stage: "extracting",
+            message: `Large PDF (${totalPages} pages) — using OpenClaw AI agent for extraction...`,
+          });
+
+          const clawHeartbeat = setInterval(() => {
+            send("progress", {
+              stage: "extracting",
+              current: 0,
+              total: 1,
+              message: "OpenClaw agent analyzing document...",
+            });
+          }, 15_000);
+
+          try {
+            const clawResult = await extractWithOpenClaw(filePath, {
+              timeout: 300,
+              onProgress: (msg) => {
+                send("progress", { stage: "extracting", current: 0, total: 1, message: msg });
+              },
+            });
+
+            screens = clawResult.screens;
+            projectInfo = clawResult.project;
+            log.info(`[Pipeline] OpenClaw extracted ${screens.length} displays`);
+
+            send("stage", {
+              stage: "extracted",
+              message: `OpenClaw found ${screens.length} LED display(s)`,
+              specsFound: screens.length,
+              requirementsFound: 0,
+              extractionSource: "openclaw",
+            });
+          } catch (clawErr: any) {
+            log.error("[Pipeline] OpenClaw extraction failed, falling back to Mistral pipeline:", clawErr.message);
+            extractionWarnings.push(`OpenClaw failed: ${clawErr.message} — falling back to standard extraction.`);
+            // Fall through to standard extraction below
+          } finally {
+            clearInterval(clawHeartbeat);
+          }
+        }
+
+        // --- Standard Mistral extraction (small PDFs or OpenClaw fallback) ---
+        if (screens.length === 0 && analyzedPages.length > 0) {
           lastHeartbeatStage = "extracting";
           send("stage", {
             stage: "extracting",
