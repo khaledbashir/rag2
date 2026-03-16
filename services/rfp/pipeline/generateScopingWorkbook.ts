@@ -1796,11 +1796,21 @@ function buildLedCostSheet(
     return s + (selling - totalLedCost);
   }, 0) };
   gtR.getCell(20).numFmt = FMT_USD;
-  gtR.getCell(21).value = { formula: baseSumFormula("U"), result: 0 };
+  // Weight, Power, BTU — compute actual base totals (not hardcoded 0)
+  const baseWeightTotal = baseDisplays.reduce((s, d) => {
+    const w = d.spec.weightLbs || (d.priced?.matchedProduct?.totalWeightLbs) || 0;
+    return s + (Number(w) || 0);
+  }, 0);
+  const basePowerTotal = baseDisplays.reduce((s, d) => {
+    const p = d.spec.maxPowerW || (d.priced?.matchedProduct?.totalMaxPowerW) || 0;
+    return s + (Number(p) || 0);
+  }, 0);
+  const baseBtuTotal = basePowerTotal > 0 ? Math.round(basePowerTotal * 3.412) : 0;
+  gtR.getCell(21).value = { formula: baseSumFormula("U"), result: baseWeightTotal };
   gtR.getCell(21).numFmt = "#,##0";
-  gtR.getCell(22).value = { formula: baseSumFormula("V"), result: 0 };
+  gtR.getCell(22).value = { formula: baseSumFormula("V"), result: basePowerTotal };
   gtR.getCell(22).numFmt = "#,##0";
-  gtR.getCell(23).value = { formula: baseSumFormula("W"), result: 0 };
+  gtR.getCell(23).value = { formula: baseSumFormula("W"), result: baseBtuTotal };
   gtR.getCell(23).numFmt = "#,##0";
   totalStyle(gtR, COLS, C.GREEN_BG);
 }
