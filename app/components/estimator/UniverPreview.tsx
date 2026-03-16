@@ -6,25 +6,30 @@
  * Renders IWorkbookData from /api/estimator/preview-univer as a live spreadsheet
  * with formula recalculation, cell editing, and sheet tabs.
  *
- * Separate from the RFP Analyzer's UniverSpreadsheet.tsx (which has RFP-specific logic).
+ * Supports inline editing: when a user edits a cell, the onCellEdit callback
+ * fires with (sheetName, row, col, value) so the parent can update answers.
  */
 
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import { Loader2, AlertCircle } from "lucide-react";
 
 interface UniverPreviewProps {
   workbookData: any;
   loading?: boolean;
   error?: string | null;
+  /** Called when user edits a cell: (sheetName, row0based, col0based, newValue) */
+  onCellEdit?: (sheetName: string, row: number, col: number, value: number | string) => void;
 }
 
-export default function UniverPreview({ workbookData, loading, error }: UniverPreviewProps) {
+export default function UniverPreview({ workbookData, loading, error, onCellEdit }: UniverPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<any>(null);
   const [mounted, setMounted] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const workbookDataRef = useRef(workbookData);
   workbookDataRef.current = workbookData;
+  const onCellEditRef = useRef(onCellEdit);
+  onCellEditRef.current = onCellEdit;
 
   // Track mount for SSR safety
   useEffect(() => {
@@ -92,6 +97,44 @@ export default function UniverPreview({ workbookData, loading, error }: UniverPr
 
         apiRef.current = univerAPI;
         univerAPI.createWorkbook(workbookDataRef.current);
+
+        // Listen for cell edits via SheetValueChanged event
+        try {
+          univerAPI.addEvent(univerAPI.Event.SheetValueChanged, (params: any) => {
+            if (!onCellEditRef.current || !params?.effectedRanges) return;
+            const wb = univerAPI.getActiveWorkbook?.();
+
+            for (const fRange of params.effectedRanges) {
+              const row = fRange.getRow?.();
+              const col = fRange.getColumn?.();
+              if (row == null || col == null) continue;
+
+              // Get sheet name from the range's sheet
+              const sheetId = fRange.getSheetId?.();
+              let sheetName = "";
+              if (wb && sheetId) {
+                const sheet = wb.getSheetBySheetId?.(sheetId);
+                sheetName = sheet?.getSheetName?.() || "";
+              }
+
+              let rawValue = fRange.getValue?.();
+              let value: number | string;
+              if (typeof rawValue === "number") {
+                value = rawValue;
+              } else if (rawValue != null) {
+                const parsed = parseFloat(String(rawValue));
+                value = isNaN(parsed) ? String(rawValue) : parsed;
+              } else {
+                value = 0;
+              }
+
+              onCellEditRef.current(sheetName, row, col, value);
+            }
+          });
+        } catch (e) {
+          console.warn("[UniverPreview] Could not attach edit listener:", e);
+        }
+
         setInitError(null);
       } catch (err: any) {
         console.error("[UniverPreview] init error:", err);

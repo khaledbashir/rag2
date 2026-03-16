@@ -90,7 +90,7 @@ export default function EstimatorStudio({
     const { rates, loading: ratesLoading } = useRateCard();
     // WYSIWYG preview: call the same server-side generator that produces the export.
     // No fake preview. No client-side approximation. Loading state shown until ready.
-    const { data: serverPreview, loading: serverPreviewLoading, error: serverPreviewError, projectTotal } = useServerPreview(answers);
+    const { data: serverPreview, loading: serverPreviewLoading, error: serverPreviewError, projectTotal, displayRowMap } = useServerPreview(answers);
     // Auto-save to DB when projectId is provided
     const { status: saveStatus } = useEstimatorAutoSave({
         projectId,
@@ -346,7 +346,29 @@ export default function EstimatorStudio({
         setAnswers(next);
     }, []);
 
-    // Cell editing and sheet management are handled natively by Univer.
+    // Inline cell editing on the Univer preview — maps LED Cost Sheet edits back to answers
+    const handlePreviewCellEdit = useCallback((sheetName: string, row: number, col: number, value: number | string) => {
+        if (sheetName !== "LED Cost Sheet") return;
+
+        // LED Cost Sheet columns (0-based): 4=H(ft), 5=W(ft), 8=Qty
+        const fieldMap: Record<number, "heightFt" | "widthFt" | "quantity"> = {
+            4: "heightFt",
+            5: "widthFt",
+            8: "quantity",
+        };
+        const field = fieldMap[col];
+        if (!field) return;
+
+        // Map row to display index using server-provided mapping
+        const displayIndex = displayRowMap[row];
+        if (displayIndex == null || displayIndex < 0 || displayIndex >= answers.displays.length) return;
+
+        const numValue = typeof value === "number" ? value : (parseFloat(String(value)) || 0);
+        const updated = { ...answers };
+        updated.displays = [...updated.displays];
+        updated.displays[displayIndex] = { ...updated.displays[displayIndex], [field]: numValue };
+        setAnswers(updated);
+    }, [answers, displayRowMap]);
 
     const handleExport = useCallback(async () => {
         if (!serverPreview) {
@@ -1003,6 +1025,7 @@ export default function EstimatorStudio({
                         workbookData={serverPreview}
                         loading={serverPreviewLoading}
                         error={serverPreviewError}
+                        onCellEdit={handlePreviewCellEdit}
                     />
                     {/* Bundle panel overlay */}
                     {bundleOpen && (

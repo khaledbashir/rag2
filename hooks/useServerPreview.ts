@@ -17,11 +17,14 @@ export function useServerPreview(answers: EstimatorAnswers): {
   loading: boolean;
   error: string | null;
   projectTotal: number;
+  /** Maps 0-based row index → answers.displays index (LED Cost Sheet only) */
+  displayRowMap: Record<number, number>;
 } {
   const [data, setData] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [projectTotal, setProjectTotal] = useState(0);
+  const [displayRowMap, setDisplayRowMap] = useState<Record<number, number>>({});
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -61,6 +64,9 @@ export function useServerPreview(answers: EstimatorAnswers): {
         if (workbookData.projectTotal != null) {
           setProjectTotal(workbookData.projectTotal);
         }
+        if (workbookData.displayRowMap) {
+          setDisplayRowMap(workbookData.displayRowMap);
+        }
         setData(workbookData);
       } catch (err: any) {
         if (err.name === "AbortError") return; // Cancelled, ignore
@@ -77,5 +83,5 @@ export function useServerPreview(answers: EstimatorAnswers): {
     };
   }, [answers]);
 
-  return { data, loading, error, projectTotal };
+  return { data, loading, error, projectTotal, displayRowMap };
 }

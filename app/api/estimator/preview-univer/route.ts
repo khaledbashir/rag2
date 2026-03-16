@@ -262,6 +262,17 @@ export async function POST(req: NextRequest) {
     // Compute project total for list page display
     const projectTotal = computedDisplays.reduce((s, d) => s + (d.sellingPrice || 0), 0);
 
+    // Build row-to-display-index map for inline editing
+    // LED Cost Sheet: header at row 2 (0-based), data starts at row 3 (0-based)
+    // Specs are ordered: base[0], alts[0], base[1], alts[1], ...
+    const displayRowMap: Record<number, number> = {};
+    let specIdx = 0;
+    for (let di = 0; di < answers.displays.length; di++) {
+      displayRowMap[3 + specIdx] = di; // 0-based row 3 = Excel row 4
+      specIdx++; // base display
+      specIdx += (answers.displays[di].altPitches?.length || 0); // alt pitch variants
+    }
+
     // Convert each worksheet to Univer format
     const sheetOrder: string[] = [];
     const sheets: Record<string, UniverSheet> = {};
@@ -282,7 +293,7 @@ export async function POST(req: NextRequest) {
       sheets,
     };
 
-    return NextResponse.json({ ...workbookData, projectTotal });
+    return NextResponse.json({ ...workbookData, projectTotal, displayRowMap });
   } catch (err) {
     log.error("[preview-univer] Error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
