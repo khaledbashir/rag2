@@ -13,9 +13,15 @@ import { existsSync } from "fs";
 
 const execFileAsync = promisify(execFile);
 
+// Primary: Mercury 2 (Inception) — 43/43 proven, $0.25/M input, 128K context
+const MERCURY_API_KEY = process.env.MERCURY_API_KEY || "sk_56b8192411faa1dc6660ea3b75133f0f";
+const MERCURY_URL = "https://api.inceptionlabs.ai/v1/chat/completions";
+const MERCURY_MODEL = "mercury-2";
+
+// Fallback: GLM 4.7 (Z.AI) — 41/43, free
 const ZAI_API_KEY = process.env.ZAI_API_KEY || "cd430c4ccd5a4e3c8994d3c1cf022fba.ixte8h9JkCDIg7Pj";
 const ZAI_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions";
-const MODEL = "glm-4.7";
+const ZAI_MODEL = "glm-4.7";
 
 const EXTRACT_PROMPT = `Extract ALL LED displays from this RFP text. Return JSON only with this exact schema.
 
@@ -109,7 +115,7 @@ function mapToExtractedSpecs(displays: any[]): ExtractedLEDSpec[] {
       confidence: 0.95,
       sourcePages: [],
       sourceType: "text" as const,
-      citation: "GLM5 via NVIDIA API",
+      citation: "Mercury 2 / GLM 4.7",
       notes: null,
       isAlternate: false,
       alternateDescription: null,
@@ -120,10 +126,48 @@ function mapToExtractedSpecs(displays: any[]): ExtractedLEDSpec[] {
 }
 
 // ---------------------------------------------------------------------------
-// Call GLM5
+// Call LLM — Mercury 2 primary, GLM 4.7 fallback
 // ---------------------------------------------------------------------------
 
-async function callGLM5(text: string, prompt: string): Promise<any> {
+async function callLLM(text: string, prompt: string): Promise<any> {
+  const fullContent = prompt + "\n\n" + text;
+
+  // Try Mercury 2 first
+  try {
+    console.log(`[Extractor] Trying Mercury 2...`);
+    const res = await fetch(MERCURY_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${MERCURY_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: MERCURY_MODEL,
+        messages: [{ role: "user", content: fullContent }],
+        max_tokens: 50000,
+        temperature: 0.1,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content || "";
+      const start = content.indexOf("{");
+      const end = content.lastIndexOf("}");
+      if (start !== -1 && end !== -1) {
+        const parsed = JSON.parse(content.substring(start, end + 1));
+        const count = parsed.displays?.length || 0;
+        console.log(`[Extractor] Mercury 2: ${count} displays (${data.usage?.total_tokens || 0} tokens)`);
+        if (count > 0) return parsed;
+      }
+    }
+    console.log(`[Extractor] Mercury 2 failed or returned 0, falling back to GLM 4.7`);
+  } catch (err: any) {
+    console.log(`[Extractor] Mercury 2 error: ${err.message}, falling back to GLM 4.7`);
+  }
+
+  // Fallback: GLM 4.7
+  console.log(`[Extractor] Trying GLM 4.7...`);
   const res = await fetch(ZAI_URL, {
     method: "POST",
     headers: {
@@ -131,8 +175,8 @@ async function callGLM5(text: string, prompt: string): Promise<any> {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: MODEL,
-      messages: [{ role: "user", content: prompt + "\n\n" + text }],
+      model: ZAI_MODEL,
+      messages: [{ role: "user", content: fullContent }],
       max_tokens: 64000,
       temperature: 0.1,
     }),
@@ -145,13 +189,13 @@ async function callGLM5(text: string, prompt: string): Promise<any> {
 
   const data = await res.json();
   const content = data.choices?.[0]?.message?.content || "";
-
-  // Parse JSON from response
   const start = content.indexOf("{");
   const end = content.lastIndexOf("}");
-  if (start === -1 || end === -1) throw new Error("No JSON in GLM5 response");
+  if (start === -1 || end === -1) throw new Error("No JSON in response");
 
-  return JSON.parse(content.substring(start, end + 1));
+  const parsed = JSON.parse(content.substring(start, end + 1));
+  console.log(`[Extractor] GLM 4.7: ${parsed.displays?.length || 0} displays`);
+  return parsed;
 }
 
 // ---------------------------------------------------------------------------
@@ -233,7 +277,7 @@ export async function extractWithGLM5(
 
   try {
     const fullPrompt = `Extract ALL LED displays (indoor AND outdoor) and requirements from this RFP. The document may have multiple sections — Scoreboards, Ribbon Boards, Entry LEDs — extract from ALL of them. Sections may share the same section number. Do not stop after the first table.\n\n${EXTRACT_PROMPT}`;
-    const result = await callGLM5(sections.indoor, fullPrompt);
+    const result = await callLLM(sections.indoor, fullPrompt);
     const displays = result.displays || [];
     allDisplays.push(...displays);
     project = result.project || null;
