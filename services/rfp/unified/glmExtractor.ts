@@ -31,6 +31,7 @@ ABSOLUTE RULES:
 - If a row has no pixel pitch value (blank cell), still extract it with pixel_pitch_mm: null.
 - Your displays array length MUST equal the exact number of data rows in the source tables. Count them.
 - NEVER add numbers to names. Extract names EXACTLY as written.
+- ONLY extract LED displays (videoboards, scoreboards, ribbons, fascia, entry LEDs, marquees). Do NOT extract fixed digit clocks, game clocks, play clocks, locker room clocks, scorekeeping controllers, or any non-LED timing/scoring equipment. Those go in a separate "scoring_equipment" array.
 
 {
   "project": {
@@ -51,6 +52,14 @@ ABSOLUTE RULES:
       "height_ft_decimal": 8.0,
       "environment": "indoor",
       "application": "Indoor"
+    }
+  ],
+  "scoring_equipment": [
+    {
+      "name": "Play Clock",
+      "quantity": 2,
+      "location": "North/South Endzone",
+      "notes": "Fixed digit"
     }
   ],
   "requirements": [
