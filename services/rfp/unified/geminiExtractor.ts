@@ -17,29 +17,35 @@ const GEMINI_MODEL = "gemini-3.1-pro-preview";
 // System prompt — proven to extract all 43 displays from BOA Stadium RFP
 // ---------------------------------------------------------------------------
 
-const SYSTEM_PROMPT = `You are an expert RFP analyzer specializing in LED Display Systems. Your task is to extract project details, display specifications, and project requirements from the provided RFP/bid document and return ONLY a strict JSON object.
+const SYSTEM_PROMPT = `You are an expert AV/Construction RFP Data Extraction Engine. Your sole purpose is to parse massive bid documents, project manuals, and RFPs to extract LED display specifications and project requirements.
 
-EXTRACTION RULES:
+CRITICAL DIRECTIVES - READ BEFORE PROCEEDING:
+1. EXHAUSTIVE SEARCH: Project manuals split displays across multiple sections (e.g., Indoor, Outdoor, Ribbon, Scoreboard, Fascia, Entry LED). You MUST scan the Table of Contents first to identify ALL relevant sections before extracting. Do not stop after finding the first table.
+2. ZERO HALLUCINATION: You must ONLY extract data that explicitly exists in the provided text. If a value is missing, use null. Do not guess, infer, or create data.
+3. CONTINUOUS PARSING: Tables often span across multiple pages. You must connect rows across page breaks.
+4. NO DEDUPLICATION: Identical names or specs on different rows mean separate physical displays. Extract every single row as an independent object.
+5. STRICT JSON ONLY: Your entire response must be a single, valid JSON object. No markdown formatting, no preamble, no explanations.
 
-Target Sections: Search the ENTIRE document for ALL display tables — indoor AND outdoor. Do not stop after the first table. Common sections include Section 11 06 60 (Display Schedule), Section 11 63 10 (LED Display Systems), Division 11 (Equipment specs), or any tables containing: Location, Pixel Pitch, Brightness, Width, and Height. There are often MULTIPLE sub-tables: Scoreboards, Ribbon Board LEDs, Entry LEDs — extract from ALL of them.
-
-Display Extraction (STRICT):
-- Each row in a display table equals ONE physical display.
-- NEVER group rows.
-- NEVER deduplicate. Identical names and identical specs on different rows or pages mean SEPARATE physical displays.
-- Tables often span page breaks; treat the data as continuous.
-- If a row is missing a value, fill what you can and leave the rest null.
-
-Requirements Extraction:
-- Search for: compliance (union, prevailing wage), technical (NEMA, IP, warranty, spare parts), deadlines (NTP, completion), and financial (bonds, insurance).
-- Assign a status to each: critical (deal-breakers), info (standard), or risk (ambiguous).
+EXTRACTION PROTOCOL:
+Step 1: Locate Project Details (Name, Client, Venue, Address).
+Step 2: Inventory Sections. Search the text for "LED Videoboards", "Display Matrix", "Scoreboard", "Ribbon", "Entry LED", "Fascia", and sections like 116643 (Indoor) or 116843 (Outdoor).
+Step 3: Extract Every Display. For every row in EVERY matrix found:
+- Name/Location: Extract exactly as written.
+- Pixel Pitch / Brightness: Extract numbers. If a range is given, use the highest value.
+- Dimensions: Convert feet and fractional inches into a pure decimal format for width_ft_decimal and height_ft_decimal (e.g., 7' 9" = 7.75; 2' 10 7/16" = 2.87). Round to two decimal places.
+Step 4: Extract Requirements. Scan equipment specs for technical, compliance, and financial mandates.
 
 OUTPUT FORMAT:
-Respond ONLY with a valid JSON object. Do not include markdown code blocks, conversational text, or explanations. The displays array MUST be a flat array where every row gets its own object.`;
+Return ONLY a JSON object matching the exact schema. You MUST complete the "_extraction_log" first to guarantee you have found all screens.`;
 
 const USER_PROMPT = `Extract ALL LED displays and requirements from this RFP document. Return JSON with this exact schema:
 
 {
+  "_extraction_log": {
+    "sections_found": ["List the specific section names/numbers you found (e.g., Indoor 116643, Outdoor 116843)"],
+    "total_displays_counted_in_text": 0,
+    "step_by_step_verification": "Briefly state how you ensured you didn't miss any tables across page breaks."
+  },
   "project": {
     "name": "Project Name",
     "client": "Client Name",
@@ -301,6 +307,13 @@ export async function extractWithGemini(
     } catch (e) {
       console.error("[GeminiExtractor] Failed to parse JSON:", text.substring(0, 500));
       throw new Error("Gemini returned invalid JSON");
+    }
+
+    // Log the extraction log (chain-of-thought) for debugging
+    if (parsed._extraction_log) {
+      console.log(`[GeminiExtractor] Extraction log:`, JSON.stringify(parsed._extraction_log));
+      console.log(`[GeminiExtractor] Sections found: ${parsed._extraction_log.sections_found?.join(", ")}`);
+      console.log(`[GeminiExtractor] Total displays counted in text: ${parsed._extraction_log.total_displays_counted_in_text}`);
     }
 
     const displays = Array.isArray(parsed.displays) ? parsed.displays : [];
