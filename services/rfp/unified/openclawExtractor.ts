@@ -135,13 +135,18 @@ export async function extractWithOpenClaw(
   const timer = setTimeout(() => controller.abort(), (timeout + 60) * 1000);
 
   try {
+    // Read PDF and send binary to bridge (Docker can't share file paths with host)
+    const { readFile } = await import("fs/promises");
+    const pdfBuffer = await readFile(pdfPath);
+    options?.onProgress?.(`Sending PDF to AI agent (${(pdfBuffer.length / 1024 / 1024).toFixed(1)}MB)...`);
+
     const res = await fetch(`${OPENCLAW_BRIDGE_URL}/extract`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/octet-stream",
         Authorization: `Bearer ${OPENCLAW_TOKEN}`,
       },
-      body: JSON.stringify({ pdfPath, timeout }),
+      body: pdfBuffer,
       signal: controller.signal,
     });
     clearTimeout(timer);
