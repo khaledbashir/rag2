@@ -160,7 +160,8 @@ export async function extractWithOpenClaw(
     const data = await res.json();
     const displays: OpenClawDisplay[] = data.displays || data.screens || [];
     const project = data.project || null;
-    const requirements = (data.requirements || []).map((r: any) => ({
+    const rawReqs = Array.isArray(data.requirements) ? data.requirements : [];
+    const requirements = rawReqs.map((r: any) => ({
       description: r.description || r.text || "",
       category: r.category || "technical",
       status: r.status || "info",
