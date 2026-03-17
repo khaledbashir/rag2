@@ -519,6 +519,7 @@ export async function extractLEDSpecsBatched(
     return hasAnySpec;
   });
 
+  console.log(`[specExtractor] Pre-dedup: ${allScreens.length} screens, ${incompleteSpecs.length} quarantined`);
   // Deduplicate screens by name + location
   allScreens = deduplicateScreens(allScreens);
 
@@ -625,8 +626,8 @@ function screensMatch(a: ExtractedLEDSpec, b: ExtractedLEDSpec): boolean {
   const nameSimilarity = tokenSimilarity(tokensA, tokensB);
   const locationSimilarity = tokenSimilarity(locationA, locationB);
 
-  // Check token similarity
-  if (nameSimilarity >= 0.6 && (locationA.length === 0 || locationB.length === 0 || locationSimilarity >= 0.6)) return true;
+  // Check token similarity — use 0.8 threshold to avoid merging distinct screens
+  if (nameSimilarity >= 0.8 && (locationA.length === 0 || locationB.length === 0 || locationSimilarity >= 0.6)) return true;
   // Check substring match
   if (normalizedSubstring(tokensA, tokensB) && (locationA.length === 0 || locationB.length === 0 || normalizedSubstring(locationA, locationB))) return true;
   // Check dimension + pitch match (same physical display)
@@ -643,6 +644,7 @@ export function deduplicateScreens(screens: ExtractedLEDSpec[]): ExtractedLEDSpe
 
     if (matchIdx >= 0) {
       const existing = deduped[matchIdx];
+      console.log(`[specExtractor] Dedup: merging "${screen.name}" into "${existing.name}"`);
       if (screen.confidence > existing.confidence) {
         deduped[matchIdx] = mergeSpecs(screen, existing);
       } else {
@@ -653,6 +655,7 @@ export function deduplicateScreens(screens: ExtractedLEDSpec[]): ExtractedLEDSpe
     }
   }
 
+  console.log(`[specExtractor] Dedup: ${screens.length} screens → ${deduped.length} after dedup (merged ${screens.length - deduped.length})`);
   return deduped;
 }
 
