@@ -361,8 +361,8 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     color: "#0A52EF",
     columns: cols,
     rows: [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow, ...(addScreenRow ? [addScreenRow] : [])],
-    // Editable: H(ft)=4, W(ft)=5, Qty=9, Display Cost=21, Processor=22, Shipping=23, Margin%=25
-    editableColumns: [4, 5, 9, 21, 22, 23, 25],
+    // Editable: Name=0, H(ft)=4, W(ft)=5, Qty=9, Display Cost=21, Processor=22, Shipping=23, Margin%=25
+    editableColumns: [0, 4, 5, 9, 21, 22, 23, 25],
   };
 }
 

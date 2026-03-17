@@ -316,7 +316,7 @@ export default function AnalysisDetailPage() {
       return {
         ...prev,
         displays: [...prev.displays, {
-          name: name.trim(),
+          name: newSpec.name,
           pixelPitch: null,
           areaSqFt: 0,
           quantity: 1,
