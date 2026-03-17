@@ -115,30 +115,24 @@ export async function extractWithAnythingLLM(
     // Wait a moment for embedding to complete
     await new Promise((r) => setTimeout(r, 3000));
 
-    // 4. Chat with @agent to extract
-    options?.onProgress?.("AI agent analyzing document...");
+    // 4. Use regular chat (NOT @agent — agents aren't available via API)
+    // The workspace has the document embedded, so RAG retrieves the relevant chunks
+    options?.onProgress?.("AI analyzing embedded document...");
 
-    const chatPrompt = `@agent Extract ALL LED displays and requirements from the embedded document. Return JSON with this schema:
+    const chatPrompt = `Analyze the embedded RFP document. Extract ALL LED display specifications (indoor AND outdoor — scoreboards, ribbon boards, entry LEDs, everything) and project requirements.
 
-{
-  "_extraction_log": {
-    "sections_found": [],
-    "anomalies_detected": [],
-    "total_displays_counted_in_text": 0,
-    "reached_end_of_document": true,
-    "step_by_step_verification": ""
-  },
-  "project": { "name": "", "client": "", "venue": "", "address": "" },
-  "displays": [{ "name": "", "location": "", "pixel_pitch_mm": 0, "brightness_nits": 0, "width_ft": "", "height_ft": "", "width_ft_decimal": 0, "height_ft_decimal": 0, "environment": "indoor", "application": "Indoor" }],
-  "requirements": [{ "description": "", "category": "technical", "status": "critical" }]
-}`;
+RULES: Each table row = one display. NEVER deduplicate. NEVER add numbers to names. Extract names EXACTLY as written. If a value is missing, use null. Sections may share the same section number — parse ALL of them.
+
+Return ONLY a valid JSON object with this exact schema:
+
+{"_extraction_log":{"sections_found":[],"total_displays_counted_in_text":0,"reached_end_of_document":true},"project":{"name":"","client":"","venue":"","address":""},"displays":[{"name":"","location":"","pixel_pitch_mm":0,"brightness_nits":0,"width_ft":"",""height_ft":"","width_ft_decimal":0,"height_ft_decimal":0,"environment":"indoor","application":"Indoor"}],"requirements":[{"description":"","category":"technical","status":"critical"}]}`;
 
     const chatRes = await fetch(`${baseUrl}/workspace/${slug}/chat`, {
       method: "POST",
       headers,
       body: JSON.stringify({
         message: chatPrompt,
-        mode: "chat",
+        mode: "query",
       }),
       signal: AbortSignal.timeout((options?.timeout || 300) * 1000),
     });
