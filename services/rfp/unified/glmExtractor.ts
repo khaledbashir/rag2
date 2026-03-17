@@ -13,9 +13,9 @@ import { existsSync } from "fs";
 
 const execFileAsync = promisify(execFile);
 
-const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || "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";
-const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
-const MODEL = "z-ai/glm5";
+const ZAI_API_KEY = process.env.ZAI_API_KEY || "cd430c4ccd5a4e3c8994d3c1cf022fba.ixte8h9JkCDIg7Pj";
+const ZAI_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions";
+const MODEL = "glm-4.7";
 
 const EXTRACT_PROMPT = `Extract ALL LED displays from this RFP text. Return JSON only with this exact schema. Each row = one display. NEVER deduplicate. NEVER add numbers to names. Extract EXACTLY as written.
 
@@ -117,23 +117,23 @@ function mapToExtractedSpecs(displays: any[]): ExtractedLEDSpec[] {
 // ---------------------------------------------------------------------------
 
 async function callGLM5(text: string, prompt: string): Promise<any> {
-  const res = await fetch(NVIDIA_URL, {
+  const res = await fetch(ZAI_URL, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${NVIDIA_API_KEY}`,
+      "Authorization": `Bearer ${ZAI_API_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
       model: MODEL,
       messages: [{ role: "user", content: prompt + "\n\n" + text }],
-      max_tokens: 32000,
+      max_tokens: 64000,
       temperature: 0.1,
     }),
   });
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`GLM5 API error ${res.status}: ${err.substring(0, 200)}`);
+    throw new Error(`Z.AI API error ${res.status}: ${err.substring(0, 200)}`);
   }
 
   const data = await res.json();
@@ -268,5 +268,5 @@ export async function extractWithGLM5(
 }
 
 export function isGLM5Available(): boolean {
-  return !!NVIDIA_API_KEY;
+  return !!ZAI_API_KEY;
 }
