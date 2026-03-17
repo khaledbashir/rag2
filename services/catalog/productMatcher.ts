@@ -97,7 +97,26 @@ export class ProductMatcher {
                 });
                 if (suitable.length === 0) suitable = dbProducts;
 
-                suitable.sort((a, b) => Math.abs(a.pixelPitch - targetPitch) - Math.abs(b.pixelPitch - targetPitch));
+                // Score by pitch closeness + size appropriateness
+                // Small cabinets (< 1sqm) shouldn't match large displays (> 50 sqft)
+                const displayAreaSqFt = spec.widthFt * spec.heightFt;
+                suitable.sort((a, b) => {
+                    const pitchA = Math.abs(a.pixelPitch - targetPitch);
+                    const pitchB = Math.abs(b.pixelPitch - targetPitch);
+
+                    // Penalize tiny products (table displays, countertops) for large screens
+                    const cabAreaA = (a.cabinetWidthMm * a.cabinetHeightMm) / 1e6; // sq meters
+                    const cabAreaB = (b.cabinetWidthMm * b.cabinetHeightMm) / 1e6;
+                    const isTinyA = cabAreaA < 0.15; // < 0.15 sqm = table/countertop display
+                    const isTinyB = cabAreaB < 0.15;
+                    const isLargeDisplay = displayAreaSqFt > 30;
+
+                    // If display is large and product is tiny, add huge penalty
+                    const penaltyA = (isLargeDisplay && isTinyA) ? 100 : 0;
+                    const penaltyB = (isLargeDisplay && isTinyB) ? 100 : 0;
+
+                    return (pitchA + penaltyA) - (pitchB + penaltyB);
+                });
 
                 const best = suitable[0];
                 const matched: MatchedProduct = {
