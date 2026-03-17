@@ -2183,6 +2183,10 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
           presets: [
             UniverSheetsCorePreset({
               container: el,
+              footer: {
+                sheetBar: true,
+                statisticBar: true,
+              },
             }),
           ],
         });
@@ -2195,7 +2199,8 @@ function UniverSpreadsheetInner(props: UniverSpreadsheetProps) {
         apiRef.current = univerAPI;
 
         // Create workbook with pre-built data
-        univerAPI.createWorkbook(workbookDataRef.current);
+        const workbook = univerAPI.createWorkbook(workbookDataRef.current);
+        workbook.setEditable(true);
 
         // Listen for cell value changes (skip during programmatic rebuilds)
         univerAPI.addEvent(univerAPI.Event.SheetValueChanged, (params: any) => {
