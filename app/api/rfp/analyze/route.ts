@@ -262,12 +262,14 @@ export async function POST(request: NextRequest) {
               }
 
               send("complete", {
-                analysisId,
-                project: finalProject,
-                screens,
-                requirements: [],
-                stats: { totalPages, extractionSource: "openclaw", durationMs: Date.now() - startTime },
-                workspaceSlug,
+                result: {
+                  id: analysisId,
+                  project: finalProject,
+                  screens,
+                  requirements: [],
+                  stats: { totalPages, extractionSource: "openclaw", durationMs: Date.now() - startTime },
+                  aiWorkspaceSlug: workspaceSlug,
+                },
               });
 
               clearInterval(globalHeartbeat);
