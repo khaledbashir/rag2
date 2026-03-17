@@ -527,12 +527,13 @@ function StatPill({
 
 function buildStages(events: PipelineEvent[]): StageState[] {
   // Check if OpenClaw is handling this (simplified UX)
-  const isOpenClaw = events.some((e) =>
+  const isDirectAI = events.some((e) =>
     (e as any).extractionSource === "openclaw" ||
-    (e.message && e.message.includes("AI agent"))
+    (e as any).extractionSource === "gemini" ||
+    (e.message && (e.message.includes("AI agent") || e.message.includes("Analyzing PDF with AI")))
   );
 
-  const stages: StageState[] = isOpenClaw
+  const stages: StageState[] = isDirectAI
     ? [
         { key: "upload",  label: "Upload",   activeLabel: "Uploading...",       icon: UploadCloud, status: "pending" },
         { key: "extract", label: "Analyze",  activeLabel: "AI analyzing PDF...", icon: Sparkles,    status: "pending" },
@@ -557,15 +558,15 @@ function buildStages(events: PipelineEvent[]): StageState[] {
         markDone(stages, "upload");
       } else if (s === "reading" || s === "ocr") {
         markDone(stages, "upload");
-        if (!isOpenClaw) currentActive = "ocr";
+        if (!isDirectAI) currentActive = "ocr";
       } else if (s === "ocr_done") {
-        if (!isOpenClaw) markDone(stages, "ocr");
+        if (!isDirectAI) markDone(stages, "ocr");
         const st = stages.find((x) => x.key === "ocr");
         if (st && event.totalPages) st.count = `${event.totalPages.toLocaleString()} pages`;
       } else if (s === "triaging") {
-        if (!isOpenClaw) { markDone(stages, "ocr"); currentActive = "triage"; }
+        if (!isDirectAI) { markDone(stages, "ocr"); currentActive = "triage"; }
       } else if (s === "triaged") {
-        if (!isOpenClaw) {
+        if (!isDirectAI) {
           markDone(stages, "triage");
           const st = stages.find((x) => x.key === "triage");
           if (st && event.relevant != null && event.noise != null) {
@@ -573,9 +574,9 @@ function buildStages(events: PipelineEvent[]): StageState[] {
           }
         }
       } else if (s === "processing_text" || s === "vision") {
-        if (!isOpenClaw) { markDone(stages, "triage"); currentActive = "vision"; }
+        if (!isDirectAI) { markDone(stages, "triage"); currentActive = "vision"; }
       } else if (s === "vision_done") {
-        if (!isOpenClaw) {
+        if (!isDirectAI) {
           markDone(stages, "vision");
           const st = stages.find((x) => x.key === "vision");
           if (st) {
@@ -588,7 +589,7 @@ function buildStages(events: PipelineEvent[]): StageState[] {
         }
       } else if (s === "extracting") {
         markDone(stages, "upload");
-        if (!isOpenClaw) markDone(stages, "vision");
+        if (!isDirectAI) markDone(stages, "vision");
         currentActive = "extract";
       } else if (s === "extracted") {
         markDone(stages, "extract");

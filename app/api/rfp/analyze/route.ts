@@ -26,6 +26,7 @@ import { convertPageToImage } from "@/services/rfp/unified/pdfToImages";
 import { provisionRfpWorkspace } from "@/services/rfp/unified/rfpWorkspaceProvisioner";
 import { ensureAnythingLlmUser } from "@/services/anythingllm/userProvisioner";
 import { extractWithOpenClaw, isOpenClawAvailable } from "@/services/rfp/unified/openclawExtractor";
+import { extractWithGemini, isGeminiAvailable } from "@/services/rfp/unified/geminiExtractor";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 
@@ -167,38 +168,51 @@ export async function POST(request: NextRequest) {
         const sizeMb = (fileStat.size / 1024 / 1024).toFixed(1);
 
         // =============================================================
-        // STEP 1.5: OpenClaw PRIMARY extraction (if available)
-        // OpenClaw runs its own pdftotext + extraction internally.
-        // If it succeeds, skip the entire Mistral/Gemini pipeline.
+        // STEP 1.5: Gemini PRIMARY extraction (direct PDF vision)
+        // Sends the full PDF to Gemini 3.1 Pro for native extraction.
+        // If it succeeds, skip the entire Mistral pipeline.
         // =============================================================
-        if (isOpenClawAvailable()) {
+        if (isGeminiAvailable()) {
           lastHeartbeatStage = "extracting";
           send("stage", {
             stage: "extracting",
-            message: `Analyzing PDF with AI agent (${sizeMb}MB)...`,
+            message: `Analyzing PDF with AI (${sizeMb}MB)...`,
           });
 
-          const clawHeartbeat = setInterval(() => {
-            send("progress", {
-              stage: "extracting",
-              current: 0,
-              total: 1,
-              message: "AI agent analyzing document...",
-            });
-          }, 15_000);
+          const thinkingSteps = [
+            "Uploading PDF to AI...",
+            "Identifying document structure...",
+            "Locating display schedule tables...",
+            "Extracting indoor LED specifications...",
+            "Extracting outdoor LED specifications...",
+            "Extracting project requirements...",
+            "Organizing results...",
+          ];
+          let stepIdx = 0;
+          const thinkingInterval = setInterval(() => {
+            if (stepIdx < thinkingSteps.length) {
+              send("progress", {
+                stage: "extracting",
+                current: stepIdx,
+                total: thinkingSteps.length,
+                message: thinkingSteps[stepIdx],
+              });
+              stepIdx++;
+            }
+          }, 8_000);
 
           try {
-            const clawResult = await extractWithOpenClaw(filePath, {
+            const geminiResult = await extractWithGemini(filePath, {
               timeout: 300,
               onProgress: (msg) => {
-                send("progress", { stage: "extracting", current: 0, total: 1, message: msg });
+                send("progress", { stage: "extracting", current: stepIdx, total: thinkingSteps.length, message: msg });
               },
             });
 
-            clearInterval(clawHeartbeat);
+            clearInterval(thinkingInterval);
 
-            if (clawResult.screens.length > 0) {
-              log.info(`[Pipeline] OpenClaw extracted ${clawResult.screens.length} displays — skipping Mistral/Gemini`);
+            if (geminiResult.screens.length > 0) {
+              log.info(`[Pipeline] Gemini extracted ${geminiResult.screens.length} displays — skipping Mistral`);
 
               // Get page count for stats
               let totalPages = 0;
@@ -210,16 +224,15 @@ export async function POST(request: NextRequest) {
 
               send("stage", {
                 stage: "extracted",
-                message: `Found ${clawResult.screens.length} LED display(s)`,
-                specsFound: clawResult.screens.length,
-                requirementsFound: 0,
-                extractionSource: "openclaw",
+                message: `Found ${geminiResult.screens.length} LED display(s)`,
+                specsFound: geminiResult.screens.length,
+                requirementsFound: geminiResult.requirements.length,
+                extractionSource: "gemini",
               });
 
-              // Skip to final delivery
-              const finalProject = clawResult.project;
-              const screens = clawResult.screens;
-              const clawRequirements = clawResult.requirements || [];
+              const finalProject = geminiResult.project;
+              const screens = geminiResult.screens;
+              const geminiRequirements = geminiResult.requirements || [];
 
               // Provision AnythingLLM workspace
               let workspaceSlug: string | null = null;
@@ -233,7 +246,7 @@ export async function POST(request: NextRequest) {
                 workspaceSlug = ws?.slug || null;
               } catch { /* workspace provisioning is optional */ }
 
-              // Save to DB (don't let DB errors kill the extraction result)
+              // Save to DB
               let analysisId: string | null = null;
               try {
                 const fileStat2 = await stat(filePath).catch(() => ({ size: 0 }));
@@ -252,7 +265,7 @@ export async function POST(request: NextRequest) {
                     processingTimeMs: Date.now() - startTime,
                     project: finalProject as any,
                     screens: screens as any,
-                    requirements: clawRequirements as any,
+                    requirements: geminiRequirements as any,
                     triage: [],
                     aiWorkspaceSlug: workspaceSlug,
                     createdBy: session?.user?.name || session?.user?.email || null,
@@ -260,7 +273,7 @@ export async function POST(request: NextRequest) {
                 });
                 analysisId = analysis.id;
               } catch (dbErr: any) {
-                log.error("[Pipeline] OpenClaw DB save failed (non-fatal):", dbErr.message?.slice(0, 200));
+                log.error("[Pipeline] Gemini DB save failed (non-fatal):", dbErr.message?.slice(0, 200));
               }
 
               send("complete", {
@@ -268,29 +281,29 @@ export async function POST(request: NextRequest) {
                   id: analysisId,
                   project: finalProject,
                   screens,
-                  requirements: clawRequirements,
-                  stats: { totalPages, extractionSource: "openclaw", durationMs: Date.now() - startTime },
+                  requirements: geminiRequirements,
+                  stats: { totalPages, extractionSource: "gemini", durationMs: Date.now() - startTime },
                   aiWorkspaceSlug: workspaceSlug,
                 },
               });
 
               clearInterval(globalHeartbeat);
               controller.close();
-              return; // DONE — skip entire Mistral/Gemini pipeline
+              return; // DONE
             } else {
-              log.error("[Pipeline] OpenClaw returned 0 displays — aborting");
+              log.error("[Pipeline] Gemini returned 0 displays — aborting");
               send("error", {
-                message: "AI agent returned 0 displays. Please retry or contact support.",
+                message: "AI returned 0 displays. Please retry or contact support.",
               });
               clearInterval(globalHeartbeat);
               controller.close();
               return;
             }
-          } catch (clawErr: any) {
-            clearInterval(clawHeartbeat);
-            log.error("[Pipeline] OpenClaw failed:", clawErr.message);
+          } catch (geminiErr: any) {
+            clearInterval(thinkingInterval);
+            log.error("[Pipeline] Gemini failed:", geminiErr.message);
             send("error", {
-              message: `AI agent error: ${clawErr.message}. Please retry or contact support.`,
+              message: `AI extraction error: ${geminiErr.message}. Please retry or contact support.`,
             });
             clearInterval(globalHeartbeat);
             controller.close();
