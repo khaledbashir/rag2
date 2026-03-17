@@ -151,9 +151,20 @@ export default function AnalysisDetailPage() {
       if (!prev) return prev;
       const specIdx = rowIdx - 1;
       if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
+      const oldName = prev.screens[specIdx].name;
       const spec = { ...prev.screens[specIdx] };
       if (field === "name") {
         (spec as any)[field] = value;
+        // Sync name change to pricingPreview so dropdown/product matching stays linked
+        setPricingPreview((pp: any) => {
+          if (!pp) return pp;
+          return {
+            ...pp,
+            displays: pp.displays.map((d: any) =>
+              d.name === oldName ? { ...d, name: value } : d
+            ),
+          };
+        });
       } else {
         (spec as any)[field] = parseFloat(value) || 0;
       }
