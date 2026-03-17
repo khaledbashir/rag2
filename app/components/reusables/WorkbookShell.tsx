@@ -164,7 +164,7 @@ export default function WorkbookShell({
 
       {/* ─── Sheet tabs ─── */}
       <div className="flex items-end border-t border-border bg-zinc-50 dark:bg-zinc-800 shrink-0 overflow-x-auto scrollbar-thin" style={{ minHeight: 32 }}>
-        {data.sheets.map((sheet, idx) => (
+        {data.sheets.filter(Boolean).map((sheet, idx) => (
           <button
             key={idx}
             type="button"

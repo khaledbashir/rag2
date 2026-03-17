@@ -1779,6 +1779,8 @@ export function buildRfpWorkbook(input: RfpWorkbookInput): WorkbookData {
 
   const bidFormSheet = buildBidFormSheet(input);
 
+  const triageSheet = buildPageTriage(input);
+
   const sheets: SheetTab[] = [
     buildLedCostSheet(input),
     buildProcessorCount(input),
@@ -1796,7 +1798,7 @@ export function buildRfpWorkbook(input: RfpWorkbookInput): WorkbookData {
     buildCashFlow(input),
     buildPurchaseOrders(input),
     buildTravel(input),
-    buildPageTriage(input),
+    ...(triageSheet ? [triageSheet] : []),
   ];
 
   return {
