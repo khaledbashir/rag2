@@ -530,6 +530,7 @@ function buildStages(events: PipelineEvent[]): StageState[] {
   const isDirectAI = events.some((e) =>
     (e as any).extractionSource === "openclaw" ||
     (e as any).extractionSource === "gemini" ||
+    (e as any).extractionSource === "glm5" ||
     (e.message && (e.message.includes("AI agent") || e.message.includes("Analyzing PDF with AI")))
   );
 

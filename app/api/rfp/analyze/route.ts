@@ -26,7 +26,7 @@ import { convertPageToImage } from "@/services/rfp/unified/pdfToImages";
 import { provisionRfpWorkspace } from "@/services/rfp/unified/rfpWorkspaceProvisioner";
 import { ensureAnythingLlmUser } from "@/services/anythingllm/userProvisioner";
 import { extractWithOpenClaw, isOpenClawAvailable } from "@/services/rfp/unified/openclawExtractor";
-import { extractWithGemini, isGeminiAvailable } from "@/services/rfp/unified/geminiExtractor";
+import { extractWithGLM5, isGLM5Available } from "@/services/rfp/unified/glmExtractor";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 
@@ -168,11 +168,11 @@ export async function POST(request: NextRequest) {
         const sizeMb = (fileStat.size / 1024 / 1024).toFixed(1);
 
         // =============================================================
-        // STEP 1.5: Gemini PRIMARY extraction (direct PDF vision)
-        // Sends the full PDF to Gemini 3.1 Pro for native extraction.
-        // If it succeeds, skip the entire Mistral pipeline.
+        // STEP 1.5: GLM5 PRIMARY extraction (via NVIDIA API)
+        // Uses pdftotext + GLM5 for reliable extraction.
+        // Two calls (indoor + outdoor) for full coverage.
         // =============================================================
-        if (isGeminiAvailable()) {
+        if (isGLM5Available()) {
           lastHeartbeatStage = "extracting";
           send("stage", {
             stage: "extracting",
@@ -202,7 +202,7 @@ export async function POST(request: NextRequest) {
           }, 8_000);
 
           try {
-            const geminiResult = await extractWithGemini(filePath, {
+            const glmResult = await extractWithGLM5(filePath, {
               timeout: 300,
               onProgress: (msg) => {
                 send("progress", { stage: "extracting", current: stepIdx, total: thinkingSteps.length, message: msg });
@@ -211,8 +211,8 @@ export async function POST(request: NextRequest) {
 
             clearInterval(thinkingInterval);
 
-            if (geminiResult.screens.length > 0) {
-              log.info(`[Pipeline] Gemini extracted ${geminiResult.screens.length} displays — skipping Mistral`);
+            if (glmResult.screens.length > 0) {
+              log.info(`[Pipeline] GLM5 extracted ${glmResult.screens.length} displays — skipping Mistral`);
 
               // Get page count for stats
               let totalPages = 0;
@@ -224,15 +224,15 @@ export async function POST(request: NextRequest) {
 
               send("stage", {
                 stage: "extracted",
-                message: `Found ${geminiResult.screens.length} LED display(s)`,
-                specsFound: geminiResult.screens.length,
-                requirementsFound: geminiResult.requirements.length,
-                extractionSource: "gemini",
+                message: `Found ${glmResult.screens.length} LED display(s)`,
+                specsFound: glmResult.screens.length,
+                requirementsFound: glmResult.requirements.length,
+                extractionSource: "glm5",
               });
 
-              const finalProject = geminiResult.project;
-              const screens = geminiResult.screens;
-              const geminiRequirements = geminiResult.requirements || [];
+              const finalProject = glmResult.project;
+              const screens = glmResult.screens;
+              const glmRequirements = glmResult.requirements || [];
 
               // Provision AnythingLLM workspace
               let workspaceSlug: string | null = null;
@@ -265,7 +265,7 @@ export async function POST(request: NextRequest) {
                     processingTimeMs: Date.now() - startTime,
                     project: finalProject as any,
                     screens: screens as any,
-                    requirements: geminiRequirements as any,
+                    requirements: glmRequirements as any,
                     triage: [],
                     aiWorkspaceSlug: workspaceSlug,
                     createdBy: session?.user?.name || session?.user?.email || null,
@@ -273,7 +273,7 @@ export async function POST(request: NextRequest) {
                 });
                 analysisId = analysis.id;
               } catch (dbErr: any) {
-                log.error("[Pipeline] Gemini DB save failed (non-fatal):", dbErr.message?.slice(0, 200));
+                log.error("[Pipeline] GLM5 DB save failed (non-fatal):", dbErr.message?.slice(0, 200));
               }
 
               send("complete", {
@@ -281,8 +281,8 @@ export async function POST(request: NextRequest) {
                   id: analysisId,
                   project: finalProject,
                   screens,
-                  requirements: geminiRequirements,
-                  stats: { totalPages, extractionSource: "gemini", durationMs: Date.now() - startTime },
+                  requirements: glmRequirements,
+                  stats: { totalPages, extractionSource: "glm5", durationMs: Date.now() - startTime },
                   aiWorkspaceSlug: workspaceSlug,
                 },
               });
@@ -291,7 +291,7 @@ export async function POST(request: NextRequest) {
               controller.close();
               return; // DONE
             } else {
-              log.error("[Pipeline] Gemini returned 0 displays — aborting");
+              log.error("[Pipeline] GLM5 returned 0 displays — aborting");
               send("error", {
                 message: "AI returned 0 displays. Please retry or contact support.",
               });
@@ -299,11 +299,11 @@ export async function POST(request: NextRequest) {
               controller.close();
               return;
             }
-          } catch (geminiErr: any) {
+          } catch (glmErr: any) {
             clearInterval(thinkingInterval);
-            log.error("[Pipeline] Gemini failed:", geminiErr.message);
+            log.error("[Pipeline] GLM5 failed:", glmErr.message);
             send("error", {
-              message: `AI extraction error: ${geminiErr.message}. Please retry or contact support.`,
+              message: `AI extraction error: ${glmErr.message}. Please retry or contact support.`,
             });
             clearInterval(globalHeartbeat);
             controller.close();
