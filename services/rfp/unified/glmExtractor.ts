@@ -126,7 +126,7 @@ async function callGLM5(text: string, prompt: string): Promise<any> {
     body: JSON.stringify({
       model: MODEL,
       messages: [{ role: "user", content: prompt + "\n\n" + text }],
-      max_tokens: 16000,
+      max_tokens: 32000,
       temperature: 0.1,
     }),
   });
@@ -161,73 +161,13 @@ async function extractSections(pdfPath: string): Promise<{ indoor: string; outdo
   unlink(tmpFile).catch(() => {});
 
   // Find indoor and outdoor sections — try multiple patterns
-  // Find the SECTION headers (not ToC entries) for indoor and outdoor
-  // Both sections may share the same number (116843) — match by title
-  const sectionPattern = /SECTION\s+\d+\s*-?\s*(INDOOR|OUTDOOR)\s+LED\s+VIDEOBOARDS/gi;
-  let indoorStart = -1;
-  let outdoorStart = -1;
-  let match;
+  // No section splitting — send the full text (truncated to fit context)
+  // GLM5 has 128K context, full text fits most RFPs
+  const maxChars = 400000; // ~100K tokens
+  const indoor = fullText.substring(0, maxChars);
+  const outdoor = ""; // Single call handles everything
 
-  while ((match = sectionPattern.exec(fullText)) !== null) {
-    const type = match[1].toUpperCase();
-    if (type === "INDOOR" && indoorStart === -1) {
-      indoorStart = match.index;
-      console.log(`[GLM5] Found INDOOR section at offset ${indoorStart}`);
-    } else if (type === "OUTDOOR" && outdoorStart === -1) {
-      outdoorStart = match.index;
-      console.log(`[GLM5] Found OUTDOOR section at offset ${outdoorStart}`);
-    }
-  }
-
-  // Fallback: try broader patterns if SECTION headers not found
-  if (indoorStart === -1) {
-    const fallbackPatterns = [
-      /INDOOR\s+LED\s+VIDEOBOARDS/i,
-      /Pixel\s+Pitch\s+Brightness.*Width.*Height/i,
-    ];
-    for (const pat of fallbackPatterns) {
-      indoorStart = fullText.search(pat);
-      if (indoorStart >= 0) {
-        console.log(`[GLM5] Found indoor via fallback pattern at offset ${indoorStart}`);
-        break;
-      }
-    }
-  }
-
-  if (outdoorStart === -1) {
-    const fallbackPatterns = [
-      /OUTDOOR\s+LED\s+VIDEOBOARDS/i,
-      /Scoreboard.*Pixel\s*Pitch/i,
-    ];
-    for (const pat of fallbackPatterns) {
-      const idx = fullText.search(pat);
-      if (idx >= 0 && idx > indoorStart) {
-        outdoorStart = idx;
-        console.log(`[GLM5] Found outdoor via fallback pattern at offset ${outdoorStart}`);
-        break;
-      }
-    }
-  }
-
-  let indoor = "";
-  let outdoor = "";
-
-  if (indoorStart >= 0) {
-    const indoorEnd = outdoorStart > indoorStart ? outdoorStart : indoorStart + 80000;
-    indoor = fullText.substring(indoorStart, Math.min(indoorEnd, indoorStart + 120000));
-  }
-
-  if (outdoorStart >= 0) {
-    outdoor = fullText.substring(outdoorStart, Math.min(outdoorStart + 80000, fullText.length));
-  }
-
-  // If we couldn't find specific sections, send the full text (truncated)
-  if (!indoor && !outdoor) {
-    console.log(`[GLM5] No section markers found — sending full text (${(fullText.length / 1024).toFixed(0)}KB)`);
-    indoor = fullText.substring(0, 120000);
-  }
-
-  console.log(`[GLM5] Indoor: ${(indoor.length / 1024).toFixed(0)}KB, Outdoor: ${(outdoor.length / 1024).toFixed(0)}KB`);
+  console.log(`[GLM5] Sending full text: ${(indoor.length / 1024).toFixed(0)}KB`);
 
   return { indoor, outdoor, full: fullText };
 }
@@ -255,38 +195,21 @@ export async function extractWithGLM5(
   let project: any = null;
   let allRequirements: any[] = [];
 
-  // Call 1: Indoor sections
-  if (sections.indoor) {
-    options?.onProgress?.("Analyzing indoor LED specifications...");
-    console.log(`[GLM5] Sending indoor section (${(sections.indoor.length / 1024).toFixed(0)}KB)...`);
+  // Single call with full text — let the model find all sections
+  options?.onProgress?.("Analyzing LED specifications...");
+  console.log(`[GLM5] Sending full text (${(sections.indoor.length / 1024).toFixed(0)}KB)...`);
 
-    try {
-      const result = await callGLM5(sections.indoor, EXTRACT_PROMPT);
-      const displays = result.displays || [];
-      allDisplays.push(...displays);
-      project = result.project || project;
-      if (result.requirements) allRequirements.push(...result.requirements);
-      console.log(`[GLM5] Indoor: ${displays.length} displays`);
-    } catch (err: any) {
-      console.error(`[GLM5] Indoor extraction failed:`, err.message);
-    }
-  }
-
-  // Call 2: Outdoor sections
-  if (sections.outdoor) {
-    options?.onProgress?.("Analyzing outdoor LED specifications...");
-    console.log(`[GLM5] Sending outdoor section (${(sections.outdoor.length / 1024).toFixed(0)}KB)...`);
-
-    try {
-      const outdoorPrompt = `Extract ALL outdoor LED displays from this section. There are separate sub-tables for Scoreboards, Ribbon Board LEDs, and Entry LEDs — extract from ALL of them. Return JSON only with the same schema. Set environment to "outdoor" for all.`;
-      const result = await callGLM5(sections.outdoor, outdoorPrompt + "\n\n" + EXTRACT_PROMPT);
-      const displays = result.displays || [];
-      allDisplays.push(...displays);
-      if (result.requirements) allRequirements.push(...result.requirements);
-      console.log(`[GLM5] Outdoor: ${displays.length} displays`);
-    } catch (err: any) {
-      console.error(`[GLM5] Outdoor extraction failed:`, err.message);
-    }
+  try {
+    const fullPrompt = `Extract ALL LED displays (indoor AND outdoor) and requirements from this RFP. The document may have multiple sections — Scoreboards, Ribbon Boards, Entry LEDs — extract from ALL of them. Sections may share the same section number. Do not stop after the first table.\n\n${EXTRACT_PROMPT}`;
+    const result = await callGLM5(sections.indoor, fullPrompt);
+    const displays = result.displays || [];
+    allDisplays.push(...displays);
+    project = result.project || null;
+    if (result.requirements) allRequirements.push(...result.requirements);
+    console.log(`[GLM5] Extracted: ${displays.length} displays`);
+  } catch (err: any) {
+    console.error(`[GLM5] Extraction failed:`, err.message);
+    throw err;
   }
 
   options?.onProgress?.(`Extracted ${allDisplays.length} displays, ${allRequirements.length} requirements`);
