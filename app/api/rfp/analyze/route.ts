@@ -238,21 +238,22 @@ export async function POST(request: NextRequest) {
                 const fileStat2 = await stat(filePath).catch(() => ({ size: 0 }));
                 const analysis = await prisma.rfpAnalysis.create({
                   data: {
-                    sessionId: body.sessionId,
                     filename: body.filename || "RFP",
                     fileSize: fileStat2.size,
-                    totalPages,
+                    pageCount: totalPages,
+                    pdfFilePath: filePath,
+                    projectName: finalProject.projectName,
+                    clientName: finalProject.clientName,
+                    venue: finalProject.venue,
+                    location: finalProject.location,
+                    specsFound: screens.length,
+                    processingTimeMs: Date.now() - startTime,
                     project: finalProject as any,
                     screens: screens as any,
                     requirements: [],
                     triage: [],
-                    stats: {
-                      totalPages,
-                      extractionSource: "openclaw",
-                      durationMs: Date.now() - startTime,
-                    } as any,
-                    workspaceSlug,
-                    userId: session?.user?.id || null,
+                    aiWorkspaceSlug: workspaceSlug,
+                    createdBy: session?.user?.email || null,
                   },
                 });
                 analysisId = analysis.id;
