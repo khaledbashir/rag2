@@ -160,9 +160,45 @@ async function extractSections(pdfPath: string): Promise<{ indoor: string; outdo
   const fullText = await readFile(tmpFile, "utf-8");
   unlink(tmpFile).catch(() => {});
 
-  // Find indoor and outdoor sections
-  const indoorStart = fullText.search(/INDOOR LED VIDEOBOARDS|Indoor LED|116643/i);
-  const outdoorStart = fullText.search(/OUTDOOR LED VIDEOBOARDS|Outdoor LED|116843.*outdoor/i);
+  // Find indoor and outdoor sections — try multiple patterns
+  const indoorPatterns = [
+    /INDOOR\s+LED\s+VIDEOBOARDS/i,
+    /Indoor\s+LED/i,
+    /116643/,
+    /116843.*INDOOR/i,
+    /SECTION\s+11\s*66\s*43/i,
+    /display\s+matrix.*indoor/i,
+    /Pixel\s+Pitch.*Brightness.*Width.*Height/i,  // First display table header
+  ];
+
+  const outdoorPatterns = [
+    /OUTDOOR\s+LED\s+VIDEOBOARDS/i,
+    /Outdoor\s+LED/i,
+    /Scoreboard.*Pixel\s+Pitch/i,
+    /Ribbon\s+Bo?a?r?d?\s+LED/i,
+    /Entry\s+LED/i,
+  ];
+
+  let indoorStart = -1;
+  for (const pat of indoorPatterns) {
+    indoorStart = fullText.search(pat);
+    if (indoorStart >= 0) {
+      console.log(`[GLM5] Found indoor section at offset ${indoorStart} via ${pat}`);
+      break;
+    }
+  }
+
+  let outdoorStart = -1;
+  for (const pat of outdoorPatterns) {
+    const idx = fullText.search(pat);
+    if (idx >= 0 && (idx > indoorStart || indoorStart === -1)) {
+      // Make sure it's after indoor (or indoor not found)
+      if (outdoorStart === -1 || idx < outdoorStart) {
+        outdoorStart = idx;
+        console.log(`[GLM5] Found outdoor section at offset ${outdoorStart} via ${pat}`);
+      }
+    }
+  }
 
   let indoor = "";
   let outdoor = "";
@@ -176,10 +212,13 @@ async function extractSections(pdfPath: string): Promise<{ indoor: string; outdo
     outdoor = fullText.substring(outdoorStart, Math.min(outdoorStart + 80000, fullText.length));
   }
 
-  // If we couldn't find sections, use the whole thing (truncated)
+  // If we couldn't find specific sections, send the full text (truncated)
   if (!indoor && !outdoor) {
+    console.log(`[GLM5] No section markers found — sending full text (${(fullText.length / 1024).toFixed(0)}KB)`);
     indoor = fullText.substring(0, 120000);
   }
+
+  console.log(`[GLM5] Indoor: ${(indoor.length / 1024).toFixed(0)}KB, Outdoor: ${(outdoor.length / 1024).toFixed(0)}KB`);
 
   return { indoor, outdoor, full: fullText };
 }

@@ -27,6 +27,7 @@ import { provisionRfpWorkspace } from "@/services/rfp/unified/rfpWorkspaceProvis
 import { ensureAnythingLlmUser } from "@/services/anythingllm/userProvisioner";
 import { extractWithOpenClaw, isOpenClawAvailable } from "@/services/rfp/unified/openclawExtractor";
 import { extractWithGLM5, isGLM5Available } from "@/services/rfp/unified/glmExtractor";
+import { extractWithAnythingLLM, isAnythingLLMAvailable } from "@/services/rfp/unified/anythingllmExtractor";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 
@@ -291,25 +292,114 @@ export async function POST(request: NextRequest) {
               controller.close();
               return; // DONE
             } else {
-              log.error("[Pipeline] GLM5 returned 0 displays — aborting");
-              send("error", {
-                message: "AI returned 0 displays. Please retry or contact support.",
+              log.warn("[Pipeline] GLM5 returned 0 displays — trying AnythingLLM fallback");
+            }
+          } catch (glmErr: any) {
+            clearInterval(thinkingInterval);
+            log.warn("[Pipeline] GLM5 failed, trying AnythingLLM fallback:", glmErr.message);
+          }
+        }
+
+        // =============================================================
+        // STEP 1.6: AnythingLLM FALLBACK (if GLM5 failed or returned 0)
+        // Upload PDF, embed, use @agent to extract.
+        // =============================================================
+        if (isAnythingLLMAvailable()) {
+          lastHeartbeatStage = "extracting";
+          send("progress", {
+            stage: "extracting",
+            current: 0,
+            total: 1,
+            message: "Switching to fallback AI...",
+          });
+
+          try {
+            const allmResult = await extractWithAnythingLLM(filePath, {
+              timeout: 300,
+              onProgress: (msg) => {
+                send("progress", { stage: "extracting", current: 0, total: 1, message: msg });
+              },
+            });
+
+            if (allmResult.screens.length > 0) {
+              log.info(`[Pipeline] AnythingLLM extracted ${allmResult.screens.length} displays`);
+
+              let totalPages = 0;
+              try {
+                const { stdout: info } = await execFileAsync("pdfinfo", [filePath], { timeout: 30_000 });
+                const match = info.match(/Pages:\s+(\d+)/);
+                totalPages = match ? parseInt(match[1], 10) : 0;
+              } catch { totalPages = 0; }
+
+              send("stage", {
+                stage: "extracted",
+                message: `Found ${allmResult.screens.length} LED display(s)`,
+                specsFound: allmResult.screens.length,
+                requirementsFound: allmResult.requirements.length,
+                extractionSource: "anythingllm",
               });
+
+              const finalProject = allmResult.project;
+              const screens = allmResult.screens;
+              const allmRequirements = allmResult.requirements || [];
+
+              let workspaceSlug: string | null = null;
+              let analysisId: string | null = null;
+              try {
+                const fileStat2 = await stat(filePath).catch(() => ({ size: 0 }));
+                const analysis = await prisma.rfpAnalysis.create({
+                  data: {
+                    filename: body.filename || "RFP",
+                    fileSize: fileStat2.size,
+                    pageCount: totalPages,
+                    pdfFilePath: filePath,
+                    projectName: finalProject.projectName,
+                    clientName: finalProject.clientName,
+                    venue: finalProject.venue,
+                    location: finalProject.location,
+                    specsFound: screens.length,
+                    relevantPages: totalPages,
+                    processingTimeMs: Date.now() - startTime,
+                    project: finalProject as any,
+                    screens: screens as any,
+                    requirements: allmRequirements as any,
+                    triage: [],
+                    aiWorkspaceSlug: workspaceSlug,
+                    createdBy: session?.user?.name || session?.user?.email || null,
+                  },
+                });
+                analysisId = analysis.id;
+              } catch (dbErr: any) {
+                log.error("[Pipeline] AnythingLLM DB save failed (non-fatal):", dbErr.message?.slice(0, 200));
+              }
+
+              send("complete", {
+                result: {
+                  id: analysisId,
+                  project: finalProject,
+                  screens,
+                  requirements: allmRequirements,
+                  stats: { totalPages, extractionSource: "anythingllm", durationMs: Date.now() - startTime },
+                  aiWorkspaceSlug: workspaceSlug,
+                },
+              });
+
               clearInterval(globalHeartbeat);
               controller.close();
               return;
             }
-          } catch (glmErr: any) {
-            clearInterval(thinkingInterval);
-            log.error("[Pipeline] GLM5 failed:", glmErr.message);
-            send("error", {
-              message: `AI extraction error: ${glmErr.message}. Please retry or contact support.`,
-            });
-            clearInterval(globalHeartbeat);
-            controller.close();
-            return;
+          } catch (allmErr: any) {
+            log.error("[Pipeline] AnythingLLM fallback also failed:", allmErr.message);
           }
         }
+
+        // Both GLM5 and AnythingLLM failed
+        send("error", {
+          message: "All extraction methods failed. Please retry or contact support.",
+        });
+        clearInterval(globalHeartbeat);
+        controller.close();
+        return;
 
         // =============================================================
         // STEP 2 (FALLBACK): Local pdftotext — extract text from ALL pages
