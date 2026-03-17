@@ -161,41 +161,50 @@ async function extractSections(pdfPath: string): Promise<{ indoor: string; outdo
   unlink(tmpFile).catch(() => {});
 
   // Find indoor and outdoor sections — try multiple patterns
-  const indoorPatterns = [
-    /INDOOR\s+LED\s+VIDEOBOARDS/i,
-    /Indoor\s+LED/i,
-    /116643/,
-    /116843.*INDOOR/i,
-    /SECTION\s+11\s*66\s*43/i,
-    /display\s+matrix.*indoor/i,
-    /Pixel\s+Pitch.*Brightness.*Width.*Height/i,  // First display table header
-  ];
-
-  const outdoorPatterns = [
-    /OUTDOOR\s+LED\s+VIDEOBOARDS/i,
-    /Outdoor\s+LED/i,
-    /Scoreboard.*Pixel\s+Pitch/i,
-    /Ribbon\s+Bo?a?r?d?\s+LED/i,
-    /Entry\s+LED/i,
-  ];
-
+  // Find the SECTION headers (not ToC entries) for indoor and outdoor
+  // Both sections may share the same number (116843) — match by title
+  const sectionPattern = /SECTION\s+\d+\s*-?\s*(INDOOR|OUTDOOR)\s+LED\s+VIDEOBOARDS/gi;
   let indoorStart = -1;
-  for (const pat of indoorPatterns) {
-    indoorStart = fullText.search(pat);
-    if (indoorStart >= 0) {
-      console.log(`[GLM5] Found indoor section at offset ${indoorStart} via ${pat}`);
-      break;
+  let outdoorStart = -1;
+  let match;
+
+  while ((match = sectionPattern.exec(fullText)) !== null) {
+    const type = match[1].toUpperCase();
+    if (type === "INDOOR" && indoorStart === -1) {
+      indoorStart = match.index;
+      console.log(`[GLM5] Found INDOOR section at offset ${indoorStart}`);
+    } else if (type === "OUTDOOR" && outdoorStart === -1) {
+      outdoorStart = match.index;
+      console.log(`[GLM5] Found OUTDOOR section at offset ${outdoorStart}`);
     }
   }
 
-  let outdoorStart = -1;
-  for (const pat of outdoorPatterns) {
-    const idx = fullText.search(pat);
-    if (idx >= 0 && (idx > indoorStart || indoorStart === -1)) {
-      // Make sure it's after indoor (or indoor not found)
-      if (outdoorStart === -1 || idx < outdoorStart) {
+  // Fallback: try broader patterns if SECTION headers not found
+  if (indoorStart === -1) {
+    const fallbackPatterns = [
+      /INDOOR\s+LED\s+VIDEOBOARDS/i,
+      /Pixel\s+Pitch\s+Brightness.*Width.*Height/i,
+    ];
+    for (const pat of fallbackPatterns) {
+      indoorStart = fullText.search(pat);
+      if (indoorStart >= 0) {
+        console.log(`[GLM5] Found indoor via fallback pattern at offset ${indoorStart}`);
+        break;
+      }
+    }
+  }
+
+  if (outdoorStart === -1) {
+    const fallbackPatterns = [
+      /OUTDOOR\s+LED\s+VIDEOBOARDS/i,
+      /Scoreboard.*Pixel\s*Pitch/i,
+    ];
+    for (const pat of fallbackPatterns) {
+      const idx = fullText.search(pat);
+      if (idx >= 0 && idx > indoorStart) {
         outdoorStart = idx;
-        console.log(`[GLM5] Found outdoor section at offset ${outdoorStart} via ${pat}`);
+        console.log(`[GLM5] Found outdoor via fallback pattern at offset ${outdoorStart}`);
+        break;
       }
     }
   }
