@@ -11,7 +11,7 @@
 
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "./types";
 
-const OPENCLAW_BRIDGE_URL = process.env.OPENCLAW_BRIDGE_URL || "https://claw.basheer.app/bridge";
+const OPENCLAW_BRIDGE_URL = process.env.OPENCLAW_BRIDGE_URL || "http://172.17.0.1:18790";
 const OPENCLAW_TOKEN = process.env.OPENCLAW_TOKEN || "d1cd954f0f49c7e03ed01693727d811bc9778e892d32c5812473e53a8673c144";
 
 // ---------------------------------------------------------------------------
