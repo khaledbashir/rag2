@@ -232,36 +232,34 @@ export async function POST(request: NextRequest) {
                 workspaceSlug = ws?.slug || null;
               } catch { /* workspace provisioning is optional */ }
 
-              // Save to DB
-              const analysis = await prisma.rfpAnalysis.create({
-                data: {
-                  sessionId: body.sessionId,
-                  filename: body.filename || "RFP",
-                  totalPages,
-                  project: finalProject as any,
-                  screens: screens as any,
-                  requirements: [],
-                  triage: [],
-                  stats: {
+              // Save to DB (don't let DB errors kill the extraction result)
+              let analysisId: string | null = null;
+              try {
+                const analysis = await prisma.rfpAnalysis.create({
+                  data: {
+                    sessionId: body.sessionId,
+                    filename: body.filename || "RFP",
                     totalPages,
-                    relevantPages: 0,
-                    noisePages: 0,
-                    drawingPages: 0,
-                    textPages: 0,
-                    visionPages: 0,
-                    visionSuccess: 0,
-                    annotationSpecs: 0,
-                    batchCount: 0,
-                    extractionSource: "openclaw",
-                    durationMs: Date.now() - startTime,
+                    project: finalProject as any,
+                    screens: screens as any,
+                    requirements: [],
+                    triage: [],
+                    stats: {
+                      totalPages,
+                      extractionSource: "openclaw",
+                      durationMs: Date.now() - startTime,
+                    } as any,
+                    workspaceSlug,
+                    userId: session?.user?.id || null,
                   },
-                  workspaceSlug,
-                  userId: session?.user?.id || null,
-                },
-              });
+                });
+                analysisId = analysis.id;
+              } catch (dbErr: any) {
+                log.error("[Pipeline] OpenClaw DB save failed (non-fatal):", dbErr.message?.slice(0, 200));
+              }
 
               send("complete", {
-                analysisId: analysis.id,
+                analysisId,
                 project: finalProject,
                 screens,
                 requirements: [],
