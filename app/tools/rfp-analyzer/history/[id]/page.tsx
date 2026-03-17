@@ -341,7 +341,7 @@ export default function AnalysisDetailPage() {
   }, [autoSaveSpecs]);
 
   const handleRemoveScreen = useCallback((screenName: string) => {
-    if (!confirm(`Remove "${screenName}" from the LED Cost Sheet?`)) return;
+    // No confirmation — just remove like Excel
     setAnalysis((prev) => {
       if (!prev) return prev;
       const screens = prev.screens.filter((s) => s.name !== screenName);

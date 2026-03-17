@@ -753,7 +753,7 @@ export default function RfpAnalyzerClient() {
   }, []);
 
   const handleRemoveScreen = useCallback((screenName: string) => {
-    if (!confirm(`Remove "${screenName}" from the LED Cost Sheet?`)) return;
+    // No confirmation — just remove like Excel
     // Remove from result.screens + editableSpecs
     setResult(prev => {
       if (!prev) return prev;
