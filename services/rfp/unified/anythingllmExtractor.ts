@@ -77,29 +77,10 @@ export async function extractWithAnythingLLM(
   };
 
   const fileName = path.basename(pdfPath);
-  const slugBase = `rfp-extract-${Date.now()}`;
+  const slug = process.env.ALLM_RFP_WORKSPACE_SLUG || "rfp";
 
   try {
-    // 1. Create workspace with extraction system prompt
-    options?.onProgress?.("Creating extraction workspace...");
-    console.log(`[ALLMExtractor] Creating workspace ${slugBase}...`);
-
-    const wsRes = await fetch(`${baseUrl}/workspace/new`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        name: slugBase,
-        openAiTemp: 0.1,
-        openAiPrompt: SYSTEM_PROMPT,
-        agentProvider: "workspace",
-      }),
-    });
-
-    if (!wsRes.ok) throw new Error(`Failed to create workspace: ${wsRes.status}`);
-    const wsData = await wsRes.json();
-    const slug = wsData.workspace?.slug;
-    if (!slug) throw new Error("No workspace slug returned");
-    console.log(`[ALLMExtractor] Workspace created: ${slug}`);
+    console.log(`[ALLMExtractor] Using existing workspace: ${slug}`);
 
     // 2. Upload PDF
     options?.onProgress?.("Uploading PDF to workspace...");
@@ -186,11 +167,7 @@ export async function extractWithAnythingLLM(
     console.log(`[ALLMExtractor] Extracted ${displays.length} displays, ${requirements.length} requirements`);
     options?.onProgress?.(`Extracted ${displays.length} displays, ${requirements.length} requirements`);
 
-    // 5. Clean up — delete workspace (optional, keeps things tidy)
-    try {
-      await fetch(`${baseUrl}/workspace/${slug}`, { method: "DELETE", headers });
-      console.log(`[ALLMExtractor] Cleaned up workspace ${slug}`);
-    } catch {}
+    // Keep workspace alive — it's a permanent workspace, not ephemeral
 
     return {
       screens: mapToSpecs(displays),
@@ -216,10 +193,7 @@ export async function extractWithAnythingLLM(
       source: "anythingllm",
     };
   } catch (err: any) {
-    // Clean up workspace on failure
-    try {
-      await fetch(`${baseUrl}/workspace/${slugBase}`, { method: "DELETE", headers });
-    } catch {}
+    console.error(`[ALLMExtractor] Failed:`, err.message);
     throw err;
   }
 }
