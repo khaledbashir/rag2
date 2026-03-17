@@ -31,7 +31,7 @@ EXTRACTION PROTOCOL:
 Step 1: Locate Project Details (Name, Client, Venue, Address).
 Step 2: Inventory Sections via ToC & Full Scan. Identify all sections related to LED Videoboards, Displays, Scoreboards, Ribbons, Entry LEDs, and Fascia. Scan the entire document body for these keywords, as headers may be misnumbered or duplicated.
 Step 3: Extract Every Display. For every row in EVERY matrix found anywhere in the document:
-- Name/Location: Extract exactly as written.
+- Name/Location: Extract EXACTLY as written in the RFP. Do NOT add numbers, suffixes, or disambiguation (e.g., do NOT write "Panthers Den 1", "Panthers Den 2" — write "Panthers Den" for each row exactly as it appears in the source table).
 - Pixel Pitch / Brightness: Extract numbers. If a range is given, use the highest value.
 - Dimensions: Convert feet and fractional inches into a pure decimal format for width_ft_decimal and height_ft_decimal (e.g., 7' 9" = 7.75; 2' 10 7/16" = 2.87). Round to two decimal places.
 Step 4: Extract Requirements. Scan equipment specs for technical, compliance, and financial mandates.
