@@ -161,13 +161,38 @@ async function extractSections(pdfPath: string): Promise<{ indoor: string; outdo
   unlink(tmpFile).catch(() => {});
 
   // Find indoor and outdoor sections — try multiple patterns
-  // No section splitting — send the full text (truncated to fit context)
-  // GLM5 has 128K context, full text fits most RFPs
-  const maxChars = 400000; // ~100K tokens
-  const indoor = fullText.substring(0, maxChars);
-  const outdoor = ""; // Single call handles everything
+  // Strategy: find ALL LED VIDEOBOARD sections and grab everything between
+  // first section start and end of last section. This gets indoor + outdoor
+  // in one chunk (~140KB) that fits in GLM5's context window.
+  const sectionMatches = [...fullText.matchAll(/SECTION\s+\d+\s*-?\s*(?:INDOOR|OUTDOOR)\s+LED\s+VIDEOBOARDS/gi)];
 
-  console.log(`[GLM5] Sending full text: ${(indoor.length / 1024).toFixed(0)}KB`);
+  let indoor = "";
+  const outdoor = "";
+
+  if (sectionMatches.length > 0) {
+    const start = sectionMatches[0].index!;
+    // Find "PART 3" after the last section (marks end of specs)
+    const lastSection = sectionMatches[sectionMatches.length - 1];
+    let end = fullText.indexOf("PART 3", lastSection.index! + lastSection[0].length);
+    if (end === -1) end = Math.min(start + 200000, fullText.length);
+    else end = Math.min(end + 500, fullText.length); // Include a bit after PART 3
+
+    indoor = fullText.substring(start, end);
+    console.log(`[GLM5] Found ${sectionMatches.length} LED sections, extracted ${(indoor.length / 1024).toFixed(0)}KB (offsets ${start}-${end})`);
+  } else {
+    // No SECTION headers found — try broader search
+    // Look for first display table header
+    const tableStart = fullText.search(/Pixel\s+Pitch\s+Brightness/i);
+    if (tableStart >= 0) {
+      const start = Math.max(0, tableStart - 5000); // Include some context before
+      indoor = fullText.substring(start, Math.min(start + 200000, fullText.length));
+      console.log(`[GLM5] No SECTION headers — found display table at offset ${tableStart}, extracted ${(indoor.length / 1024).toFixed(0)}KB`);
+    } else {
+      // Last resort — send full text truncated
+      indoor = fullText.substring(0, 120000);
+      console.log(`[GLM5] No LED markers found — sending first ${(indoor.length / 1024).toFixed(0)}KB of full text`);
+    }
+  }
 
   return { indoor, outdoor, full: fullText };
 }
