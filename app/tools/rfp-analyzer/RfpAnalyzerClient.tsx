@@ -695,10 +695,8 @@ export default function RfpAnalyzerClient() {
   }, []);
 
   const handleAddScreen = useCallback(() => {
-    const name = prompt("Display name (e.g., 'Main Scoreboard'):");
-    if (!name?.trim()) return;
     const newSpec: ExtractedLEDSpec = {
-      name: name.trim(),
+      name: `New Display ${(screens?.length || 0) + 1}`,
       location: "",
       pixelPitchMm: null,
       widthFt: 0,
