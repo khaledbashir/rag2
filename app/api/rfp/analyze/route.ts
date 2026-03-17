@@ -219,6 +219,7 @@ export async function POST(request: NextRequest) {
               // Skip to final delivery
               const finalProject = clawResult.project;
               const screens = clawResult.screens;
+              const clawRequirements = clawResult.requirements || [];
 
               // Provision AnythingLLM workspace
               let workspaceSlug: string | null = null;
@@ -250,7 +251,7 @@ export async function POST(request: NextRequest) {
                     processingTimeMs: Date.now() - startTime,
                     project: finalProject as any,
                     screens: screens as any,
-                    requirements: [],
+                    requirements: clawRequirements as any,
                     triage: [],
                     aiWorkspaceSlug: workspaceSlug,
                     createdBy: session?.user?.email || null,
@@ -266,7 +267,7 @@ export async function POST(request: NextRequest) {
                   id: analysisId,
                   project: finalProject,
                   screens,
-                  requirements: [],
+                  requirements: clawRequirements,
                   stats: { totalPages, extractionSource: "openclaw", durationMs: Date.now() - startTime },
                   aiWorkspaceSlug: workspaceSlug,
                 },

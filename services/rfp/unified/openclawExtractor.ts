@@ -126,6 +126,7 @@ export async function extractWithOpenClaw(
 ): Promise<{
   screens: ExtractedLEDSpec[];
   project: ExtractedProjectInfo;
+  requirements: any[];
   source: "openclaw";
 }> {
   const timeout = options?.timeout || 300;
@@ -159,13 +160,22 @@ export async function extractWithOpenClaw(
     const data = await res.json();
     const displays: OpenClawDisplay[] = data.displays || data.screens || [];
     const project = data.project || null;
+    const requirements = (data.requirements || []).map((r: any) => ({
+      description: r.description || r.text || "",
+      category: r.category || "technical",
+      status: r.status || "info",
+      date: r.date || null,
+      sourcePages: r.source_pages || r.sourcePages || [],
+      rawText: r.raw_text || r.rawText || r.description || "",
+    }));
 
-    options?.onProgress?.(`Extracted ${displays.length} displays`);
-    console.log(`[OpenClaw] Extracted ${displays.length} displays from ${pdfPath}`);
+    options?.onProgress?.(`Extracted ${displays.length} displays, ${requirements.length} requirements`);
+    console.log(`[OpenClaw] Extracted ${displays.length} displays, ${requirements.length} requirements from ${pdfPath}`);
 
     return {
       screens: mapToExtractedSpecs(displays),
       project: mapToProjectInfo(project),
+      requirements,
       source: "openclaw",
     };
   } catch (err: any) {
