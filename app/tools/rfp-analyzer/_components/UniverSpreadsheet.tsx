@@ -228,7 +228,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     columnData: psColWidths,
     mergeData: [],
     showGridlines: 1,
-    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: true, formatColumns: true, formatRows: true, insertColumns: true, insertRows: true, insertHyperlinks: true, deleteColumns: true, deleteRows: true, sort: true, autoFilter: true, pivotTable: true },
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
   };
 
   // === SHEET 1: LED Cost Sheet — full 20 columns ===
@@ -813,7 +813,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     columnData: tsColWidths,
     mergeData: [],
     showGridlines: 1,
-    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: true, formatColumns: true, formatRows: true, insertColumns: true, insertRows: true, insertHyperlinks: true, deleteColumns: true, deleteRows: true, sort: true, autoFilter: true, pivotTable: true },
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
   };
 
   // === SHEET 4: Bundle Equipment — Processor & Equipment component breakdown ===
@@ -1057,7 +1057,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     columnData: ldrColWidths,
     mergeData: [],
     showGridlines: 1,
-    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: true, formatColumns: true, formatRows: true, insertColumns: true, insertRows: true, insertHyperlinks: true, deleteColumns: true, deleteRows: true, sort: true, autoFilter: true, pivotTable: true },
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
   };
 
   // === SHEET 6: Form ===
@@ -1093,7 +1093,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     columnData: { 0: { w: 140 }, 1: { w: 200 } },
     mergeData: [],
     showGridlines: 1,
-    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: true, formatColumns: true, formatRows: true, insertColumns: true, insertRows: true, insertHyperlinks: true, deleteColumns: true, deleteRows: true, sort: true, autoFilter: true, pivotTable: true },
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
   };
 
   // === SHEET 7: Config ===
@@ -1130,7 +1130,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     columnData: { 0: { w: 140 }, 1: { w: 100 }, 2: { w: 250 } },
     mergeData: [],
     showGridlines: 1,
-    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: true, formatColumns: true, formatRows: true, insertColumns: true, insertRows: true, insertHyperlinks: true, deleteColumns: true, deleteRows: true, sort: true, autoFilter: true, pivotTable: true },
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
   };
 
   // === SHEET 8: Pricing ===
@@ -1195,7 +1195,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     columnData: { 0: { w: 150 }, 1: { w: 120 }, 2: { w: 120 }, 3: { w: 100 } },
     mergeData: [],
     showGridlines: 1,
-    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: true, formatColumns: true, formatRows: true, insertColumns: true, insertRows: true, insertHyperlinks: true, deleteColumns: true, deleteRows: true, sort: true, autoFilter: true, pivotTable: true },
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
   };
 
   // === SHEET 9: Extended Warranty (ANC) ===
@@ -1235,7 +1235,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     columnData: { 0: { w: 80 }, 1: { w: 100 }, 2: { w: 100 }, 3: { w: 100 }, 4: { w: 100 } },
     mergeData: [],
     showGridlines: 1,
-    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: true, formatColumns: true, formatRows: true, insertColumns: true, insertRows: true, insertHyperlinks: true, deleteColumns: true, deleteRows: true, sort: true, autoFilter: true, pivotTable: true },
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
   };
 
   // === SHEET 10: Resp Matrix ===
@@ -1329,7 +1329,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     columnData: { 0: { w: 350 }, 1: { w: 80 }, 2: { w: 80 } },
     mergeData: [],
     showGridlines: 1,
-    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: true, formatColumns: true, formatRows: true, insertColumns: true, insertRows: true, insertHyperlinks: true, deleteColumns: true, deleteRows: true, sort: true, autoFilter: true, pivotTable: true },
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
   };
 
   // === SHEET 11: Margin Analysis (CMS Only) ===
@@ -1447,7 +1447,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     columnData: { 0: { w: 30 }, 1: { w: 150 }, 2: { w: 80 }, 3: { w: 80 }, 4: { w: 100 } },
     mergeData: [],
     showGridlines: 1,
-    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: true, formatColumns: true, formatRows: true, insertColumns: true, insertRows: true, insertHyperlinks: true, deleteColumns: true, deleteRows: true, sort: true, autoFilter: true, pivotTable: true },
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
   };
 
   // === SHEET 13: P&L ===
@@ -1511,7 +1511,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     columnData: { 0: { w: 180 }, 1: { w: 120 }, 2: { w: 120 }, 3: { w: 120 } },
     mergeData: [],
     showGridlines: 1,
-    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: true, formatColumns: true, formatRows: true, insertColumns: true, insertRows: true, insertHyperlinks: true, deleteColumns: true, deleteRows: true, sort: true, autoFilter: true, pivotTable: true },
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
   };
 
   // === SHEET 14: PO's ===
@@ -1550,7 +1550,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     columnData: { 0: { w: 100 }, 1: { w: 150 }, 2: { w: 200 }, 3: { w: 150 }, 4: { w: 100 } },
     mergeData: [],
     showGridlines: 1,
-    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: true, formatColumns: true, formatRows: true, insertColumns: true, insertRows: true, insertHyperlinks: true, deleteColumns: true, deleteRows: true, sort: true, autoFilter: true, pivotTable: true },
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
   };
 
   // === SHEET 15: Cash Flow ===
@@ -1607,7 +1607,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     columnData: { 0: { w: 30 }, 1: { w: 120 }, 2: { w: 120 }, 3: { w: 120 }, 4: { w: 100 }, 5: { w: 120 } },
     mergeData: [],
     showGridlines: 1,
-    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: true, formatColumns: true, formatRows: true, insertColumns: true, insertRows: true, insertHyperlinks: true, deleteColumns: true, deleteRows: true, sort: true, autoFilter: true, pivotTable: true },
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
   };
 
   // === SHEET 16: BID FORM ===
@@ -1663,7 +1663,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     columnData: { 0: { w: 60 }, 1: { w: 200 }, 2: { w: 80 }, 3: { w: 100 }, 4: { w: 120 } },
     mergeData: [],
     showGridlines: 1,
-    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: true, formatColumns: true, formatRows: true, insertColumns: true, insertRows: true, insertHyperlinks: true, deleteColumns: true, deleteRows: true, sort: true, autoFilter: true, pivotTable: true },
+    protection: { selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: false, formatRows: false, insertColumns: false, insertRows: false, insertHyperlinks: false, deleteColumns: false, deleteRows: false, sort: false, autoFilter: false, pivotTable: false },
   };
 
   // === Budget Summary — per-category aggregate (matches Excel Budget Summary tab) ===
