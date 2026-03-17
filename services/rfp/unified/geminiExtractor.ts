@@ -20,31 +20,34 @@ const GEMINI_MODEL = "gemini-3.1-pro-preview";
 const SYSTEM_PROMPT = `You are an expert AV/Construction RFP Data Extraction Engine. Your sole purpose is to parse massive bid documents, project manuals, and RFPs to extract LED display specifications and project requirements.
 
 CRITICAL DIRECTIVES - READ BEFORE PROCEEDING:
-1. EXHAUSTIVE SEARCH: Project manuals split displays across multiple sections (e.g., Indoor, Outdoor, Ribbon, Scoreboard, Fascia, Entry LED). You MUST scan the ENTIRE document from start to end. WARNING: Some documents have DUPLICATE section numbers where Indoor and Outdoor sections share the same header number (e.g., both labeled "116843"). You MUST parse ALL sections with display matrices regardless of section numbering. Never assume a repeated section number means duplicate content.
+
+1. END-TO-END EXHAUSTIVE SEARCH: Bid documents frequently contain typos, duplicate section numbers, out-of-order pages, and fragmented tables. You MUST evaluate the text from the very first word to the absolute final word of the document. Do not stop parsing or assume you are finished just because a section appears to end, a header repeats, or a new division begins.
 2. ZERO HALLUCINATION: You must ONLY extract data that explicitly exists in the provided text. If a value is missing, use null. Do not guess, infer, or create data.
-3. CONTINUOUS PARSING: Tables often span across multiple pages. You must connect rows across page breaks. You MUST continue scanning until you reach the absolute end of the document.
+3. CONTINUOUS TABLE PARSING: Display matrices often span across multiple pages or are interrupted by other text. You must connect rows across page breaks and scan the entire document to ensure no matrix fragments are left behind.
 4. NO DEDUPLICATION: Identical names or specs on different rows mean separate physical displays. Extract every single row as an independent object.
 5. STRICT JSON ONLY: Your entire response must be a single, valid JSON object. No markdown formatting, no preamble, no explanations.
 
 EXTRACTION PROTOCOL:
 Step 1: Locate Project Details (Name, Client, Venue, Address).
-Step 2: Inventory Sections. Search the ENTIRE document for ALL occurrences of "LED Videoboards", "Display Matrix", "Scoreboard", "Ribbon", "Entry LED", "Fascia", and section numbers like 116643 or 116843. You must find EVERY display matrix in the document — there are typically separate matrices for Scoreboards, Ribbon Boards, and Entry LEDs within the outdoor section alone.
-Step 3: Extract Every Display. For every row in EVERY matrix found:
+Step 2: Inventory Sections via ToC & Full Scan. Identify all sections related to LED Videoboards, Displays, Scoreboards, Ribbons, Entry LEDs, and Fascia. Scan the entire document body for these keywords, as headers may be misnumbered or duplicated.
+Step 3: Extract Every Display. For every row in EVERY matrix found anywhere in the document:
 - Name/Location: Extract exactly as written.
 - Pixel Pitch / Brightness: Extract numbers. If a range is given, use the highest value.
 - Dimensions: Convert feet and fractional inches into a pure decimal format for width_ft_decimal and height_ft_decimal (e.g., 7' 9" = 7.75; 2' 10 7/16" = 2.87). Round to two decimal places.
 Step 4: Extract Requirements. Scan equipment specs for technical, compliance, and financial mandates.
 
 OUTPUT FORMAT:
-Return ONLY a JSON object matching the exact schema. You MUST complete the "_extraction_log" first to guarantee you have found all screens. After filling the displays array, compare its length to total_displays_counted_in_text — if they don't match, you missed something.`;
+Return ONLY a JSON object matching the exact schema. You MUST complete the _extraction_log first to guarantee you have reached the end of the file.`;
 
 const USER_PROMPT = `Extract ALL LED displays and requirements from this RFP document. Return JSON with this exact schema:
 
 {
   "_extraction_log": {
-    "sections_found": ["List the specific section names/numbers you found (e.g., Indoor 116643, Outdoor 116843)"],
+    "sections_found": ["List all specific section names/numbers found in the body"],
+    "anomalies_detected": ["List any formatting errors you ignored to keep parsing, e.g., 'Duplicate header 116843 found'"],
     "total_displays_counted_in_text": 0,
-    "step_by_step_verification": "Briefly state how you ensured you didn't miss any tables across page breaks."
+    "reached_end_of_document": true,
+    "step_by_step_verification": "Briefly state how you ensured you scanned the entire document and didn't stop at false boundaries."
   },
   "project": {
     "name": "Project Name",
@@ -311,9 +314,12 @@ export async function extractWithGemini(
 
     // Log the extraction log (chain-of-thought) for debugging
     if (parsed._extraction_log) {
-      console.log(`[GeminiExtractor] Extraction log:`, JSON.stringify(parsed._extraction_log));
-      console.log(`[GeminiExtractor] Sections found: ${parsed._extraction_log.sections_found?.join(", ")}`);
-      console.log(`[GeminiExtractor] Total displays counted in text: ${parsed._extraction_log.total_displays_counted_in_text}`);
+      const elog = parsed._extraction_log;
+      console.log(`[GeminiExtractor] Sections found: ${elog.sections_found?.join(", ")}`);
+      console.log(`[GeminiExtractor] Anomalies: ${elog.anomalies_detected?.join(", ") || "none"}`);
+      console.log(`[GeminiExtractor] Displays counted in text: ${elog.total_displays_counted_in_text}`);
+      console.log(`[GeminiExtractor] Reached EOF: ${elog.reached_end_of_document}`);
+      console.log(`[GeminiExtractor] Verification: ${elog.step_by_step_verification}`);
     }
 
     const displays = Array.isArray(parsed.displays) ? parsed.displays : [];
