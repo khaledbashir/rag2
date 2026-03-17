@@ -278,23 +278,23 @@ export async function POST(request: NextRequest) {
               controller.close();
               return; // DONE — skip entire Mistral/Gemini pipeline
             } else {
-              log.warn("[Pipeline] OpenClaw returned 0 displays — falling back to Mistral/Gemini");
-              send("progress", {
-                stage: "extracting",
-                current: 0,
-                total: 1,
-                message: "AI agent found no displays — falling back to standard pipeline...",
+              log.error("[Pipeline] OpenClaw returned 0 displays — aborting");
+              send("error", {
+                message: "AI agent returned 0 displays. Please retry or contact support.",
               });
+              clearInterval(globalHeartbeat);
+              controller.close();
+              return;
             }
           } catch (clawErr: any) {
             clearInterval(clawHeartbeat);
-            log.error("[Pipeline] OpenClaw failed, falling back:", clawErr.message);
-            send("progress", {
-              stage: "extracting",
-              current: 0,
-              total: 1,
-              message: "AI agent unavailable — using standard extraction...",
+            log.error("[Pipeline] OpenClaw failed:", clawErr.message);
+            send("error", {
+              message: `AI agent error: ${clawErr.message}. Please retry or contact support.`,
             });
+            clearInterval(globalHeartbeat);
+            controller.close();
+            return;
           }
         }
 
