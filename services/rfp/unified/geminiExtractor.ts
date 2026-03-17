@@ -10,7 +10,7 @@
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "./types";
 import { readFile } from "fs/promises";
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AQ.Ab8RN6LEDlYw3USXcpizFXHzgrQDqFZCZU7k1O3iYmc1UzC6WQ";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AQ.Ab8RN6JwV9a4iFiNkS8ugjS3IPLG3etdk-AcFq_3Cr9imNsUDw";
 const GEMINI_MODEL = "gemini-3.1-pro-preview";
 
 // ---------------------------------------------------------------------------
