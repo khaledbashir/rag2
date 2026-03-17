@@ -705,15 +705,15 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                     {showPricingTables && shouldPushPricingToNewPage && <PageBreak />}
                     {showPricingTables && shouldPushPricingToNewPage && <ContinuationPageHeader />}
 
+                    {/* Master table (project grand total) — on TOP before detail tables */}
+                    {showPricingTables && masterTableIndex !== null && <MasterTableSummarySection />}
+
                     {/* Pricing tables (individual display breakdowns) */}
                     {showPricingTables && (
                         <div className="px-6">
                             <PricingSection />
                         </div>
                     )}
-
-                    {/* Master table (project grand total) — BELOW the options per Jireh's requirement */}
-                    {showPricingTables && masterTableIndex !== null && <MasterTableSummarySection />}
 
                     {showNotes && (
                         <div className="px-6">
