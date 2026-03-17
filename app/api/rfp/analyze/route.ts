@@ -235,10 +235,12 @@ export async function POST(request: NextRequest) {
               // Save to DB (don't let DB errors kill the extraction result)
               let analysisId: string | null = null;
               try {
+                const fileStat2 = await stat(filePath).catch(() => ({ size: 0 }));
                 const analysis = await prisma.rfpAnalysis.create({
                   data: {
                     sessionId: body.sessionId,
                     filename: body.filename || "RFP",
+                    fileSize: fileStat2.size,
                     totalPages,
                     project: finalProject as any,
                     screens: screens as any,
