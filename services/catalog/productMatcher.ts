@@ -97,23 +97,21 @@ export class ProductMatcher {
                 });
                 if (suitable.length === 0) suitable = dbProducts;
 
-                // Score by pitch closeness + size appropriateness
-                // Small cabinets (< 1sqm) shouldn't match large displays (> 50 sqft)
+                // Score by pitch closeness + type appropriateness
+                // Courtside tables, stanchions, clocks should NOT match corridor/scoreboard displays
                 const displayAreaSqFt = spec.widthFt * spec.heightFt;
+                const isLargeDisplay = displayAreaSqFt > 50;
+                const SPECIALTY_PATTERNS = /courtside|stanchion|clock|table|counter|desk/i;
+
                 suitable.sort((a, b) => {
                     const pitchA = Math.abs(a.pixelPitch - targetPitch);
                     const pitchB = Math.abs(b.pixelPitch - targetPitch);
 
-                    // Penalize tiny products (table displays, countertops) for large screens
-                    const cabAreaA = (a.cabinetWidthMm * a.cabinetHeightMm) / 1e6; // sq meters
-                    const cabAreaB = (b.cabinetWidthMm * b.cabinetHeightMm) / 1e6;
-                    const isTinyA = cabAreaA < 0.15; // < 0.15 sqm = table/countertop display
-                    const isTinyB = cabAreaB < 0.15;
-                    const isLargeDisplay = displayAreaSqFt > 30;
-
-                    // If display is large and product is tiny, add huge penalty
-                    const penaltyA = (isLargeDisplay && isTinyA) ? 100 : 0;
-                    const penaltyB = (isLargeDisplay && isTinyB) ? 100 : 0;
+                    // Penalize specialty products (tables, stanchions) for large displays
+                    const isSpecialtyA = SPECIALTY_PATTERNS.test(a.displayName);
+                    const isSpecialtyB = SPECIALTY_PATTERNS.test(b.displayName);
+                    const penaltyA = (isLargeDisplay && isSpecialtyA) ? 100 : 0;
+                    const penaltyB = (isLargeDisplay && isSpecialtyB) ? 100 : 0;
 
                     return (pitchA + penaltyA) - (pitchB + penaltyB);
                 });
