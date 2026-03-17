@@ -613,7 +613,7 @@ export default function AnalysisDetailPage() {
                 <p className="text-sm text-blue-700 dark:text-blue-300">Matching products...</p>
               </div>
             )}
-            <div className="h-[75vh]">
+            <div className="h-[calc(100vh-180px)]">
             <WorkbookShell
               data={workbookData}
               editable
@@ -709,7 +709,7 @@ export default function AnalysisDetailPage() {
                 </button>
               </div>
             )}
-            <div className="h-[75vh]">
+            <div className="h-[calc(100vh-180px)]">
             <WorkbookShell
               data={workbookData}
               editable
