@@ -695,7 +695,8 @@ function buildProcessorCount(input: RfpWorkbookInput): SheetTab {
 // Sheet 6: Page Triage
 // ═══════════════════════════════════════════════════════════════════════════
 
-function buildPageTriage(input: RfpWorkbookInput): SheetTab {
+function buildPageTriage(input: RfpWorkbookInput): SheetTab | null {
+  if (!input.triage || input.triage.length === 0) return null;
   const cols = ["Page", "Category", "Relevance", "Drawing"];
 
   const headerRow: SheetRow = {
