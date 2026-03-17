@@ -1045,7 +1045,7 @@ export default function RfpAnalyzerClient() {
               setPhase("results");
               // Persist analysis ID in URL for reload survival
               if (event.result.id) {
-                router.replace(`/tools/rfp-analyzer?id=${event.result.id}`, { scroll: false });
+                router.push(`/tools/rfp-analyzer/history/${event.result.id}`);
               }
             }
 
@@ -1118,7 +1118,7 @@ export default function RfpAnalyzerClient() {
       setPhase("results");
       // Persist analysis ID in URL for reload survival
       if (analysisResult.id) {
-        router.replace(`/tools/rfp-analyzer?id=${analysisResult.id}`, { scroll: false });
+        router.push(`/tools/rfp-analyzer/history/${analysisResult.id}`);
       }
     } catch (err: any) {
       console.error("Excel upload error:", err);
@@ -1259,7 +1259,7 @@ export default function RfpAnalyzerClient() {
               setPhase("results");
               // Persist analysis ID in URL for reload survival
               if (event.result.id) {
-                router.replace(`/tools/rfp-analyzer?id=${event.result.id}`, { scroll: false });
+                router.push(`/tools/rfp-analyzer/history/${event.result.id}`);
               }
             }
 
