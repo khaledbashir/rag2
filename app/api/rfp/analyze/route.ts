@@ -248,13 +248,14 @@ export async function POST(request: NextRequest) {
                     venue: finalProject.venue,
                     location: finalProject.location,
                     specsFound: screens.length,
+                    relevantPages: totalPages,
                     processingTimeMs: Date.now() - startTime,
                     project: finalProject as any,
                     screens: screens as any,
                     requirements: clawRequirements as any,
                     triage: [],
                     aiWorkspaceSlug: workspaceSlug,
-                    createdBy: session?.user?.email || null,
+                    createdBy: session?.user?.name || session?.user?.email || null,
                   },
                 });
                 analysisId = analysis.id;
