@@ -526,13 +526,24 @@ function StatPill({
 // ---------------------------------------------------------------------------
 
 function buildStages(events: PipelineEvent[]): StageState[] {
-  const stages: StageState[] = [
-    { key: "upload",  label: "Upload",     activeLabel: "Uploading...",         icon: UploadCloud, status: "pending" },
-    { key: "ocr",     label: "Text OCR",   activeLabel: "Extracting text...",   icon: Database,    status: "pending" },
-    { key: "triage",  label: "Classify",   activeLabel: "Classifying pages...", icon: Filter,      status: "pending" },
-    { key: "vision",  label: "Vision",     activeLabel: "Reading drawings...",  icon: Eye,         status: "pending" },
-    { key: "extract", label: "Extract",    activeLabel: "Extracting specs...",  icon: Sparkles,    status: "pending" },
-  ];
+  // Check if OpenClaw is handling this (simplified UX)
+  const isOpenClaw = events.some((e) =>
+    (e as any).extractionSource === "openclaw" ||
+    (e.message && e.message.includes("AI agent"))
+  );
+
+  const stages: StageState[] = isOpenClaw
+    ? [
+        { key: "upload",  label: "Upload",   activeLabel: "Uploading...",       icon: UploadCloud, status: "pending" },
+        { key: "extract", label: "Analyze",  activeLabel: "AI analyzing PDF...", icon: Sparkles,    status: "pending" },
+      ]
+    : [
+        { key: "upload",  label: "Upload",     activeLabel: "Uploading...",         icon: UploadCloud, status: "pending" },
+        { key: "ocr",     label: "Text OCR",   activeLabel: "Extracting text...",   icon: Database,    status: "pending" },
+        { key: "triage",  label: "Classify",   activeLabel: "Classifying pages...", icon: Filter,      status: "pending" },
+        { key: "vision",  label: "Vision",     activeLabel: "Reading drawings...",  icon: Eye,         status: "pending" },
+        { key: "extract", label: "Extract",    activeLabel: "Extracting specs...",  icon: Sparkles,    status: "pending" },
+      ];
 
   let currentActive: string | null = null;
 
@@ -546,35 +557,38 @@ function buildStages(events: PipelineEvent[]): StageState[] {
         markDone(stages, "upload");
       } else if (s === "reading" || s === "ocr") {
         markDone(stages, "upload");
-        currentActive = "ocr";
+        if (!isOpenClaw) currentActive = "ocr";
       } else if (s === "ocr_done") {
-        markDone(stages, "ocr");
+        if (!isOpenClaw) markDone(stages, "ocr");
         const st = stages.find((x) => x.key === "ocr");
         if (st && event.totalPages) st.count = `${event.totalPages.toLocaleString()} pages`;
       } else if (s === "triaging") {
-        markDone(stages, "ocr");
-        currentActive = "triage";
+        if (!isOpenClaw) { markDone(stages, "ocr"); currentActive = "triage"; }
       } else if (s === "triaged") {
-        markDone(stages, "triage");
-        const st = stages.find((x) => x.key === "triage");
-        if (st && event.relevant != null && event.noise != null) {
-          st.count = `${event.relevant} kept`;
+        if (!isOpenClaw) {
+          markDone(stages, "triage");
+          const st = stages.find((x) => x.key === "triage");
+          if (st && event.relevant != null && event.noise != null) {
+            st.count = `${event.relevant} kept`;
+          }
         }
       } else if (s === "processing_text" || s === "vision") {
-        markDone(stages, "triage");
-        currentActive = "vision";
+        if (!isOpenClaw) { markDone(stages, "triage"); currentActive = "vision"; }
       } else if (s === "vision_done") {
-        markDone(stages, "vision");
-        const st = stages.find((x) => x.key === "vision");
-        if (st) {
-          const parts: string[] = [];
-          if ((event as any).textPages != null) parts.push(`${(event as any).textPages} text`);
-          if ((event as any).visionPages != null && (event as any).visionPages > 0) parts.push(`${(event as any).visionPages} vision`);
-          if ((event as any).annotationSpecs != null && (event as any).annotationSpecs > 0) parts.push(`${(event as any).annotationSpecs} AI specs`);
-          if (parts.length > 0) st.count = parts.join(" + ");
+        if (!isOpenClaw) {
+          markDone(stages, "vision");
+          const st = stages.find((x) => x.key === "vision");
+          if (st) {
+            const parts: string[] = [];
+            if ((event as any).textPages != null) parts.push(`${(event as any).textPages} text`);
+            if ((event as any).visionPages != null && (event as any).visionPages > 0) parts.push(`${(event as any).visionPages} vision`);
+            if ((event as any).annotationSpecs != null && (event as any).annotationSpecs > 0) parts.push(`${(event as any).annotationSpecs} AI specs`);
+            if (parts.length > 0) st.count = parts.join(" + ");
+          }
         }
       } else if (s === "extracting") {
-        markDone(stages, "vision");
+        markDone(stages, "upload");
+        if (!isOpenClaw) markDone(stages, "vision");
         currentActive = "extract";
       } else if (s === "extracted") {
         markDone(stages, "extract");
