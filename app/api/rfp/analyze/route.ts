@@ -167,9 +167,135 @@ export async function POST(request: NextRequest) {
         const sizeMb = (fileStat.size / 1024 / 1024).toFixed(1);
 
         // =============================================================
-        // STEP 2: Local pdftotext — extract text from ALL pages
-        // Uses poppler-utils CLI, reads from disk, zero memory in Node.js.
-        // No network transfer (unlike Kreuzberg which chokes on 631MB).
+        // STEP 1.5: OpenClaw PRIMARY extraction (if available)
+        // OpenClaw runs its own pdftotext + extraction internally.
+        // If it succeeds, skip the entire Mistral/Gemini pipeline.
+        // =============================================================
+        if (isOpenClawAvailable()) {
+          lastHeartbeatStage = "extracting";
+          send("stage", {
+            stage: "extracting",
+            message: `Analyzing PDF with AI agent (${sizeMb}MB)...`,
+          });
+
+          const clawHeartbeat = setInterval(() => {
+            send("progress", {
+              stage: "extracting",
+              current: 0,
+              total: 1,
+              message: "AI agent analyzing document...",
+            });
+          }, 15_000);
+
+          try {
+            const clawResult = await extractWithOpenClaw(filePath, {
+              timeout: 300,
+              onProgress: (msg) => {
+                send("progress", { stage: "extracting", current: 0, total: 1, message: msg });
+              },
+            });
+
+            clearInterval(clawHeartbeat);
+
+            if (clawResult.screens.length > 0) {
+              log.info(`[Pipeline] OpenClaw extracted ${clawResult.screens.length} displays — skipping Mistral/Gemini`);
+
+              // Get page count for stats
+              let totalPages = 0;
+              try {
+                const { stdout: info } = await execFileAsync("pdfinfo", [filePath], { timeout: 30_000 });
+                const match = info.match(/Pages:\s+(\d+)/);
+                totalPages = match ? parseInt(match[1], 10) : 0;
+              } catch { totalPages = 0; }
+
+              send("stage", {
+                stage: "extracted",
+                message: `Found ${clawResult.screens.length} LED display(s)`,
+                specsFound: clawResult.screens.length,
+                requirementsFound: 0,
+                extractionSource: "openclaw",
+              });
+
+              // Skip to final delivery
+              const finalProject = clawResult.project;
+              const screens = clawResult.screens;
+
+              // Provision AnythingLLM workspace
+              let workspaceSlug: string | null = null;
+              try {
+                const ws = await provisionRfpWorkspace(
+                  filePath,
+                  body.filename || "RFP",
+                  body.sessionId,
+                  anythingLlmUserId,
+                );
+                workspaceSlug = ws?.slug || null;
+              } catch { /* workspace provisioning is optional */ }
+
+              // Save to DB
+              const analysis = await prisma.rfpAnalysis.create({
+                data: {
+                  sessionId: body.sessionId,
+                  filename: body.filename || "RFP",
+                  totalPages,
+                  project: finalProject as any,
+                  screens: screens as any,
+                  requirements: [],
+                  triage: [],
+                  stats: {
+                    totalPages,
+                    relevantPages: 0,
+                    noisePages: 0,
+                    drawingPages: 0,
+                    textPages: 0,
+                    visionPages: 0,
+                    visionSuccess: 0,
+                    annotationSpecs: 0,
+                    batchCount: 0,
+                    extractionSource: "openclaw",
+                    durationMs: Date.now() - startTime,
+                  },
+                  workspaceSlug,
+                  userId: session?.user?.id || null,
+                },
+              });
+
+              send("complete", {
+                analysisId: analysis.id,
+                project: finalProject,
+                screens,
+                requirements: [],
+                stats: { totalPages, extractionSource: "openclaw", durationMs: Date.now() - startTime },
+                workspaceSlug,
+              });
+
+              clearInterval(globalHeartbeat);
+              controller.close();
+              return; // DONE — skip entire Mistral/Gemini pipeline
+            } else {
+              log.warn("[Pipeline] OpenClaw returned 0 displays — falling back to Mistral/Gemini");
+              send("progress", {
+                stage: "extracting",
+                current: 0,
+                total: 1,
+                message: "AI agent found no displays — falling back to standard pipeline...",
+              });
+            }
+          } catch (clawErr: any) {
+            clearInterval(clawHeartbeat);
+            log.error("[Pipeline] OpenClaw failed, falling back:", clawErr.message);
+            send("progress", {
+              stage: "extracting",
+              current: 0,
+              total: 1,
+              message: "AI agent unavailable — using standard extraction...",
+            });
+          }
+        }
+
+        // =============================================================
+        // STEP 2 (FALLBACK): Local pdftotext — extract text from ALL pages
+        // Only runs if OpenClaw failed or is unavailable.
         // =============================================================
         lastHeartbeatStage = "ocr";
         send("stage", {
