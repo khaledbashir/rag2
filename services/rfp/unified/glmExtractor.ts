@@ -17,7 +17,14 @@ const ZAI_API_KEY = process.env.ZAI_API_KEY || "cd430c4ccd5a4e3c8994d3c1cf022fba
 const ZAI_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions";
 const MODEL = "glm-4.7";
 
-const EXTRACT_PROMPT = `Extract ALL LED displays from this RFP text. Return JSON only with this exact schema. Each row = one display. NEVER deduplicate. NEVER add numbers to names. Extract EXACTLY as written.
+const EXTRACT_PROMPT = `Extract ALL LED displays from this RFP text. Return JSON only with this exact schema.
+
+ABSOLUTE RULES:
+- Each row in the display table = ONE separate physical display object in the JSON array.
+- NEVER merge, group, or deduplicate rows. If "North Club, 3.9mm, 16'x10'" appears on row 12 AND row 25, output TWO separate objects — they are two physically different screens in different parts of the stadium.
+- If a row has no pixel pitch value (blank cell), still extract it with pixel_pitch_mm: null.
+- Your displays array length MUST equal the exact number of data rows in the source tables. Count them.
+- NEVER add numbers to names. Extract names EXACTLY as written.
 
 {
   "project": {
