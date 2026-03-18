@@ -1,75 +1,147 @@
 /**
- * GLM5 Direct Extractor via NVIDIA API
+ * RFP LED Display Extractor v2
  *
- * Uses pdftotext + GLM5 to extract LED displays.
- * Two calls: indoor sections + outdoor sections = full coverage.
- * Proven to get 43/43 on BOA Stadium RFP.
+ * Architecture: 3 steps, no tricks.
+ *
+ * Step 1: pdftotext → full text (free, instant, deterministic)
+ * Step 2: Keyword filter → keep only LED-relevant pages (no AI, deterministic)
+ * Step 3a: Regex table extraction → parse display matrix tables directly (no AI)
+ * Step 3b: AI fallback → Mistral Large at temp 0 if regex finds 0 (structured data)
+ *
+ * No fallback chains. No vision. No TOC scanners. No page classifiers.
+ * Same input → same output → every time.
  */
 
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "./types";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { existsSync } from "fs";
 
 const execFileAsync = promisify(execFile);
 
-// Primary: Mercury 2 (Inception) — 43/43 proven, $0.25/M input, 128K context
-const MERCURY_API_KEY = process.env.MERCURY_API_KEY || "sk_56b8192411faa1dc6660ea3b75133f0f";
-const MERCURY_URL = "https://api.inceptionlabs.ai/v1/chat/completions";
-const MERCURY_MODEL = "mercury-2";
+// AI fallback: Mistral Large (best structured table parsing)
+const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || "";
+const MISTRAL_API_BASE = process.env.MISTRAL_API_BASE || "https://api.mistral.ai";
+const MISTRAL_MODEL = process.env.MISTRAL_CHAT_MODEL || "mistral-large-latest";
 
-// Fallback: GLM 4.7 (Z.AI) — 41/43, free
-const ZAI_API_KEY = process.env.ZAI_API_KEY || "cd430c4ccd5a4e3c8994d3c1cf022fba.ixte8h9JkCDIg7Pj";
-const ZAI_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions";
-const ZAI_MODEL = "glm-4.7";
+// LED-relevant keywords for page filtering (case-insensitive)
+const LED_KEYWORDS = [
+  "led", "videoboard", "pixel pitch", "nits", "brightness",
+  "display matrix", "display schedule", "scoreboard", "ribbon board",
+  "marquee", "fascia", "centerhung", "center hung", "digital signage",
+  "electronic display", "video display", "video board",
+  "indoor led", "outdoor led", "entry led",
+  // Common CSI section numbers for LED/electronic displays
+  "116643", "116843", "110660", "116600", "116800",
+];
 
-const EXTRACT_PROMPT = `Extract ALL LED displays from this RFP text. Return JSON only with this exact schema.
+// ---------------------------------------------------------------------------
+// Step 1: pdftotext → full text, split by page (form-feed separated)
+// ---------------------------------------------------------------------------
 
-ABSOLUTE RULES:
-- Each row in the display table = ONE separate physical display object in the JSON array.
-- NEVER merge, group, or deduplicate rows. If "North Club, 3.9mm, 16'x10'" appears on row 12 AND row 25, output TWO separate objects — they are two physically different screens in different parts of the stadium.
-- If a row has no pixel pitch value (blank cell), still extract it with pixel_pitch_mm: null.
-- Your displays array length MUST equal the exact number of data rows in the source tables. Count them.
-- NEVER add numbers to names. Extract names EXACTLY as written.
-- ONLY extract LED displays (videoboards, scoreboards, ribbons, fascia, entry LEDs, marquees). Do NOT extract fixed digit clocks, game clocks, play clocks, locker room clocks, scorekeeping controllers, or any non-LED timing/scoring equipment. Those go in a separate "scoring_equipment" array.
+async function extractFullText(pdfPath: string): Promise<{ pages: string[]; fullText: string }> {
+  const tmpFile = `/tmp/rfp-v2-${Date.now()}.txt`;
+  await execFileAsync("pdftotext", ["-layout", pdfPath, tmpFile], { timeout: 120_000 });
 
-{
-  "project": {
-    "name": "Project Name",
-    "client": "Client Name",
-    "venue": "Venue Name",
-    "address": "City, State"
-  },
-  "displays": [
-    {
-      "name": "Screen Name",
-      "location": "Screen Name",
-      "pixel_pitch_mm": 3.9,
-      "brightness_nits": 8000,
-      "width_ft": "14'",
-      "height_ft": "8'",
-      "width_ft_decimal": 14.0,
-      "height_ft_decimal": 8.0,
-      "environment": "indoor",
-      "application": "Indoor"
+  const { readFile, unlink } = await import("fs/promises");
+  const fullText = await readFile(tmpFile, "utf-8");
+  unlink(tmpFile).catch(() => {});
+
+  // pdftotext inserts form feed (0x0C) between pages
+  const pages = fullText.split("\f").filter(p => p.trim().length > 0);
+  console.log(`[RFP v2] pdftotext: ${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB total`);
+  return { pages, fullText };
+}
+
+// ---------------------------------------------------------------------------
+// Step 2: Keyword filter → keep only LED-relevant pages
+// ---------------------------------------------------------------------------
+
+function filterLedPages(pages: string[]): { filtered: string; keptPages: number[]; stats: string } {
+  const kept: string[] = [];
+  const keptPages: number[] = [];
+
+  for (let i = 0; i < pages.length; i++) {
+    const lower = pages[i].toLowerCase();
+    const isRelevant = LED_KEYWORDS.some(kw => lower.includes(kw));
+    if (isRelevant) {
+      kept.push(pages[i]);
+      keptPages.push(i + 1); // 1-indexed page numbers
     }
-  ],
-  "scoring_equipment": [
-    {
-      "name": "Play Clock",
-      "quantity": 2,
-      "location": "North/South Endzone",
-      "notes": "Fixed digit"
+  }
+
+  const filtered = kept.join("\n\n--- PAGE BREAK ---\n\n");
+  const stats = `${keptPages.length}/${pages.length} pages kept (${(filtered.length / 1024).toFixed(0)}KB)`;
+  console.log(`[RFP v2] Keyword filter: ${stats}`);
+  return { filtered, keptPages, stats };
+}
+
+// ---------------------------------------------------------------------------
+// Step 3a: Regex table extraction (no AI, 100% deterministic)
+// Parses display matrix tables directly from pdftotext output
+// ---------------------------------------------------------------------------
+
+interface RegexDisplay {
+  name: string;
+  pixelPitchMm: number | null;
+  brightnessNits: number | null;
+  widthRaw: string;
+  heightRaw: string;
+  environment: "indoor" | "outdoor";
+}
+
+function extractDisplaysViaRegex(text: string): RegexDisplay[] {
+  const displays: RegexDisplay[] = [];
+
+  // Determine environment from surrounding section headers
+  // Split text into chunks around section boundaries
+  const sectionSplitPattern = /(?=(?:INDOOR|OUTDOOR)\s+LED\s+VIDEOBOARD)/gi;
+  const chunks = text.split(sectionSplitPattern);
+
+  for (const chunk of chunks) {
+    // Detect environment from section header in this chunk
+    const envMatch = chunk.match(/^(INDOOR|OUTDOOR)\s+LED/i);
+    let environment: "indoor" | "outdoor" = "indoor"; // default
+    if (envMatch) {
+      environment = envMatch[1].toLowerCase() as "indoor" | "outdoor";
+    } else {
+      // Check if chunk contains outdoor indicators
+      const hasOutdoor = /outdoor|scoreboard|ribbon\s+bo/i.test(chunk.substring(0, 2000));
+      if (hasOutdoor) environment = "outdoor";
     }
-  ],
-  "requirements": [
-    {
-      "description": "Requirement text",
-      "category": "compliance",
-      "status": "critical"
+
+    // Pattern: name (with spaces/dots/parens), pitch (number or blank), nits (4-digit), width (feet/inches), height (feet/inches)
+    // This handles the pdftotext -layout format where columns are separated by multiple spaces
+    const tableRowPattern = /^[\s]*([\w][\w\s.()/-]{1,40}?)\s{2,}([\d.]+|)\s{2,}(\d{4})\s{2,}([\d''"″\s/]+?)\s{2,}([\d''"″\s/]+)/gm;
+
+    let match;
+    while ((match = tableRowPattern.exec(chunk)) !== null) {
+      const name = match[1].trim();
+      const pitchStr = match[2].trim();
+      const nitsStr = match[3].trim();
+      const widthRaw = match[4].trim();
+      const heightRaw = match[5].trim();
+
+      // Skip header rows and noise
+      if (/^(location|pixel|brightness|width|height|display|section|part\s)/i.test(name)) continue;
+      if (/^(WORK|PRICING|ITEM|QTY|TOTAL|COST)/i.test(name)) continue;
+      // Must have at least nits to be a display row
+      const nits = parseInt(nitsStr, 10);
+      if (isNaN(nits) || nits < 100) continue;
+
+      displays.push({
+        name,
+        pixelPitchMm: pitchStr ? parseFloat(pitchStr) || null : null,
+        brightnessNits: nits,
+        widthRaw,
+        heightRaw,
+        environment,
+      });
     }
-  ]
-}`;
+  }
+
+  console.log(`[RFP v2] Regex extraction: ${displays.length} displays found`);
+  return displays;
+}
 
 // ---------------------------------------------------------------------------
 // Parse feet/inches strings to decimal
@@ -77,7 +149,8 @@ ABSOLUTE RULES:
 
 function parseFeetInches(str: string): number | null {
   if (!str) return null;
-  const match = str.match(/(\d+)[''′]\s*(\d+(?:\s+\d+\/\d+)?)?/);
+  // Handle: 14', 22'8", 252', 20' 5 27/32", 3'2", 7'9", etc.
+  const match = str.match(/(\d+)[''′][\s]*([\d]+(?:\s+\d+\/\d+)?)?[""″]?/);
   if (match) {
     const feet = parseInt(match[1], 10);
     let inches = 0;
@@ -96,271 +169,176 @@ function parseFeetInches(str: string): number | null {
 }
 
 // ---------------------------------------------------------------------------
-// Map raw display → ExtractedLEDSpec
+// Step 3b: AI fallback — Mistral Large at temp 0 (only if regex finds 0)
 // ---------------------------------------------------------------------------
 
-function mapToExtractedSpecs(displays: any[]): ExtractedLEDSpec[] {
-  return displays.map((d, idx) => {
-    const widthFt = d.width_ft_decimal ?? parseFeetInches(d.width_ft) ?? null;
-    const heightFt = d.height_ft_decimal ?? parseFeetInches(d.height_ft) ?? null;
-    const env = (d.environment || d.application || "indoor").toLowerCase();
+async function extractDisplaysViaAI(filteredText: string): Promise<any> {
+  if (!MISTRAL_API_KEY) {
+    throw new Error("MISTRAL_API_KEY not set and regex extraction found 0 displays — cannot fallback to AI");
+  }
 
-    return {
-      name: d.name || `Display ${idx + 1}`,
-      location: d.location || d.name || "",
-      widthFt,
-      heightFt,
-      widthPx: null,
-      heightPx: null,
-      pixelPitchMm: d.pixel_pitch_mm ?? null,
-      brightnessNits: d.brightness_nits ?? null,
-      environment: env.includes("outdoor") ? "outdoor" : "indoor",
-      quantity: 1,
-      serviceType: null,
-      mountingType: null,
-      maxPowerW: null,
-      weightLbs: null,
-      specialRequirements: [],
-      confidence: 0.95,
-      sourcePages: [],
-      sourceType: "text" as const,
-      citation: "Mercury 2 / GLM 4.7",
-      notes: null,
-      isAlternate: false,
-      alternateDescription: null,
-      selectedProductId: null,
-      selectedProductName: null,
-    };
-  });
-}
+  const prompt = `You are an LED display specification extractor for construction RFP documents.
 
-// ---------------------------------------------------------------------------
-// Call LLM — Mercury 2 primary, GLM 4.7 fallback
-// ---------------------------------------------------------------------------
+Extract EVERY LED display from the document text below. The text contains one or more
+display matrix tables and specification sections.
 
-async function callLLM(text: string, prompt: string): Promise<any> {
-  const fullContent = prompt + "\n\n" + text;
+Rules:
+- Extract every single row from every display matrix/schedule table
+- Do NOT merge rows that share the same location name — if "Panthers Den" appears 5 times
+  with different dimensions, return 5 separate entries
+- Do NOT skip rows even if they look like duplicates
+- If a field is missing, set it to null
+- ONLY extract LED displays (videoboards, scoreboards, ribbons, fascia, entry LEDs, marquees)
+- Do NOT extract clocks, scoring controllers, or non-LED equipment
 
-  // Single model: Mercury 2 (deterministic, temp 0, no fallback chain)
-  // If Mercury fails, we throw — never silently switch to a different model
-  // that would produce different results.
-  console.log(`[Extractor] Calling Mercury 2 (temp=0, deterministic)...`);
-  const res = await fetch(MERCURY_URL, {
+Return JSON only:
+{
+  "project": { "name": string, "client": string, "venue": string, "address": string },
+  "displays": [
+    {
+      "name": string,
+      "location": string,
+      "pixel_pitch_mm": number | null,
+      "brightness_nits": number | null,
+      "width_ft": string | null,
+      "height_ft": string | null,
+      "environment": "indoor" | "outdoor"
+    }
+  ],
+  "requirements": [
+    { "description": string, "category": string, "status": string }
+  ]
+}`;
+
+  // Truncate to 400KB if needed (Mistral Large handles ~128K tokens)
+  const textToSend = filteredText.length > 400000 ? filteredText.substring(0, 400000) : filteredText;
+
+  console.log(`[RFP v2] AI fallback: calling Mistral Large (${(textToSend.length / 1024).toFixed(0)}KB, temp=0)...`);
+
+  const res = await fetch(`${MISTRAL_API_BASE}/v1/chat/completions`, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${MERCURY_API_KEY}`,
+      "Authorization": `Bearer ${MISTRAL_API_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: MERCURY_MODEL,
-      messages: [{ role: "user", content: fullContent }],
-      max_tokens: 50000,
+      model: MISTRAL_MODEL,
+      messages: [
+        { role: "user", content: prompt + "\n\n" + textToSend },
+      ],
       temperature: 0.0,
+      max_tokens: 65536,
+      response_format: { type: "json_object" },
     }),
   });
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Mercury 2 API error ${res.status}: ${err.substring(0, 200)}`);
+    throw new Error(`Mistral API error ${res.status}: ${err.substring(0, 300)}`);
   }
 
   const data = await res.json();
   const content = data.choices?.[0]?.message?.content || "";
   const start = content.indexOf("{");
   const end = content.lastIndexOf("}");
-  if (start === -1 || end === -1) throw new Error("Mercury 2 returned no JSON in response");
+  if (start === -1 || end === -1) throw new Error("Mistral returned no JSON");
 
   const parsed = JSON.parse(content.substring(start, end + 1));
-  const count = parsed.displays?.length || 0;
-  console.log(`[Extractor] Mercury 2: ${count} displays (${data.usage?.total_tokens || 0} tokens)`);
+  console.log(`[RFP v2] AI fallback: ${parsed.displays?.length || 0} displays (${data.usage?.total_tokens || 0} tokens)`);
   return parsed;
 }
 
 // ---------------------------------------------------------------------------
-// Extract text sections from PDF
+// Extract project info from text (simple regex, no AI)
 // ---------------------------------------------------------------------------
 
-async function extractSections(pdfPath: string): Promise<{ indoor: string; outdoor: string; full: string }> {
-  const tmpFile = `/tmp/glm-rfp-${Date.now()}.txt`;
+function extractProjectInfo(text: string): ExtractedProjectInfo {
+  // Look for common project info patterns in first 5000 chars
+  const header = text.substring(0, 5000);
 
-  await execFileAsync("pdftotext", ["-layout", pdfPath, tmpFile], { timeout: 60_000 });
+  const projectName = header.match(/(?:project|for)\s*:?\s*([A-Z][A-Za-z\s]+(?:Stadium|Arena|Center|Field|Facility|Complex|Park)[A-Za-z\s]*)/i)?.[1]?.trim() || null;
+  const clientName = header.match(/(?:client|owner|for)\s*:?\s*([A-Z][A-Za-z\s,]+(?:LLC|Inc|Corp|LP|Ltd|Club|Team|Authority)[A-Za-z\s.]*)/i)?.[1]?.trim() || null;
+  const venue = header.match(/(?:venue|facility|stadium|arena)\s*:?\s*([A-Z][A-Za-z\s]+)/i)?.[1]?.trim() || null;
+  const location = header.match(/(\d+\s+\w[\w\s]+,\s*[A-Z]{2}\s+\d{5})/)?.[1]?.trim()
+    || header.match(/([A-Z][a-z]+,\s*[A-Z]{2})/)?.[1]?.trim() || null;
 
-  const { readFile, unlink } = await import("fs/promises");
-  const fullText = await readFile(tmpFile, "utf-8");
-  unlink(tmpFile).catch(() => {});
-
-  // Strategy: find ALL LED-related sections and extract everything from the
-  // first match through the end of the last section. Mercury 2 has 128K token
-  // context (~500KB text), so we can be generous.
-  //
-  // Multiple patterns to catch variations:
-  // - "SECTION 116643 - INDOOR LED VIDEOBOARDS"
-  // - "SECTION 11 66 43 - INDOOR LED"
-  // - "SECTION 116843 OUTDOOR LED"
-  // - Freestanding "DISPLAY MATRIX" or "DISPLAY SCHEDULE" tables
-  const sectionPatterns = [
-    /SECTION\s+\d[\d\s]*-?\s*(?:INDOOR|OUTDOOR)\s+LED/gi,
-    /SECTION\s+\d[\d\s]*-?\s*LED\s+(?:VIDEO|DISPLAY)/gi,
-    /(?:DISPLAY\s+(?:MATRIX|SCHEDULE)|LED\s+DISPLAY\s+(?:MATRIX|SCHEDULE))/gi,
-  ];
-
-  // Collect all match positions across all patterns
-  const allPositions: number[] = [];
-  for (const pattern of sectionPatterns) {
-    for (const m of fullText.matchAll(pattern)) {
-      if (m.index != null) allPositions.push(m.index);
-    }
-  }
-  // Deduplicate and sort
-  const uniquePositions = [...new Set(allPositions)].sort((a, b) => a - b);
-
-  let combined = "";
-
-  if (uniquePositions.length > 0) {
-    const firstStart = uniquePositions[0];
-    const lastStart = uniquePositions[uniquePositions.length - 1];
-
-    // Find end: search for "END OF SECTION" after the last match, or next
-    // unrelated SECTION header, or take everything to EOF within 400KB limit.
-    let end = -1;
-
-    // Try "END OF SECTION" after the last LED section
-    const endOfSectionIdx = fullText.indexOf("END OF SECTION", lastStart + 100);
-    if (endOfSectionIdx !== -1) {
-      end = Math.min(endOfSectionIdx + 200, fullText.length);
-    }
-
-    // If no END OF SECTION, look for next SECTION header that's NOT LED-related
-    if (end === -1) {
-      const nextSectionRegex = /\nSECTION\s+\d/gi;
-      nextSectionRegex.lastIndex = lastStart + 100;
-      let nextMatch: RegExpExecArray | null;
-      while ((nextMatch = nextSectionRegex.exec(fullText)) !== null) {
-        const snippet = fullText.substring(nextMatch.index, nextMatch.index + 200).toUpperCase();
-        if (!snippet.includes("LED") && !snippet.includes("VIDEOBOARD") && !snippet.includes("DISPLAY")) {
-          end = nextMatch.index;
-          break;
-        }
-      }
-    }
-
-    // Fallback: 400KB from first match (Mercury 2 can handle ~500KB)
-    if (end === -1) end = Math.min(firstStart + 400000, fullText.length);
-
-    combined = fullText.substring(firstStart, end);
-    console.log(`[GLM5] Found ${uniquePositions.length} LED section markers, extracted ${(combined.length / 1024).toFixed(0)}KB (offsets ${firstStart}-${end})`);
-  } else {
-    // No section headers found — try broader search for display tables
-    const tablePatterns = [
-      /Pixel\s+Pitch\s+Brightness/i,
-      /Display\s+Matrix/i,
-      /LED\s+Display\s+Schedule/i,
-    ];
-    let tableStart = -1;
-    for (const pat of tablePatterns) {
-      const idx = fullText.search(pat);
-      if (idx >= 0 && (tableStart === -1 || idx < tableStart)) tableStart = idx;
-    }
-
-    if (tableStart >= 0) {
-      const start = Math.max(0, tableStart - 5000);
-      combined = fullText.substring(start, Math.min(start + 400000, fullText.length));
-      console.log(`[GLM5] No SECTION headers — found display table at offset ${tableStart}, extracted ${(combined.length / 1024).toFixed(0)}KB`);
-    } else {
-      // Last resort — send full text (up to 400KB)
-      combined = fullText.substring(0, 400000);
-      console.log(`[GLM5] No LED markers found — sending first ${(combined.length / 1024).toFixed(0)}KB of full text`);
-    }
-  }
-
-  return { indoor: combined, outdoor: "", full: fullText };
+  return {
+    clientName,
+    projectName: projectName || venue,
+    venue: venue || projectName,
+    location,
+    isOutdoor: false,
+    isUnionLabor: false,
+    bondRequired: false,
+    specialRequirements: [],
+    schedulePhases: [],
+  };
 }
 
 // ---------------------------------------------------------------------------
-// Extract focused table regions from text
-// Strips spec boilerplate, keeps only display matrix tables + context
+// Map regex results to ExtractedLEDSpec
 // ---------------------------------------------------------------------------
 
-function extractTableRegions(sectionText: string, fullText: string): string {
-  const textToSearch = sectionText || fullText;
+function regexToSpecs(displays: RegexDisplay[]): ExtractedLEDSpec[] {
+  return displays.map((d, idx) => ({
+    name: d.name,
+    location: d.name,
+    widthFt: parseFeetInches(d.widthRaw),
+    heightFt: parseFeetInches(d.heightRaw),
+    widthPx: null,
+    heightPx: null,
+    pixelPitchMm: d.pixelPitchMm,
+    brightnessNits: d.brightnessNits,
+    environment: d.environment,
+    quantity: 1,
+    serviceType: null,
+    mountingType: null,
+    maxPowerW: null,
+    weightLbs: null,
+    specialRequirements: [],
+    confidence: 1.0, // Regex = deterministic = max confidence
+    sourcePages: [],
+    sourceType: "text" as const,
+    citation: "regex-extraction-v2",
+    notes: null,
+    isAlternate: false,
+    alternateDescription: null,
+    selectedProductId: null,
+    selectedProductName: null,
+  }));
+}
 
-  // Find all display matrix / schedule table locations
-  const tableMarkers = [
-    /Refer to below display matrix[^\n]*/gi,
-    /(?:display|LED)\s+(?:matrix|schedule)\s+for\s+size/gi,
-    /(?:Scoreboards|Ribbon\s+Bo(?:a|r)d|Entry\s+LED|Fascia|Marquee)\s+Pixel\s+Pitch/gi,
-    /LOCATION\s+Pixel\s+Pitch\s+Brightness/gi,
-    /Location\s+Pixel\s+Pitch\s+Brightness/gi,
-  ];
-
-  const regions: Array<{ start: number; end: number }> = [];
-
-  for (const pat of tableMarkers) {
-    for (const m of textToSearch.matchAll(pat)) {
-      if (m.index == null) continue;
-      // Go back 500 chars for section header context
-      const start = Math.max(0, m.index - 500);
-      // Go forward 6000 chars to capture full table (tables can span multiple pages)
-      let end = Math.min(textToSearch.length, m.index + 6000);
-
-      // Extend end if we're still seeing table rows (lines with dimensions)
-      const dimPattern = /\d+[''′]\s*/g;
-      let lastDimLine = m.index + 6000;
-      const scanEnd = Math.min(textToSearch.length, m.index + 15000);
-      const scanText = textToSearch.substring(m.index, scanEnd);
-      const lines = scanText.split('\n');
-      for (let i = lines.length - 1; i >= 0; i--) {
-        if (dimPattern.test(lines[i])) {
-          // Found a line with dimensions — extend to include it
-          let offset = 0;
-          for (let j = 0; j <= i; j++) offset += lines[j].length + 1;
-          lastDimLine = m.index + offset + 200; // + buffer
-          break;
-        }
-      }
-      end = Math.min(textToSearch.length, Math.max(end, lastDimLine));
-
-      regions.push({ start, end });
-    }
-  }
-
-  if (regions.length === 0) {
-    // No table markers found — fall back to sending the section text as-is
-    console.log(`[GLM5] No table markers found, sending full section text`);
-    return sectionText || fullText.substring(0, 400000);
-  }
-
-  // Merge overlapping regions
-  regions.sort((a, b) => a.start - b.start);
-  const merged: Array<{ start: number; end: number }> = [regions[0]];
-  for (let i = 1; i < regions.length; i++) {
-    const last = merged[merged.length - 1];
-    if (regions[i].start <= last.end + 1000) {
-      // Overlapping or close — merge
-      last.end = Math.max(last.end, regions[i].end);
-    } else {
-      merged.push(regions[i]);
-    }
-  }
-
-  // Build combined text with section separators
-  const parts: string[] = [];
-  // Add project info from first 2000 chars of section text (client name, venue, etc.)
-  const projectContext = textToSearch.substring(0, 2000);
-  parts.push("=== PROJECT CONTEXT ===\n" + projectContext);
-
-  for (let i = 0; i < merged.length; i++) {
-    const region = textToSearch.substring(merged[i].start, merged[i].end);
-    parts.push(`\n=== DISPLAY TABLE ${i + 1} ===\n` + region);
-  }
-
-  const result = parts.join('\n');
-  console.log(`[GLM5] Extracted ${merged.length} table regions (${(result.length / 1024).toFixed(0)}KB total)`);
-  return result;
+function aiToSpecs(displays: any[]): ExtractedLEDSpec[] {
+  return displays.map((d, idx) => ({
+    name: d.name || d.location || `Display ${idx + 1}`,
+    location: d.location || d.name || "",
+    widthFt: d.width_ft_decimal ?? parseFeetInches(d.width_ft) ?? null,
+    heightFt: d.height_ft_decimal ?? parseFeetInches(d.height_ft) ?? null,
+    widthPx: null,
+    heightPx: null,
+    pixelPitchMm: d.pixel_pitch_mm ?? null,
+    brightnessNits: d.brightness_nits ?? null,
+    environment: (d.environment || "indoor").toLowerCase().includes("outdoor") ? "outdoor" : "indoor",
+    quantity: 1,
+    serviceType: null,
+    mountingType: null,
+    maxPowerW: null,
+    weightLbs: null,
+    specialRequirements: [],
+    confidence: 0.9,
+    sourcePages: [],
+    sourceType: "text" as const,
+    citation: "mistral-large-fallback",
+    notes: null,
+    isAlternate: false,
+    alternateDescription: null,
+    selectedProductId: null,
+    selectedProductName: null,
+  }));
 }
 
 // ---------------------------------------------------------------------------
-// Main extraction
+// Main extraction — the v2 pipeline
 // ---------------------------------------------------------------------------
 
 export async function extractWithGLM5(
@@ -375,69 +353,83 @@ export async function extractWithGLM5(
   requirements: any[];
   source: "glm5";
 }> {
+  // Step 1: pdftotext the entire document
   options?.onProgress?.("Extracting text from PDF...");
-  const sections = await extractSections(pdfPath);
+  const { pages, fullText } = await extractFullText(pdfPath);
 
-  let allDisplays: any[] = [];
-  let project: any = null;
-  let allRequirements: any[] = [];
+  // Step 2: Keyword filter — keep only LED-relevant pages
+  options?.onProgress?.("Filtering for LED specifications...");
+  const { filtered, keptPages, stats } = filterLedPages(pages);
 
-  // Extract display matrix tables from the text to send focused content.
-  // Sending 150KB+ of spec boilerplate overwhelms the model — it only parses
-  // part of the tables. Instead, find each "display matrix" table region and
-  // send just those with enough context for the model to understand structure.
-  options?.onProgress?.("Analyzing LED specifications...");
-
-  const tableText = extractTableRegions(sections.indoor, sections.full);
-  console.log(`[GLM5] Sending ${(tableText.length / 1024).toFixed(0)}KB of focused table content (from ${(sections.indoor.length / 1024).toFixed(0)}KB extracted)...`);
-
-  try {
-    const fullPrompt = `Extract ALL LED displays (indoor AND outdoor) from these display matrix tables. There are MULTIPLE tables in this text — Scoreboards, Ribbon Boards, Entry LEDs, Indoor displays. You MUST extract from EVERY table, not just the first one.
-
-CRITICAL: If the same location name appears multiple times (e.g. "Panthers Den" 6 times, "Elev Lobby" 4 times, "NW" 4 times), output ALL of them as separate display objects. They are different physical screens at different positions. NEVER merge rows that share a name. Count your output — it should match the total number of data rows across ALL tables.
-
-${EXTRACT_PROMPT}`;
-    const result = await callLLM(tableText, fullPrompt);
-    const displays = result.displays || [];
-    allDisplays.push(...displays);
-    project = result.project || null;
-    if (result.requirements) allRequirements.push(...result.requirements);
-    console.log(`[GLM5] Extracted: ${displays.length} displays`);
-  } catch (err: any) {
-    console.error(`[GLM5] Extraction failed:`, err.message);
-    throw err;
+  if (keptPages.length === 0) {
+    console.log(`[RFP v2] No LED-relevant pages found in ${pages.length} pages`);
+    return {
+      screens: [],
+      project: extractProjectInfo(fullText),
+      requirements: [],
+      source: "glm5",
+    };
   }
 
-  options?.onProgress?.(`Extracted ${allDisplays.length} displays, ${allRequirements.length} requirements`);
-  console.log(`[GLM5] Total: ${allDisplays.length} displays, ${allRequirements.length} requirements`);
+  // Step 3a: Try regex extraction first (deterministic, free, instant)
+  options?.onProgress?.("Parsing display tables...");
+  const regexDisplays = extractDisplaysViaRegex(filtered);
 
-  const projectInfo: ExtractedProjectInfo = {
-    clientName: project?.client || null,
-    projectName: project?.name || null,
-    venue: project?.venue || null,
-    location: project?.address || null,
-    isOutdoor: false,
-    isUnionLabor: false,
-    bondRequired: false,
-    specialRequirements: [],
-    schedulePhases: [],
-  };
+  if (regexDisplays.length > 0) {
+    // Regex got results — use them directly, no AI needed
+    console.log(`[RFP v2] SUCCESS via regex: ${regexDisplays.length} displays (${stats})`);
+    options?.onProgress?.(`Found ${regexDisplays.length} LED displays via table parsing`);
 
-  return {
-    screens: mapToExtractedSpecs(allDisplays),
-    project: projectInfo,
-    requirements: allRequirements.map((r: any) => ({
-      description: r.description || "",
-      category: r.category || "technical",
-      status: r.status || "info",
-      date: null,
-      sourcePages: [],
-      rawText: r.description || "",
-    })),
-    source: "glm5",
-  };
+    return {
+      screens: regexToSpecs(regexDisplays),
+      project: extractProjectInfo(fullText),
+      requirements: [],
+      source: "glm5",
+    };
+  }
+
+  // Step 3b: Regex found nothing — AI fallback (Mistral Large, temp 0)
+  console.log(`[RFP v2] Regex found 0 displays — falling back to Mistral Large AI`);
+  options?.onProgress?.("Table parsing found no displays — using AI extraction...");
+
+  try {
+    const aiResult = await extractDisplaysViaAI(filtered);
+    const displays = aiResult.displays || [];
+    console.log(`[RFP v2] AI fallback: ${displays.length} displays`);
+    options?.onProgress?.(`Found ${displays.length} LED displays via AI extraction`);
+
+    const project = aiResult.project || {};
+
+    return {
+      screens: aiToSpecs(displays),
+      project: {
+        clientName: project.client || null,
+        projectName: project.name || null,
+        venue: project.venue || null,
+        location: project.address || null,
+        isOutdoor: false,
+        isUnionLabor: false,
+        bondRequired: false,
+        specialRequirements: [],
+        schedulePhases: [],
+      },
+      requirements: (aiResult.requirements || []).map((r: any) => ({
+        description: r.description || "",
+        category: r.category || "technical",
+        status: r.status || "info",
+        date: null,
+        sourcePages: [],
+        rawText: r.description || "",
+      })),
+      source: "glm5",
+    };
+  } catch (err: any) {
+    console.error(`[RFP v2] AI fallback failed:`, err.message);
+    throw err;
+  }
 }
 
 export function isGLM5Available(): boolean {
-  return !!ZAI_API_KEY;
+  // v2 only needs pdftotext (always available) + optionally MISTRAL_API_KEY for fallback
+  return true;
 }
