@@ -13,6 +13,7 @@
  */
 
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "./types";
+import { extractWithMistral } from "./mistralOcrClient";
 import { execFile } from "child_process";
 import { promisify } from "util";
 
@@ -536,6 +537,147 @@ function aiToSpecs(displays: any[]): ExtractedLEDSpec[] {
 // Main extraction — the v2 pipeline
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Mistral OCR fallback — for image-based PDFs where pdftotext returns nothing
+// ---------------------------------------------------------------------------
+
+async function extractViaOcr(
+  pdfPath: string,
+  onProgress?: (msg: string) => void,
+): Promise<{ screens: ExtractedLEDSpec[]; project: ExtractedProjectInfo } | null> {
+  const MISTRAL_KEY = process.env.MISTRAL_API_KEY || "";
+  if (!MISTRAL_KEY) {
+    console.log(`[RFP v2] Mistral OCR unavailable (no API key)`);
+    return null;
+  }
+
+  try {
+    const { readFile } = await import("fs/promises");
+    const buffer = await readFile(pdfPath);
+    const filename = pdfPath.split("/").pop() || "document.pdf";
+
+    onProgress?.("Running OCR on image-based PDF...");
+    console.log(`[RFP v2] Mistral OCR: processing ${filename} (${(buffer.length / 1024 / 1024).toFixed(1)}MB)...`);
+
+    const ocrResult = await extractWithMistral(buffer, filename);
+    if (!ocrResult.pages || ocrResult.pages.length === 0) {
+      console.log(`[RFP v2] Mistral OCR returned 0 pages`);
+      return null;
+    }
+
+    console.log(`[RFP v2] Mistral OCR returned ${ocrResult.pages.length} pages`);
+
+    // Combine all page markdown + tables
+    const allMarkdown = ocrResult.pages.map(p => p.markdown).join("\n\n");
+    const allTables = ocrResult.pages.flatMap(p => p.tables || []);
+
+    // Parse HTML tables for LED displays
+    const ocrDisplays: RegexDisplay[] = [];
+    for (const tableHtml of allTables) {
+      const parsed = parseHtmlTable(tableHtml);
+      ocrDisplays.push(...parsed);
+    }
+
+    // Also try regex on the OCR markdown (catches bullet-point specs)
+    const mdDisplays = extractDisplaysViaRegex(allMarkdown);
+    const mdBullets = extractBulletItems(allMarkdown);
+
+    // Combine and dedup
+    const allNames = new Set(ocrDisplays.map(d => d.name.toLowerCase()));
+    const uniqueMd = mdDisplays.filter(d => !allNames.has(d.name.toLowerCase()));
+    const uniqueBullets = mdBullets.filter(d => !allNames.has(d.name.toLowerCase()) && !new Set(uniqueMd.map(m => m.name.toLowerCase())).has(d.name.toLowerCase()));
+
+    const combined = [...ocrDisplays, ...uniqueMd, ...uniqueBullets];
+    console.log(`[RFP v2] OCR extraction: ${combined.length} items (${ocrDisplays.length} from tables, ${uniqueMd.length} from text, ${uniqueBullets.length} from bullets)`);
+
+    if (combined.length === 0) return null;
+
+    return {
+      screens: regexToSpecs(combined),
+      project: extractProjectInfo(allMarkdown),
+    };
+  } catch (err: any) {
+    console.error(`[RFP v2] Mistral OCR failed:`, err.message);
+    return null;
+  }
+}
+
+// Parse an HTML table string into display entries
+function parseHtmlTable(html: string): RegexDisplay[] {
+  const displays: RegexDisplay[] = [];
+
+  // Check if this table is LED-related by scanning headers
+  const headerMatch = html.match(/<th[^>]*>([\s\S]*?)<\/th>/gi);
+  const headers = (headerMatch || []).map(h => h.replace(/<[^>]+>/g, "").trim().toLowerCase());
+  const isLedTable = headers.some(h =>
+    /led|display|pixel|pitch|nits|brightness|videoboard|ribbon|scoreboard|location|av\s+device/i.test(h)
+  );
+  if (!isLedTable && headers.length > 0) return []; // Skip non-LED tables (speakers, projectors)
+
+  // Extract rows
+  const rowMatches = html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi);
+  if (!rowMatches) return [];
+
+  // Find column indices from header row
+  let nameCol = -1, pitchCol = -1, nitsCol = -1, widthCol = -1, heightCol = -1, qtyCol = -1, typeCol = -1;
+  if (rowMatches.length > 0) {
+    const headerCells = rowMatches[0].match(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi);
+    if (headerCells) {
+      headerCells.forEach((cell, idx) => {
+        const text = cell.replace(/<[^>]+>/g, "").trim().toLowerCase();
+        if (/name|location|display|device/i.test(text) && nameCol === -1) nameCol = idx;
+        if (/pitch/i.test(text)) pitchCol = idx;
+        if (/nit|brightness/i.test(text)) nitsCol = idx;
+        if (/width|w\b/i.test(text)) widthCol = idx;
+        if (/height|h\b/i.test(text)) heightCol = idx;
+        if (/qty|quantity|count/i.test(text)) qtyCol = idx;
+        if (/type|category/i.test(text) && typeCol === -1) typeCol = idx;
+      });
+    }
+  }
+
+  // Parse data rows (skip first row = header)
+  for (let i = 1; i < rowMatches.length; i++) {
+    const cells = rowMatches[i].match(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi);
+    if (!cells) continue;
+    const values = cells.map(c => c.replace(/<[^>]+>/g, "").trim());
+
+    const name = nameCol >= 0 ? values[nameCol] || "" : values[0] || "";
+    if (!name || /^(total|subtotal|sum|header)/i.test(name)) continue;
+
+    const pitchStr = pitchCol >= 0 ? values[pitchCol] || "" : "";
+    const nitsStr = nitsCol >= 0 ? values[nitsCol] || "" : "";
+    const widthStr = widthCol >= 0 ? values[widthCol] || "" : "";
+    const heightStr = heightCol >= 0 ? values[heightCol] || "" : "";
+    const qtyStr = qtyCol >= 0 ? values[qtyCol] || "" : "";
+
+    // Determine category from type column or name
+    let category: RegexDisplay["category"] = "led_display";
+    const typeText = typeCol >= 0 ? (values[typeCol] || "").toLowerCase() : name.toLowerCase();
+    if (/clock|timing/i.test(typeText)) category = "clock";
+    else if (/scoreboard/i.test(typeText)) category = "scoreboard";
+    else if (/control|playback|cms/i.test(typeText)) category = "control_system";
+
+    displays.push({
+      name,
+      pixelPitchMm: pitchStr ? parseFloat(pitchStr.replace(/mm/i, "")) || null : null,
+      brightnessNits: nitsStr ? parseInt(nitsStr.replace(/[^\d]/g, ""), 10) || null : null,
+      widthRaw: widthStr,
+      heightRaw: heightStr,
+      environment: /outdoor|exterior/i.test(name) ? "outdoor" : "indoor",
+      category,
+      quantity: qtyStr ? parseInt(qtyStr, 10) || 1 : 1,
+      notes: null,
+    });
+  }
+
+  return displays;
+}
+
+// ---------------------------------------------------------------------------
+// Main extraction — the v2 pipeline
+// ---------------------------------------------------------------------------
+
 export async function extractWithGLM5(
   pdfPath: string,
   options?: {
@@ -556,8 +698,28 @@ export async function extractWithGLM5(
   options?.onProgress?.("Filtering for LED specifications...");
   const { filtered, keptPages, stats } = filterLedPages(pages);
 
-  if (keptPages.length === 0) {
-    console.log(`[RFP v2] No LED-relevant pages found in ${pages.length} pages`);
+  // Check if pdftotext returned meaningful content
+  const hasText = fullText.trim().length > 500;
+
+  if (!hasText || keptPages.length === 0) {
+    // Image-based PDF or no LED-relevant text — try Mistral OCR
+    const reason = !hasText ? "image-based PDF (pdftotext returned no text)" : "no LED-relevant pages in text";
+    console.log(`[RFP v2] ${reason} — trying Mistral OCR fallback`);
+    options?.onProgress?.("Document appears to be image-based — running OCR...");
+
+    const ocrResult = await extractViaOcr(pdfPath, options?.onProgress);
+    if (ocrResult && ocrResult.screens.length > 0) {
+      console.log(`[RFP v2] Mistral OCR SUCCESS: ${ocrResult.screens.length} items found`);
+      options?.onProgress?.(`Found ${ocrResult.screens.length} items via OCR`);
+      return {
+        screens: ocrResult.screens,
+        project: ocrResult.project,
+        requirements: [],
+        source: "glm5",
+      };
+    }
+
+    console.log(`[RFP v2] Mistral OCR returned 0 items — no displays found in this document`);
     return {
       screens: [],
       project: extractProjectInfo(fullText),
