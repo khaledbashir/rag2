@@ -249,23 +249,69 @@ Return JSON only:
 }
 
 // ---------------------------------------------------------------------------
-// Extract project info from text (simple regex, no AI)
+// Extract project info from text (no AI — uses repeated header detection)
 // ---------------------------------------------------------------------------
 
-function extractProjectInfo(text: string): ExtractedProjectInfo {
-  // Look for common project info patterns in first 5000 chars
-  const header = text.substring(0, 5000);
+function extractProjectInfo(fullText: string): ExtractedProjectInfo {
+  // Strategy: Construction documents have running headers that repeat on most
+  // pages. The project name appears hundreds of times. The client name (with
+  // LLC/Inc/etc.) appears many times. Find them by frequency counting.
+  const lines = fullText.split("\n");
+  const lineCounts = new Map<string, number>();
 
-  const projectName = header.match(/(?:project|for)\s*:?\s*([A-Z][A-Za-z\s]+(?:Stadium|Arena|Center|Field|Facility|Complex|Park)[A-Za-z\s]*)/i)?.[1]?.trim() || null;
-  const clientName = header.match(/(?:client|owner|for)\s*:?\s*([A-Z][A-Za-z\s,]+(?:LLC|Inc|Corp|LP|Ltd|Club|Team|Authority)[A-Za-z\s.]*)/i)?.[1]?.trim() || null;
-  const venue = header.match(/(?:venue|facility|stadium|arena)\s*:?\s*([A-Z][A-Za-z\s]+)/i)?.[1]?.trim() || null;
-  const location = header.match(/(\d+\s+\w[\w\s]+,\s*[A-Z]{2}\s+\d{5})/)?.[1]?.trim()
-    || header.match(/([A-Z][a-z]+,\s*[A-Z]{2})/)?.[1]?.trim() || null;
+  for (const raw of lines) {
+    const cleaned = raw.trim();
+    // Only consider substantive lines (not too short, not too long)
+    if (cleaned.length < 10 || cleaned.length > 120) continue;
+    // Skip obvious non-header lines
+    if (/^\d+$|^Page\s|^SECTION\s|^PART\s|^©|^\d+\.\d+|^[A-Z]\.\s{2,}/i.test(cleaned)) continue;
+    // Strip trailing date/project-number columns (separated by lots of spaces)
+    const stripped = cleaned.replace(/\s{3,}.*$/, "").trim();
+    if (stripped.length < 10) continue;
+    lineCounts.set(stripped, (lineCounts.get(stripped) || 0) + 1);
+  }
+
+  // Sort by frequency
+  const sorted = [...lineCounts.entries()].sort((a, b) => b[1] - a[1]);
+
+  // Project name: most-repeated non-trivial line (usually appears on every page)
+  let projectName: string | null = null;
+  for (const [line, count] of sorted) {
+    if (count < 3) break;
+    // Skip generic boilerplate
+    if (/^(Existing|Provide|Section|Proceed|Related|Product)/i.test(line)) continue;
+    if (/LLC|Inc|Corp|LP|Ltd/i.test(line)) continue; // That's the client
+    if (/^\d+\s+\w/.test(line) && /\d{5}/.test(line)) continue; // Address line
+    projectName = line;
+    break;
+  }
+
+  // Client name: most-repeated line containing LLC/Inc/Corp/etc.
+  let clientName: string | null = null;
+  for (const [line, count] of sorted) {
+    if (count < 2) break;
+    if (/LLC|Inc|Corp|LP|Ltd|Authority|Department|District/i.test(line)) {
+      clientName = line;
+      break;
+    }
+  }
+
+  // Location: look for "City, STATE" or address pattern in first page
+  const firstPage = fullText.substring(0, 3000);
+  const location = firstPage.match(/(\d+\s+[\w\s.]+,\s*[A-Z][a-z]+,\s*[A-Z]{2}\s+\d{5})/)?.[1]?.trim()
+    || firstPage.match(/([A-Z][a-z]+,\s*[A-Z][a-z]+\s*[A-Z][a-z]*)/)?.[1]?.trim()
+    || firstPage.match(/([A-Z][A-Z\s]+,\s*[A-Z][A-Z\s]+)\s*\n/)?.[1]?.trim()
+    || null;
+
+  // Venue: often the project name minus "Modernization" / "Renovation" etc.
+  const venue = projectName?.replace(/\s+(Modernization|Renovation|Expansion|Improvement|Upgrade|Phase\s+\w+)\s*$/i, "").trim() || projectName;
+
+  console.log(`[RFP v2] Project: "${projectName}", Client: "${clientName}", Location: "${location}"`);
 
   return {
     clientName,
-    projectName: projectName || venue,
-    venue: venue || projectName,
+    projectName,
+    venue,
     location,
     isOutdoor: false,
     isUnionLabor: false,
