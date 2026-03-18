@@ -658,25 +658,25 @@ export default function RfpAnalyzerClient() {
               widthPx: Math.round(activeWidthMm / newPitch),
               heightPx: Math.round(activeHeightMm / newPitch),
               pixelPitchMm: newPitch,
-              brightnessNits: productNits || s.brightnessNits,
-              weightLbs: totalWeightLbs || s.weightLbs,
-              maxPowerW: totalPowerW || s.maxPowerW,
+              brightnessNits: productNits > 0 ? productNits : s.brightnessNits,
+              weightLbs: totalWeightLbs > 0 ? totalWeightLbs : s.weightLbs,
+              maxPowerW: totalPowerW > 0 ? totalPowerW : s.maxPowerW,
             }
           : s
       );
     });
 
-    setPricingPreview(() => {
-      const prev = currentPreview;
-      const updatedDisplays = prev.displays.map((d) => {
+    setPricingPreview((prev) => {
+      const base = prev || currentPreview;
+      const updatedDisplays = base.displays.map((d) => {
         if (d.name !== displayName) return d;
         // Set matched product info
         let updated = {
           ...d,
-          nits: productNits || d.nits,
-          weightLbs: totalWeightLbs || d.weightLbs,
-          totalPowerW: totalPowerW || d.totalPowerW,
-          btuPerHr: btuPerHr || d.btuPerHr,
+          nits: productNits > 0 ? productNits : d.nits,
+          weightLbs: totalWeightLbs > 0 ? totalWeightLbs : d.weightLbs,
+          totalPowerW: totalPowerW > 0 ? totalPowerW : d.totalPowerW,
+          btuPerHr: btuPerHr > 0 ? btuPerHr : d.btuPerHr,
           matchedProduct: {
             manufacturer: product.manufacturer || product.name.split(" ")[0],
             model: product.name,
@@ -699,7 +699,7 @@ export default function RfpAnalyzerClient() {
         updated = recalcDisplayCosts(updated, activeHeightFt * activeWidthFt, d.quantity || 1, newPitch);
         return updated;
       });
-      return recalcSummary(prev, updatedDisplays);
+      return recalcSummary(base, updatedDisplays);
     });
   }, [availableProducts, pricingPreview, editableSpecs, result?.screens]);
 
