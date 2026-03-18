@@ -644,6 +644,7 @@ export default function RfpAnalyzerClient() {
     const totalPowerW = Math.round(totalCabs * maxPowerPerCab);
     const btuPerHr = Math.round(totalPowerW * 3.412);
     const productNits = product.nits || 0;
+    console.log(`[ProductSelect] ${displayName} → ${product.name}: nits=${productNits}, weightKg=${weightKgPerCab}, powerW=${maxPowerPerCab}, cabs=${totalCabs}`);
 
     // Update editableSpecs with new dimensions from the selected product
     // If editableSpecs is empty, seed it from result.screens first
