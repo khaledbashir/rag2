@@ -14,7 +14,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       products: products.map((p) => ({
         id: p.id,
-        label: `${p.name} (${p.pitch}mm, ${p.nits} nits)`,
+        label: p.nits > 0
+          ? `${p.name} (${p.pitch}mm, ${p.nits} nits)`
+          : `${p.name} [Scoring/Timing]`,
         manufacturer: p.manufacturer,
         name: p.name,
         modelNumber: p.modelNumber,
