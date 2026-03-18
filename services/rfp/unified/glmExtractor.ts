@@ -106,6 +106,68 @@ interface RegexDisplay {
 function extractDisplaysViaRegex(text: string): RegexDisplay[] {
   const displays: RegexDisplay[] = [];
 
+  // ── AV Schedule format: LED.xxx.x.xx  SIZE  NITS  PITCH  ROOM ──
+  // Handles AV drawings with LED device IDs (e.g., LED.000.A.01, LED.300.B.2)
+  const avSchedulePattern = /^\s*(LED\.\d{3}\.[A-Z]+\.\d+)\s+([\d''"″\s]+?[xX][\d''"″\s]+?)\s+(\d{4})\s+([\d.]+)\s+([\w\s.()/-]+?)(?:\s{2,}Large Format|\s*$)/gm;
+  let avMatch;
+  while ((avMatch = avSchedulePattern.exec(text)) !== null) {
+    const ledId = avMatch[1].trim();
+    const sizeRaw = avMatch[2].trim();
+    const nits = parseInt(avMatch[3], 10);
+    const pitch = parseFloat(avMatch[4]);
+    const room = avMatch[5].trim();
+    if (isNaN(nits) || nits < 100) continue;
+
+    // Parse WxH from size field (e.g., "14' X 8'", "320' x 3'", "21' 8\" x 5' 4\"")
+    const sizeParts = sizeRaw.split(/[xX]/);
+    const widthRaw = (sizeParts[0] || "").trim();
+    const heightRaw = (sizeParts[1] || "").trim();
+
+    displays.push({
+      name: room || ledId,
+      pixelPitchMm: pitch,
+      brightnessNits: nits,
+      widthRaw,
+      heightRaw,
+      environment: nits >= 5000 ? "outdoor" : "indoor",
+      category: "led_display",
+      quantity: 1,
+      notes: `LED ID: ${ledId}`,
+    });
+  }
+
+  // ── Outdoor schedule format (right-side tables in multi-column layouts) ──
+  // Pattern: LOCATION  PITCH  NITS  WIDTH  HEIGHT  AREA SF
+  const outdoorPattern = /^\s*(NW|SW|EAST|WEST|East [A-D]|NE|SE|North C|North Entry|South Entry)\s+(\d+)\s+(\d{4})\s+([\d''"″\s/-]+?)\s+([\d''"″\s/-]+?)\s+\d+\s+SF/gm;
+  let outMatch;
+  while ((outMatch = outdoorPattern.exec(text)) !== null) {
+    const name = outMatch[1].trim();
+    const pitch = parseInt(outMatch[2], 10);
+    const nits = parseInt(outMatch[3], 10);
+    const widthRaw = outMatch[4].trim();
+    const heightRaw = outMatch[5].trim();
+    if (isNaN(nits) || nits < 100) continue;
+
+    displays.push({
+      name,
+      pixelPitchMm: pitch,
+      brightnessNits: nits,
+      widthRaw,
+      heightRaw,
+      environment: "outdoor",
+      category: /scoreboard|EAST|WEST/i.test(name) && nits >= 7000 ? "led_display" : "led_display",
+      quantity: 1,
+      notes: null,
+    });
+  }
+
+  if (displays.length > 0) {
+    console.log(`[RFP v2] AV schedule regex: ${displays.length} items found`);
+    // Don't return yet — we'll combine with AI results if the document
+    // appears to have more data than regex captured (multi-column garble)
+  }
+
+  // ── Generic display matrix table format (BOA Stadium style) ──
   // Determine environment from surrounding section headers
   // Split text into chunks around section boundaries
   const sectionSplitPattern = /(?=(?:INDOOR|OUTDOOR)\s+LED\s+VIDEOBOARD)/gi;
@@ -742,7 +804,14 @@ export async function extractWithGLM5(
   const uniqueBulletItems = bulletItems.filter(b => !tableNames.has(b.name.toLowerCase()));
   const allRegexItems = [...tableDisplays, ...uniqueBulletItems];
 
-  if (allRegexItems.length > 0) {
+  // Detect AV schedule format — multi-column layouts where pdftotext garbles
+  // the right-side tables. If we see AV schedule headers but regex found fewer
+  // items than expected, use AI extraction instead (it handles garbled columns better).
+  const isAvSchedule = /A\/V\s+(?:INTERIOR|EXTERIOR|ENTRY|SCOREBOARD|RIBBON)/i.test(filtered);
+  const avScheduleExpected = (filtered.match(/A\/V\s+\w+.*?SCHEDULE/gi) || []).length;
+
+  if (allRegexItems.length > 0 && (!isAvSchedule || avScheduleExpected <= 1)) {
+    // Standard format OR single AV schedule — regex results are reliable
     console.log(`[RFP v2] SUCCESS via regex: ${allRegexItems.length} items (${tableDisplays.length} table + ${uniqueBulletItems.length} bullet) (${stats})`);
     options?.onProgress?.(`Found ${allRegexItems.length} items via parsing (${tableDisplays.length} LED displays, ${uniqueBulletItems.length} scoring/timing)`);
 
@@ -752,6 +821,14 @@ export async function extractWithGLM5(
       requirements: [],
       source: "glm5",
     };
+  }
+
+  if (isAvSchedule && avScheduleExpected > 1) {
+    // Multi-table AV schedule — pdftotext garbles multi-column layouts.
+    // Send full text to Mistral Large which handles garbled columns well.
+    console.log(`[RFP v2] AV schedule with ${avScheduleExpected} tables detected — using AI for multi-column extraction`);
+    options?.onProgress?.("AV schedule detected — using AI for multi-column tables...");
+    // Fall through to AI extraction below
   }
 
   // Step 3b: Regex found nothing — AI fallback (Mistral Large, temp 0)
