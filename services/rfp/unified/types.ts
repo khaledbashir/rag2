@@ -98,6 +98,8 @@ export interface ExtractedLEDSpec {
   citation: string;
   /** Raw notes from AI */
   notes: string | null;
+  /** Item category — what type of equipment this is */
+  category?: "led_display" | "scoreboard" | "clock" | "control_system" | "other";
   /** Whether this is a cost alternate (not base bid) */
   isAlternate?: boolean;
   /** Alternate ID from the RFP (e.g., "A1", "B3") */

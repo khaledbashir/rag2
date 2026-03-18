@@ -25,12 +25,22 @@ const MISTRAL_MODEL = process.env.MISTRAL_CHAT_MODEL || "mistral-large-latest";
 
 // LED-relevant keywords for page filtering (case-insensitive)
 const LED_KEYWORDS = [
+  // LED displays
   "led", "videoboard", "pixel pitch", "nits", "brightness",
-  "display matrix", "display schedule", "scoreboard", "ribbon board",
+  "display matrix", "display schedule", "ribbon board", "ribbon display",
   "marquee", "fascia", "centerhung", "center hung", "digital signage",
   "electronic display", "video display", "video board",
   "indoor led", "outdoor led", "entry led",
-  // Common CSI section numbers for LED/electronic displays
+  // Scoreboards & clocks
+  "scoreboard", "game clock", "play clock", "shot clock", "locker room clock",
+  "digit clock", "fixed digit", "scoring system", "score controller",
+  "scorekeeping", "timing system", "delay of game", "24-second",
+  // Control systems
+  "display control", "content playback", "content management",
+  "control system", "ad control",
+  // Vendors
+  "oes", "daktronics",
+  // CSI section numbers
   "116643", "116843", "110660", "116600", "116800",
 ];
 
@@ -87,6 +97,9 @@ interface RegexDisplay {
   widthRaw: string;
   heightRaw: string;
   environment: "indoor" | "outdoor";
+  category: "led_display" | "scoreboard" | "clock" | "control_system" | "other";
+  quantity: number;
+  notes: string | null;
 }
 
 function extractDisplaysViaRegex(text: string): RegexDisplay[] {
@@ -135,12 +148,115 @@ function extractDisplaysViaRegex(text: string): RegexDisplay[] {
         widthRaw,
         heightRaw,
         environment,
+        category: "led_display",
+        quantity: 1,
+        notes: null,
       });
     }
   }
 
   console.log(`[RFP v2] Regex extraction: ${displays.length} displays found`);
   return displays;
+}
+
+// ---------------------------------------------------------------------------
+// Step 3a-ii: Bullet/paragraph extraction for clocks, scoreboards, control systems
+// Handles RFPs where items are listed as section headers with bullet-point specs
+// ---------------------------------------------------------------------------
+
+function extractBulletItems(text: string): RegexDisplay[] {
+  const items: RegexDisplay[] = [];
+
+  // Pattern: Section header on its own line, followed by bullet points starting with " -"
+  // Example:
+  //   Fixed Bowl Play Clock
+  //          - 2 fixed digit clocks.
+  //          - 1 in North Endzone, 1 in South Endzone.
+  const sectionPattern = /^([A-Z][\w\s/–—-]{3,60}?)[\s]*\n((?:\s+-[^\n]+\n?)+)/gm;
+
+  let match;
+  while ((match = sectionPattern.exec(text)) !== null) {
+    const heading = match[1].trim();
+    const bullets = match[2];
+
+    // Classify the item by heading
+    const headingLower = heading.toLowerCase();
+    let category: RegexDisplay["category"] = "other";
+    if (/led|videoboard|ribbon|fascia|marquee|video\s*board|display/i.test(heading) && !/control|playback|content/i.test(heading)) {
+      category = "led_display";
+    } else if (/scoreboard|fixed.*score/i.test(heading)) {
+      category = "scoreboard";
+    } else if (/clock|timing/i.test(heading)) {
+      category = "clock";
+    } else if (/control|playback|content|scorekeep|cms|ad\s+control/i.test(heading)) {
+      category = "control_system";
+    }
+
+    // Skip if it's not AV/LED/scoring related at all
+    if (category === "other") {
+      const relevantTerms = /led|display|clock|score|control|playback|ribbon|fascia|video|digit|oes|daktronics/i;
+      if (!relevantTerms.test(heading) && !relevantTerms.test(bullets)) continue;
+    }
+
+    // LED displays from bullets are kept — the dedup step later removes
+    // any that were already found by the table extractor
+
+    // Extract quantity from bullets
+    let quantity = 1;
+    const qtyMatch = bullets.match(/(\d+)\s+(?:display|clock|location|unit|position)/i)
+      || bullets.match(/(\d+)\s+(?:fixed\s+digit)/i)
+      || bullets.match(/(\d+)\s+Display/i);
+    if (qtyMatch) quantity = parseInt(qtyMatch[1], 10) || 1;
+
+    // Also check heading for quantity
+    if (quantity === 1) {
+      const headingQty = heading.match(/^(\d+)\s+/);
+      if (headingQty) quantity = parseInt(headingQty[1], 10) || 1;
+    }
+
+    // Extract dimensions from bullets if present
+    let widthRaw = "";
+    let heightRaw = "";
+    const dimMatch = bullets.match(/([\d''"″\s/]+?)\s*[hH]\s*x\s*([\d''"″\s/]+?)\s*[wW]/i)
+      || bullets.match(/([\d''"″\s/]+?)\s*[wW]\s*x\s*([\d''"″\s/]+?)\s*[hH]/i);
+    if (dimMatch) {
+      // First pattern: HxW, Second pattern: WxH
+      if (/h\s*x/i.test(bullets)) {
+        heightRaw = dimMatch[1].trim();
+        widthRaw = dimMatch[2].trim();
+      } else {
+        widthRaw = dimMatch[1].trim();
+        heightRaw = dimMatch[2].trim();
+      }
+    }
+
+    // Extract pixel pitch
+    let pixelPitchMm: number | null = null;
+    const pitchMatch = bullets.match(/([\d.]+)\s*mm\s*(?:pixel\s*)?pitch/i) || bullets.match(/([\d.]+)mm/i);
+    if (pitchMatch) pixelPitchMm = parseFloat(pitchMatch[1]) || null;
+
+    // Collect bullet text as notes
+    const noteLines = bullets.split("\n").map(l => l.replace(/^\s+-\s*/, "").trim()).filter(Boolean);
+    const notes = noteLines.join("; ");
+
+    // Extract model reference if present
+    const modelMatch = bullets.match(/(?:OES|Daktronics)\s+(\S+)/i) || bullets.match(/model[:\s]+(\S+)/i);
+
+    items.push({
+      name: heading,
+      pixelPitchMm,
+      brightnessNits: null,
+      widthRaw,
+      heightRaw,
+      environment: "outdoor", // Bullet items in stadium RFPs are typically outdoor
+      category,
+      quantity,
+      notes: notes || null,
+    });
+  }
+
+  console.log(`[RFP v2] Bullet extraction: ${items.length} items found (${items.filter(i => i.category === "led_display").length} LED, ${items.filter(i => i.category === "clock").length} clocks, ${items.filter(i => i.category === "scoreboard").length} scoreboards, ${items.filter(i => i.category === "control_system").length} control)`);
+  return items;
 }
 
 // ---------------------------------------------------------------------------
@@ -177,19 +293,21 @@ async function extractDisplaysViaAI(filteredText: string): Promise<any> {
     throw new Error("MISTRAL_API_KEY not set and regex extraction found 0 displays — cannot fallback to AI");
   }
 
-  const prompt = `You are an LED display specification extractor for construction RFP documents.
+  const prompt = `You are an LED display and AV scope extractor for construction RFP documents.
 
-Extract EVERY LED display from the document text below. The text contains one or more
-display matrix tables and specification sections.
+Extract EVERY item the LED/AV vendor needs to provide. This includes:
+- LED videoboards, ribbon displays, fascia, marquee, entry LEDs
+- Scoreboards (fixed digit, OES, Daktronics)
+- Game clocks, play clocks, shot clocks, locker room clocks
+- Scoring/timing controllers and systems
+- Display control systems, content playback, CMS
 
 Rules:
 - Extract every single row from every display matrix/schedule table
-- Do NOT merge rows that share the same location name — if "Panthers Den" appears 5 times
-  with different dimensions, return 5 separate entries
-- Do NOT skip rows even if they look like duplicates
+- Extract every bullet-point item from specification sections
+- Do NOT merge items that share the same name — if "Panthers Den" appears 5 times, return 5 entries
 - If a field is missing, set it to null
-- ONLY extract LED displays (videoboards, scoreboards, ribbons, fascia, entry LEDs, marquees)
-- Do NOT extract clocks, scoring controllers, or non-LED equipment
+- Set category to: "led_display", "scoreboard", "clock", "control_system", or "other"
 
 Return JSON only:
 {
@@ -202,7 +320,10 @@ Return JSON only:
       "brightness_nits": number | null,
       "width_ft": string | null,
       "height_ft": string | null,
-      "environment": "indoor" | "outdoor"
+      "environment": "indoor" | "outdoor",
+      "category": "led_display" | "scoreboard" | "clock" | "control_system" | "other",
+      "quantity": number,
+      "notes": string | null
     }
   ],
   "requirements": [
@@ -336,17 +457,18 @@ function regexToSpecs(displays: RegexDisplay[]): ExtractedLEDSpec[] {
     pixelPitchMm: d.pixelPitchMm,
     brightnessNits: d.brightnessNits,
     environment: d.environment,
-    quantity: 1,
+    quantity: d.quantity,
     serviceType: null,
     mountingType: null,
     maxPowerW: null,
     weightLbs: null,
     specialRequirements: [],
-    confidence: 1.0, // Regex = deterministic = max confidence
+    confidence: 1.0,
     sourcePages: [],
     sourceType: "text" as const,
     citation: "regex-extraction-v2",
-    notes: null,
+    notes: d.notes,
+    category: d.category,
     isAlternate: false,
     alternateDescription: null,
     selectedProductId: null,
@@ -365,7 +487,7 @@ function aiToSpecs(displays: any[]): ExtractedLEDSpec[] {
     pixelPitchMm: d.pixel_pitch_mm ?? null,
     brightnessNits: d.brightness_nits ?? null,
     environment: (d.environment || "indoor").toLowerCase().includes("outdoor") ? "outdoor" : "indoor",
-    quantity: 1,
+    quantity: d.quantity || 1,
     serviceType: null,
     mountingType: null,
     maxPowerW: null,
@@ -375,7 +497,8 @@ function aiToSpecs(displays: any[]): ExtractedLEDSpec[] {
     sourcePages: [],
     sourceType: "text" as const,
     citation: "mistral-large-fallback",
-    notes: null,
+    notes: d.notes || null,
+    category: d.category || "led_display",
     isAlternate: false,
     alternateDescription: null,
     selectedProductId: null,
@@ -417,17 +540,23 @@ export async function extractWithGLM5(
     };
   }
 
-  // Step 3a: Try regex extraction first (deterministic, free, instant)
-  options?.onProgress?.("Parsing display tables...");
-  const regexDisplays = extractDisplaysViaRegex(filtered);
+  // Step 3a: Regex extraction — tables + bullet points (deterministic, free, instant)
+  options?.onProgress?.("Parsing display tables and specifications...");
+  const tableDisplays = extractDisplaysViaRegex(filtered);
+  const bulletItems = extractBulletItems(filtered);
 
-  if (regexDisplays.length > 0) {
-    // Regex got results — use them directly, no AI needed
-    console.log(`[RFP v2] SUCCESS via regex: ${regexDisplays.length} displays (${stats})`);
-    options?.onProgress?.(`Found ${regexDisplays.length} LED displays via table parsing`);
+  // Combine both: table displays (LED specs) + bullet items (clocks, scoreboards, controls)
+  // Avoid duplicates: if a bullet item has the same name as a table display, skip it
+  const tableNames = new Set(tableDisplays.map(d => d.name.toLowerCase()));
+  const uniqueBulletItems = bulletItems.filter(b => !tableNames.has(b.name.toLowerCase()));
+  const allRegexItems = [...tableDisplays, ...uniqueBulletItems];
+
+  if (allRegexItems.length > 0) {
+    console.log(`[RFP v2] SUCCESS via regex: ${allRegexItems.length} items (${tableDisplays.length} table + ${uniqueBulletItems.length} bullet) (${stats})`);
+    options?.onProgress?.(`Found ${allRegexItems.length} items via parsing (${tableDisplays.length} LED displays, ${uniqueBulletItems.length} scoring/timing)`);
 
     return {
-      screens: regexToSpecs(regexDisplays),
+      screens: regexToSpecs(allRegexItems),
       project: extractProjectInfo(fullText),
       requirements: [],
       source: "glm5",
