@@ -117,7 +117,7 @@ export default function AnalysisDetailPage() {
   const [downloading, setDownloading] = useState<string | null>(null);
   const [pricingPreview, setPricingPreview] = useState<any>(null);
   const [loadingPricing, setLoadingPricing] = useState(false);
-  const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string; widthMm?: number; heightMm?: number; manufacturer?: string }>>([]);
+  const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string; widthMm?: number; heightMm?: number; manufacturer?: string; nits?: number; weightKg?: number; maxPowerWatts?: number; environment?: string }>>([]);
   const [pdfAvailable, setPdfAvailable] = useState<boolean | null>(null);
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -251,7 +251,7 @@ export default function AnalysisDetailPage() {
 
   const handleProductSelect = useCallback((displayName: string, productId: string) => {
     const product = availableProducts.find((p) => p.id === productId);
-    if (!product || !pricingPreview) return;
+    if (!product) return;
 
     // Recalculate active dimensions using new product's cabinet size
     const cabWidthMm = product.widthMm || 960;
@@ -264,6 +264,17 @@ export default function AnalysisDetailPage() {
     const activeWidthMm = cols * cabWidthMm;
     const activeHeightMm = rows * cabHeightMm;
 
+    // Calculate derived specs from product catalog
+    const totalCabs = cols * rows;
+    const weightKgPerCab = product.weightKg || 0;
+    const maxPowerPerCab = product.maxPowerWatts || 0;
+    const totalWeightLbs = Math.round(totalCabs * weightKgPerCab * 2.20462);
+    const totalPowerW = Math.round(totalCabs * maxPowerPerCab);
+    const btuPerHr = Math.round(totalPowerW * 3.412);
+    const productNits = product.nits || 0;
+
+    console.log(`[ProductSelect] ${displayName} → ${product.name}: nits=${productNits}, weightKg=${weightKgPerCab}, powerW=${maxPowerPerCab}, cabs=${totalCabs}`);
+
     setPricingPreview((prev: any) => {
       if (!prev) return prev;
       return {
@@ -272,23 +283,33 @@ export default function AnalysisDetailPage() {
           d.name === displayName
             ? {
                 ...d,
+                nits: productNits > 0 ? productNits : d.nits,
+                weightLbs: totalWeightLbs > 0 ? totalWeightLbs : d.weightLbs,
+                totalPowerW: totalPowerW > 0 ? totalPowerW : d.totalPowerW,
+                btuPerHr: btuPerHr > 0 ? btuPerHr : d.btuPerHr,
                 matchedProduct: {
                   manufacturer: product.manufacturer || product.name.split(" ")[0],
                   model: product.name,
                   pitch: product.pitch,
-                  totalModules: cols * rows,
+                  totalModules: totalCabs,
                   fitScore: 100,
                   activeWidthFt: Math.round((activeWidthMm / 304.8) * 100) / 100,
                   activeHeightFt: Math.round((activeHeightMm / 304.8) * 100) / 100,
                   resolutionX: Math.round(activeWidthMm / product.pitch),
                   resolutionY: Math.round(activeHeightMm / product.pitch),
+                  nits: productNits,
+                  weightKgPerCab,
+                  maxPowerWPerCab: maxPowerPerCab,
+                  totalWeightLbs,
+                  totalMaxPowerW: totalPowerW,
+                  btuPerHr,
                 },
               }
             : d
         ),
       };
     });
-  }, [availableProducts, pricingPreview, analysis?.screens]);
+  }, [availableProducts, analysis?.screens]);
 
   const handleAddScreen = useCallback(() => {
     const newSpec: ExtractedLEDSpec = {
