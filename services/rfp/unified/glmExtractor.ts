@@ -446,12 +446,31 @@ function extractProjectInfo(fullText: string): ExtractedProjectInfo {
 // Map regex results to ExtractedLEDSpec
 // ---------------------------------------------------------------------------
 
+// Normalize dimensions: ensure landscape displays have W > H
+// 95%+ of stadium displays are landscape. Portrait exceptions: columns, towers, vertical fascia
+function normalizeDimensions(name: string, w: number | null, h: number | null): { widthFt: number | null; heightFt: number | null } {
+  if (w == null || h == null || w === 0 || h === 0) return { widthFt: w, heightFt: h };
+  // Already landscape or square — no swap needed
+  if (w >= h) return { widthFt: w, heightFt: h };
+  // Portrait orientation (H > W) — check if it's intentionally vertical
+  const lower = name.toLowerCase();
+  const isPortrait = /column|tower|vertical|portrait|pylon|totem/i.test(lower);
+  if (isPortrait) return { widthFt: w, heightFt: h }; // Keep as-is, intentionally vertical
+  // Default: swap to landscape (most common in stadiums)
+  console.log(`[RFP v2] Dimension swap: "${name}" ${w}'W × ${h}'H → ${h}'W × ${w}'H (landscape normalization)`);
+  return { widthFt: h, heightFt: w };
+}
+
 function regexToSpecs(displays: RegexDisplay[]): ExtractedLEDSpec[] {
-  return displays.map((d, idx) => ({
+  return displays.map((d, idx) => {
+    const rawW = parseFeetInches(d.widthRaw);
+    const rawH = parseFeetInches(d.heightRaw);
+    const { widthFt, heightFt } = normalizeDimensions(d.name, rawW, rawH);
+    return {
     name: d.name,
     location: d.name,
-    widthFt: parseFeetInches(d.widthRaw),
-    heightFt: parseFeetInches(d.heightRaw),
+    widthFt,
+    heightFt,
     widthPx: null,
     heightPx: null,
     pixelPitchMm: d.pixelPitchMm,
@@ -473,15 +492,21 @@ function regexToSpecs(displays: RegexDisplay[]): ExtractedLEDSpec[] {
     alternateDescription: null,
     selectedProductId: null,
     selectedProductName: null,
-  }));
+  };
+  });
 }
 
 function aiToSpecs(displays: any[]): ExtractedLEDSpec[] {
-  return displays.map((d, idx) => ({
-    name: d.name || d.location || `Display ${idx + 1}`,
+  return displays.map((d, idx) => {
+    const name = d.name || d.location || `Display ${idx + 1}`;
+    const rawW = d.width_ft_decimal ?? parseFeetInches(d.width_ft) ?? null;
+    const rawH = d.height_ft_decimal ?? parseFeetInches(d.height_ft) ?? null;
+    const { widthFt, heightFt } = normalizeDimensions(name, rawW, rawH);
+    return {
+    name,
     location: d.location || d.name || "",
-    widthFt: d.width_ft_decimal ?? parseFeetInches(d.width_ft) ?? null,
-    heightFt: d.height_ft_decimal ?? parseFeetInches(d.height_ft) ?? null,
+    widthFt,
+    heightFt,
     widthPx: null,
     heightPx: null,
     pixelPitchMm: d.pixel_pitch_mm ?? null,
@@ -503,7 +528,8 @@ function aiToSpecs(displays: any[]): ExtractedLEDSpec[] {
     alternateDescription: null,
     selectedProductId: null,
     selectedProductName: null,
-  }));
+  };
+  });
 }
 
 // ---------------------------------------------------------------------------

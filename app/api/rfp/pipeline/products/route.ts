@@ -22,6 +22,8 @@ export async function GET(request: NextRequest) {
         nits: p.nits,
         widthMm: p.widthMm,
         heightMm: p.heightMm,
+        weightKg: p.weightKg,
+        maxPowerWatts: p.maxPowerWatts,
         environment: p.environment,
       })),
     });

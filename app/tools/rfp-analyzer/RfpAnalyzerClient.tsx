@@ -275,7 +275,7 @@ export default function RfpAnalyzerClient() {
   const [quoteImportResult, setQuoteImportResult] = useState<any>(null);
   const [pricingPreview, setPricingPreview] = useState<PricingPreview | null>(null);
   const [loadingPricing, setLoadingPricing] = useState(false);
-  const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string; widthMm?: number; heightMm?: number; manufacturer?: string }>>([]);
+  const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string; widthMm?: number; heightMm?: number; manufacturer?: string; nits?: number; weightKg?: number; maxPowerWatts?: number; environment?: string }>>([]);
   const [resultsTab, setResultsTab] = useState<string>("displays");
   const [customTabs, setCustomTabs] = useState<Array<{ id: string; name: string; content: string }>>([]);
   const [drawingUpload, setDrawingUpload] = useState<{ uploading: boolean; results: Array<{ filename: string; pages: number }> }>({ uploading: false, results: [] });
@@ -614,6 +614,15 @@ export default function RfpAnalyzerClient() {
     const activeHeightFt = activeHeightMm / 304.8;
     const newPitch = product.pitch;
 
+    // Calculate derived specs from product catalog
+    const totalCabs = cols * rows;
+    const weightKgPerCab = product.weightKg || 0;
+    const maxPowerPerCab = product.maxPowerWatts || 0;
+    const totalWeightLbs = Math.round(totalCabs * weightKgPerCab * 2.20462);
+    const totalPowerW = Math.round(totalCabs * maxPowerPerCab);
+    const btuPerHr = Math.round(totalPowerW * 3.412);
+    const productNits = product.nits || 0;
+
     // Update editableSpecs with new dimensions from the selected product
     // If editableSpecs is empty, seed it from result.screens first
     setEditableSpecs((prev) => {
@@ -627,6 +636,9 @@ export default function RfpAnalyzerClient() {
               widthPx: Math.round(activeWidthMm / newPitch),
               heightPx: Math.round(activeHeightMm / newPitch),
               pixelPitchMm: newPitch,
+              brightnessNits: productNits || s.brightnessNits,
+              weightLbs: totalWeightLbs || s.weightLbs,
+              maxPowerW: totalPowerW || s.maxPowerW,
             }
           : s
       );
@@ -639,16 +651,26 @@ export default function RfpAnalyzerClient() {
         // Set matched product info
         let updated = {
           ...d,
+          nits: productNits || d.nits,
+          weightLbs: totalWeightLbs || d.weightLbs,
+          totalPowerW: totalPowerW || d.totalPowerW,
+          btuPerHr: btuPerHr || d.btuPerHr,
           matchedProduct: {
             manufacturer: product.manufacturer || product.name.split(" ")[0],
             model: product.name,
             pitch: product.pitch,
-            totalModules: cols * rows,
+            totalModules: totalCabs,
             fitScore: 100,
             activeWidthFt: Math.round(activeWidthFt * 100) / 100,
             activeHeightFt: Math.round(activeHeightFt * 100) / 100,
             resolutionX: Math.round(activeWidthMm / newPitch),
             resolutionY: Math.round(activeHeightMm / newPitch),
+            nits: productNits,
+            weightKgPerCab: weightKgPerCab,
+            maxPowerWPerCab: maxPowerPerCab,
+            totalWeightLbs,
+            totalPowerW,
+            btuPerHr,
           },
         };
         // Recalculate costs with new pitch + cabinet-grid dimensions
