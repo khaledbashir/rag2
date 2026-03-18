@@ -141,69 +141,38 @@ function mapToExtractedSpecs(displays: any[]): ExtractedLEDSpec[] {
 async function callLLM(text: string, prompt: string): Promise<any> {
   const fullContent = prompt + "\n\n" + text;
 
-  // Try Mercury 2 first
-  try {
-    console.log(`[Extractor] Trying Mercury 2...`);
-    const res = await fetch(MERCURY_URL, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${MERCURY_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: MERCURY_MODEL,
-        messages: [{ role: "user", content: fullContent }],
-        max_tokens: 50000,
-        temperature: 0.1,
-      }),
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      const content = data.choices?.[0]?.message?.content || "";
-      const start = content.indexOf("{");
-      const end = content.lastIndexOf("}");
-      if (start !== -1 && end !== -1) {
-        const parsed = JSON.parse(content.substring(start, end + 1));
-        const count = parsed.displays?.length || 0;
-        console.log(`[Extractor] Mercury 2: ${count} displays (${data.usage?.total_tokens || 0} tokens)`);
-        if (count > 0) return parsed;
-      }
-    }
-    console.log(`[Extractor] Mercury 2 failed or returned 0, falling back to GLM 4.7`);
-  } catch (err: any) {
-    console.log(`[Extractor] Mercury 2 error: ${err.message}, falling back to GLM 4.7`);
-  }
-
-  // Fallback: GLM 4.7
-  console.log(`[Extractor] Trying GLM 4.7...`);
-  const res = await fetch(ZAI_URL, {
+  // Single model: Mercury 2 (deterministic, temp 0, no fallback chain)
+  // If Mercury fails, we throw — never silently switch to a different model
+  // that would produce different results.
+  console.log(`[Extractor] Calling Mercury 2 (temp=0, deterministic)...`);
+  const res = await fetch(MERCURY_URL, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${ZAI_API_KEY}`,
+      "Authorization": `Bearer ${MERCURY_API_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: ZAI_MODEL,
+      model: MERCURY_MODEL,
       messages: [{ role: "user", content: fullContent }],
-      max_tokens: 64000,
-      temperature: 0.1,
+      max_tokens: 50000,
+      temperature: 0.0,
     }),
   });
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Z.AI API error ${res.status}: ${err.substring(0, 200)}`);
+    throw new Error(`Mercury 2 API error ${res.status}: ${err.substring(0, 200)}`);
   }
 
   const data = await res.json();
   const content = data.choices?.[0]?.message?.content || "";
   const start = content.indexOf("{");
   const end = content.lastIndexOf("}");
-  if (start === -1 || end === -1) throw new Error("No JSON in response");
+  if (start === -1 || end === -1) throw new Error("Mercury 2 returned no JSON in response");
 
   const parsed = JSON.parse(content.substring(start, end + 1));
-  console.log(`[Extractor] GLM 4.7: ${parsed.displays?.length || 0} displays`);
+  const count = parsed.displays?.length || 0;
+  console.log(`[Extractor] Mercury 2: ${count} displays (${data.usage?.total_tokens || 0} tokens)`);
   return parsed;
 }
 

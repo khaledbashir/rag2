@@ -143,7 +143,7 @@ async function processBatch(
         systemInstruction: { parts: [{ text: DRAWING_ANALYSIS_PROMPT }] },
         contents: [{ role: "user", parts: userParts }],
         generationConfig: {
-          temperature: 0.4,
+          temperature: 0.0,
           maxOutputTokens: 16384, // Larger output for bigger batches
           responseMimeType: "text/plain",
         },
@@ -337,7 +337,7 @@ export async function extractSpecsFromText(
         systemInstruction: { parts: [{ text: TEXT_EXTRACTION_PROMPT }] },
         contents: [{ role: "user", parts: [{ text: textToSend }] }],
         generationConfig: {
-          temperature: 0.3,
+          temperature: 0.0,
           maxOutputTokens: 8192,
           responseMimeType: "text/plain",
         },

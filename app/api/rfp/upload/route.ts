@@ -209,12 +209,16 @@ ${excelExtractedData.lineItems.map((li: any) => `- ${li.description}: $${li.sell
         fullTextForTTE = filterResult.fullText || ""; // Save for TTE extraction
         log.info(`[RFP Upload] Filtered ${filterResult.totalPages} pages down to ${filterResult.retainedPages} signal pages.`);
 
-        // --- AUTO-VISION: AV/A sheets, Elevation, Structural Attachment (8–10 pages) ---
+        // --- AUTO-VISION: AV/A sheets, Elevation, Structural Attachment ---
+        // Gated behind includeDrawings flag (default: false for determinism).
+        // Drawing vision uses separate AI models with non-deterministic output.
+        // Enable only when estimators explicitly need architectural drawing extraction.
+        const includeDrawings = false; // Phase 2: make this a request parameter
         const MAX_DRAWING_PAGES_TO_SCAN = 10;
         const visionConfigured = !!(process.env.Z_AI_API_KEY || process.env.Z_AI_BASE_URL);
         let visionDisabled = false;
 
-        if (filterResult.drawingCandidates.length > 0) {
+        if (includeDrawings && filterResult.drawingCandidates.length > 0) {
           if (visionConfigured) {
             log.info(`[RFP Upload] Found ${filterResult.drawingCandidates.length} potential drawings. Scanning up to ${MAX_DRAWING_PAGES_TO_SCAN}...`);
             const drawingService = new DrawingService();
@@ -243,6 +247,8 @@ ${excelExtractedData.lineItems.map((li: any) => `- ${li.description}: $${li.sell
             visionDisabled = true;
             log.info(`[RFP Upload] Vision skipped (Z_AI not configured). Drawing candidates: ${filterResult.drawingCandidates.length}`);
           }
+        } else if (filterResult.drawingCandidates.length > 0) {
+          log.info(`[RFP Upload] Drawing vision skipped (includeDrawings=false, deterministic mode). ${filterResult.drawingCandidates.length} candidates ignored.`);
         }
 
         // Create synthetic text file for embedding (Signal Only)

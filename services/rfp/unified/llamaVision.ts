@@ -70,7 +70,7 @@ async function llamaVisionChat(
   userPrompt: string,
   model: string = NIM_MODEL_HEAVY,
   maxTokens: number = 4096,
-  temperature: number = 0.3,
+  temperature: number = 0.0,
 ): Promise<string> {
   if (!NIM_API_KEY) {
     throw new Error("NVIDIA_NIM_API_KEY not set");
@@ -134,7 +134,7 @@ async function llamaTextChat(
   userPrompt: string,
   model: string = NIM_MODEL_HEAVY,
   maxTokens: number = 8192,
-  temperature: number = 0.3,
+  temperature: number = 0.0,
 ): Promise<string> {
   if (!NIM_API_KEY) {
     throw new Error("NVIDIA_NIM_API_KEY not set");

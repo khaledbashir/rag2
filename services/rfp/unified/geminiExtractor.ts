@@ -269,7 +269,7 @@ export async function extractWithGemini(
       },
     ],
     generationConfig: {
-      temperature: 0.1,
+      temperature: 0.0,
       maxOutputTokens: 65536,
       responseMimeType: "application/json",
     },

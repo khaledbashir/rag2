@@ -147,7 +147,7 @@ async function callMistralChat(userMessage: string): Promise<string> {
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userMessage },
         ],
-        temperature: 0.1,
+        temperature: 0.0,
         max_tokens: 16384, // Larger output for bigger batches with more specs
         response_format: { type: "json_object" },
       }),

@@ -232,7 +232,7 @@ export async function POST(request: NextRequest) {
               });
 
               const finalProject = glmResult.project;
-              const screens = glmResult.screens;
+              const screens = deduplicateScreens(glmResult.screens);
               const glmRequirements = glmResult.requirements || [];
 
               // Provision AnythingLLM workspace
@@ -300,102 +300,10 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // =============================================================
-        // STEP 1.6: AnythingLLM FALLBACK (if GLM5 failed or returned 0)
-        // Upload PDF, embed, use @agent to extract.
-        // =============================================================
-        if (isAnythingLLMAvailable()) {
-          lastHeartbeatStage = "extracting";
-          send("progress", {
-            stage: "extracting",
-            current: 0,
-            total: 1,
-            message: "Switching to fallback AI...",
-          });
-
-          try {
-            const allmResult = await extractWithAnythingLLM(filePath, {
-              timeout: 300,
-              onProgress: (msg) => {
-                send("progress", { stage: "extracting", current: 0, total: 1, message: msg });
-              },
-            });
-
-            if (allmResult.screens.length > 0) {
-              log.info(`[Pipeline] AnythingLLM extracted ${allmResult.screens.length} displays`);
-
-              let totalPages = 0;
-              try {
-                const { stdout: info } = await execFileAsync("pdfinfo", [filePath], { timeout: 30_000 });
-                const match = info.match(/Pages:\s+(\d+)/);
-                totalPages = match ? parseInt(match[1], 10) : 0;
-              } catch { totalPages = 0; }
-
-              send("stage", {
-                stage: "extracted",
-                message: `Found ${allmResult.screens.length} LED display(s)`,
-                specsFound: allmResult.screens.length,
-                requirementsFound: allmResult.requirements.length,
-                extractionSource: "anythingllm",
-              });
-
-              const finalProject = allmResult.project;
-              const screens = allmResult.screens;
-              const allmRequirements = allmResult.requirements || [];
-
-              let workspaceSlug: string | null = null;
-              let analysisId: string | null = null;
-              try {
-                const fileStat2 = await stat(filePath).catch(() => ({ size: 0 }));
-                const analysis = await prisma.rfpAnalysis.create({
-                  data: {
-                    filename: body.filename || "RFP",
-                    fileSize: fileStat2.size,
-                    pageCount: totalPages,
-                    pdfFilePath: filePath,
-                    projectName: finalProject.projectName,
-                    clientName: finalProject.clientName,
-                    venue: finalProject.venue,
-                    location: finalProject.location,
-                    specsFound: screens.length,
-                    relevantPages: totalPages,
-                    processingTimeMs: Date.now() - startTime,
-                    project: finalProject as any,
-                    screens: screens as any,
-                    requirements: allmRequirements as any,
-                    triage: [],
-                    aiWorkspaceSlug: workspaceSlug,
-                    createdBy: session?.user?.name || session?.user?.email || null,
-                  },
-                });
-                analysisId = analysis.id;
-              } catch (dbErr: any) {
-                log.error("[Pipeline] AnythingLLM DB save failed (non-fatal):", dbErr.message?.slice(0, 200));
-              }
-
-              send("complete", {
-                result: {
-                  id: analysisId,
-                  project: finalProject,
-                  screens,
-                  requirements: allmRequirements,
-                  stats: { totalPages, extractionSource: "anythingllm", durationMs: Date.now() - startTime },
-                  aiWorkspaceSlug: workspaceSlug,
-                },
-              });
-
-              clearInterval(globalHeartbeat);
-              controller.close();
-              return;
-            }
-          } catch (allmErr: any) {
-            log.error("[Pipeline] AnythingLLM fallback also failed:", allmErr.message);
-          }
-        }
-
-        // Both GLM5 and AnythingLLM failed
+        // No fallback chain — single model (Mercury 2) for determinism.
+        // If Mercury returned 0 screens, report it clearly. Don't switch models.
         send("error", {
-          message: "All extraction methods failed. Please retry or contact support.",
+          message: "Extraction returned 0 displays. The AI could not find LED specifications in this document. Try re-uploading or check that the PDF contains display schedule tables.",
         });
         clearInterval(globalHeartbeat);
         controller.close();
