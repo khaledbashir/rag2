@@ -952,7 +952,6 @@ export default function RfpAnalyzerClient() {
                   "X-Total-Chunks": String(totalChunks),
                 },
                 body: chunk,
-                credentials: "omit",
                 signal: abortRef.current.signal,
               });
               if (chunkRes.ok) break;
@@ -1008,7 +1007,6 @@ export default function RfpAnalyzerClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(sessionPayload),
-        credentials: "omit",
         signal: abortRef.current.signal,
       });
 
@@ -1222,7 +1220,6 @@ export default function RfpAnalyzerClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(lastSessionData.current),
-        credentials: "omit",
         signal: abortRef.current.signal,
       });
 

@@ -89,6 +89,7 @@ export async function POST(request: NextRequest) {
   // Resolve authenticated user's AnythingLLM ID
   let anythingLlmUserId: number | null = null;
   const session = await auth();
+  console.log(`[RFP Analyze] Session: user=${session?.user?.name || "(no name)"}, email=${session?.user?.email || "(no email)"}, id=${session?.user?.id || "(no id)"}`);
   if (session?.user?.id && session?.user?.email) {
     anythingLlmUserId = await ensureAnythingLlmUser(session.user.id, session.user.email).catch(() => null);
   }
