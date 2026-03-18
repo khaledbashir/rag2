@@ -599,6 +599,32 @@ function aiToSpecs(displays: any[]): ExtractedLEDSpec[] {
 }
 
 // ---------------------------------------------------------------------------
+// pdfplumber extraction — handles multi-column AV schedule drawings
+// ---------------------------------------------------------------------------
+
+async function extractViaPdfPlumber(pdfPath: string): Promise<RegexDisplay[]> {
+  const scriptPath = require("path").join(process.cwd(), "scripts", "pdfplumber-extract.py");
+  const { stdout } = await execFileAsync("python3", [scriptPath, pdfPath], { timeout: 60_000 });
+  const result = JSON.parse(stdout);
+  if (result.error) throw new Error(result.error);
+
+  const displays: RegexDisplay[] = (result.displays || []).map((d: any) => ({
+    name: d.name || "Display",
+    pixelPitchMm: d.pixel_pitch_mm ?? null,
+    brightnessNits: d.brightness_nits ?? null,
+    widthRaw: d.width || "",
+    heightRaw: d.height || "",
+    environment: d.environment === "outdoor" ? "outdoor" as const : "indoor" as const,
+    category: (d.category || "led_display") as RegexDisplay["category"],
+    quantity: d.quantity || 1,
+    notes: d.led_id ? `LED ID: ${d.led_id}` : null,
+  }));
+
+  console.log(`[RFP v2] pdfplumber: ${displays.length} displays (${result.stats?.interior || 0} interior, ${result.stats?.outdoor || 0} outdoor)`);
+  return displays;
+}
+
+// ---------------------------------------------------------------------------
 // Main extraction — the v2 pipeline
 // ---------------------------------------------------------------------------
 
@@ -805,13 +831,34 @@ export async function extractWithGLM5(
   const allRegexItems = [...tableDisplays, ...uniqueBulletItems];
 
   // Detect AV schedule format — multi-column layouts where pdftotext garbles
-  // the right-side tables. If we see AV schedule headers but regex found fewer
-  // items than expected, use AI extraction instead (it handles garbled columns better).
+  // the right-side tables. Use pdfplumber (Python) which handles multi-column correctly.
   const isAvSchedule = /A\/V\s+(?:INTERIOR|EXTERIOR|ENTRY|SCOREBOARD|RIBBON)/i.test(filtered);
   const avScheduleExpected = (filtered.match(/A\/V\s+\w+.*?SCHEDULE/gi) || []).length;
 
-  if (allRegexItems.length > 0 && (!isAvSchedule || avScheduleExpected <= 1)) {
-    // Standard format OR single AV schedule — regex results are reliable
+  if (isAvSchedule && avScheduleExpected > 1) {
+    // Multi-table AV schedule — use pdfplumber for proper table extraction
+    console.log(`[RFP v2] AV schedule with ${avScheduleExpected} tables detected — using pdfplumber`);
+    options?.onProgress?.("AV schedule detected — extracting tables with pdfplumber...");
+
+    try {
+      const plumberResult = await extractViaPdfPlumber(pdfPath);
+      if (plumberResult && plumberResult.length > 0) {
+        console.log(`[RFP v2] pdfplumber SUCCESS: ${plumberResult.length} items`);
+        options?.onProgress?.(`Found ${plumberResult.length} items via pdfplumber table extraction`);
+        return {
+          screens: regexToSpecs(plumberResult),
+          project: extractProjectInfo(fullText),
+          requirements: [],
+          source: "glm5",
+        };
+      }
+    } catch (err: any) {
+      console.error(`[RFP v2] pdfplumber failed:`, err.message, "— falling through to regex/AI");
+    }
+  }
+
+  if (allRegexItems.length > 0) {
+    // Standard format — regex results are reliable
     console.log(`[RFP v2] SUCCESS via regex: ${allRegexItems.length} items (${tableDisplays.length} table + ${uniqueBulletItems.length} bullet) (${stats})`);
     options?.onProgress?.(`Found ${allRegexItems.length} items via parsing (${tableDisplays.length} LED displays, ${uniqueBulletItems.length} scoring/timing)`);
 
@@ -821,14 +868,6 @@ export async function extractWithGLM5(
       requirements: [],
       source: "glm5",
     };
-  }
-
-  if (isAvSchedule && avScheduleExpected > 1) {
-    // Multi-table AV schedule — pdftotext garbles multi-column layouts.
-    // Send full text to Mistral Large which handles garbled columns well.
-    console.log(`[RFP v2] AV schedule with ${avScheduleExpected} tables detected — using AI for multi-column extraction`);
-    options?.onProgress?.("AV schedule detected — using AI for multi-column tables...");
-    // Fall through to AI extraction below
   }
 
   // Step 3b: Regex found nothing — AI fallback (Mistral Large, temp 0)

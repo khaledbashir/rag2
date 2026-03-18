@@ -34,8 +34,11 @@ COPY --from=build --chown=nextjs:nodejs /app/docker-entrypoint.sh ./docker-entry
 # Copy PDF triage Python service
 COPY --from=build --chown=nextjs:nodejs /app/pdf-triage-service ./pdf-triage-service
 
-# Install Python dependencies for the triage service
-RUN pip3 install --no-cache-dir -r pdf-triage-service/requirements.txt
+# Copy pdfplumber extraction script
+COPY --from=build --chown=nextjs:nodejs /app/scripts/pdfplumber-extract.py ./scripts/pdfplumber-extract.py
+
+# Install Python dependencies for the triage service + pdfplumber for AV schedule extraction
+RUN pip3 install --no-cache-dir -r pdf-triage-service/requirements.txt pdfplumber
 
 RUN chmod +x docker-entrypoint.sh
 
