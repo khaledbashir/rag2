@@ -189,41 +189,91 @@ async function extractSections(pdfPath: string): Promise<{ indoor: string; outdo
   const fullText = await readFile(tmpFile, "utf-8");
   unlink(tmpFile).catch(() => {});
 
-  // Find indoor and outdoor sections — try multiple patterns
-  // Strategy: find ALL LED VIDEOBOARD sections and grab everything between
-  // first section start and end of last section. This gets indoor + outdoor
-  // in one chunk (~140KB) that fits in GLM5's context window.
-  const sectionMatches = [...fullText.matchAll(/SECTION\s+\d+\s*-?\s*(?:INDOOR|OUTDOOR)\s+LED\s+VIDEOBOARDS/gi)];
+  // Strategy: find ALL LED-related sections and extract everything from the
+  // first match through the end of the last section. Mercury 2 has 128K token
+  // context (~500KB text), so we can be generous.
+  //
+  // Multiple patterns to catch variations:
+  // - "SECTION 116643 - INDOOR LED VIDEOBOARDS"
+  // - "SECTION 11 66 43 - INDOOR LED"
+  // - "SECTION 116843 OUTDOOR LED"
+  // - Freestanding "DISPLAY MATRIX" or "DISPLAY SCHEDULE" tables
+  const sectionPatterns = [
+    /SECTION\s+\d[\d\s]*-?\s*(?:INDOOR|OUTDOOR)\s+LED/gi,
+    /SECTION\s+\d[\d\s]*-?\s*LED\s+(?:VIDEO|DISPLAY)/gi,
+    /(?:DISPLAY\s+(?:MATRIX|SCHEDULE)|LED\s+DISPLAY\s+(?:MATRIX|SCHEDULE))/gi,
+  ];
 
-  let indoor = "";
-  const outdoor = "";
+  // Collect all match positions across all patterns
+  const allPositions: number[] = [];
+  for (const pattern of sectionPatterns) {
+    for (const m of fullText.matchAll(pattern)) {
+      if (m.index != null) allPositions.push(m.index);
+    }
+  }
+  // Deduplicate and sort
+  const uniquePositions = [...new Set(allPositions)].sort((a, b) => a - b);
 
-  if (sectionMatches.length > 0) {
-    const start = sectionMatches[0].index!;
-    // Find "PART 3" after the last section (marks end of specs)
-    const lastSection = sectionMatches[sectionMatches.length - 1];
-    let end = fullText.indexOf("PART 3", lastSection.index! + lastSection[0].length);
-    if (end === -1) end = Math.min(start + 200000, fullText.length);
-    else end = Math.min(end + 500, fullText.length); // Include a bit after PART 3
+  let combined = "";
 
-    indoor = fullText.substring(start, end);
-    console.log(`[GLM5] Found ${sectionMatches.length} LED sections, extracted ${(indoor.length / 1024).toFixed(0)}KB (offsets ${start}-${end})`);
+  if (uniquePositions.length > 0) {
+    const firstStart = uniquePositions[0];
+    const lastStart = uniquePositions[uniquePositions.length - 1];
+
+    // Find end: search for "END OF SECTION" after the last match, or next
+    // unrelated SECTION header, or take everything to EOF within 400KB limit.
+    let end = -1;
+
+    // Try "END OF SECTION" after the last LED section
+    const endOfSectionIdx = fullText.indexOf("END OF SECTION", lastStart + 100);
+    if (endOfSectionIdx !== -1) {
+      end = Math.min(endOfSectionIdx + 200, fullText.length);
+    }
+
+    // If no END OF SECTION, look for next SECTION header that's NOT LED-related
+    if (end === -1) {
+      const nextSectionRegex = /\nSECTION\s+\d/gi;
+      nextSectionRegex.lastIndex = lastStart + 100;
+      let nextMatch: RegExpExecArray | null;
+      while ((nextMatch = nextSectionRegex.exec(fullText)) !== null) {
+        const snippet = fullText.substring(nextMatch.index, nextMatch.index + 200).toUpperCase();
+        if (!snippet.includes("LED") && !snippet.includes("VIDEOBOARD") && !snippet.includes("DISPLAY")) {
+          end = nextMatch.index;
+          break;
+        }
+      }
+    }
+
+    // Fallback: 400KB from first match (Mercury 2 can handle ~500KB)
+    if (end === -1) end = Math.min(firstStart + 400000, fullText.length);
+
+    combined = fullText.substring(firstStart, end);
+    console.log(`[GLM5] Found ${uniquePositions.length} LED section markers, extracted ${(combined.length / 1024).toFixed(0)}KB (offsets ${firstStart}-${end})`);
   } else {
-    // No SECTION headers found — try broader search
-    // Look for first display table header
-    const tableStart = fullText.search(/Pixel\s+Pitch\s+Brightness/i);
+    // No section headers found — try broader search for display tables
+    const tablePatterns = [
+      /Pixel\s+Pitch\s+Brightness/i,
+      /Display\s+Matrix/i,
+      /LED\s+Display\s+Schedule/i,
+    ];
+    let tableStart = -1;
+    for (const pat of tablePatterns) {
+      const idx = fullText.search(pat);
+      if (idx >= 0 && (tableStart === -1 || idx < tableStart)) tableStart = idx;
+    }
+
     if (tableStart >= 0) {
-      const start = Math.max(0, tableStart - 5000); // Include some context before
-      indoor = fullText.substring(start, Math.min(start + 200000, fullText.length));
-      console.log(`[GLM5] No SECTION headers — found display table at offset ${tableStart}, extracted ${(indoor.length / 1024).toFixed(0)}KB`);
+      const start = Math.max(0, tableStart - 5000);
+      combined = fullText.substring(start, Math.min(start + 400000, fullText.length));
+      console.log(`[GLM5] No SECTION headers — found display table at offset ${tableStart}, extracted ${(combined.length / 1024).toFixed(0)}KB`);
     } else {
-      // Last resort — send full text truncated
-      indoor = fullText.substring(0, 120000);
-      console.log(`[GLM5] No LED markers found — sending first ${(indoor.length / 1024).toFixed(0)}KB of full text`);
+      // Last resort — send full text (up to 400KB)
+      combined = fullText.substring(0, 400000);
+      console.log(`[GLM5] No LED markers found — sending first ${(combined.length / 1024).toFixed(0)}KB of full text`);
     }
   }
 
-  return { indoor, outdoor, full: fullText };
+  return { indoor: combined, outdoor: "", full: fullText };
 }
 
 // ---------------------------------------------------------------------------
