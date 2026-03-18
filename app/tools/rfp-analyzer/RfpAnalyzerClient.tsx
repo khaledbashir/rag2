@@ -593,7 +593,29 @@ export default function RfpAnalyzerClient() {
 
   const handleProductSelect = useCallback((displayName: string, productId: string) => {
     const product = availableProducts.find((p) => p.id === productId);
-    if (!product || !pricingPreview) return;
+    if (!product) return;
+
+    // If pricingPreview doesn't exist yet (e.g., pricing API failed or hasn't loaded),
+    // create a minimal one so product selection still works
+    const currentPreview = pricingPreview ?? (() => {
+      const screens = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
+      const minimalDisplays = screens.map((s: ExtractedLEDSpec) => ({
+        name: s.name,
+        location: s.location,
+        pixelPitch: s.pixelPitchMm,
+        environment: s.environment,
+        quantity: s.quantity || 1,
+        areaSqFt: (s.widthFt ?? 0) * (s.heightFt ?? 0),
+        hardwareCost: 0, installCost: 0, pmCost: 0, engCost: 0,
+        processorCost: 0, shippingCost: 0,
+        totalCost: 0, totalSellingPrice: 0, blendedMarginPct: 0.15,
+        costSource: "manual" as const,
+      }));
+      return {
+        displays: minimalDisplays,
+        summary: { totalCost: 0, totalSellingPrice: 0, totalMargin: 0, blendedMarginPct: 0, displayCount: minimalDisplays.length, quotedCount: 0, rateCardCount: 0 },
+      };
+    })();
 
     // Recalculate active dimensions using new product's cabinet size
     const cabWidthMm = product.widthMm || 960;
@@ -644,8 +666,8 @@ export default function RfpAnalyzerClient() {
       );
     });
 
-    setPricingPreview((prev) => {
-      if (!prev) return prev;
+    setPricingPreview(() => {
+      const prev = currentPreview;
       const updatedDisplays = prev.displays.map((d) => {
         if (d.name !== displayName) return d;
         // Set matched product info
