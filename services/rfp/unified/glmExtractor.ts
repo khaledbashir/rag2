@@ -277,6 +277,89 @@ async function extractSections(pdfPath: string): Promise<{ indoor: string; outdo
 }
 
 // ---------------------------------------------------------------------------
+// Extract focused table regions from text
+// Strips spec boilerplate, keeps only display matrix tables + context
+// ---------------------------------------------------------------------------
+
+function extractTableRegions(sectionText: string, fullText: string): string {
+  const textToSearch = sectionText || fullText;
+
+  // Find all display matrix / schedule table locations
+  const tableMarkers = [
+    /Refer to below display matrix[^\n]*/gi,
+    /(?:display|LED)\s+(?:matrix|schedule)\s+for\s+size/gi,
+    /(?:Scoreboards|Ribbon\s+Bo(?:a|r)d|Entry\s+LED|Fascia|Marquee)\s+Pixel\s+Pitch/gi,
+    /LOCATION\s+Pixel\s+Pitch\s+Brightness/gi,
+    /Location\s+Pixel\s+Pitch\s+Brightness/gi,
+  ];
+
+  const regions: Array<{ start: number; end: number }> = [];
+
+  for (const pat of tableMarkers) {
+    for (const m of textToSearch.matchAll(pat)) {
+      if (m.index == null) continue;
+      // Go back 500 chars for section header context
+      const start = Math.max(0, m.index - 500);
+      // Go forward 6000 chars to capture full table (tables can span multiple pages)
+      let end = Math.min(textToSearch.length, m.index + 6000);
+
+      // Extend end if we're still seeing table rows (lines with dimensions)
+      const dimPattern = /\d+[''′]\s*/g;
+      let lastDimLine = m.index + 6000;
+      const scanEnd = Math.min(textToSearch.length, m.index + 15000);
+      const scanText = textToSearch.substring(m.index, scanEnd);
+      const lines = scanText.split('\n');
+      for (let i = lines.length - 1; i >= 0; i--) {
+        if (dimPattern.test(lines[i])) {
+          // Found a line with dimensions — extend to include it
+          let offset = 0;
+          for (let j = 0; j <= i; j++) offset += lines[j].length + 1;
+          lastDimLine = m.index + offset + 200; // + buffer
+          break;
+        }
+      }
+      end = Math.min(textToSearch.length, Math.max(end, lastDimLine));
+
+      regions.push({ start, end });
+    }
+  }
+
+  if (regions.length === 0) {
+    // No table markers found — fall back to sending the section text as-is
+    console.log(`[GLM5] No table markers found, sending full section text`);
+    return sectionText || fullText.substring(0, 400000);
+  }
+
+  // Merge overlapping regions
+  regions.sort((a, b) => a.start - b.start);
+  const merged: Array<{ start: number; end: number }> = [regions[0]];
+  for (let i = 1; i < regions.length; i++) {
+    const last = merged[merged.length - 1];
+    if (regions[i].start <= last.end + 1000) {
+      // Overlapping or close — merge
+      last.end = Math.max(last.end, regions[i].end);
+    } else {
+      merged.push(regions[i]);
+    }
+  }
+
+  // Build combined text with section separators
+  const parts: string[] = [];
+  // Add project info from first 2000 chars of section text (client name, venue, etc.)
+  const projectContext = textToSearch.substring(0, 2000);
+  parts.push("=== PROJECT CONTEXT ===\n" + projectContext);
+
+  for (let i = 0; i < merged.length; i++) {
+    const region = textToSearch.substring(merged[i].start, merged[i].end);
+    parts.push(`\n=== DISPLAY TABLE ${i + 1} ===\n` + region);
+  }
+
+  const result = parts.join('\n');
+  console.log(`[GLM5] Extracted ${merged.length} table regions (${(result.length / 1024).toFixed(0)}KB total)`);
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Main extraction
 // ---------------------------------------------------------------------------
 
@@ -299,13 +382,22 @@ export async function extractWithGLM5(
   let project: any = null;
   let allRequirements: any[] = [];
 
-  // Single call with full text — let the model find all sections
+  // Extract display matrix tables from the text to send focused content.
+  // Sending 150KB+ of spec boilerplate overwhelms the model — it only parses
+  // part of the tables. Instead, find each "display matrix" table region and
+  // send just those with enough context for the model to understand structure.
   options?.onProgress?.("Analyzing LED specifications...");
-  console.log(`[GLM5] Sending full text (${(sections.indoor.length / 1024).toFixed(0)}KB)...`);
+
+  const tableText = extractTableRegions(sections.indoor, sections.full);
+  console.log(`[GLM5] Sending ${(tableText.length / 1024).toFixed(0)}KB of focused table content (from ${(sections.indoor.length / 1024).toFixed(0)}KB extracted)...`);
 
   try {
-    const fullPrompt = `Extract ALL LED displays (indoor AND outdoor) and requirements from this RFP. The document may have multiple sections — Scoreboards, Ribbon Boards, Entry LEDs — extract from ALL of them. Sections may share the same section number. Do not stop after the first table.\n\n${EXTRACT_PROMPT}`;
-    const result = await callLLM(sections.indoor, fullPrompt);
+    const fullPrompt = `Extract ALL LED displays (indoor AND outdoor) from these display matrix tables. There are MULTIPLE tables in this text — Scoreboards, Ribbon Boards, Entry LEDs, Indoor displays. You MUST extract from EVERY table, not just the first one.
+
+CRITICAL: If the same location name appears multiple times (e.g. "Panthers Den" 6 times, "Elev Lobby" 4 times, "NW" 4 times), output ALL of them as separate display objects. They are different physical screens at different positions. NEVER merge rows that share a name. Count your output — it should match the total number of data rows across ALL tables.
+
+${EXTRACT_PROMPT}`;
+    const result = await callLLM(tableText, fullPrompt);
     const displays = result.displays || [];
     allDisplays.push(...displays);
     project = result.project || null;

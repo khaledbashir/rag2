@@ -233,7 +233,10 @@ export async function POST(request: NextRequest) {
               });
 
               const finalProject = glmResult.project;
-              const screens = deduplicateScreens(glmResult.screens);
+              // Single extractor (Mercury 2) — no dedup needed. Each table row
+              // is a separate physical display, even if names repeat (e.g. 6x "Panthers Den").
+              // Dedup was merging same-name screens incorrectly.
+              const screens = glmResult.screens;
               const glmRequirements = glmResult.requirements || [];
 
               // Provision AnythingLLM workspace
