@@ -123,9 +123,10 @@ function extractDisplaysViaRegex(text: string): RegexDisplay[] {
       if (hasOutdoor) environment = "outdoor";
     }
 
-    // Pattern: name (with spaces/dots/parens), pitch (number or blank), nits (4-digit), width (feet/inches), height (feet/inches)
-    // This handles the pdftotext -layout format where columns are separated by multiple spaces
-    const tableRowPattern = /^[\s]*([\w][\w\s.()/-]{1,40}?)\s{2,}([\d.]+|)\s{2,}(\d{4})\s{2,}([\d''"″\s/]+?)\s{2,}([\d''"″\s/]+)/gm;
+    // Pattern: name, pitch (or blank), nits (4-digit), width (feet/inches), height (feet/inches)
+    // pdftotext -layout separates columns with 2+ spaces
+    // Groups 4 & 5: non-greedy capture allowing spaces within dimensions (e.g. "20' 5 27/32")
+    const tableRowPattern = /^[\s]*([\w][\w\s.()/-]{1,40}?)\s{2,}([\d.]+|)\s{2,}(\d{4})\s{2,}((?:\S+\s?)+?)\s{2,}((?:\S+\s?)*\S+)\s*$/gm;
 
     let match;
     while ((match = tableRowPattern.exec(chunk)) !== null) {
@@ -141,6 +142,8 @@ function extractDisplaysViaRegex(text: string): RegexDisplay[] {
       // Must have at least nits to be a display row
       const nits = parseInt(nitsStr, 10);
       if (isNaN(nits) || nits < 100) continue;
+      // Must have at least one real dimension (not just whitespace)
+      if (!widthRaw.match(/\d/) && !heightRaw.match(/\d/)) continue;
 
       displays.push({
         name,

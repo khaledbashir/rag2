@@ -317,12 +317,16 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     // For Mirror Mode: look up pricing from pricingDocument (fuzzy match)
     const docPricing = findDocPricing(spec.name || "");
 
-    const hasOverride = mp?.activeWidthFt && mp?.activeHeightFt;
-    const h = hasOverride ? mp.activeHeightFt! : (spec.heightFt ?? 0);
-    const w = hasOverride ? mp.activeWidthFt! : (spec.widthFt ?? 0);
-    const pitch = (hasOverride && mp.pitch) ? mp.pitch : (spec.pixelPitchMm ?? 0);
-    const hPx = hasOverride && mp.resolutionY ? mp.resolutionY : (spec.heightPx ?? (pitch > 0 ? Math.round(h * 304.8 / pitch) : 0));
-    const wPx = hasOverride && mp.resolutionX ? mp.resolutionX : (spec.widthPx ?? (pitch > 0 ? Math.round(w * 304.8 / pitch) : 0));
+    // Only use product-overridden dimensions when user EXPLICITLY selected a product
+    // (fitScore 100 = user selection via handleProductSelect). Auto-matched products
+    // should NOT override the RFP extraction dimensions — those are the source of truth
+    // until the user consciously changes the product.
+    const isUserSelected = mp?.fitScore === 100 && mp?.activeWidthFt && mp?.activeHeightFt;
+    const h = isUserSelected ? mp.activeHeightFt! : (spec.heightFt ?? 0);
+    const w = isUserSelected ? mp.activeWidthFt! : (spec.widthFt ?? 0);
+    const pitch = (isUserSelected && mp.pitch) ? mp.pitch : (spec.pixelPitchMm ?? 0);
+    const hPx = isUserSelected && mp.resolutionY ? mp.resolutionY : (spec.heightPx ?? (pitch > 0 ? Math.round(h * 304.8 / pitch) : 0));
+    const wPx = isUserSelected && mp.resolutionX ? mp.resolutionX : (spec.widthPx ?? (pitch > 0 ? Math.round(w * 304.8 / pitch) : 0));
     const qty = audit?.quantity || spec.quantity || 1;
 
     const pricingSqFt = pd?.areaSqFt ?? (h * w);
