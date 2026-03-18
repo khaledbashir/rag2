@@ -525,28 +525,30 @@ export default function AnalysisDetailPage() {
         </div>
       </header>
 
-      <main className="p-6 xl:px-8 max-w-[1600px] mx-auto space-y-6">
-        {/* Stats row — always visible */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-          <StatCard icon={FileText} label="Total Pages" value={a.pageCount.toLocaleString()} />
-          <StatCard
-            icon={CheckCircle2}
-            label="Relevant"
-            value={a.relevantPages.toString()}
-            sub={`${Math.round((a.relevantPages / a.pageCount) * 100)}% kept`}
-            accent="text-emerald-500"
-          />
-          <StatCard icon={Monitor} label="LED Displays" value={(screens.length || a.specsFound).toString()} accent="text-primary" />
-          <StatCard
-            icon={AlertTriangle}
-            label="Requirements"
-            value={requirements.length.toString()}
-            sub={criticalReqs > 0 ? `${criticalReqs} critical` : undefined}
-            accent={criticalReqs > 0 ? "text-red-500" : undefined}
-          />
-          <StatCard icon={Zap} label="Vision Pages" value={a.visionPages.toString()} />
-          <StatCard icon={Clock} label="Processing" value={`${(a.processingTimeMs / 1000).toFixed(1)}s`} />
-        </div>
+      <main className="p-4 xl:px-6 max-w-[1600px] mx-auto space-y-3">
+        {/* Stats row — hidden on workbook stages to maximize space */}
+        {activeStage !== 1 && activeStage !== 3 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <StatCard icon={FileText} label="Total Pages" value={a.pageCount.toLocaleString()} />
+            <StatCard
+              icon={CheckCircle2}
+              label="Relevant"
+              value={a.relevantPages.toString()}
+              sub={`${Math.round((a.relevantPages / a.pageCount) * 100)}% kept`}
+              accent="text-emerald-500"
+            />
+            <StatCard icon={Monitor} label="LED Displays" value={(screens.length || a.specsFound).toString()} accent="text-primary" />
+            <StatCard
+              icon={AlertTriangle}
+              label="Requirements"
+              value={requirements.length.toString()}
+              sub={criticalReqs > 0 ? `${criticalReqs} critical` : undefined}
+              accent={criticalReqs > 0 ? "text-red-500" : undefined}
+            />
+            <StatCard icon={Zap} label="Vision Pages" value={a.visionPages.toString()} />
+            <StatCard icon={Clock} label="Processing" value={`${(a.processingTimeMs / 1000).toFixed(1)}s`} />
+          </div>
+        )}
 
         {/* Pipeline Stepper */}
         <HistoryStepper
@@ -613,7 +615,7 @@ export default function AnalysisDetailPage() {
                 <p className="text-sm text-blue-700 dark:text-blue-300">Matching products...</p>
               </div>
             )}
-            <div className="h-[calc(100vh-180px)]">
+            <div className="h-[calc(100vh-140px)]">
             <WorkbookShell
               data={workbookData}
               editable
@@ -709,7 +711,7 @@ export default function AnalysisDetailPage() {
                 </button>
               </div>
             )}
-            <div className="h-[calc(100vh-180px)]">
+            <div className="h-[calc(100vh-140px)]">
             <WorkbookShell
               data={workbookData}
               editable
