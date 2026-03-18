@@ -283,10 +283,10 @@ export default function AnalysisDetailPage() {
           d.name === displayName
             ? {
                 ...d,
-                nits: productNits > 0 ? productNits : d.nits,
-                weightLbs: totalWeightLbs > 0 ? totalWeightLbs : d.weightLbs,
-                totalPowerW: totalPowerW > 0 ? totalPowerW : d.totalPowerW,
-                btuPerHr: btuPerHr > 0 ? btuPerHr : d.btuPerHr,
+                nits: productNits,
+                weightLbs: totalWeightLbs,
+                totalPowerW: totalPowerW,
+                btuPerHr: btuPerHr,
                 matchedProduct: {
                   manufacturer: product.manufacturer || product.name.split(" ")[0],
                   model: product.name,
