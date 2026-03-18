@@ -51,12 +51,12 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
             {/* Exhibit Header — matches "Exhibit B — Statement of Work" style */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
                 <div style={{ width: '3px', height: '14px', borderRadius: '1px', background: colors.primary, flexShrink: 0 }} />
-                <span className="text-[13px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>
+                <span className="text-[14px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>
                     Exhibit {exhibitLetter} — Terms and Conditions
                 </span>
             </div>
 
-            <div className="space-y-3 text-[11px] leading-relaxed" style={{ color: colors.text }}>
+            <div className="space-y-3 text-[12px] leading-relaxed" style={{ color: colors.text }}>
                 {/* Section 1: Intellectual Property */}
                 <Section num={sectionNum++} title="Intellectual Property" colors={colors}>
                     <p>
@@ -90,7 +90,7 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
                 <Section num={sectionNum++} title="Warranty" colors={colors}>
                     {includeLaborWarranty && (
                         <div className="mb-2">
-                            <p className="font-semibold text-[10px] uppercase tracking-wide mb-1" style={{ color: colors.textMuted }}>
+                            <p className="font-semibold text-[11px] uppercase tracking-wide mb-1" style={{ color: colors.textMuted }}>
                                 (a) Labor Warranty
                             </p>
                             <p>
@@ -105,7 +105,7 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
 
                     {includeMaterialsWarranty && (
                         <div className="mb-2">
-                            <p className="font-semibold text-[10px] uppercase tracking-wide mb-1" style={{ color: colors.textMuted }}>
+                            <p className="font-semibold text-[11px] uppercase tracking-wide mb-1" style={{ color: colors.textMuted }}>
                                 {includeLaborWarranty ? "(b)" : "(a)"} Materials &amp; Equipment Warranty
                             </p>
                             <p>
@@ -119,7 +119,7 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
                     )}
 
                     <div className="mb-2">
-                        <p className="font-semibold text-[10px] uppercase tracking-wide mb-1" style={{ color: colors.textMuted }}>
+                        <p className="font-semibold text-[11px] uppercase tracking-wide mb-1" style={{ color: colors.textMuted }}>
                             {includeLaborWarranty && includeMaterialsWarranty ? "(c)" : includeLaborWarranty || includeMaterialsWarranty ? "(b)" : "(a)"} Exclusions
                         </p>
                         <p>
@@ -132,7 +132,7 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
                     </div>
 
                     <div>
-                        <p className="font-semibold text-[10px] uppercase tracking-wide mb-1" style={{ color: colors.textMuted }}>
+                        <p className="font-semibold text-[11px] uppercase tracking-wide mb-1" style={{ color: colors.textMuted }}>
                             {includeLaborWarranty && includeMaterialsWarranty ? "(d)" : includeLaborWarranty || includeMaterialsWarranty ? "(c)" : "(b)"} Limitation
                         </p>
                         <p>
@@ -248,11 +248,11 @@ function Section({
         <div className="break-inside-avoid">
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
                 <div style={{ width: '3px', height: '12px', borderRadius: '1px', background: colors.primary, flexShrink: 0 }} />
-                <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: colors.text }}>
+                <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: colors.text }}>
                     {num}. {title}
                 </span>
             </div>
-            <div className="pl-3 text-[11px] leading-relaxed">
+            <div className="pl-3 text-[12px] leading-relaxed">
                 {children}
             </div>
         </div>

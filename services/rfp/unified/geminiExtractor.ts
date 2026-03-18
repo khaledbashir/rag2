@@ -160,60 +160,58 @@ function mapToProjectInfo(project: any): ExtractedProjectInfo {
 }
 
 // ---------------------------------------------------------------------------
-// Upload file to Gemini File API
+// Upload file to Gemini File API (resumable upload)
 // ---------------------------------------------------------------------------
 
 async function uploadToGemini(pdfPath: string): Promise<string> {
   const pdfBuffer = await readFile(pdfPath);
   const fileName = pdfPath.split("/").pop() || "document.pdf";
+  const sizeMb = (pdfBuffer.length / 1024 / 1024).toFixed(1);
 
-  // Step 1: Start resumable upload
-  const initRes = await fetch(
+  console.log(`[GeminiExtractor] Uploading ${fileName} (${sizeMb}MB)...`);
+
+  // Use multipart upload (simpler than resumable)
+  const boundary = "----GeminiUploadBoundary" + Date.now();
+  const metadata = JSON.stringify({ file: { displayName: fileName } });
+
+  const parts = [
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n`,
+    `--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`,
+  ];
+
+  const prefix = Buffer.from(parts[0] + parts[1]);
+  const suffix = Buffer.from(`\r\n--${boundary}--\r\n`);
+  const body = Buffer.concat([prefix, pdfBuffer, suffix]);
+
+  const uploadRes = await fetch(
     `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${GEMINI_API_KEY}`,
     {
       method: "POST",
       headers: {
-        "X-Goog-Upload-Protocol": "resumable",
-        "X-Goog-Upload-Command": "start",
-        "X-Goog-Upload-Header-Content-Length": String(pdfBuffer.length),
-        "X-Goog-Upload-Header-Content-Type": "application/pdf",
-        "Content-Type": "application/json",
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+        "Content-Length": String(body.length),
       },
-      body: JSON.stringify({ file: { displayName: fileName } }),
+      body,
     },
   );
 
-  const uploadUrl = initRes.headers.get("x-goog-upload-url");
-  if (!uploadUrl) throw new Error("Failed to get upload URL from Gemini File API");
-
-  // Step 2: Upload the file
-  const uploadRes = await fetch(uploadUrl, {
-    method: "POST",
-    headers: {
-      "X-Goog-Upload-Offset": "0",
-      "X-Goog-Upload-Command": "upload, finalize",
-      "Content-Length": String(pdfBuffer.length),
-    },
-    body: pdfBuffer,
-  });
-
   if (!uploadRes.ok) {
     const err = await uploadRes.text();
-    throw new Error(`File upload failed: ${err}`);
+    throw new Error(`File upload failed (${uploadRes.status}): ${err}`);
   }
 
   const uploadData = await uploadRes.json();
   const fileUri = uploadData.file?.uri;
   if (!fileUri) throw new Error("No file URI returned from upload");
 
-  console.log(`[GeminiExtractor] Uploaded ${fileName} (${(pdfBuffer.length / 1024 / 1024).toFixed(1)}MB) → ${fileUri}`);
+  console.log(`[GeminiExtractor] Uploaded → ${fileUri}`);
 
-  // Step 3: Wait for file to be ACTIVE
-  const fileName2 = uploadData.file?.name;
-  if (fileName2) {
+  // Wait for file to be ACTIVE
+  const fileResource = uploadData.file?.name;
+  if (fileResource) {
     for (let i = 0; i < 30; i++) {
       const statusRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/${fileName2}?key=${GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/${fileResource}?key=${GEMINI_API_KEY}`,
       );
       const statusData = await statusRes.json();
       if (statusData.state === "ACTIVE") {

@@ -142,6 +142,14 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
             screenNameMap[group] = screen.name;
         }
     });
+    // Date for PDF header — use revision date if available, otherwise today
+    const headerDate = (() => {
+        const raw = (details as any)?.revisionDate || (details as any)?.date || (details as any)?.updatedAt;
+        const d = raw ? new Date(raw) : new Date();
+        if (isNaN(d.getTime())) return new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+        return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    })();
+
     const templateConfig = ((details as any)?.templateConfig || {}) as Record<string, any>;
     const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
     const contentPaddingX = clamp(Number(templateConfig?.contentPaddingX ?? 24) || 24, 12, 48);
@@ -151,6 +159,9 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const pricingTableGap = clamp(Number(templateConfig?.pricingTableGap ?? 16) || 16, 6, 36);
     const tableRowHeight = clamp(Number(templateConfig?.tableRowHeight ?? 24) || 24, 20, 40);
     const rowPaddingY = clamp(Math.round((tableRowHeight - 16) / 2), 2, 12);
+    // Font size control — default 14px (matches hardcoded Tailwind classes)
+    const fontSizePt = clamp(Number(templateConfig?.fontSizePt ?? 14) || 14, 8, 18);
+    const fontOffset = fontSizePt - 14; // offset from default; 0 = no change
     const accentColor = (templateConfig?.accentColor || "").toString().trim();
     const primaryColor = /^#[0-9A-Fa-f]{6}$/.test(accentColor) ? accentColor : "#0A52EF";
     const autoPushLargeTables = Boolean(templateConfig?.autoPushLargeTables ?? false);
@@ -218,8 +229,8 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: subtitle ? '4px' : '8px' }}>
             <div style={{ width: '3px', height: '14px', borderRadius: '1px', background: colors.primary, flexShrink: 0 }} />
             <div>
-                <span className="text-[13px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>{title}</span>
-                {subtitle && <div className="text-[13px] mt-0.5" style={{ color: colors.textMuted }}>{subtitle}</div>}
+                <span className="text-[14px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>{title}</span>
+                {subtitle && <div className="text-[14px] mt-0.5" style={{ color: colors.textMuted }}>{subtitle}</div>}
             </div>
         </div>
     );
@@ -315,7 +326,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         return (
             <div data-preview-section="payment-terms" className="mt-2">
                 <SectionHeader title="Payment Terms" />
-                <div className="rounded-lg p-3 text-[13px] leading-snug" style={{ background: colors.surface, color: colors.textMuted }}>
+                <div className="rounded-lg p-3 text-[14px] leading-snug" style={{ background: colors.surface, color: colors.textMuted }}>
                     {lines.map((line: string, idx: number) => <div key={idx}>{line}</div>)}
                 </div>
             </div>
@@ -330,7 +341,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         return (
             <div data-preview-section="notes" className="mt-2">
                 <SectionHeader title="Notes" />
-                <div className="rounded-lg p-3 text-[13px] leading-snug whitespace-pre-wrap" style={{ background: colors.surface, color: colors.text }}>
+                <div className="rounded-lg p-3 text-[14px] leading-snug whitespace-pre-wrap" style={{ background: colors.surface, color: colors.text }}>
                     {notesText}
                 </div>
             </div>
@@ -342,7 +353,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         const raw = ((details as any)?.scopeOfWorkText || "").toString().trim();
         if (!raw) return null;
         return (
-            <div className="rounded-lg p-3 text-[13px] leading-snug whitespace-pre-wrap" style={{ background: colors.surface, color: colors.text }}>
+            <div className="rounded-lg p-3 text-[14px] leading-snug whitespace-pre-wrap" style={{ background: colors.surface, color: colors.text }}>
                 {raw}
             </div>
         );
@@ -381,7 +392,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     // Continuation page header — thin blue underline with client + project name
     const ContinuationPageHeader = () => (
         <div className="pb-2 mb-4 border-b-2" style={{ borderColor: colors.primary }}>
-            <div className="text-[13px] font-semibold" style={{ color: colors.textMuted }}>
+            <div className="text-[14px] font-semibold" style={{ color: colors.textMuted }}>
                 {purchaserName} • {details?.proposalName || "Proposal"}
             </div>
         </div>
@@ -430,13 +441,13 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
             <div data-preview-section="schedule" className="mt-2 break-inside-avoid" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
                 <SectionHeader title="Project Schedule" subtitle="Generated from NTP date and screen configuration" />
                 <div className="rounded-lg border overflow-hidden" style={{ borderColor: colors.border }}>
-                    <div className="grid grid-cols-12 px-4 py-2 text-[13px] font-bold uppercase tracking-wider" style={{ background: colors.primaryLight, color: colors.primaryDark }}>
+                    <div className="grid grid-cols-12 px-4 py-2 text-[14px] font-bold uppercase tracking-wider" style={{ background: colors.primaryLight, color: colors.primaryDark }}>
                         <div className="col-span-4">NTP: {ntpLabel || "—"}</div>
                         <div className="col-span-4 text-center">Completion: {completionLabel || "—"}</div>
                         <div className="col-span-4 text-right">Duration: {totalDuration > 0 ? `${totalDuration} business days` : "—"}</div>
                     </div>
 
-                    <div className="grid grid-cols-12 px-4 py-1.5 text-[13px] font-semibold uppercase tracking-wider border-b-2" style={{ borderColor: colors.primary, color: colors.primaryDark, background: 'transparent' }}>
+                    <div className="grid grid-cols-12 px-4 py-1.5 text-[14px] font-semibold uppercase tracking-wider border-b-2" style={{ borderColor: colors.primary, color: colors.primaryDark, background: 'transparent' }}>
                         <div className="col-span-1">#</div>
                         <div className="col-span-4">Task</div>
                         <div className="col-span-2">Location</div>
@@ -447,7 +458,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
 
                     {grouped.map((group: { phase: string; tasks: any[] }) => (
                         <React.Fragment key={`phase-${group.phase}`}>
-                            <div className="px-4 py-1.5 text-[13px] font-bold uppercase tracking-wider border-t" style={{ borderColor: colors.borderLight, background: colors.surface, color: colors.primaryDark }}>
+                            <div className="px-4 py-1.5 text-[14px] font-bold uppercase tracking-wider border-t" style={{ borderColor: colors.borderLight, background: colors.surface, color: colors.primaryDark }}>
                                 {group.phase}
                             </div>
                             {group.tasks.map((task: any, idx: number) => {
@@ -455,7 +466,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                                 return (
                                     <div
                                         key={`${group.phase}-${idx}-${task?.taskName || "task"}`}
-                                        className="grid grid-cols-12 px-4 py-2 text-[13px] border-t items-center"
+                                        className="grid grid-cols-12 px-4 py-2 text-[14px] border-t items-center"
                                         style={{ borderColor: colors.borderLight, background: idx % 2 === 1 ? colors.surface : colors.white }}
                                     >
                                         <div className="col-span-1" style={{ color: colors.textMuted }}>{taskNumber}</div>
@@ -481,14 +492,26 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         <div className="mt-8 pt-3 border-t flex items-center justify-between" style={{ borderColor: colors.border }}>
             <div className="flex items-center gap-2">
                 <div style={{ width: '3px', height: '16px', background: colors.primary, borderRadius: '1px' }} />
-                <span className="text-[13px] font-semibold" style={{ color: colors.primary }}>www.anc.com</span>
+                <span className="text-[14px] font-semibold" style={{ color: colors.primary }}>www.anc.com</span>
             </div>
-            <span className="text-[13px]" style={{ color: colors.textMuted }}>ANC Sports Enterprises, LLC</span>
+            <span className="text-[14px]" style={{ color: colors.textMuted }}>ANC Sports Enterprises, LLC</span>
         </div>
     );
 
+    // Font size CSS override — applies offset to all hardcoded Tailwind text-[Xpx] classes
+    const fontSizeOverrideCss = fontOffset !== 0 ? `
+        .pdf-font-scaled .text-\\[12px\\] { font-size: ${12 + fontOffset}px !important; }
+        .pdf-font-scaled .text-\\[13px\\] { font-size: ${13 + fontOffset}px !important; }
+        .pdf-font-scaled .text-\\[14px\\] { font-size: ${14 + fontOffset}px !important; }
+        .pdf-font-scaled .text-\\[15px\\] { font-size: ${15 + fontOffset}px !important; }
+        .pdf-font-scaled .text-\\[16px\\] { font-size: ${16 + fontOffset}px !important; }
+        .pdf-font-scaled .text-\\[11px\\] { font-size: ${11 + fontOffset}px !important; }
+    ` : "";
+
     return (
         <ProposalLayout data={data} disableFixedFooter>
+            {fontSizeOverrideCss && <style dangerouslySetInnerHTML={{ __html: fontSizeOverrideCss }} />}
+            <div className={fontOffset !== 0 ? "pdf-font-scaled" : ""}>
             {/* Compact Header — logo + document label, half the original height */}
             <PdfHeader
                 colors={colors}
@@ -497,12 +520,13 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                 docLabel={docLabel}
                 proposalName={details?.proposalName || ""}
                 clientName={receiver?.name || "Client Name"}
+                date={headerDate}
             />
 
             {/* Intro - 10pt font */}
             {showIntroText && (
                 <div data-preview-section="intro" className="break-inside-avoid" style={{ marginBottom: `${introToBodyGap}px`, paddingLeft: `${contentPaddingX}px`, paddingRight: `${contentPaddingX}px` }}>
-                    <div className="text-[13px] leading-snug" style={{ color: colors.textMuted }}>
+                    <div className="text-[14px] leading-snug" style={{ color: colors.textMuted }}>
                         {customIntroText?.trim() ? (
                             <p className="text-justify whitespace-pre-wrap">{customIntroText.trim()}</p>
                         ) : isLOI ? (
@@ -785,6 +809,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                     </div>
                 </>
             )}
+            </div>
         </ProposalLayout>
     );
 };

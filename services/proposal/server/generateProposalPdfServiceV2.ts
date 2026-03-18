@@ -177,7 +177,9 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 		const dateStr = new Date().toISOString().slice(0, 10);
 		const pdfTitle = `ANC_${clientName}_${docTypeLabel}_${dateStr}`;
 
-		const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${pdfTitle}</title><base href="${baseHref}"/><style>body,.font-sans{font-family:Arial,Helvetica,sans-serif!important;line-height:1.3!important;font-size:10px!important}h1,h2,h3,h4,h5,h6{font-family:Arial,Helvetica,sans-serif!important;line-height:1.3!important}p,div,span,td,th{line-height:1.3!important}.leading-relaxed{line-height:1.35!important}.leading-snug{line-height:1.25!important}</style></head><body>${htmlTemplate}</body></html>`;
+		const fontSizePt = Math.min(18, Math.max(8, Number((body.details as any)?.templateConfig?.fontSizePt ?? 14) || 14));
+		const baseFontSizePx = fontSizePt === 14 ? 11 : Math.round(11 + (fontSizePt - 14));
+		const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${pdfTitle}</title><base href="${baseHref}"/><style>body,.font-sans{font-family:Arial,Helvetica,sans-serif!important;line-height:1.3!important;font-size:${baseFontSizePx}px!important}h1,h2,h3,h4,h5,h6{font-family:Arial,Helvetica,sans-serif!important;line-height:1.3!important}p,div,span,td,th{line-height:1.3!important}.leading-relaxed{line-height:1.35!important}.leading-snug{line-height:1.25!important}</style></head><body>${htmlTemplate}</body></html>`;
 
 		const puppeteer = (await import("puppeteer-core")).default;
 		const internalUrl = process.env.BROWSERLESS_INTERNAL_URL || "ws://basheer_browserless:3000";
@@ -292,8 +294,8 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 			// Simplified footer: www.anc.com + page number (Natalia-approved)
 			footerTemplate: `
 				<div style="font-family: 'Helvetica Neue', Arial, sans-serif; width: 100%; padding: 0 40px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e5e7eb; padding-top: 4px; box-sizing: border-box;">
-					<div style="font-size: 7.5px; font-weight: 600; color: #0A52EF; letter-spacing: 0.3px;">www.anc.com</div>
-					<div style="font-size: 7px; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>
+					<div style="font-size: 8.5px; font-weight: 600; color: #0A52EF; letter-spacing: 0.3px;">www.anc.com</div>
+					<div style="font-size: 8px; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>
 				</div>
 			`,
 			margin: {

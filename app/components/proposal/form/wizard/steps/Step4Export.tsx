@@ -63,6 +63,7 @@ type VisualBuilderSnapshot = {
     pricingTableGap: number;
     tableRowHeight: number;
     exhibitAHeaderGap: number;
+    fontSizePt: number;
     accentColor: string;
     autoPushLargeTables: boolean;
     tableSplitThreshold: number;
@@ -89,6 +90,7 @@ const BUILTIN_STYLE_PRESETS: Array<{ key: string; label: string; value: Partial<
             pricingTableGap: 10,
             tableRowHeight: 22,
             exhibitAHeaderGap: 14,
+            fontSizePt: 14,
             tableSplitThreshold: 14,
         },
     },
@@ -104,6 +106,7 @@ const BUILTIN_STYLE_PRESETS: Array<{ key: string; label: string; value: Partial<
             pricingTableGap: 24,
             tableRowHeight: 30,
             exhibitAHeaderGap: 34,
+            fontSizePt: 15,
             tableSplitThreshold: 18,
         },
     },
@@ -119,6 +122,7 @@ const BUILTIN_STYLE_PRESETS: Array<{ key: string; label: string; value: Partial<
             pricingTableGap: 16,
             tableRowHeight: 24,
             exhibitAHeaderGap: 24,
+            fontSizePt: 14,
             autoPushLargeTables: true,
             tableSplitThreshold: 13,
         },
@@ -134,6 +138,7 @@ const BASE_VISUAL_DEFAULTS: VisualBuilderSnapshot = {
     pricingTableGap: 16,
     tableRowHeight: 24,
     exhibitAHeaderGap: 24,
+    fontSizePt: 14,
     accentColor: "#0A52EF",
     autoPushLargeTables: false,
     tableSplitThreshold: 14,
@@ -156,6 +161,7 @@ const normalizeVisualSnapshot = (config: Record<string, any>, defaults: VisualBu
     pricingTableGap: Number(config?.pricingTableGap ?? defaults.pricingTableGap),
     tableRowHeight: Number(config?.tableRowHeight ?? defaults.tableRowHeight),
     exhibitAHeaderGap: Number(config?.exhibitAHeaderGap ?? defaults.exhibitAHeaderGap),
+    fontSizePt: Number(config?.fontSizePt ?? defaults.fontSizePt),
     accentColor: (config?.accentColor || defaults.accentColor).toString(),
     autoPushLargeTables: Boolean(config?.autoPushLargeTables ?? defaults.autoPushLargeTables),
     tableSplitThreshold: Number(config?.tableSplitThreshold ?? defaults.tableSplitThreshold),
@@ -251,9 +257,9 @@ const Step4Export = () => {
 
     const applyDensityPreset = (preset: "compact" | "balanced" | "airy") => {
         const map = {
-            compact: { headerToIntroGap: 10, introToBodyGap: 10, sectionSpacing: 10, pricingTableGap: 10, tableRowHeight: 20, exhibitAHeaderGap: 14 },
-            balanced: { headerToIntroGap: 16, introToBodyGap: 16, sectionSpacing: 16, pricingTableGap: 16, tableRowHeight: 24, exhibitAHeaderGap: 24 },
-            airy: { headerToIntroGap: 26, introToBodyGap: 28, sectionSpacing: 24, pricingTableGap: 24, tableRowHeight: 30, exhibitAHeaderGap: 34 },
+            compact: { headerToIntroGap: 10, introToBodyGap: 10, sectionSpacing: 10, pricingTableGap: 10, tableRowHeight: 20, exhibitAHeaderGap: 14, fontSizePt: 13 },
+            balanced: { headerToIntroGap: 16, introToBodyGap: 16, sectionSpacing: 16, pricingTableGap: 16, tableRowHeight: 24, exhibitAHeaderGap: 24, fontSizePt: 14 },
+            airy: { headerToIntroGap: 26, introToBodyGap: 28, sectionSpacing: 24, pricingTableGap: 24, tableRowHeight: 30, exhibitAHeaderGap: 34, fontSizePt: 15 },
         } as const;
         const next = map[preset];
         applyVisualSnapshot({
@@ -265,6 +271,7 @@ const Step4Export = () => {
             pricingTableGap: next.pricingTableGap,
             tableRowHeight: next.tableRowHeight,
             exhibitAHeaderGap: next.exhibitAHeaderGap,
+            fontSizePt: next.fontSizePt,
         });
     };
 
@@ -1720,6 +1727,20 @@ const Step4Export = () => {
                                             max={40}
                                             value={Number(templateConfig?.tableRowHeight ?? visualDefaults.tableRowHeight)}
                                             onChange={(e) => setTemplateConfigValue("details.templateConfig.tableRowHeight", Number(e.target.value))}
+                                            className="w-full mt-1 accent-[#0A52EF]"
+                                        />
+                                    </label>
+                                    <label id="template-control-font-size" className="text-xs font-medium text-foreground">
+                                        <span className="flex items-center justify-between">
+                                            <span>Font Size: {Number(templateConfig?.fontSizePt ?? visualDefaults.fontSizePt)}pt</span>
+                                            <button type="button" onClick={() => setTemplateConfigValue("details.templateConfig.fontSizePt", visualDefaults.fontSizePt)} className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-muted/60 transition-colors">Reset</button>
+                                        </span>
+                                        <input
+                                            type="range"
+                                            min={8}
+                                            max={18}
+                                            value={Number(templateConfig?.fontSizePt ?? visualDefaults.fontSizePt)}
+                                            onChange={(e) => setTemplateConfigValue("details.templateConfig.fontSizePt", Number(e.target.value))}
                                             className="w-full mt-1 accent-[#0A52EF]"
                                         />
                                     </label>

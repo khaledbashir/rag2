@@ -134,7 +134,7 @@ const PdfPricingTables = ({
                     <div className="rounded-lg border overflow-hidden" style={{ borderColor: colors.border }}>
                         {/* Table header — text + thin blue underline */}
                         <div
-                            className="grid grid-cols-12 px-3 py-1 text-[13px] font-semibold uppercase tracking-wider border-b-2 break-inside-avoid"
+                            className="grid grid-cols-12 px-3 py-1 text-[14px] font-semibold uppercase tracking-wider border-b-2 break-inside-avoid"
                             style={{ borderColor: colors.primary, color: colors.primaryDark, background: 'transparent', breakAfter: 'avoid', pageBreakAfter: 'avoid' }}
                         >
                             <div className="col-span-8">{label.toUpperCase()}</div>
@@ -158,10 +158,10 @@ const PdfPricingTables = ({
                                         paddingBottom: `${rowPaddingY}px`,
                                     }}
                                 >
-                                    <div className="col-span-8 pr-2 text-[13px]" style={{ color: colors.text }}>
+                                    <div className="col-span-8 pr-2 text-[14px]" style={{ color: colors.text }}>
                                         {itemPrice.description}
                                     </div>
-                                    <div className="col-span-4 text-right font-semibold text-[13px] whitespace-nowrap" style={{ color: colors.primaryDark }}>
+                                    <div className="col-span-4 text-right font-semibold text-[14px] whitespace-nowrap" style={{ color: colors.primaryDark }}>
                                         {itemPrice.textValue
                                             ? <span style={{ color: colors.text }}>{itemPrice.textValue.toUpperCase()}</span>
                                             : itemPrice.isIncluded
@@ -175,19 +175,19 @@ const PdfPricingTables = ({
                         {/* Footer: Subtotal / Tax / Bond / Grand Total */}
                         <div className="border-t-2" style={{ borderColor: colors.border }}>
                             {Math.abs(subtotal) >= 0.01 && subtotal !== grandTotal && (
-                                <div className="grid grid-cols-12 px-3 py-1 text-[13px] font-bold" style={{ color: colors.text }}>
+                                <div className="grid grid-cols-12 px-3 py-1 text-[14px] font-bold" style={{ color: colors.text }}>
                                     <div className="col-span-8">SUBTOTAL</div>
                                     <div className="col-span-4 text-right">{formatCurrency(subtotal, currency)}</div>
                                 </div>
                             )}
                             {Math.abs(taxAmount) >= 0.01 && (
-                                <div className="grid grid-cols-12 px-3 py-1 text-[13px]" style={{ color: colors.textMuted }}>
+                                <div className="grid grid-cols-12 px-3 py-1 text-[14px]" style={{ color: colors.textMuted }}>
                                     <div className="col-span-8">{taxLabel}</div>
                                     <div className="col-span-4 text-right">{formatCurrency(taxAmount, currency)}</div>
                                 </div>
                             )}
                             {Math.abs(bond) >= 0.01 && (
-                                <div className="grid grid-cols-12 px-3 py-1 text-[13px]" style={{ color: colors.textMuted }}>
+                                <div className="grid grid-cols-12 px-3 py-1 text-[14px]" style={{ color: colors.textMuted }}>
                                     <div className="col-span-8">BOND</div>
                                     <div className="col-span-4 text-right">{formatCurrency(bond, currency)}</div>
                                 </div>
@@ -196,8 +196,8 @@ const PdfPricingTables = ({
                                 className="grid grid-cols-12 px-3 py-1.5 border-t break-inside-avoid"
                                 style={{ borderColor: colors.primary, background: colors.primaryLight }}
                             >
-                                <div className="col-span-8 font-bold text-[13px] uppercase tracking-wide" style={{ color: colors.primaryDark }}>GRAND TOTAL</div>
-                                <div className="col-span-4 text-right font-bold text-xs" style={{ color: colors.primaryDark }}>{formatCurrency(grandTotal, currency)}</div>
+                                <div className="col-span-8 font-bold text-[14px] uppercase tracking-wide" style={{ color: colors.primaryDark }}>GRAND TOTAL</div>
+                                <div className="col-span-4 text-right font-bold text-[13px]" style={{ color: colors.primaryDark }}>{formatCurrency(grandTotal, currency)}</div>
                             </div>
                         </div>
                     </div>
@@ -206,7 +206,7 @@ const PdfPricingTables = ({
                     {alternates.length > 0 && (
                         <div className="mt-2 rounded-lg border overflow-hidden break-inside-avoid" style={{ borderColor: colors.border, pageBreakInside: 'avoid', breakInside: 'avoid' }}>
                             <div
-                                className="grid grid-cols-12 px-3 py-1 text-[13px] font-semibold uppercase tracking-wider border-b-2 break-inside-avoid"
+                                className="grid grid-cols-12 px-3 py-1 text-[14px] font-semibold uppercase tracking-wider border-b-2 break-inside-avoid"
                                 style={{ borderColor: colors.primary, color: colors.primaryDark, background: 'transparent' }}
                             >
                                 <div className="col-span-8">ALTERNATES — ADD TO COST ABOVE</div>
@@ -224,10 +224,10 @@ const PdfPricingTables = ({
                                     paddingBottom: `${rowPaddingY}px`,
                                 }}
                             >
-                                    <div className="col-span-8 pr-2 text-[13px]" style={{ color: colors.text }}>
+                                    <div className="col-span-8 pr-2 text-[14px]" style={{ color: colors.text }}>
                                         {(alt?.description || "Alternate").toString()}
                                     </div>
-                                    <div className="col-span-4 text-right font-semibold text-[13px] whitespace-nowrap" style={{ color: colors.primaryDark }}>
+                                    <div className="col-span-4 text-right font-semibold text-[14px] whitespace-nowrap" style={{ color: colors.primaryDark }}>
                                         {formatCurrency(Number(alt?.priceDifference ?? 0), currency)}
                                     </div>
                                 </div>
@@ -345,7 +345,7 @@ const PdfPricingTables = ({
             <div className="rounded-lg border overflow-hidden" style={{ borderColor: colors.border }}>
                 {/* Header — text + thin blue underline */}
                 <div
-                    className="grid grid-cols-12 px-3 py-1 text-[13px] font-semibold uppercase tracking-wider border-b-2 break-inside-avoid"
+                    className="grid grid-cols-12 px-3 py-1 text-[14px] font-semibold uppercase tracking-wider border-b-2 break-inside-avoid"
                     style={{ borderColor: colors.primary, color: colors.primaryDark, background: 'transparent' }}
                 >
                     <div className="col-span-8">{colHeaderLeft}</div>
@@ -367,17 +367,17 @@ const PdfPricingTables = ({
                     >
                         <div className="col-span-8 pr-2">
                             {/* Line 1: UPPERCASE BOLD - allow wrapping */}
-                            <div className="font-bold text-[13px] tracking-wide uppercase leading-tight" style={{ color: colors.text }}>
+                            <div className="font-bold text-[14px] tracking-wide uppercase leading-tight" style={{ color: colors.text }}>
                                 {item.name}
                             </div>
                             {/* Line 2: Specs - allow wrapping, compact */}
                             {item.description && (
-                                <div className="text-[13px] leading-tight" style={{ color: colors.textMuted }}>
+                                <div className="text-[14px] leading-tight" style={{ color: colors.textMuted }}>
                                     {item.description}
                                 </div>
                             )}
                         </div>
-                        <div className="col-span-4 text-right font-bold text-xs whitespace-nowrap" style={{ color: colors.primaryDark }}>
+                        <div className="col-span-4 text-right font-bold text-[13px] whitespace-nowrap" style={{ color: colors.primaryDark }}>
                             {formatCurrency(item.price, Math.abs(Number(item.price)) < 0.01 ? "—" : undefined, currency)}
                         </div>
                     </div>
@@ -388,10 +388,10 @@ const PdfPricingTables = ({
                     className="grid grid-cols-12 px-3 py-1.5 border-t-2 break-inside-avoid"
                     style={{ borderColor: colors.border, background: colors.white }}
                 >
-                    <div className="col-span-8 font-bold text-[13px] uppercase tracking-wide" style={{ color: colors.text }}>
+                    <div className="col-span-8 font-bold text-[14px] uppercase tracking-wide" style={{ color: colors.text }}>
                         Project Total{currency === "CAD" ? " (CAD)" : ""}
                     </div>
-                    <div className="col-span-4 text-right font-bold text-xs" style={{ color: colors.text }}>
+                    <div className="col-span-4 text-right font-bold text-[13px]" style={{ color: colors.text }}>
                         {formatCurrency(subtotal, Math.abs(subtotal) < 0.01 ? "—" : undefined, currency)}
                     </div>
                 </div>
@@ -403,7 +403,7 @@ const PdfPricingTables = ({
                             className="grid grid-cols-12 px-3 py-1 border-t break-inside-avoid"
                             style={{ borderColor: colors.border, background: colors.surface }}
                         >
-                            <div className="col-span-12 text-[13px] font-bold uppercase tracking-widest" style={{ color: colors.textMuted }}>
+                            <div className="col-span-12 text-[14px] font-bold uppercase tracking-widest" style={{ color: colors.textMuted }}>
                                 Alternates (not included in total)
                             </div>
                         </div>
@@ -421,16 +421,16 @@ const PdfPricingTables = ({
                                 }}
                             >
                                 <div className="col-span-8 pr-2">
-                                    <div className="text-[13px] tracking-wide uppercase italic" style={{ color: colors.textMuted }}>
+                                    <div className="text-[14px] tracking-wide uppercase italic" style={{ color: colors.textMuted }}>
                                         {item.name}
                                     </div>
                                     {item.description && (
-                                        <div className="text-[13px] leading-none italic" style={{ color: colors.textMuted }}>
+                                        <div className="text-[14px] leading-none italic" style={{ color: colors.textMuted }}>
                                             {item.description}
                                         </div>
                                     )}
                                 </div>
-                                <div className="col-span-4 text-right text-xs whitespace-nowrap italic" style={{ color: colors.textMuted }}>
+                                <div className="col-span-4 text-right text-[13px] whitespace-nowrap italic" style={{ color: colors.textMuted }}>
                                     {formatCurrency(item.price, Math.abs(Number(item.price)) < 0.01 ? "—" : undefined, currency)}
                                 </div>
                             </div>
