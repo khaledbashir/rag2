@@ -498,7 +498,7 @@ export default function AnalysisDetailPage() {
   const criticalReqs = requirements.filter((r) => r.status === "critical").length;
 
   return (
-    <div className="flex-1 min-w-0 bg-background relative min-h-screen pb-24">
+    <div className="flex-1 min-w-0 bg-background relative min-h-screen">
       {/* Header — simplified */}
       <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border h-14 px-6 xl:px-8 flex items-center">
         <div className="flex items-center justify-between w-full max-w-[1600px] mx-auto">
@@ -525,10 +525,10 @@ export default function AnalysisDetailPage() {
         </div>
       </header>
 
-      <main className="p-4 xl:px-6 max-w-[1600px] mx-auto space-y-3">
-        {/* Stats row — hidden on workbook stages to maximize space */}
+      {/* Pipeline Stepper — compact bar on workbook stages */}
+      <div className={activeStage === 1 || activeStage === 3 ? "px-2 pt-1" : "px-4 xl:px-6 pt-3 max-w-[1600px] mx-auto"}>
         {activeStage !== 1 && activeStage !== 3 && (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-3">
             <StatCard icon={FileText} label="Total Pages" value={a.pageCount.toLocaleString()} />
             <StatCard
               icon={CheckCircle2}
@@ -549,13 +549,14 @@ export default function AnalysisDetailPage() {
             <StatCard icon={Clock} label="Processing" value={`${(a.processingTimeMs / 1000).toFixed(1)}s`} />
           </div>
         )}
-
-        {/* Pipeline Stepper */}
         <HistoryStepper
           activeStage={activeStage}
           onStageClick={setActiveStage}
           specsCount={screens.length || a.specsFound}
         />
+      </div>
+
+      <main className={activeStage === 1 || activeStage === 3 ? "px-1 pt-1" : "p-4 xl:px-6 max-w-[1600px] mx-auto space-y-3"}>
 
         {/* ═══ Stage 0: Documents ═══ */}
         {activeStage === 0 && (
@@ -615,7 +616,7 @@ export default function AnalysisDetailPage() {
                 <p className="text-sm text-blue-700 dark:text-blue-300">Matching products...</p>
               </div>
             )}
-            <div className="h-[calc(100vh-140px)]">
+            <div className="h-[calc(100vh-120px)]">
             <WorkbookShell
               data={workbookData}
               editable
@@ -711,7 +712,7 @@ export default function AnalysisDetailPage() {
                 </button>
               </div>
             )}
-            <div className="h-[calc(100vh-140px)]">
+            <div className="h-[calc(100vh-120px)]">
             <WorkbookShell
               data={workbookData}
               editable
