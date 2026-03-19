@@ -819,32 +819,29 @@ export async function extractWithGLM5(
     };
   }
 
-  // Step 3a: Regex extraction — tables + bullet points (deterministic, free, instant)
+  // Step 3: Extract displays
+  // Strategy: Try regex first (free, instant). If regex gets a confident result
+  // (10+ displays from a known format like BOA spec tables), use it.
+  // Otherwise, use Mistral Large AI which handles ANY format.
   options?.onProgress?.("Parsing display tables and specifications...");
   const tableDisplays = extractDisplaysViaRegex(filtered);
   const bulletItems = extractBulletItems(filtered);
-
-  // Combine both: table displays (LED specs) + bullet items (clocks, scoreboards, controls)
-  // Avoid duplicates: if a bullet item has the same name as a table display, skip it
   const tableNames = new Set(tableDisplays.map(d => d.name.toLowerCase()));
   const uniqueBulletItems = bulletItems.filter(b => !tableNames.has(b.name.toLowerCase()));
   const allRegexItems = [...tableDisplays, ...uniqueBulletItems];
 
-  // Detect AV schedule format — multi-column layouts where pdftotext garbles
-  // the right-side tables. Use pdfplumber (Python) which handles multi-column correctly.
+  // Detect AV schedule format — use pdfplumber for multi-column drawings
   const isAvSchedule = /A\/V\s+(?:INTERIOR|EXTERIOR|ENTRY|SCOREBOARD|RIBBON)/i.test(filtered);
   const avScheduleExpected = (filtered.match(/A\/V\s+\w+.*?SCHEDULE/gi) || []).length;
 
   if (isAvSchedule && avScheduleExpected > 1) {
-    // Multi-table AV schedule — use pdfplumber for proper table extraction
-    console.log(`[RFP v2] AV schedule with ${avScheduleExpected} tables detected — using pdfplumber`);
-    options?.onProgress?.("AV schedule detected — extracting tables with pdfplumber...");
-
+    console.log(`[RFP v2] AV schedule with ${avScheduleExpected} tables — trying pdfplumber`);
+    options?.onProgress?.("AV schedule detected — extracting tables...");
     try {
       const plumberResult = await extractViaPdfPlumber(pdfPath);
       if (plumberResult && plumberResult.length > 0) {
         console.log(`[RFP v2] pdfplumber SUCCESS: ${plumberResult.length} items`);
-        options?.onProgress?.(`Found ${plumberResult.length} items via pdfplumber table extraction`);
+        options?.onProgress?.(`Found ${plumberResult.length} items via table extraction`);
         return {
           screens: regexToSpecs(plumberResult),
           project: extractProjectInfo(fullText),
@@ -853,15 +850,17 @@ export async function extractWithGLM5(
         };
       }
     } catch (err: any) {
-      console.error(`[RFP v2] pdfplumber failed:`, err.message, "— falling through to regex/AI");
+      console.error(`[RFP v2] pdfplumber failed:`, err.message);
     }
   }
 
-  if (allRegexItems.length > 0) {
-    // Standard format — regex results are reliable
-    console.log(`[RFP v2] SUCCESS via regex: ${allRegexItems.length} items (${tableDisplays.length} table + ${uniqueBulletItems.length} bullet) (${stats})`);
-    options?.onProgress?.(`Found ${allRegexItems.length} items via parsing (${tableDisplays.length} LED displays, ${uniqueBulletItems.length} scoring/timing)`);
-
+  // Use regex results ONLY if we got a confident match (10+ items from
+  // structured spec tables like BOA Stadium). Low counts or bullet-only
+  // results go to AI for better accuracy across document formats.
+  const regexConfident = tableDisplays.length >= 10;
+  if (regexConfident) {
+    console.log(`[RFP v2] Regex confident: ${allRegexItems.length} items (${tableDisplays.length} table + ${uniqueBulletItems.length} bullet) (${stats})`);
+    options?.onProgress?.(`Found ${allRegexItems.length} items via table parsing`);
     return {
       screens: regexToSpecs(allRegexItems),
       project: extractProjectInfo(fullText),
@@ -870,9 +869,13 @@ export async function extractWithGLM5(
     };
   }
 
-  // Step 3b: Regex found nothing — AI fallback (Mistral Large, temp 0)
-  console.log(`[RFP v2] Regex found 0 displays — falling back to Mistral Large AI`);
-  options?.onProgress?.("Table parsing found no displays — using AI extraction...");
+  // Primary path: Mistral Large AI extraction (handles any format)
+  if (allRegexItems.length > 0) {
+    console.log(`[RFP v2] Regex found ${allRegexItems.length} items but low confidence — trying AI for better results`);
+  } else {
+    console.log(`[RFP v2] Regex found 0 — using Mistral Large AI`);
+  }
+  options?.onProgress?.("Analyzing with AI...");
 
   try {
     const aiResult = await extractDisplaysViaAI(filtered);
@@ -906,7 +909,19 @@ export async function extractWithGLM5(
       source: "glm5",
     };
   } catch (err: any) {
-    console.error(`[RFP v2] AI fallback failed:`, err.message);
+    console.error(`[RFP v2] AI extraction failed:`, err.message);
+
+    // If AI failed but regex had some results, use those as last resort
+    if (allRegexItems.length > 0) {
+      console.log(`[RFP v2] AI failed — falling back to regex results (${allRegexItems.length} items)`);
+      return {
+        screens: regexToSpecs(allRegexItems),
+        project: extractProjectInfo(fullText),
+        requirements: [],
+        source: "glm5",
+      };
+    }
+
     throw err;
   }
 }
