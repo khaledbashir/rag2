@@ -77,7 +77,8 @@ function filterLedPages(pages: string[]): { filtered: string; keptPages: number[
   for (let i = 0; i < pages.length; i++) {
     const lower = pages[i].toLowerCase();
     const isRelevant = LED_KEYWORDS.some(kw => lower.includes(kw));
-    if (isRelevant) {
+    // Always keep page 1 (cover page) — it has project name, client, venue
+    if (isRelevant || i === 0) {
       kept.push(pages[i]);
       keptPages.push(i + 1); // 1-indexed page numbers
     }
@@ -579,6 +580,13 @@ function extractProjectInfo(fullText: string): ExtractedProjectInfo {
     if (/^\d+\s+\w/.test(line) && /\d{5}/.test(line)) continue; // Address line
     projectName = line;
     break;
+  }
+
+  // Fallback: scan cover page (first 2000 chars) for "Project" label followed by a name
+  if (!projectName && fullText.length > 0) {
+    const coverPage = fullText.substring(0, 2000);
+    const projectMatch = coverPage.match(/(?:Project\s*[:—\-]?\s*\n?\s*)([A-Z][A-Z\s&]+(?:MODERNIZATION|RENOVATION|EXPANSION|IMPROVEMENT|UPGRADE|STADIUM|ARENA|CENTER|CENTRE|FIELD|PARK|COMPLEX)[A-Z\s]*)/i);
+    if (projectMatch) projectName = projectMatch[1].trim();
   }
 
   // Client name: most-repeated line containing LLC/Inc/Corp/etc.
