@@ -19,9 +19,9 @@ import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
 
-// AI extraction: Gemini 3 Flash via OpenRouter (best visual PDF understanding)
+// AI extraction: Gemini via OpenRouter (native PDF vision, strict schema)
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
-const GEMINI_MODEL = "google/gemini-3-flash-preview";
+const GEMINI_MODEL = process.env.GEMINI_EXTRACTION_MODEL || "google/gemini-3-flash-preview";
 // Fallback: Mistral Large (if OpenRouter unavailable)
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || "";
 const MISTRAL_API_BASE = process.env.MISTRAL_API_BASE || "https://api.mistral.ai";
@@ -415,7 +415,65 @@ Rules:
           }],
           temperature: 0,
           max_tokens: 65536,
-          response_format: { type: "json_object" },
+          // Strict JSON schema forces the model to output exactly this structure
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "led_schedule_extraction",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  project: {
+                    type: "object",
+                    properties: {
+                      name: { type: ["string", "null"] },
+                      client: { type: ["string", "null"] },
+                      venue: { type: ["string", "null"] },
+                      address: { type: ["string", "null"] },
+                    },
+                    required: ["name", "client", "venue", "address"],
+                    additionalProperties: false,
+                  },
+                  displays: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        name: { type: "string" },
+                        location: { type: ["string", "null"] },
+                        pixel_pitch_mm: { type: ["number", "null"] },
+                        brightness_nits: { type: ["integer", "null"] },
+                        width_ft: { type: ["string", "null"] },
+                        height_ft: { type: ["string", "null"] },
+                        environment: { type: "string", enum: ["indoor", "outdoor"] },
+                        category: { type: "string", enum: ["led_display", "scoreboard", "clock", "control_system", "other"] },
+                        quantity: { type: "integer" },
+                        notes: { type: ["string", "null"] },
+                      },
+                      required: ["name", "location", "pixel_pitch_mm", "brightness_nits", "width_ft", "height_ft", "environment", "category", "quantity", "notes"],
+                      additionalProperties: false,
+                    },
+                  },
+                  requirements: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        description: { type: "string" },
+                        category: { type: "string" },
+                        status: { type: "string" },
+                      },
+                      required: ["description", "category", "status"],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+                required: ["project", "displays", "requirements"],
+                additionalProperties: false,
+              },
+            },
+          },
         }),
       });
 
