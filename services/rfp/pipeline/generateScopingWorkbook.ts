@@ -309,6 +309,35 @@ function getDisplayClassificationText(spec: ExtractedLEDSpec): string {
   ].filter(Boolean).join(" ").toLowerCase();
 }
 
+// ─── Standard LCD/TV Dimensions (16:9) ──────────────────────────────────────
+// Physical dimensions for standard commercial LCD panels. These are universal
+// across manufacturers (LG, Samsung, NEC, etc.) — 16:9 aspect ratio.
+// Used as fallback when AI extraction doesn't capture physical dimensions.
+const STANDARD_LCD_SIZES: Record<number, { widthFt: number; heightFt: number }> = {
+  22:  { widthFt: 1.59, heightFt: 0.90 },
+  32:  { widthFt: 2.33, heightFt: 1.31 },
+  43:  { widthFt: 3.13, heightFt: 1.76 },
+  46:  { widthFt: 3.35, heightFt: 1.88 },
+  49:  { widthFt: 3.56, heightFt: 2.00 },
+  55:  { widthFt: 3.99, heightFt: 2.25 },
+  65:  { widthFt: 4.72, heightFt: 2.66 },
+  75:  { widthFt: 5.45, heightFt: 3.07 },
+  85:  { widthFt: 6.18, heightFt: 3.47 },
+  98:  { widthFt: 7.12, heightFt: 4.00 },
+};
+
+/** Extract LCD screen size (inches) from display name, e.g. '55" LCD Display' → 55 */
+function extractLcdSizeInches(spec: ExtractedLEDSpec): number | null {
+  const text = [spec.name, spec.location, spec.selectedProductName]
+    .filter(Boolean).join(" ");
+  // Match patterns like: 55", 55-inch, 55 inch, 55in, 55 LCD, 55" LCD
+  const m = text.match(/\b(\d{2,3})\s*(?:"|''|‟|″|inch|in\b|-inch)/i)
+    || text.match(/\b(\d{2,3})\s*(?:lcd|tv|monitor|display)\b/i);
+  if (!m) return null;
+  const size = parseInt(m[1], 10);
+  return STANDARD_LCD_SIZES[size] ? size : null;
+}
+
 // ─── Compute Display Data ───────────────────────────────────────────────────
 
 function computeDisplays(
@@ -319,8 +348,17 @@ function computeDisplays(
 ): ComputedDisplay[] {
   return specs.map((spec, idx) => {
     const priced = pricedDisplays?.[idx] ?? null;
-    const widthFt = Number(spec.widthFt) || 0;
-    const heightFt = Number(spec.heightFt) || 0;
+    // Standard LCD fallback: if no dimensions extracted, use known LCD panel sizes
+    let widthFt = Number(spec.widthFt) || 0;
+    let heightFt = Number(spec.heightFt) || 0;
+    if (!widthFt || !heightFt) {
+      const lcdSize = extractLcdSizeInches(spec);
+      if (lcdSize) {
+        const dims = STANDARD_LCD_SIZES[lcdSize];
+        if (!widthFt) widthFt = dims.widthFt;
+        if (!heightFt) heightFt = dims.heightFt;
+      }
+    }
     const areaSqFt = round2(widthFt * heightFt * (Number(spec.quantity) || 1));
 
     // Per-display install complexity: override > per-display array > global

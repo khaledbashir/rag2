@@ -124,6 +124,23 @@ const PERCENT_FMT = { n: { pattern: '0.0%' } };
 const NUMBER_FMT = { n: { pattern: '#,##0' } };
 const NUMBER_FMT_2 = { n: { pattern: '#,##0.00' } };
 
+// Standard LCD/TV dimensions (16:9) — fallback when extraction misses physical sizes
+const STANDARD_LCD_SIZES: Record<number, { widthFt: number; heightFt: number }> = {
+  22: { widthFt: 1.59, heightFt: 0.90 }, 32: { widthFt: 2.33, heightFt: 1.31 },
+  43: { widthFt: 3.13, heightFt: 1.76 }, 46: { widthFt: 3.35, heightFt: 1.88 },
+  49: { widthFt: 3.56, heightFt: 2.00 }, 55: { widthFt: 3.99, heightFt: 2.25 },
+  65: { widthFt: 4.72, heightFt: 2.66 }, 75: { widthFt: 5.45, heightFt: 3.07 },
+  85: { widthFt: 6.18, heightFt: 3.47 }, 98: { widthFt: 7.12, heightFt: 4.00 },
+};
+
+function extractLcdSizeInches(name: string): number | null {
+  const m = name.match(/\b(\d{2,3})\s*(?:"|''|‟|″|inch|in\b|-inch)/i)
+    || name.match(/\b(\d{2,3})\s*(?:lcd|tv|monitor|display)\b/i);
+  if (!m) return null;
+  const size = parseInt(m[1], 10);
+  return STANDARD_LCD_SIZES[size] ? size : null;
+}
+
 function guardedDivisionFormula(numerator: string, denominator: string, decimals = 2): string {
   // Use IF() instead of boolean arithmetic — Univer doesn't support <>/= as number multipliers
   return `=IF(${denominator}=0,0,ROUND(${numerator}/${denominator},${decimals}))`;
@@ -323,8 +340,11 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     // should NOT override the RFP extraction dimensions — those are the source of truth
     // until the user consciously changes the product.
     const isUserSelected = mp?.fitScore === 100 && mp?.activeWidthFt && mp?.activeHeightFt;
-    const h = isUserSelected ? mp.activeHeightFt! : (spec.heightFt ?? 0);
-    const w = isUserSelected ? mp.activeWidthFt! : (spec.widthFt ?? 0);
+    // Standard LCD fallback when extraction misses physical dimensions
+    const lcdSize = extractLcdSizeInches(spec.name ?? "");
+    const lcdDims = lcdSize ? STANDARD_LCD_SIZES[lcdSize] : null;
+    const h = isUserSelected ? mp.activeHeightFt! : ((spec.heightFt ?? 0) || lcdDims?.heightFt || 0);
+    const w = isUserSelected ? mp.activeWidthFt! : ((spec.widthFt ?? 0) || lcdDims?.widthFt || 0);
     const pitch = (isUserSelected && mp.pitch) ? mp.pitch : (spec.pixelPitchMm ?? 0);
     const hPx = isUserSelected && mp.resolutionY ? mp.resolutionY : (spec.heightPx ?? (pitch > 0 ? Math.round(h * 304.8 / pitch) : 0));
     const wPx = isUserSelected && mp.resolutionX ? mp.resolutionX : (spec.widthPx ?? (pitch > 0 ? Math.round(w * 304.8 / pitch) : 0));
