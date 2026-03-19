@@ -617,50 +617,64 @@ export default function RfpAnalyzerClient() {
       };
     })();
 
-    // Recalculate active dimensions using new product's cabinet size
-    const cabWidthMm = product.widthMm || 960;
-    const cabHeightMm = product.heightMm || 960;
-
     // Find the current spec to get requested dimensions
     const currentSpec = editableSpecs.find((s) => s.name === displayName)
       || result?.screens?.find((s: ExtractedLEDSpec) => s.name === displayName);
-    const requestedWidthMm = (currentSpec?.widthFt || 0) * 304.8;
-    const requestedHeightMm = (currentSpec?.heightFt || 0) * 304.8;
-
-    // Calculate module grid (round to nearest — Jeremy's rounding rule TBD)
-    const cols = requestedWidthMm > 0 ? Math.max(1, Math.round(requestedWidthMm / cabWidthMm)) : 1;
-    const rows = requestedHeightMm > 0 ? Math.max(1, Math.round(requestedHeightMm / cabHeightMm)) : 1;
-    const activeWidthMm = cols * cabWidthMm;
-    const activeHeightMm = rows * cabHeightMm;
-    const activeWidthFt = activeWidthMm / 304.8;
-    const activeHeightFt = activeHeightMm / 304.8;
-    const newPitch = product.pitch;
-
-    // Calculate derived specs from product catalog
-    const totalCabs = cols * rows;
+    const newPitch = product.pitch || 0;
     const weightKgPerCab = product.weightKg || 0;
     const maxPowerPerCab = product.maxPowerWatts || 0;
+    const productNits = product.nits || 0;
+
+    // OES/scoring/CMS products have no cabinet dimensions or pitch — skip dimension recalc
+    const isLedPanel = newPitch > 0 && (product.widthMm || 0) > 0 && (product.heightMm || 0) > 0;
+
+    let activeWidthFt: number, activeHeightFt: number;
+    let activeWidthMm: number, activeHeightMm: number;
+    let totalCabs: number;
+
+    if (isLedPanel) {
+      // Recalculate active dimensions using new product's cabinet size
+      const cabWidthMm = product.widthMm!;
+      const cabHeightMm = product.heightMm!;
+      const requestedWidthMm = (currentSpec?.widthFt || 0) * 304.8;
+      const requestedHeightMm = (currentSpec?.heightFt || 0) * 304.8;
+      const cols = requestedWidthMm > 0 ? Math.max(1, Math.round(requestedWidthMm / cabWidthMm)) : 1;
+      const rows = requestedHeightMm > 0 ? Math.max(1, Math.round(requestedHeightMm / cabHeightMm)) : 1;
+      activeWidthMm = cols * cabWidthMm;
+      activeHeightMm = rows * cabHeightMm;
+      activeWidthFt = activeWidthMm / 304.8;
+      activeHeightFt = activeHeightMm / 304.8;
+      totalCabs = cols * rows;
+    } else {
+      // Non-LED product (OES, scoring, CMS, TV) — keep original dimensions
+      activeWidthFt = currentSpec?.widthFt || 0;
+      activeHeightFt = currentSpec?.heightFt || 0;
+      activeWidthMm = activeWidthFt * 304.8;
+      activeHeightMm = activeHeightFt * 304.8;
+      totalCabs = 1;
+    }
+
     const totalWeightLbs = Math.round(totalCabs * weightKgPerCab * 2.20462);
     const totalPowerW = Math.round(totalCabs * maxPowerPerCab);
     const btuPerHr = Math.round(totalPowerW * 3.412);
-    const productNits = product.nits || 0;
-    console.log(`[ProductSelect] ${displayName} → ${product.name}: nits=${productNits}, weightKg=${weightKgPerCab}, powerW=${maxPowerPerCab}, cabs=${totalCabs}`);
+    console.log(`[ProductSelect] ${displayName} → ${product.name}: isLED=${isLedPanel}, nits=${productNits}, cabs=${totalCabs}`);
 
-    // Update editableSpecs with new dimensions + product selection, then persist to DB
-    // If editableSpecs is empty, seed it from result.screens first
+    // Update editableSpecs with product selection + dimensions, then persist to DB
     const base = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
     const updatedSpecs = base.map((s: ExtractedLEDSpec) =>
       s.name === displayName
         ? {
             ...s,
-            widthFt: Math.round(activeWidthFt * 100) / 100,
-            heightFt: Math.round(activeHeightFt * 100) / 100,
-            widthPx: Math.round(activeWidthMm / newPitch),
-            heightPx: Math.round(activeHeightMm / newPitch),
-            pixelPitchMm: newPitch,
-            brightnessNits: productNits,
-            weightLbs: totalWeightLbs,
-            maxPowerW: totalPowerW,
+            ...(isLedPanel ? {
+              widthFt: Math.round(activeWidthFt * 100) / 100,
+              heightFt: Math.round(activeHeightFt * 100) / 100,
+              widthPx: newPitch > 0 ? Math.round(activeWidthMm / newPitch) : (s.widthPx ?? null),
+              heightPx: newPitch > 0 ? Math.round(activeHeightMm / newPitch) : (s.heightPx ?? null),
+              pixelPitchMm: newPitch,
+            } : {}),
+            brightnessNits: productNits || s.brightnessNits,
+            weightLbs: totalWeightLbs || s.weightLbs,
+            maxPowerW: totalPowerW || s.maxPowerW,
             selectedProductId: productId,
             selectedProductName: product.name,
           }
@@ -689,8 +703,8 @@ export default function RfpAnalyzerClient() {
             fitScore: 100,
             activeWidthFt: Math.round(activeWidthFt * 100) / 100,
             activeHeightFt: Math.round(activeHeightFt * 100) / 100,
-            resolutionX: Math.round(activeWidthMm / newPitch),
-            resolutionY: Math.round(activeHeightMm / newPitch),
+            resolutionX: newPitch > 0 ? Math.round(activeWidthMm / newPitch) : 0,
+            resolutionY: newPitch > 0 ? Math.round(activeHeightMm / newPitch) : 0,
             nits: productNits,
             weightKgPerCab: weightKgPerCab,
             maxPowerWPerCab: maxPowerPerCab,

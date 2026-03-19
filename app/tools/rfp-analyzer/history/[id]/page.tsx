@@ -253,42 +253,61 @@ export default function AnalysisDetailPage() {
     const product = availableProducts.find((p) => p.id === productId);
     if (!product) return;
 
-    // Recalculate active dimensions using new product's cabinet size
-    const cabWidthMm = product.widthMm || 960;
-    const cabHeightMm = product.heightMm || 960;
     const currentSpec = analysis?.screens?.find((s: any) => s.name === displayName);
-    const requestedWidthMm = (currentSpec?.widthFt || 0) * 304.8;
-    const requestedHeightMm = (currentSpec?.heightFt || 0) * 304.8;
-    const cols = requestedWidthMm > 0 ? Math.max(1, Math.round(requestedWidthMm / cabWidthMm)) : 1;
-    const rows = requestedHeightMm > 0 ? Math.max(1, Math.round(requestedHeightMm / cabHeightMm)) : 1;
-    const activeWidthMm = cols * cabWidthMm;
-    const activeHeightMm = rows * cabHeightMm;
-
-    // Calculate derived specs from product catalog
-    const totalCabs = cols * rows;
+    const newPitch = product.pitch || 0;
     const weightKgPerCab = product.weightKg || 0;
     const maxPowerPerCab = product.maxPowerWatts || 0;
+    const productNits = product.nits || 0;
+
+    // OES/scoring/CMS products have no cabinet dimensions — skip dimension recalc
+    const isLedPanel = newPitch > 0 && (product.widthMm || 0) > 0 && (product.heightMm || 0) > 0;
+
+    let activeWidthFt: number, activeHeightFt: number;
+    let activeWidthMm: number, activeHeightMm: number;
+    let totalCabs: number;
+
+    if (isLedPanel) {
+      const cabWidthMm = product.widthMm!;
+      const cabHeightMm = product.heightMm!;
+      const requestedWidthMm = (currentSpec?.widthFt || 0) * 304.8;
+      const requestedHeightMm = (currentSpec?.heightFt || 0) * 304.8;
+      const cols = requestedWidthMm > 0 ? Math.max(1, Math.round(requestedWidthMm / cabWidthMm)) : 1;
+      const rows = requestedHeightMm > 0 ? Math.max(1, Math.round(requestedHeightMm / cabHeightMm)) : 1;
+      activeWidthMm = cols * cabWidthMm;
+      activeHeightMm = rows * cabHeightMm;
+      activeWidthFt = activeWidthMm / 304.8;
+      activeHeightFt = activeHeightMm / 304.8;
+      totalCabs = cols * rows;
+    } else {
+      activeWidthFt = currentSpec?.widthFt || 0;
+      activeHeightFt = currentSpec?.heightFt || 0;
+      activeWidthMm = activeWidthFt * 304.8;
+      activeHeightMm = activeHeightFt * 304.8;
+      totalCabs = 1;
+    }
+
     const totalWeightLbs = Math.round(totalCabs * weightKgPerCab * 2.20462);
     const totalPowerW = Math.round(totalCabs * maxPowerPerCab);
     const btuPerHr = Math.round(totalPowerW * 3.412);
-    const productNits = product.nits || 0;
 
-    console.log(`[ProductSelect] ${displayName} → ${product.name}: nits=${productNits}, weightKg=${weightKgPerCab}, powerW=${maxPowerPerCab}, cabs=${totalCabs}`);
+    console.log(`[ProductSelect] ${displayName} → ${product.name}: isLED=${isLedPanel}, nits=${productNits}, cabs=${totalCabs}`);
 
-    // Persist product selection + cabinet-snapped dimensions to DB
+    // Persist product selection + dimensions to DB
     if (analysis?.id) {
       const updatedScreens = (analysis.screens as any[]).map((s: any) =>
         s.name === displayName
           ? {
               ...s,
-              widthFt: Math.round((activeWidthMm / 304.8) * 100) / 100,
-              heightFt: Math.round((activeHeightMm / 304.8) * 100) / 100,
-              widthPx: Math.round(activeWidthMm / product.pitch),
-              heightPx: Math.round(activeHeightMm / product.pitch),
-              pixelPitchMm: product.pitch,
-              brightnessNits: productNits,
-              weightLbs: totalWeightLbs,
-              maxPowerW: totalPowerW,
+              ...(isLedPanel ? {
+                widthFt: Math.round(activeWidthFt * 100) / 100,
+                heightFt: Math.round(activeHeightFt * 100) / 100,
+                widthPx: newPitch > 0 ? Math.round(activeWidthMm / newPitch) : s.widthPx,
+                heightPx: newPitch > 0 ? Math.round(activeHeightMm / newPitch) : s.heightPx,
+                pixelPitchMm: newPitch,
+              } : {}),
+              brightnessNits: productNits || s.brightnessNits,
+              weightLbs: totalWeightLbs || s.weightLbs,
+              maxPowerW: totalPowerW || s.maxPowerW,
               selectedProductId: productId,
               selectedProductName: product.name,
             }
@@ -320,10 +339,10 @@ export default function AnalysisDetailPage() {
                   pitch: product.pitch,
                   totalModules: totalCabs,
                   fitScore: 100,
-                  activeWidthFt: Math.round((activeWidthMm / 304.8) * 100) / 100,
-                  activeHeightFt: Math.round((activeHeightMm / 304.8) * 100) / 100,
-                  resolutionX: Math.round(activeWidthMm / product.pitch),
-                  resolutionY: Math.round(activeHeightMm / product.pitch),
+                  activeWidthFt: Math.round(activeWidthFt * 100) / 100,
+                  activeHeightFt: Math.round(activeHeightFt * 100) / 100,
+                  resolutionX: newPitch > 0 ? Math.round(activeWidthMm / newPitch) : 0,
+                  resolutionY: newPitch > 0 ? Math.round(activeHeightMm / newPitch) : 0,
                   nits: productNits,
                   weightKgPerCab,
                   maxPowerWPerCab: maxPowerPerCab,
