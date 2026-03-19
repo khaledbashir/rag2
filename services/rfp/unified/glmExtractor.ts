@@ -19,7 +19,10 @@ import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
 
-// AI fallback: Mistral Large (best structured table parsing)
+// AI extraction: Gemini 3 Flash via OpenRouter (best visual PDF understanding)
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
+const GEMINI_MODEL = "google/gemini-3-flash-preview";
+// Fallback: Mistral Large (if OpenRouter unavailable)
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || "";
 const MISTRAL_API_BASE = process.env.MISTRAL_API_BASE || "https://api.mistral.ai";
 const MISTRAL_MODEL = process.env.MISTRAL_CHAT_MODEL || "mistral-large-latest";
@@ -354,28 +357,10 @@ function parseFeetInches(str: string): number | null {
 // Step 3b: AI fallback — Mistral Large at temp 0 (only if regex finds 0)
 // ---------------------------------------------------------------------------
 
-async function extractDisplaysViaAI(filteredText: string): Promise<any> {
-  if (!MISTRAL_API_KEY) {
-    throw new Error("MISTRAL_API_KEY not set and regex extraction found 0 displays — cannot fallback to AI");
-  }
+async function extractDisplaysViaAI(pdfPath: string, filteredText: string): Promise<any> {
+  const prompt = `Extract ALL LED displays from this LED schedule / RFP document. Each row in every table is a separate display.
 
-  const prompt = `You are an LED display and AV scope extractor for construction RFP documents.
-
-Extract EVERY item the LED/AV vendor needs to provide. This includes:
-- LED videoboards, ribbon displays, fascia, marquee, entry LEDs
-- Scoreboards (fixed digit, OES, Daktronics)
-- Game clocks, play clocks, shot clocks, locker room clocks
-- Scoring/timing controllers and systems
-- Display control systems, content playback, CMS
-
-Rules:
-- Extract every single row from every display matrix/schedule table
-- Extract every bullet-point item from specification sections
-- Do NOT merge items that share the same name — if "Panthers Den" appears 5 times, return 5 entries
-- If a field is missing, set it to null
-- Set category to: "led_display", "scoreboard", "clock", "control_system", or "other"
-
-Return JSON only:
+Return ONLY a JSON object:
 {
   "project": { "name": string, "client": string, "venue": string, "address": string },
   "displays": [
@@ -395,12 +380,71 @@ Return JSON only:
   "requirements": [
     { "description": string, "category": string, "status": string }
   ]
-}`;
+}
 
-  // Truncate to 400KB if needed (Mistral Large handles ~128K tokens)
+Rules:
+- Extract EVERY row from EVERY table. Do NOT skip or merge.
+- If the same name appears multiple times, each is a separate display.
+- If a field is missing/TBD, set null.
+- Include LED videoboards, ribbons, scoreboards, clocks, control systems.
+- quantity defaults to 1 unless explicitly stated.`;
+
+  // Try Gemini via OpenRouter first (native PDF vision, best accuracy)
+  if (OPENROUTER_API_KEY) {
+    try {
+      const { readFile } = await import("fs/promises");
+      const buffer = await readFile(pdfPath);
+      const b64 = buffer.toString("base64");
+
+      console.log(`[RFP v2] Gemini extraction: sending PDF (${(buffer.length / 1024 / 1024).toFixed(1)}MB) to ${GEMINI_MODEL}...`);
+
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: GEMINI_MODEL,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: `data:application/pdf;base64,${b64}` } },
+            ],
+          }],
+          temperature: 0,
+          max_tokens: 65536,
+          response_format: { type: "json_object" },
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const content = data.choices?.[0]?.message?.content || "";
+        const start = content.indexOf("{");
+        const end = content.lastIndexOf("}");
+        if (start >= 0 && end > start) {
+          const parsed = JSON.parse(content.substring(start, end + 1));
+          console.log(`[RFP v2] Gemini: ${parsed.displays?.length || 0} displays`);
+          return parsed;
+        }
+      } else {
+        const err = await res.text();
+        console.error(`[RFP v2] Gemini failed (${res.status}):`, err.substring(0, 200));
+      }
+    } catch (err: any) {
+      console.error(`[RFP v2] Gemini error:`, err.message);
+    }
+  }
+
+  // Fallback: Mistral Large with text input
+  if (!MISTRAL_API_KEY) {
+    throw new Error("No AI extraction available — set OPENROUTER_API_KEY or MISTRAL_API_KEY");
+  }
+
   const textToSend = filteredText.length > 400000 ? filteredText.substring(0, 400000) : filteredText;
-
-  console.log(`[RFP v2] AI fallback: calling Mistral Large (${(textToSend.length / 1024).toFixed(0)}KB, temp=0)...`);
+  console.log(`[RFP v2] Mistral fallback: ${(textToSend.length / 1024).toFixed(0)}KB text...`);
 
   const res = await fetch(`${MISTRAL_API_BASE}/v1/chat/completions`, {
     method: "POST",
@@ -410,9 +454,7 @@ Return JSON only:
     },
     body: JSON.stringify({
       model: MISTRAL_MODEL,
-      messages: [
-        { role: "user", content: prompt + "\n\n" + textToSend },
-      ],
+      messages: [{ role: "user", content: prompt + "\n\n" + textToSend }],
       temperature: 0.0,
       max_tokens: 65536,
       response_format: { type: "json_object" },
@@ -428,10 +470,10 @@ Return JSON only:
   const content = data.choices?.[0]?.message?.content || "";
   const start = content.indexOf("{");
   const end = content.lastIndexOf("}");
-  if (start === -1 || end === -1) throw new Error("Mistral returned no JSON");
+  if (start === -1 || end === -1) throw new Error("AI returned no JSON");
 
   const parsed = JSON.parse(content.substring(start, end + 1));
-  console.log(`[RFP v2] AI fallback: ${parsed.displays?.length || 0} displays (${data.usage?.total_tokens || 0} tokens)`);
+  console.log(`[RFP v2] Mistral: ${parsed.displays?.length || 0} displays`);
   return parsed;
 }
 
@@ -878,7 +920,7 @@ export async function extractWithGLM5(
   options?.onProgress?.("Analyzing with AI...");
 
   try {
-    const aiResult = await extractDisplaysViaAI(filtered);
+    const aiResult = await extractDisplaysViaAI(pdfPath, filtered);
     const displays = aiResult.displays || [];
     console.log(`[RFP v2] AI fallback: ${displays.length} displays`);
     options?.onProgress?.(`Found ${displays.length} LED displays via AI extraction`);
