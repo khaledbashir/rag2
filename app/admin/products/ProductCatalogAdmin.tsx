@@ -27,6 +27,7 @@ interface Product {
     productFamily: string;
     modelNumber: string;
     displayName: string;
+    productType: string; // "led", "tv", "cms"
     pixelPitch: number;
     cabinetWidthMm: number;
     cabinetHeightMm: number;
@@ -44,10 +45,23 @@ interface Product {
     isCurved: boolean;
     costPerSqFt: number | null;
     msrpPerSqFt: number | null;
+    extendedSpecs: Record<string, any> | null;
     isActive: boolean;
     sourceSpreadsheet: string | null;
     importedAt: string;
     updatedAt: string;
+}
+
+function getUnitCost(p: Product): number | null {
+    // OES/CMS/TV products: unit cost from extendedSpecs
+    if (p.productType !== "led" && p.extendedSpecs?.unitCost != null) {
+        return Number(p.extendedSpecs.unitCost);
+    }
+    return null;
+}
+
+function isPreferred(p: Product): boolean {
+    return p.extendedSpecs?.preferred === true;
 }
 
 // ============================================================================
@@ -232,7 +246,27 @@ export default function ProductCatalogAdmin() {
         }
     };
 
+    const togglePreferred = async (product: Product) => {
+        const newPref = !isPreferred(product);
+        try {
+            await fetch(`/api/products/${product.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    extendedSpecs: { ...(product.extendedSpecs || {}), preferred: newPref },
+                }),
+            });
+            fetchProducts();
+        } catch (err) {
+            console.error("Toggle preferred failed:", err);
+        }
+    };
+
     const sorted = [...products].sort((a: any, b: any) => {
+        // Preferred products always first
+        const aPref = isPreferred(a) ? 0 : 1;
+        const bPref = isPreferred(b) ? 0 : 1;
+        if (aPref !== bPref) return aPref - bPref;
         const aVal = a[sortField];
         const bVal = b[sortField];
         if (aVal == null) return 1;
@@ -451,6 +485,7 @@ export default function ProductCatalogAdmin() {
                 <table className="w-full text-left">
                     <thead className="border-b border-border bg-muted/30">
                         <tr>
+                            <th className={thClass} style={{ width: 30 }} title="Preferred — click star to toggle">★</th>
                             <th className={thClass} onClick={() => toggleSort("manufacturer")}>Mfg<SortIcon field="manufacturer" /></th>
                             <th className={thClass} onClick={() => toggleSort("productFamily")}>Family<SortIcon field="productFamily" /></th>
                             <th className={thClass} onClick={() => toggleSort("modelNumber")}>Model<SortIcon field="modelNumber" /></th>
@@ -459,21 +494,21 @@ export default function ProductCatalogAdmin() {
                             <th className={thClass} onClick={() => toggleSort("maxNits")}>Nits<SortIcon field="maxNits" /></th>
                             <th className={thClass} onClick={() => toggleSort("maxPowerWattsPerCab")}>Power<SortIcon field="maxPowerWattsPerCab" /></th>
                             <th className={thClass} onClick={() => toggleSort("environment")}>Env<SortIcon field="environment" /></th>
-                            <th className={thClass} onClick={() => toggleSort("costPerSqFt")}>Cost/ft²<SortIcon field="costPerSqFt" /></th>
+                            <th className={thClass} onClick={() => toggleSort("costPerSqFt")}>Cost<SortIcon field="costPerSqFt" /></th>
                             <th className={thClass}>Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
                         {loading ? (
                             <tr>
-                                <td colSpan={10} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                                <td colSpan={11} className="px-3 py-8 text-center text-sm text-muted-foreground">
                                     <RefreshCw className="w-4 h-4 animate-spin inline mr-2" />
                                     Loading products...
                                 </td>
                             </tr>
                         ) : sorted.length === 0 ? (
                             <tr>
-                                <td colSpan={10} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                                <td colSpan={11} className="px-3 py-8 text-center text-sm text-muted-foreground">
                                     No products found. Import a spreadsheet or add one manually.
                                 </td>
                             </tr>
@@ -481,6 +516,11 @@ export default function ProductCatalogAdmin() {
                             <tr key={p.id} className="hover:bg-muted/20 transition-colors">
                                 {editingId === p.id ? (
                                     <>
+                                        <td className={tdClass}>
+                                            <button onClick={() => togglePreferred(p)} className="text-base leading-none" title="Toggle preferred">
+                                                {isPreferred(p) ? "⭐" : "☆"}
+                                            </button>
+                                        </td>
                                         <td className={tdClass}>
                                             <input value={editData.manufacturer || ""} onChange={(e) => setEditData({ ...editData, manufacturer: e.target.value })} className="w-20 px-1 py-0.5 text-xs bg-background border border-border rounded" />
                                         </td>
@@ -513,7 +553,11 @@ export default function ProductCatalogAdmin() {
                                             </select>
                                         </td>
                                         <td className={tdClass}>
-                                            <input type="number" step="0.01" value={editData.costPerSqFt ?? ""} onChange={(e) => setEditData({ ...editData, costPerSqFt: e.target.value ? parseFloat(e.target.value) : null })} className="w-16 px-1 py-0.5 text-xs bg-background border border-border rounded" />
+                                            {p.productType === "led" ? (
+                                                <input type="number" step="0.01" placeholder="$/ft²" value={editData.costPerSqFt ?? ""} onChange={(e) => setEditData({ ...editData, costPerSqFt: e.target.value ? parseFloat(e.target.value) : null })} className="w-16 px-1 py-0.5 text-xs bg-background border border-border rounded" />
+                                            ) : (
+                                                <input type="number" step="1" placeholder="Unit $" value={editData.extendedSpecs?.unitCost ?? ""} onChange={(e) => setEditData({ ...editData, extendedSpecs: { ...(editData.extendedSpecs || {}), unitCost: e.target.value ? parseFloat(e.target.value) : null } })} className="w-16 px-1 py-0.5 text-xs bg-background border border-border rounded" />
+                                            )}
                                         </td>
                                         <td className={tdClass}>
                                             <div className="flex gap-1">
@@ -528,6 +572,11 @@ export default function ProductCatalogAdmin() {
                                     </>
                                 ) : (
                                     <>
+                                        <td className={tdClass}>
+                                            <button onClick={() => togglePreferred(p)} className="text-base leading-none opacity-60 hover:opacity-100 transition-opacity" title="Toggle preferred">
+                                                {isPreferred(p) ? "⭐" : "☆"}
+                                            </button>
+                                        </td>
                                         <td className={tdClass}><span className="font-medium">{p.manufacturer}</span></td>
                                         <td className={tdClass}>{p.productFamily}</td>
                                         <td className={`${tdClass} font-mono text-[11px]`}>{p.modelNumber}</td>
@@ -546,7 +595,11 @@ export default function ProductCatalogAdmin() {
                                                 {p.environment === "indoor_outdoor" ? "Both" : p.environment}
                                             </span>
                                         </td>
-                                        <td className={tdClass}>{p.costPerSqFt ? `$${Number(p.costPerSqFt).toFixed(2)}` : "—"}</td>
+                                        <td className={tdClass}>{
+                                            p.productType === "led"
+                                                ? (p.costPerSqFt ? `$${Number(p.costPerSqFt).toFixed(2)}/ft²` : "—")
+                                                : (getUnitCost(p) != null ? `$${getUnitCost(p)!.toLocaleString()}` : (p.costPerSqFt ? `$${Number(p.costPerSqFt).toFixed(2)}` : "—"))
+                                        }</td>
                                         <td className={tdClass}>
                                             <div className="flex gap-1">
                                                 <button onClick={() => startEdit(p)} className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded" title="Edit">
