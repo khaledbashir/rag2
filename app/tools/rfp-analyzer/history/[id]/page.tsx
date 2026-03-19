@@ -275,6 +275,33 @@ export default function AnalysisDetailPage() {
 
     console.log(`[ProductSelect] ${displayName} → ${product.name}: nits=${productNits}, weightKg=${weightKgPerCab}, powerW=${maxPowerPerCab}, cabs=${totalCabs}`);
 
+    // Persist product selection + cabinet-snapped dimensions to DB
+    if (analysis?.id) {
+      const updatedScreens = (analysis.screens as any[]).map((s: any) =>
+        s.name === displayName
+          ? {
+              ...s,
+              widthFt: Math.round((activeWidthMm / 304.8) * 100) / 100,
+              heightFt: Math.round((activeHeightMm / 304.8) * 100) / 100,
+              widthPx: Math.round(activeWidthMm / product.pitch),
+              heightPx: Math.round(activeHeightMm / product.pitch),
+              pixelPitchMm: product.pitch,
+              brightnessNits: productNits,
+              weightLbs: totalWeightLbs,
+              maxPowerW: totalPowerW,
+              selectedProductId: productId,
+              selectedProductName: product.name,
+            }
+          : s
+      );
+      setAnalysis((prev) => prev ? { ...prev, screens: updatedScreens } : prev);
+      fetch(`/api/rfp/analyses/${analysis.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ screens: updatedScreens }),
+      }).catch(() => {});
+    }
+
     setPricingPreview((prev: any) => {
       if (!prev) return prev;
       return {

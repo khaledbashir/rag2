@@ -646,26 +646,29 @@ export default function RfpAnalyzerClient() {
     const productNits = product.nits || 0;
     console.log(`[ProductSelect] ${displayName} → ${product.name}: nits=${productNits}, weightKg=${weightKgPerCab}, powerW=${maxPowerPerCab}, cabs=${totalCabs}`);
 
-    // Update editableSpecs with new dimensions from the selected product
+    // Update editableSpecs with new dimensions + product selection, then persist to DB
     // If editableSpecs is empty, seed it from result.screens first
-    setEditableSpecs((prev) => {
-      const base = prev.length > 0 ? prev : (result?.screens || []);
-      return base.map((s: ExtractedLEDSpec) =>
-        s.name === displayName
-          ? {
-              ...s,
-              widthFt: Math.round(activeWidthFt * 100) / 100,
-              heightFt: Math.round(activeHeightFt * 100) / 100,
-              widthPx: Math.round(activeWidthMm / newPitch),
-              heightPx: Math.round(activeHeightMm / newPitch),
-              pixelPitchMm: newPitch,
-              brightnessNits: productNits,
-              weightLbs: totalWeightLbs,
-              maxPowerW: totalPowerW,
-            }
-          : s
-      );
-    });
+    const base = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
+    const updatedSpecs = base.map((s: ExtractedLEDSpec) =>
+      s.name === displayName
+        ? {
+            ...s,
+            widthFt: Math.round(activeWidthFt * 100) / 100,
+            heightFt: Math.round(activeHeightFt * 100) / 100,
+            widthPx: Math.round(activeWidthMm / newPitch),
+            heightPx: Math.round(activeHeightMm / newPitch),
+            pixelPitchMm: newPitch,
+            brightnessNits: productNits,
+            weightLbs: totalWeightLbs,
+            maxPowerW: totalPowerW,
+            selectedProductId: productId,
+            selectedProductName: product.name,
+          }
+        : s
+    );
+    setEditableSpecs(updatedSpecs);
+    // Persist product selection + updated dimensions to DB so Excel export picks them up
+    if (result?.id) autoSaveSpecs(updatedSpecs, result.id);
 
     setPricingPreview((prev) => {
       const base = prev || currentPreview;
