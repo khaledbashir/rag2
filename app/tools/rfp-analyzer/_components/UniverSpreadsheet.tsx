@@ -468,6 +468,13 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   const sectionGrandTotalMap: Record<string, number> = {};
   // Track zone grand total rows per display for cross-sheet linking from MA fallback path
   const installZoneGtRows: Record<string, number> = {}; // display name → 1-based row of ZONE GRAND TOTAL (cost col G)
+  // Track per-section item row ranges (1-based) for Budget Summary cross-sheet formulas
+  const installSectionRows: {
+    structural: Array<[number, number]>;  // [firstItemRow1, lastItemRow1] per display
+    labor: Array<[number, number]>;
+    electrical: Array<[number, number]>;
+    engineering: Array<[number, number]>;
+  } = { structural: [], labor: [], electrical: [], engineering: [] };
 
   if (hasPricingTables) {
     // ══════════════════════════════════════════════════════════════════════
@@ -989,22 +996,30 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     // Structural Materials section — linked to Install Margin (col C)
     installCellData[installRow++] = { 1: { v: "STRUCTURAL MATERIALS", s: { bl: 1, bg: { rgb: LIGHT_GRAY } } } };
     const structItems = ["Steel Fabrication", "Steel Finish", "Mounting Hardware", "Misc Materials"];
+    const structStart1 = installRow + 1; // 1-based first item row
     structItems.forEach((item) => makeItemRow(item, "C"));
+    installSectionRows.structural.push([structStart1, installRow]); // installRow is now past last item
 
     // Structural Labor section — linked to Install Margin (col C)
     installCellData[installRow++] = { 1: { v: "STRUCTURAL LABOR & LED INSTALL", s: { bl: 1, bg: { rgb: LIGHT_GRAY } } } };
     const laborItems = ["Structural Labor", "LED Installation", "Rigging", "Equipment Rental"];
+    const laborStart1 = installRow + 1;
     laborItems.forEach((item) => makeItemRow(item, "C"));
+    installSectionRows.labor.push([laborStart1, installRow]);
 
     // Electrical section — linked to Electrical Margin (col F)
     installCellData[installRow++] = { 1: { v: "ELECTRICAL & DATA", s: { bl: 1, bg: { rgb: LIGHT_GRAY } } } };
     const elecItems = ["Electrical Materials", "Data Materials", "Electrical Labor", "Data Labor", "Sub Panel", "Misc"];
+    const elecStart1 = installRow + 1;
     elecItems.forEach((item) => makeItemRow(item, "F"));
+    installSectionRows.electrical.push([elecStart1, installRow]);
 
     // Engineering section — linked to ANC Margin (col I)
     installCellData[installRow++] = { 1: { v: "SUBMITTALS, ENGINEERING & PERMITS", s: { bl: 1, bg: { rgb: LIGHT_GRAY } } } };
     const engItems = ["Structural Engineering", "Structural Certification", "Electrical Engineering", "Electrical Certification", "Permits"];
+    const engStart1 = installRow + 1;
     engItems.forEach((item) => makeItemRow(item, "I"));
+    installSectionRows.engineering.push([engStart1, installRow]);
 
     // Zone Grand Total — SUM all item rows (G column = Total Cost, I column = Selling Price)
     const zoneGtRow = installRow + 1; // 1-based
@@ -1709,7 +1724,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     6: { v: "Price / SqFt", s: "header" },
   };
 
-  // Aggregate costs across all displays by category
+  // Aggregate costs across all displays by category (static fallback values)
   let bsTotalLedHw = 0, bsTotalStruct = 0, bsTotalInstall = 0;
   let bsTotalElec = 0, bsTotalPm = 0, bsTotalEng = 0, bsTotalEquip = 0;
   const totalDisplaySqFt = pricingDisplays.reduce((sum, d) => sum + ((d.areaSqFt ?? 0) * (d.quantity ?? 1)), 0);
@@ -1730,36 +1745,62 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   const bsHwMargin = avgMarginPct > 0 ? avgMarginPct : 0.30;
   const bsSvcMargin = avgMarginPct > 0 ? Math.max(avgMarginPct * 0.67, 0.15) : 0.20;
 
-  const bsCategories: Array<[string, number, number, boolean]> = [
-    ["LED Hardware (all displays)", bsTotalLedHw, bsHwMargin, true],
-    ["Structural Materials", bsTotalStruct, bsSvcMargin, true],
-    ["Installation Labor", bsTotalInstall, bsSvcMargin, true],
-    ["Electrical & Data", bsTotalElec, bsSvcMargin, true],
-    ["PM / General Conditions", bsTotalPm, bsSvcMargin, false],
-    ["Engineering & Permits", bsTotalEng, bsSvcMargin, false],
+  // ── Build cross-sheet cost formulas ──────────────────────────────────────
+  // Helper: SUM across install section rows (col G = Total Cost)
+  const installSumFormula = (ranges: Array<[number, number]>): string | null => {
+    if (ranges.length === 0) return null;
+    return ranges.map(([s, e]) => `SUM('Install (Base)'!G${s}:G${e})`).join("+");
+  };
+  // LED Cost Sheet: total row col R (Total Cost), data rows 2..n+1 (1-based)
+  const ledTotalRow1 = screens.length + 2; // 1-based total row
+  const ledFirstData1 = 2;
+  const ledLastData1 = screens.length + 1;
+
+  // Bundle Equipment total row col D (beDataStart=4, 0-indexed → +1 for 1-based, +items.length = total row)
+  const beTotalRow1 = 4 + defaultEquipment.length + 1; // 0-indexed total row + 1 for 1-based
+
+  const structFormula = installSumFormula(installSectionRows.structural);
+  const laborFormula = installSumFormula(installSectionRows.labor);
+  const elecFormula = installSumFormula(installSectionRows.electrical);
+  const engFormula = installSumFormula(installSectionRows.engineering);
+
+  // Categories: [label, costFormula|null, fallbackCost, margin, showPricePerSqFt]
+  const bsCategories: Array<[string, string | null, number, number, boolean]> = [
+    ["LED Hardware (all displays)", `SUM('LED Cost Sheet'!R${ledFirstData1}:R${ledLastData1})`, bsTotalLedHw, bsHwMargin, true],
+    ["Structural Materials", structFormula, bsTotalStruct, bsSvcMargin, true],
+    ["Installation Labor", laborFormula, bsTotalInstall, bsSvcMargin, true],
+    ["Electrical & Data", elecFormula, bsTotalElec, bsSvcMargin, true],
+    ["PM / General Conditions", null, bsTotalPm, bsSvcMargin, false],  // PM is flat fee, not on install sheet
+    ["Engineering & Permits", engFormula, bsTotalEng, bsSvcMargin, false],
   ];
   if (bsTotalEquip > 0) {
-    bsCategories.push(["Processor & Equipment", bsTotalEquip, bsHwMargin, false]);
+    bsCategories.push(["Processor & Equipment", `'Bundle Equipment'!D${beTotalRow1}`, bsTotalEquip, bsHwMargin, false]);
   }
   const manualAdditionsCost = manualAdditions.reduce((sum, item) => sum + (item.cost || 0), 0);
   if (manualAdditionsCost > 0) {
-    bsCategories.push(["Additional Items", manualAdditionsCost, 0.15, false]);
+    bsCategories.push(["Additional Items", null, manualAdditionsCost, 0.15, false]);
   }
   if (venueServices && venueServices.totalCost > 0) {
-    bsCategories.push(["Venue Services", venueServices.totalCost, venueServices.marginPct, false]);
+    bsCategories.push(["Venue Services", null, venueServices.totalCost, venueServices.marginPct, false]);
   }
 
   const bsDataStart = 4;
-  bsCategories.forEach(([label, cost, margin, showPricePerSqFt], i) => {
+  bsCategories.forEach(([label, costFormula, fallbackCost, margin, showPricePerSqFt], i) => {
     const r = bsDataStart + i;
     const r1 = r + 1;
+    // Cost: cross-sheet formula when available, static value as fallback
+    const costCell = costFormula
+      ? { f: `=ROUND(${costFormula},2)`, s: "currency" }
+      : { v: fallbackCost, s: "currency" };
     bsCellData[r] = {
       1: { v: label },
-      2: { v: cost, s: "currency" },
+      2: costCell,
       3: { f: guardedSellingFormula(`C${r1}`, `F${r1}`), s: "currency" },
       4: { f: `=ROUND(D${r1}-C${r1},2)`, s: "currency" },
       5: { v: margin, s: "percent" },
-      6: showPricePerSqFt && totalDisplaySqFt > 0 ? { v: cost / totalDisplaySqFt, s: "currency2" } : { v: "" },
+      6: showPricePerSqFt && totalDisplaySqFt > 0
+        ? { f: guardedDivisionFormula(`C${r1}`, String(totalDisplaySqFt)), s: "currency2" }
+        : { v: "" },
     };
   });
 
