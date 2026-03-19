@@ -130,8 +130,9 @@ function guardedDivisionFormula(numerator: string, denominator: string, decimals
 }
 
 function guardedSellingFormula(costRef: string, marginRef: string, decimals = 2): string {
-  // Use IF() instead of boolean arithmetic — Univer doesn't support </>= as number multipliers
-  return `=IF(${marginRef}>=1,ROUND(${costRef},${decimals}),ROUND(${costRef}/(1-${marginRef}),${decimals}))`;
+  // Handle both decimal (0.15) and whole-number (15) margin inputs:
+  // If margin >= 1, treat as whole-number percentage (divide by 100 first)
+  return `=IF(${marginRef}>=1,ROUND(${costRef}/(1-${marginRef}/100),${decimals}),ROUND(${costRef}/(1-${marginRef}),${decimals}))`;
 }
 
 // ---------------------------------------------------------------------------

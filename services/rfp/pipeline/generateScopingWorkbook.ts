@@ -1719,8 +1719,8 @@ function buildLedCostSheet(
     dr.getCell(17).font = { bold: true, name: "Calibri" };
     // Margin % — references master override cell S2
     dr.getCell(18).value = { formula: `S$${masterMarginRow}`, result: d.marginPct }; dr.getCell(18).numFmt = FMT_PCT;
-    // Selling Price = Total Cost / (1 - Margin%)
-    dr.getCell(19).value = { formula: `Q${row}/(1-R${row})`, result: d.sellingPrice };
+    // Selling Price = Total Cost / (1 - Margin%) — handles both decimal (0.15) and whole-number (15) input
+    dr.getCell(19).value = { formula: `IF(R${row}>=1,Q${row}/(1-R${row}/100),Q${row}/(1-R${row}))`, result: d.sellingPrice };
     dr.getCell(19).numFmt = FMT_USD;
     dr.getCell(19).font = { bold: true, name: "Calibri" };
     // ANC Margin = Selling - Cost
@@ -1783,6 +1783,16 @@ function buildLedCostSheet(
   gtR.getCell(16).numFmt = FMT_USD;
   gtR.getCell(17).value = { formula: baseSumFormula("Q"), result: baseDisplays.reduce((s, d) => s + d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost, 0) };
   gtR.getCell(17).numFmt = FMT_USD;
+  // Margin % for TOTAL row: blended margin = 1 - (Total Cost / Total Selling Price)
+  const totalCostResult = baseDisplays.reduce((s, d) => s + d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost, 0);
+  const totalSellingResult = baseDisplays.reduce((s, d) => {
+    const tc = d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost;
+    const m = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
+    return s + (m < 1 ? round2(tc / (1 - m)) : tc);
+  }, 0);
+  const blendedMarginResult = totalSellingResult > 0 ? round2(1 - totalCostResult / totalSellingResult) : 0;
+  gtR.getCell(18).value = { formula: `IFERROR(1-Q${row}/S${row},0)`, result: blendedMarginResult };
+  gtR.getCell(18).numFmt = FMT_PCT;
   gtR.getCell(19).value = { formula: baseSumFormula("S"), result: baseDisplays.reduce((s, d) => {
     const totalLedCost = d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost;
     const ledMargin = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
