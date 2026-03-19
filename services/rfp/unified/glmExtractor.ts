@@ -477,6 +477,14 @@ Rules:
         }),
       });
 
+      if (res.status === 402 || res.status === 429) {
+        const errText = await res.text().catch(() => "");
+        const isCredit = res.status === 402 || /credit|balance|payment|billing|insufficient/i.test(errText);
+        if (isCredit) {
+          throw new Error("AI extraction credits exhausted. Please top up your OpenRouter account at openrouter.ai/credits to continue analyzing RFPs.");
+        }
+      }
+
       if (res.ok) {
         const data = await res.json();
         const content = data.choices?.[0]?.message?.content || "";
