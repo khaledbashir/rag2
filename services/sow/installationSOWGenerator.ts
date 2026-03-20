@@ -546,7 +546,7 @@ export async function generateInstallationSOW(input: InstallSOWInput): Promise<B
       const logoData = fs.readFileSync(logoPath);
       logoImage = new ImageRun({
         data: logoData,
-        transformation: { width: 120, height: 50 },
+        transformation: { width: 180, height: 46 },
         type: "png",
       });
     }
