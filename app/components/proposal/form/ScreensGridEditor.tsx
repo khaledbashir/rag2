@@ -156,9 +156,15 @@ export default function ScreensGridEditor() {
     const hwCost = calculateHardwareCost(exhibitG.activeAreaM2, product.id);
     const pricing = estimatePricing(exhibitG, zoneClass, hwCost);
 
+    // Auto-set serviceType from product: Halo/Ribbon/Fascia → "Top", else → "Front/Rear"
+    const productName = (product.name || product.id || "").toLowerCase();
+    const isTopService = /halo|ribbon|fascia/.test(productName);
+    const autoServiceType = isTopService ? "Top" : "Front/Rear";
+
     return {
       ...screen,
       productType: product.id,
+      serviceType: screen?.serviceType || autoServiceType,
       zoneComplexity,
       zoneSize,
       pitchMm: pitchMm > 0 ? pitchMm : product.pitchMm,
