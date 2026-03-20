@@ -58,6 +58,7 @@ const SingleScreen = ({
     const [isExpanded, setIsExpanded] = useState(index === 0 && fields.length === 1);
     const [showMargin, setShowMargin] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(false);
+    const [showSpecs, setShowSpecs] = useState(false);
 
     const screenName = useWatch({ name: `${name}[${index}].name`, control });
     const width = useWatch({ name: `${name}[${index}].widthFt`, control });
@@ -499,6 +500,56 @@ const SingleScreen = ({
                                 </div>
                             )}
                         </>
+                    )}
+
+                    {/* Add Specs Toggle */}
+                    <button
+                        onClick={() => setShowSpecs(!showSpecs)}
+                        className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                        <ChevronRight className={cn(
+                            "w-4 h-4 transition-transform",
+                            showSpecs && "rotate-90"
+                        )} />
+                        <Zap className="w-3.5 h-3.5" />
+                        Add Specs (Power / Weight)
+                    </button>
+
+                    {/* Manual Specs Entry */}
+                    {showSpecs && (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-amber-50/50 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-800">
+                            <FormInput
+                                name={`${name}[${index}].manualMaxPowerW`}
+                                label="Max Power (W)"
+                                type="number"
+                                placeholder="e.g. 7500"
+                                vertical
+                            />
+                            <FormInput
+                                name={`${name}[${index}].manualAvgPowerW`}
+                                label="Avg Power (W)"
+                                type="number"
+                                placeholder="e.g. 3000"
+                                vertical
+                            />
+                            <FormInput
+                                name={`${name}[${index}].manualWeightLbs`}
+                                label="Weight (lbs)"
+                                type="number"
+                                placeholder="e.g. 8500"
+                                vertical
+                            />
+                            <FormInput
+                                name={`${name}[${index}].manualAmps`}
+                                label="Amps @208V"
+                                type="number"
+                                placeholder="e.g. 36"
+                                vertical
+                            />
+                            <p className="col-span-full text-[10px] text-muted-foreground">
+                                These override auto-calculated specs. Leave blank to use product defaults.
+                            </p>
+                        </div>
                     )}
 
                     {/* Advanced Settings Toggle */}

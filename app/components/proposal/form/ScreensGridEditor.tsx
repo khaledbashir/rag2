@@ -172,9 +172,9 @@ export default function ScreensGridEditor() {
         resolutionH: exhibitG.resolutionH,
         activeAreaM2: exhibitG.activeAreaM2,
         activeAreaSqFt: exhibitG.activeAreaSqFt,
-        maxPowerW: exhibitG.maxPowerW,
-        avgPowerW: exhibitG.avgPowerW,
-        totalWeightLbs: exhibitG.totalWeightLbs,
+        maxPowerW: screen.manualMaxPowerW ?? exhibitG.maxPowerW,
+        avgPowerW: screen.manualAvgPowerW ?? exhibitG.avgPowerW,
+        totalWeightLbs: screen.manualWeightLbs ?? exhibitG.totalWeightLbs,
         pitchMm: exhibitG.pitchMm,
       },
       calculatedPricing: {

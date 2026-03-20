@@ -148,10 +148,12 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
         return rawBrightness != null && rawBrightness !== "" && rawBrightness !== 0 && isFinite(brightnessNumber) && brightnessNumber > 0;
     });
 
-    // Show Weight / Power columns only when at least one screen has calculatedExhibitG data (Intelligence Mode)
+    // Show Weight / Power columns when at least one screen has spec data (calculated or manual)
     const hasAnyExhibitG = specRows.some((screen: any) => {
         const ex = screen?.calculatedExhibitG;
-        return ex && (Number(ex.totalWeightLbs) > 0 || Number(ex.maxPowerW) > 0);
+        const hasCalc = ex && (Number(ex.totalWeightLbs) > 0 || Number(ex.maxPowerW) > 0);
+        const hasManual = Number(screen?.manualMaxPowerW) > 0 || Number(screen?.manualWeightLbs) > 0;
+        return hasCalc || hasManual;
     });
 
     return (
@@ -261,8 +263,8 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
                                         )}
                                         {!isCondensed && hasAnyExhibitG && (() => {
                                             const ex = screen?.calculatedExhibitG;
-                                            const weightLbs = Number(ex?.totalWeightLbs);
-                                            const maxPower = Number(ex?.maxPowerW);
+                                            const weightLbs = Number(screen?.manualWeightLbs) || Number(ex?.totalWeightLbs);
+                                            const maxPower = Number(screen?.manualMaxPowerW) || Number(ex?.maxPowerW);
                                             return (
                                                 <>
                                                     <td className="text-right tabular-nums text-[9px] align-top" style={{ ...cellStyle, whiteSpace: "nowrap" }}>

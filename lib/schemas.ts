@@ -253,6 +253,11 @@ const ProposalDetailsSchema = z.object({
         isReplacement: z.boolean().default(false),
         useExistingStructure: z.boolean().default(false),
         includeSpareParts: z.boolean().default(true),
+        // Manual spec overrides — user can type these in when client asks for power/weight
+        manualMaxPowerW: z.coerce.number().nonnegative().optional(),
+        manualAvgPowerW: z.coerce.number().nonnegative().optional(),
+        manualWeightLbs: z.coerce.number().nonnegative().optional(),
+        manualAmps: z.coerce.number().nonnegative().optional(),
         calculatedExhibitG: z.object({
             displayWidthFt: z.number(),
             displayHeightFt: z.number(),
