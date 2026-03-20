@@ -16,6 +16,8 @@ import {
   LayoutList,
   HardHat,
   Moon,
+  FileEdit,
+  Download,
 } from "lucide-react";
 
 // ============================================================================
@@ -31,8 +33,10 @@ interface SOWRecord {
   hasUnionLabor: boolean;
   hasNightWork: boolean;
   fileName: string;
+  status: string;
   createdBy: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 // ============================================================================
@@ -284,16 +288,23 @@ function TableRow({
     <tr className={`group hover:bg-muted/30 transition-colors ${isLatest ? "bg-primary/[0.03]" : ""}`}>
       <td className="py-2.5 px-4 text-xs text-muted-foreground font-mono">{index}</td>
       <td className="py-2.5 px-4">
-        <div className="flex items-center gap-2">
-          {isLatest && (
-            <span className="shrink-0 px-1.5 py-0.5 bg-primary text-primary-foreground text-[9px] font-bold rounded uppercase tracking-wide">
-              Latest
+        <Link href={`/tools/sow-generator?load=${r.id}`} className="block group/link">
+          <div className="flex items-center gap-2">
+            {isLatest && (
+              <span className="shrink-0 px-1.5 py-0.5 bg-primary text-primary-foreground text-[9px] font-bold rounded uppercase tracking-wide">
+                Latest
+              </span>
+            )}
+            {r.status === "draft" && (
+              <span className="shrink-0 px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[9px] font-bold rounded uppercase tracking-wide">
+                Draft
+              </span>
+            )}
+            <span className="font-medium text-foreground truncate max-w-[250px] group-hover/link:text-primary transition-colors">
+              {r.projectName}
             </span>
-          )}
-          <span className="font-medium text-foreground truncate max-w-[250px]">
-            {r.projectName}
-          </span>
-        </div>
+          </div>
+        </Link>
       </td>
       <td className="py-2.5 px-4 text-xs text-muted-foreground">
         {r.clientName || <span className="text-muted-foreground/40">&mdash;</span>}
@@ -369,7 +380,8 @@ function SOWCard({
   const timeAgo = getTimeAgo(date);
 
   return (
-    <div className={`group bg-card border rounded-xl p-4 hover:border-primary/40 hover:shadow-md transition-all relative ${
+    <Link href={`/tools/sow-generator?load=${r.id}`}>
+    <div className={`group bg-card border rounded-xl p-4 hover:border-primary/40 hover:shadow-md transition-all cursor-pointer relative ${
       isLatest ? "border-primary/30 ring-1 ring-primary/10" : "border-border"
     }`}>
       {isLatest && (
@@ -379,11 +391,18 @@ function SOWCard({
           </span>
         </div>
       )}
+      {r.status === "draft" && (
+        <div className="absolute -top-2.5 right-3">
+          <span className="px-2 py-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-full uppercase tracking-wide shadow-sm">
+            Draft
+          </span>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-start justify-between gap-2 mb-3">
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-foreground truncate">
+          <h3 className="font-semibold text-foreground truncate group-hover:text-primary transition-colors">
             {r.projectName}
           </h3>
           {r.clientName && (
@@ -460,6 +479,7 @@ function SOWCard({
         </div>
       </div>
     </div>
+    </Link>
   );
 }
 

@@ -1004,6 +1004,9 @@ model SOWHistory {
   hasNightWork    Boolean   @default(false)
   fileName        String    @default("")
 
+  // Status
+  status          String    @default("generated") // "draft" | "generated"
+
   // Ownership
   createdBy       String?   // User email
   createdAt       DateTime  @default(now())

@@ -1,7 +1,8 @@
 /**
- * GET /api/sow/history — List all SOW generations (history)
+ * GET  /api/sow/history — List all SOW generations (history)
+ * POST /api/sow/history — Save a SOW draft (without generating DOCX)
+ * PATCH /api/sow/history — Update an existing SOW draft
  *
- * Returns paginated, searchable list of past SOW generations.
  * Query params: ?search=pacers&limit=20&offset=0
  */
 
@@ -39,10 +40,12 @@ export async function GET(request: NextRequest) {
         hasUnionLabor: true,
         hasNightWork: true,
         fileName: true,
+        status: true,
         createdBy: true,
         createdAt: true,
+        updatedAt: true,
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { updatedAt: "desc" },
       take: limit,
       skip: offset,
     }),
@@ -50,4 +53,61 @@ export async function GET(request: NextRequest) {
   ]);
 
   return NextResponse.json({ records, total, limit, offset });
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+
+    if (!body.projectName) {
+      return NextResponse.json({ error: "projectName is required" }, { status: 400 });
+    }
+
+    const record = await prisma.sOWHistory.create({
+      data: {
+        projectName: body.projectName,
+        clientName: body.clientName || "",
+        venue: body.venue || "",
+        generationInput: body.formState || {},
+        displayCount: body.displayCount || 0,
+        hasUnionLabor: body.hasUnionLabor || false,
+        hasNightWork: body.hasNightWork || false,
+        fileName: "",
+        status: "draft",
+      },
+    });
+
+    return NextResponse.json({ id: record.id, ok: true });
+  } catch (error) {
+    console.error("[sow/history] POST error:", error);
+    return NextResponse.json({ error: "Failed to save SOW draft" }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+
+    if (!body.id) {
+      return NextResponse.json({ error: "id is required" }, { status: 400 });
+    }
+
+    await prisma.sOWHistory.update({
+      where: { id: body.id },
+      data: {
+        projectName: body.projectName,
+        clientName: body.clientName || "",
+        venue: body.venue || "",
+        generationInput: body.formState || {},
+        displayCount: body.displayCount || 0,
+        hasUnionLabor: body.hasUnionLabor || false,
+        hasNightWork: body.hasNightWork || false,
+      },
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("[sow/history] PATCH error:", error);
+    return NextResponse.json({ error: "Failed to update SOW" }, { status: 500 });
+  }
 }

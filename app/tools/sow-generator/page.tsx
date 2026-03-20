@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { Suspense, useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -35,6 +36,8 @@ import {
   Zap,
   ArrowRight,
   History,
+  Save,
+  CheckCircle2,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -524,7 +527,15 @@ function DisplayCard({
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 
-export default function SOWGeneratorPage() {
+export default function SOWGeneratorPageWrapper() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>}>
+      <SOWGeneratorPage />
+    </Suspense>
+  );
+}
+
+function SOWGeneratorPage() {
   // Source
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
@@ -562,6 +573,12 @@ export default function SOWGeneratorPage() {
     testing: "<p>Sub-contractor will adjust the displays to ensure the best quality installation possible and will work with ANC to complete and make any necessary changes.</p>",
     signoff: "<p>Each display will be reviewed to confirm that equipment has been installed per the SOW and to the satisfaction of the ANC project manager and the customer.</p>",
   });
+
+  // Save / draft state
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
 
   // AI state
   const [aiLoadingSection, setAiLoadingSection] = useState<string | null>(null);
@@ -915,6 +932,103 @@ export default function SOWGeneratorPage() {
     }
   };
 
+  // Build form state for saving
+  const buildFormState = useCallback(() => ({
+    projectName, clientName, venue, address, date, revision,
+    installStart, installEnd, isUnionLabor, hasNightWork,
+    includeRefDocs, bidDueDate, currency, sections,
+    displays: displays.map(d => ({ ...d })),
+    displayTasks: Object.fromEntries(
+      Object.entries(displayTasks).map(([k, v]) => [k, v.map(t => ({ ...t }))])
+    ),
+    exclusions: exclusions.map(e => ({ ...e })),
+    customSectionsBefore: customSectionsBefore.map(s => ({ ...s })),
+    customSectionsAfter: customSectionsAfter.map(s => ({ ...s })),
+  }), [projectName, clientName, venue, address, date, revision, installStart, installEnd, isUnionLabor, hasNightWork, includeRefDocs, bidDueDate, currency, sections, displays, displayTasks, exclusions, customSectionsBefore, customSectionsAfter]);
+
+  // Save draft
+  const handleSave = async () => {
+    setSaving(true);
+    setSavedAt(null);
+    try {
+      const formState = buildFormState();
+      if (draftId) {
+        await fetch("/api/sow/history", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: draftId,
+            projectName: projectName.trim() || "Untitled SOW",
+            clientName: clientName.trim(),
+            venue: venue.trim(),
+            displayCount: validDisplays.length,
+            hasUnionLabor, hasNightWork,
+            formState,
+          }),
+        });
+      } else {
+        const res = await fetch("/api/sow/history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectName: projectName.trim() || "Untitled SOW",
+            clientName: clientName.trim(),
+            venue: venue.trim(),
+            displayCount: validDisplays.length,
+            hasUnionLabor, hasNightWork,
+            formState,
+          }),
+        });
+        const data = await res.json();
+        if (data.id) setDraftId(data.id);
+      }
+      setSavedAt(new Date().toLocaleTimeString());
+    } catch (err) {
+      console.error("Save failed:", err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Load draft from history
+  const loadDraft = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/sow/history/${id}`);
+      if (!res.ok) return;
+      const record = await res.json();
+      const fs = record.generationInput || {};
+      setDraftId(id);
+      if (fs.projectName) setProjectName(fs.projectName);
+      if (fs.clientName) setClientName(fs.clientName);
+      if (fs.venue) setVenue(fs.venue);
+      if (fs.address) setAddress(fs.address);
+      if (fs.date) setDate(fs.date);
+      if (fs.revision) setRevision(fs.revision);
+      if (fs.installStart) setInstallStart(fs.installStart);
+      if (fs.installEnd) setInstallEnd(fs.installEnd);
+      if (fs.isUnionLabor !== undefined) setIsUnionLabor(fs.isUnionLabor);
+      if (fs.hasNightWork !== undefined) setHasNightWork(fs.hasNightWork);
+      if (fs.includeRefDocs !== undefined) setIncludeRefDocs(fs.includeRefDocs);
+      if (fs.bidDueDate) setBidDueDate(fs.bidDueDate);
+      if (fs.currency) setCurrency(fs.currency);
+      if (fs.sections) setSections(fs.sections);
+      if (fs.displays?.length) setDisplays(fs.displays);
+      if (fs.displayTasks) setDisplayTasks(fs.displayTasks);
+      if (fs.exclusions?.length) setExclusions(fs.exclusions);
+      if (fs.customSectionsBefore?.length) setCustomSectionsBefore(fs.customSectionsBefore);
+      if (fs.customSectionsAfter?.length) setCustomSectionsAfter(fs.customSectionsAfter);
+      setAutoFilled(true);
+    } catch (err) {
+      console.error("Failed to load draft:", err);
+    }
+  }, []);
+
+  // Load from URL param on mount
+  useEffect(() => {
+    const loadId = searchParams.get("load");
+    if (loadId) loadDraft(loadId);
+  }, [searchParams, loadDraft]);
+
   const canGenerate = projectName.trim() && validDisplays.length > 0;
 
   const handleGenerate = async () => {
@@ -1021,6 +1135,20 @@ export default function SOWGeneratorPage() {
             <History className="w-4 h-4" />
             History
           </Link>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border border-border text-foreground hover:bg-muted transition-colors"
+          >
+            {saving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : savedAt ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
+            {saving ? "Saving..." : savedAt ? `Saved ${savedAt}` : "Save"}
+          </button>
           <button
             onClick={handleGenerate}
             disabled={!canGenerate || generating}
