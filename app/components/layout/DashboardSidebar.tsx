@@ -64,9 +64,14 @@ const mainMenuItems: NavItem[] = [
 ];
 
 const toolsMenuItems: NavItem[] = [
-    { icon: Scan, label: "RFP Analyzer", description: "Upload bid documents and extract screens, requirements, and pricing.", href: "/tools/rfp-analyzer", allowedRoles: null },
-    { icon: History, label: "RFP History", description: "Reopen saved analyses and continue working from prior uploads.", href: "/tools/rfp-analyzer/history", allowedRoles: null },
-    { icon: FileSignature, label: "SOW Builder", description: "Generate scopes of work from project and pricing details.", href: "/tools/sow-generator", allowedRoles: null },
+    { icon: Scan, label: "RFP Analyzer", description: "Upload bid documents and extract screens, requirements, and pricing.", href: "/tools/rfp-analyzer", allowedRoles: null, children: [
+        { label: "New Analysis", href: "/tools/rfp-analyzer", icon: Scan },
+        { label: "History", href: "/tools/rfp-analyzer/history", icon: History },
+    ]},
+    { icon: FileSignature, label: "SOW Builder", description: "Generate scopes of work from project and pricing details.", href: "/tools/sow-generator", allowedRoles: null, children: [
+        { label: "New SOW", href: "/tools/sow-generator", icon: FileSignature },
+        { label: "History", href: "/tools/sow-generator/history", icon: History },
+    ]},
     { icon: FileSpreadsheet, label: "Spec Sheets", description: "Generate per-display product spec sheets and submittal forms.", href: "/tools/spec-generator", allowedRoles: null },
     { icon: Calculator, label: "Estimator", description: "Build budgets, swap products, and export scoping workbooks.", href: "/estimator", allowedRoles: null },
 ];
@@ -513,7 +518,7 @@ function NavItemRow({ item, expanded, isActive, isParentActive, canAccess, isGro
             {hasChildren && isGroupExpanded && (
                 <div className="ml-4 pl-3 border-l border-border/50 mt-0.5 space-y-0.5">
                     {item.children!.map((child) => {
-                        const childActive = pathname === child.href || pathname.startsWith(child.href + "/");
+                        const childActive = pathname === child.href || (child.href !== item.href && pathname.startsWith(child.href + "/"));
                         const ChildIcon = child.icon;
                         return (
                             <Link
