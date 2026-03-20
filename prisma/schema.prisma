@@ -986,6 +986,34 @@ model RfpAnalysis {
   @@index([status])
 }
 
+// SOW Generation History — tracks every SOW generated
+model SOWHistory {
+  id              String    @id @default(cuid())
+
+  // Project identification
+  projectName     String
+  clientName      String    @default("")
+  venue           String    @default("")
+
+  // Generation input (full payload for reproducibility)
+  generationInput Json      @default("{}")
+
+  // Denormalized metadata for list view
+  displayCount    Int       @default(0)
+  hasUnionLabor   Boolean   @default(false)
+  hasNightWork    Boolean   @default(false)
+  fileName        String    @default("")
+
+  // Ownership
+  createdBy       String?   // User email
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([projectName])
+  @@index([clientName])
+  @@index([createdAt])
+}
+
 // Phase 2 Completion Tracker — acceptance checklist for stakeholder sign-off
 model TrackerItem {
   id          String   @id @default(cuid())

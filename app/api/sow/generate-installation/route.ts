@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateInstallationSOW, type InstallSOWInput } from "@/services/sow/installationSOWGenerator";
+import { prisma } from "@/lib/prisma";
 import { log } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
@@ -17,6 +18,25 @@ export async function POST(request: NextRequest) {
 
     const safeName = body.projectName.replace(/[^a-zA-Z0-9_\- ]/g, "").trim();
     const filename = `${safeName} - Installation SOW.docx`;
+
+    // Persist to SOW history
+    try {
+      await prisma.sOWHistory.create({
+        data: {
+          projectName: body.projectName,
+          clientName: body.clientName || "",
+          venue: body.venue || "",
+          generationInput: body as any,
+          displayCount: body.displays.length,
+          hasUnionLabor: body.isUnionLabor || false,
+          hasNightWork: body.hasNightWork || false,
+          fileName: filename,
+        },
+      });
+    } catch (historyErr) {
+      // Don't fail the download if history save fails
+      log.error("[sow/generate-installation] Failed to save history:", historyErr);
+    }
 
     return new NextResponse(buffer, {
       headers: {

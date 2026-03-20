@@ -34,7 +34,9 @@ import {
   Send,
   Zap,
   ArrowRight,
+  History,
 } from "lucide-react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -1011,19 +1013,28 @@ export default function SOWGeneratorPage() {
             <p className="text-[11px] text-muted-foreground">Edit any section inline. Hover for AI suggestions. Download when ready.</p>
           </div>
         </div>
-        <button
-          onClick={handleGenerate}
-          disabled={!canGenerate || generating}
-          className={cn(
-            "flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all",
-            canGenerate && !generating
-              ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-600/20"
-              : "bg-muted text-muted-foreground cursor-not-allowed"
-          )}
-        >
-          {generating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-          {generating ? "Generating..." : "Download DOCX"}
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/tools/sow-generator/history"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <History className="w-4 h-4" />
+            History
+          </Link>
+          <button
+            onClick={handleGenerate}
+            disabled={!canGenerate || generating}
+            className={cn(
+              "flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all",
+              canGenerate && !generating
+                ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-600/20"
+                : "bg-muted text-muted-foreground cursor-not-allowed"
+            )}
+          >
+            {generating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {generating ? "Generating..." : "Download DOCX"}
+          </button>
+        </div>
       </div>
 
       {/* Project Picker */}
