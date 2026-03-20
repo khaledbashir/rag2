@@ -73,7 +73,10 @@ const toolsMenuItems: NavItem[] = [
         { label: "History", href: "/tools/sow-generator/history", icon: History },
     ]},
     { icon: FileSpreadsheet, label: "Spec Sheets", description: "Generate per-display product spec sheets and submittal forms.", href: "/tools/spec-generator", allowedRoles: null },
-    { icon: Calculator, label: "Estimator", description: "Build budgets, swap products, and export scoping workbooks.", href: "/estimator", allowedRoles: null },
+    { icon: Calculator, label: "Estimator", description: "Build budgets, swap products, and export scoping workbooks.", href: "/estimator", allowedRoles: null, children: [
+        { label: "New Estimate", href: "/estimator/new", icon: Calculator },
+        { label: "History", href: "/estimator", icon: History },
+    ]},
 ];
 
 const settingsMenuItems: NavItem[] = [
