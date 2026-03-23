@@ -65,6 +65,9 @@ export async function PATCH(
                 pricingDocument: true,
                 parserValidationReport: true,
                 parserStrictVersion: true,
+                venue: true,
+                clientCity: true,
+                clientAddress: true,
                 }
         });
 
@@ -229,7 +232,14 @@ export async function PATCH(
         if (signatureBlockText !== undefined) updateData.signatureBlockText = signatureBlockText;
         if (loiHeaderText !== undefined) updateData.loiHeaderText = loiHeaderText;
         if (customProposalNotes !== undefined) updateData.customProposalNotes = customProposalNotes;
-        if (pricingDocument !== undefined) updateData.pricingDocument = pricingDocument;
+        if (pricingDocument !== undefined) {
+            updateData.pricingDocument = pricingDocument;
+            // When a new Excel is uploaded with a resp matrix, clear the old standalone
+            // responsibilityMatrix to prevent stale data from persisting after re-upload
+            if (pricingDocument?.respMatrix) {
+                updateData.responsibilityMatrix = null;
+            }
+        }
         if (marginAnalysis !== undefined) updateData.marginAnalysis = marginAnalysis;
         if (parserValidationReport !== undefined) updateData.parserValidationReport = parserValidationReport;
         if (sourceWorkbookHash !== undefined) updateData.sourceWorkbookHash = sourceWorkbookHash;
@@ -357,6 +367,43 @@ export async function PATCH(
         });
         for (const change of changes) {
             logActivity(id, change.action, change.description, null, change.metadata);
+        }
+
+        // Webhook: notify ANC Service Dashboard when proposal is signed/closed
+        if (status === 'SIGNED' || status === 'CLOSED') {
+            try {
+                const webhookUrl = process.env.ANC_SERVICES_WEBHOOK_URL || 'https://abc-anc-services.izcgmb.easypanel.host/api/webhooks/proposal'
+                const webhookSecret = process.env.ANC_SERVICES_WEBHOOK_SECRET || 'anc-services-webhook-2026'
+                fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-webhook-secret': webhookSecret },
+                    body: JSON.stringify({
+                        action: status === 'SIGNED' ? 'proposal_signed' : 'proposal_closed',
+                        proposal: {
+                            id: project.id,
+                            clientName: effectiveClientName || existingProject.clientName,
+                            venue: venue || existingProject.venue,
+                            city: existingProject.clientCity,
+                            address: existingProject.clientAddress,
+                        },
+                        // Include screens if available
+                        screens: await (async () => {
+                            try {
+                                const screens = await prisma.installedScreen.findMany({
+                                    where: { venue: { sourceProposalId: id } },
+                                    select: { displayName: true, manufacturer: true, modelNumber: true, pixelPitch: true, widthFt: true, heightFt: true, installDate: true, isActive: true }
+                                })
+                                if (screens.length > 0) return screens
+                                // Fallback: try to get from proposal screens config
+                                const prop = await prisma.proposal.findUnique({ where: { id }, select: { screens: true } })
+                                return prop?.screens || []
+                            } catch { return [] }
+                        })(),
+                    }),
+                }).catch(err => log.error('Webhook to ANC Services failed:', err))
+            } catch (e) {
+                log.error('Webhook setup error:', e)
+            }
         }
 
         return NextResponse.json({

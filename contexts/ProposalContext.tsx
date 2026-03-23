@@ -3265,6 +3265,9 @@ export const ProposalContextProvider = ({
             shouldDirty: false,
         });
         setValue("marginAnalysis" as any, undefined, { shouldDirty: false });
+        // Clear old responsibility matrix so re-upload doesn't show stale data
+        setValue("details.responsibilityMatrix" as any, null, { shouldDirty: false });
+        setValue("details.respMatrixFormatOverride" as any, undefined, { shouldDirty: false });
 
         loadExcelPreview(file);
         const formData = new FormData();
