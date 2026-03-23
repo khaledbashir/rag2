@@ -133,7 +133,8 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   // ANC format — electrical columns use Jeremy's 208V circuit formula:
   // One 20A 208V circuit = max 3328W. Cabs/circuit = floor(3328 / W per cab). Circuits = ceil(totalCabs / cabsPerCircuit).
   const cols = [
-    "Display", "Vendor", "Product", "Pitch",
+    "Display", "RFP H (ft)", "RFP W (ft)", "RFP NITs",
+    "Vendor", "Product", "Pitch",
     "H (ft)", "W (ft)", "H (px)", "W (px)",
     "SqFt/Screen", "Qty", "Total SqFt",
     "NITs", "Service",
@@ -159,14 +160,14 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
     const mp = pd?.matchedProduct;
 
-    // User-edited spec dimensions (bidH/bidW) always take priority.
-    // Only fall back to product cabinet-snapped dims when spec has no dimensions.
+    // Product-matched dimensions take priority when a product is selected.
+    // Fall back to RFP/bid dimensions when no product matched.
     const hasProductDims = mp?.activeWidthFt && mp?.activeHeightFt;
-    const displayH = bidH > 0 ? bidH : (hasProductDims ? mp.activeHeightFt : 0);
-    const displayW = bidW > 0 ? bidW : (hasProductDims ? mp.activeWidthFt : 0);
+    const displayH = hasProductDims ? mp.activeHeightFt : bidH;
+    const displayW = hasProductDims ? mp.activeWidthFt : bidW;
     const activePitch = hasProductDims && mp.pitch ? mp.pitch : bidPitch;
-    const displayPxH = bidHPx > 0 ? bidHPx : (hasProductDims && mp.resolutionY ? mp.resolutionY : 0);
-    const displayPxW = bidWPx > 0 ? bidWPx : (hasProductDims && mp.resolutionX ? mp.resolutionX : 0);
+    const displayPxH = (hasProductDims && mp.resolutionY) ? mp.resolutionY : bidHPx;
+    const displayPxW = (hasProductDims && mp.resolutionX) ? mp.resolutionX : bidWPx;
     const sqFtPerScreen = displayH * displayW;
     const totalSqFt = sqFtPerScreen * qty;
 
@@ -223,6 +224,9 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
           className: productLabel ? undefined : "text-red-500 italic text-[10px]",
         });
 
+    // RFP-requested specs (always from original RFP extraction, never overwritten)
+    const rfpNits = spec.brightnessNits ?? null;
+
     return {
       cells: [
         c(spec.name, {
@@ -230,6 +234,9 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
           onClick: firstPage && input.onSourcePageClick ? () => input.onSourcePageClick!(firstPage) : undefined,
           onRemove: input.onRemoveScreen ? () => input.onRemoveScreen!(spec.name) : undefined,
         }),
+        num(bidH > 0 ? Math.round(bidH * 100) / 100 : null),               // RFP H (ft)
+        num(bidW > 0 ? Math.round(bidW * 100) / 100 : null),               // RFP W (ft)
+        num(rfpNits),                                                        // RFP NITs
         c(vendor),
         productCell,
         c(activePitch > 0 ? `${activePitch}mm` : "", { align: "center" }),
@@ -319,12 +326,13 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   const totalRow: SheetRow = {
     cells: [
       c(`TOTAL (${input.screens.length} displays)`, { bold: true }),
-      c(""), c(""), c(""),
-      c(""), c(""), c(""), c(""),
-      c(""),
-      c(""),
-      num(Math.round(totalSqFtAll * 100) / 100, { bold: true }),
-      c(""), c(""),
+      c(""), c(""), c(""),                                               // RFP H, RFP W, RFP NITs
+      c(""), c(""), c(""),                                               // Vendor, Product, Pitch
+      c(""), c(""), c(""), c(""),                                        // H, W, H(px), W(px)
+      c(""),                                                              // SqFt/Screen
+      c(""),                                                              // Qty
+      num(Math.round(totalSqFtAll * 100) / 100, { bold: true }),         // Total SqFt
+      c(""), c(""),                                                       // NITs, Service
       num(totalModulesAll > 0 ? totalModulesAll : null, { bold: true }),
       num(totalWeightLbsAll > 0 ? totalWeightLbsAll : null, { bold: true }),
       c(""),

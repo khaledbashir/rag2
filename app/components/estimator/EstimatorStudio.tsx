@@ -350,11 +350,11 @@ export default function EstimatorStudio({
     const handlePreviewCellEdit = useCallback((sheetName: string, row: number, col: number, value: number | string) => {
         if (sheetName !== "LED Cost Sheet") return;
 
-        // LED Cost Sheet columns (0-based): 4=H(ft), 5=W(ft), 8=Qty
+        // LED Cost Sheet columns (0-based): 7=H(ft), 8=W(ft), 12=Qty
         const fieldMap: Record<number, "heightFt" | "widthFt" | "quantity"> = {
-            4: "heightFt",
-            5: "widthFt",
-            8: "quantity",
+            7: "heightFt",
+            8: "widthFt",
+            12: "quantity",
         };
         const field = fieldMap[col];
         if (!field) return;

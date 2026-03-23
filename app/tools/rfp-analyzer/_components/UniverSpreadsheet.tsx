@@ -252,7 +252,8 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   // === SHEET 1: LED Cost Sheet — full 20 columns ===
   sheetOrder.push("led-cost-sheet");
   const ledCols = [
-    "Display", "Vendor", "Product", "Pitch (mm)",
+    "Display", "RFP H (ft)", "RFP W (ft)", "RFP NITs",
+    "Vendor", "Product", "Pitch (mm)",
     "H (ft)", "W (ft)", "H (px)", "W (px)",
     "SqFt/Screen", "Qty", "Total SqFt",
     "NITs", "Service", "$/SqFt", "Display Cost", "Processor", "Shipping", "Total Cost",
@@ -260,12 +261,13 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   ];
 
   const ledColWidths: Record<number, { w: number }> = {
-    0: { w: 200 }, 1: { w: 90 }, 2: { w: 140 }, 3: { w: 75 },
-    4: { w: 65 }, 5: { w: 65 }, 6: { w: 65 }, 7: { w: 65 },
-    8: { w: 90 }, 9: { w: 50 }, 10: { w: 85 }, 11: { w: 60 },
-    12: { w: 70 }, 13: { w: 75 }, 14: { w: 100 }, 15: { w: 85 },
-    16: { w: 80 }, 17: { w: 100 }, 18: { w: 75 }, 19: { w: 100 },
-    20: { w: 90 }, 21: { w: 90 }, 22: { w: 80 },
+    0: { w: 200 }, 1: { w: 75 }, 2: { w: 75 }, 3: { w: 70 },
+    4: { w: 90 }, 5: { w: 140 }, 6: { w: 75 },
+    7: { w: 65 }, 8: { w: 65 }, 9: { w: 65 }, 10: { w: 65 },
+    11: { w: 90 }, 12: { w: 50 }, 13: { w: 85 }, 14: { w: 60 },
+    15: { w: 70 }, 16: { w: 75 }, 17: { w: 100 }, 18: { w: 85 },
+    19: { w: 80 }, 20: { w: 100 }, 21: { w: 75 }, 22: { w: 100 },
+    23: { w: 90 }, 24: { w: 90 }, 25: { w: 80 },
   };
 
   const ledCellData: Record<number, Record<number, any>> = {};
@@ -376,30 +378,38 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       ?? 0
     ) || "";
 
+    // RFP specs (original extraction — never overwritten by product selection)
+    const rfpH = spec.heightFt ?? 0;
+    const rfpW = spec.widthFt ?? 0;
+    const rfpNits = spec.brightnessNits ?? 0;
+
     ledCellData[row] = {
       0: { v: spec.name, s: "bold" },
-      1: { v: mp?.manufacturer ?? "" },
-      2: { v: mp?.model ?? "" },
-      3: { v: pitch > 0 ? pitch : "", s: "number2" },
-      4: { v: h > 0 ? Math.round(h * 100) / 100 : "", s: "number2" },
-      5: { v: w > 0 ? Math.round(w * 100) / 100 : "", s: "number2" },
-      6: pitch > 0 ? { f: `=ROUND(E${row + 1}*304.8/D${row + 1},0)`, s: "number" } : { v: hPx > 0 ? hPx : "" },
-      7: pitch > 0 ? { f: `=ROUND(F${row + 1}*304.8/D${row + 1},0)`, s: "number" } : { v: wPx > 0 ? wPx : "" },
-      8: { v: sqFtPerScreen || "", s: "number2" },
-      9: { v: qty },
-      10: { v: totalSqFt || "", s: "number2" },
-      11: { v: resolvedNits },
-      12: { v: spec.serviceType ?? "" },
-      13: { v: ratePerSqFt > 0 ? ratePerSqFt : 0, s: "currency2" },
-      14: { v: displayCost, s: "currency" },
-      15: { v: processorCost, s: "currency" },
-      16: { v: shippingCost, s: "currency" },
-      17: { v: totalLedCost, s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } },
-      18: { v: marginPct, s: getMarginStyle(marginPct) },
-      19: { f: guardedSellingFormula(`R${row + 1}`, `S${row + 1}`), s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } },
-      20: { v: weight, s: "number" },
-      21: { v: power, s: "number" },
-      22: { f: `=ROUND(V${row + 1}*3.412,0)`, s: "number" },
+      1: { v: rfpH > 0 ? Math.round(rfpH * 100) / 100 : "", s: "number2" },   // RFP H (ft)
+      2: { v: rfpW > 0 ? Math.round(rfpW * 100) / 100 : "", s: "number2" },   // RFP W (ft)
+      3: { v: rfpNits || "", s: "number" },                                     // RFP NITs
+      4: { v: mp?.manufacturer ?? "" },                                          // Vendor
+      5: { v: mp?.model ?? "" },                                                 // Product
+      6: { v: pitch > 0 ? pitch : "", s: "number2" },                           // Pitch
+      7: { v: h > 0 ? Math.round(h * 100) / 100 : "", s: "number2" },          // H (ft)
+      8: { v: w > 0 ? Math.round(w * 100) / 100 : "", s: "number2" },          // W (ft)
+      9: pitch > 0 ? { f: `=ROUND(H${row + 1}*304.8/G${row + 1},0)`, s: "number" } : { v: hPx > 0 ? hPx : "" },  // H (px)
+      10: pitch > 0 ? { f: `=ROUND(I${row + 1}*304.8/G${row + 1},0)`, s: "number" } : { v: wPx > 0 ? wPx : "" }, // W (px)
+      11: { v: sqFtPerScreen || "", s: "number2" },                              // SqFt/Screen
+      12: { v: qty },                                                            // Qty
+      13: { v: totalSqFt || "", s: "number2" },                                  // Total SqFt
+      14: { v: resolvedNits },                                                   // NITs (product)
+      15: { v: spec.serviceType ?? "" },                                         // Service
+      16: { v: ratePerSqFt > 0 ? ratePerSqFt : 0, s: "currency2" },            // $/SqFt
+      17: { v: displayCost, s: "currency" },                                     // Display Cost
+      18: { v: processorCost, s: "currency" },                                   // Processor
+      19: { v: shippingCost, s: "currency" },                                    // Shipping
+      20: { v: totalLedCost, s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } },   // Total Cost
+      21: { v: marginPct, s: getMarginStyle(marginPct) },                        // Margin %
+      22: { f: guardedSellingFormula(`U${row + 1}`, `V${row + 1}`), s: { ...BOLD_STYLE, ...CURRENCY_FMT, ht: 3 } }, // Selling Price
+      23: { v: weight, s: "number" },                                            // Weight
+      24: { v: power, s: "number" },                                             // Power
+      25: { f: `=ROUND(Y${row + 1}*3.412,0)`, s: "number" },                   // BTU/hr
     };
   });
 
@@ -409,20 +419,22 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
 
   ledCellData[totalRowIdx] = {
     0: { v: `TOTAL (${screens.length} displays)`, s: "total" },
-    1: { v: "", s: "total" }, 2: { v: "", s: "total" }, 3: { v: "", s: "total" },
-    4: { v: "", s: "total" }, 5: { v: "", s: "total" }, 6: { v: "", s: "total" }, 7: { v: "", s: "total" },
-    8: { v: "", s: "total" }, 9: { v: "", s: "total" }, 10: { f: screens.length > 0 ? `=ROUND(SUM(K${firstDataRow}:K${lastDataRow}),2)` : "=0", s: "totalNumber" },
-    11: { v: "", s: "total" }, 12: { v: "", s: "total" },
-    13: { v: "", s: "total" },
-    14: { f: screens.length > 0 ? `=ROUND(SUM(O${firstDataRow}:O${lastDataRow}),2)` : "=0", s: "totalCurrency" },
-    15: { f: screens.length > 0 ? `=ROUND(SUM(P${firstDataRow}:P${lastDataRow}),2)` : "=0", s: "totalCurrency" },
-    16: { f: screens.length > 0 ? `=ROUND(SUM(Q${firstDataRow}:Q${lastDataRow}),2)` : "=0", s: "totalCurrency" },
-    17: { f: screens.length > 0 ? `=ROUND(SUM(R${firstDataRow}:R${lastDataRow}),2)` : "=0", s: "totalCurrency" },
-    18: { f: screens.length > 0 ? guardedDivisionFormula(`T${totalRowIdx + 1}-R${totalRowIdx + 1}`, `T${totalRowIdx + 1}`, 4) : "=0", s: "totalPercent" },
-    19: { f: screens.length > 0 ? `=ROUND(SUM(T${firstDataRow}:T${lastDataRow}),2)` : "=0", s: "totalCurrency" },
-    20: { f: screens.length > 0 ? `=ROUND(SUM(U${firstDataRow}:U${lastDataRow}),0)` : "=0", s: "totalNumber" },
-    21: { f: screens.length > 0 ? `=ROUND(SUM(V${firstDataRow}:V${lastDataRow}),0)` : "=0", s: "totalNumber" },
-    22: { f: screens.length > 0 ? `=ROUND(SUM(W${firstDataRow}:W${lastDataRow}),0)` : "=0", s: "totalNumber" },
+    1: { v: "", s: "total" }, 2: { v: "", s: "total" }, 3: { v: "", s: "total" },  // RFP cols
+    4: { v: "", s: "total" }, 5: { v: "", s: "total" }, 6: { v: "", s: "total" },  // Vendor/Product/Pitch
+    7: { v: "", s: "total" }, 8: { v: "", s: "total" }, 9: { v: "", s: "total" }, 10: { v: "", s: "total" },  // H/W/Hpx/Wpx
+    11: { v: "", s: "total" }, 12: { v: "", s: "total" },  // SqFt/Screen, Qty
+    13: { f: screens.length > 0 ? `=ROUND(SUM(N${firstDataRow}:N${lastDataRow}),2)` : "=0", s: "totalNumber" },  // Total SqFt
+    14: { v: "", s: "total" }, 15: { v: "", s: "total" },  // NITs, Service
+    16: { v: "", s: "total" },  // $/SqFt
+    17: { f: screens.length > 0 ? `=ROUND(SUM(R${firstDataRow}:R${lastDataRow}),2)` : "=0", s: "totalCurrency" },  // Display Cost
+    18: { f: screens.length > 0 ? `=ROUND(SUM(S${firstDataRow}:S${lastDataRow}),2)` : "=0", s: "totalCurrency" },  // Processor
+    19: { f: screens.length > 0 ? `=ROUND(SUM(T${firstDataRow}:T${lastDataRow}),2)` : "=0", s: "totalCurrency" },  // Shipping
+    20: { f: screens.length > 0 ? `=ROUND(SUM(U${firstDataRow}:U${lastDataRow}),2)` : "=0", s: "totalCurrency" },  // Total Cost
+    21: { f: screens.length > 0 ? guardedDivisionFormula(`W${totalRowIdx + 1}-U${totalRowIdx + 1}`, `W${totalRowIdx + 1}`, 4) : "=0", s: "totalPercent" },  // Margin %
+    22: { f: screens.length > 0 ? `=ROUND(SUM(W${firstDataRow}:W${lastDataRow}),2)` : "=0", s: "totalCurrency" },  // Selling Price
+    23: { f: screens.length > 0 ? `=ROUND(SUM(X${firstDataRow}:X${lastDataRow}),0)` : "=0", s: "totalNumber" },  // Weight
+    24: { f: screens.length > 0 ? `=ROUND(SUM(Y${firstDataRow}:Y${lastDataRow}),0)` : "=0", s: "totalNumber" },  // Power
+    25: { f: screens.length > 0 ? `=ROUND(SUM(Z${firstDataRow}:Z${lastDataRow}),0)` : "=0", s: "totalNumber" },  // BTU/hr
   };
 
   sheets["led-cost-sheet"] = {
@@ -815,19 +827,19 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     // Cross-sheet formulas: reference LED Cost Sheet for all technical values
     const ledRow = row + 1; // 1-based row in LED Cost Sheet (header=1, data starts at 2)
     tsCellData[row] = {
-      0: { f: `='LED Cost Sheet'!A${ledRow}`, s: "bold" },
-      1: { f: `='LED Cost Sheet'!J${ledRow}` },
-      2: { f: `='LED Cost Sheet'!D${ledRow}`, s: "number2" },
-      3: { f: `='LED Cost Sheet'!E${ledRow}`, s: "number2" },
-      4: { f: `='LED Cost Sheet'!F${ledRow}`, s: "number2" },
-      5: { f: `='LED Cost Sheet'!G${ledRow}`, s: "number" },
-      6: { f: `='LED Cost Sheet'!H${ledRow}`, s: "number" },
+      0: { f: `='LED Cost Sheet'!A${ledRow}`, s: "bold" },           // Display
+      1: { f: `='LED Cost Sheet'!M${ledRow}` },                       // Qty
+      2: { f: `='LED Cost Sheet'!G${ledRow}`, s: "number2" },         // Pitch
+      3: { f: `='LED Cost Sheet'!H${ledRow}`, s: "number2" },         // H (ft)
+      4: { f: `='LED Cost Sheet'!I${ledRow}`, s: "number2" },         // W (ft)
+      5: { f: `='LED Cost Sheet'!J${ledRow}`, s: "number" },          // H (px)
+      6: { f: `='LED Cost Sheet'!K${ledRow}`, s: "number" },          // W (px)
       7: { f: `=ROUND(D${row + 1}*E${row + 1},2)`, s: "number2" },
-      8: { f: `='LED Cost Sheet'!L${ledRow}` },
+      8: { f: `='LED Cost Sheet'!O${ledRow}` },                       // NITs
       9: { v: spec.serviceType ?? "" },
       10: { v: spec.environment ?? "" },
-      11: { f: `='LED Cost Sheet'!U${ledRow}`, s: "number" },
-      12: { f: `='LED Cost Sheet'!V${ledRow}`, s: "number" },
+      11: { f: `='LED Cost Sheet'!X${ledRow}`, s: "number" },         // Weight
+      12: { f: `='LED Cost Sheet'!Y${ledRow}`, s: "number" },         // Power
       13: { f: `=ROUND(M${row + 1}*3.412,0)`, s: "number" },
     };
   });
@@ -1766,7 +1778,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
 
   // Categories: [label, costFormula|null, fallbackCost, margin, showPricePerSqFt]
   const bsCategories: Array<[string, string | null, number, number, boolean]> = [
-    ["LED Hardware (all displays)", `SUM('LED Cost Sheet'!R${ledFirstData1}:R${ledLastData1})`, bsTotalLedHw, bsHwMargin, true],
+    ["LED Hardware (all displays)", `SUM('LED Cost Sheet'!U${ledFirstData1}:U${ledLastData1})`, bsTotalLedHw, bsHwMargin, true],
     ["Structural Materials", structFormula, bsTotalStruct, bsSvcMargin, true],
     ["Installation Labor", laborFormula, bsTotalInstall, bsSvcMargin, true],
     ["Electrical & Data", elecFormula, bsTotalElec, bsSvcMargin, true],
