@@ -171,7 +171,13 @@ export function computeTableTotals(
         ? roundToDisplay(table.grandTotal)
         : (subtotal + tax + bond + tariff);
 
-    return { items, subtotal, taxLabel, tax, bond, tariff, grandTotal };
+    // Step 5: When all modifiers (tax/bond/tariff) are $0, subtotal and grandTotal
+    // should be identical. Any difference is rounding noise (sum-of-rounds vs round-of-sum).
+    // Excel's grandTotal is the source of truth, so align subtotal to it.
+    const noModifiers = Math.abs(tax) < 0.01 && Math.abs(bond) < 0.01 && Math.abs(tariff) < 0.01;
+    const finalSubtotal = (noModifiers && grandTotal !== 0) ? grandTotal : subtotal;
+
+    return { items, subtotal: finalSubtotal, taxLabel, tax, bond, tariff, grandTotal };
 }
 
 // ============================================================================
