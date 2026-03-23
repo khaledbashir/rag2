@@ -180,9 +180,10 @@ const PdfPricingTables = ({
                                     <div className="col-span-4 text-right">{formatCurrency(subtotal, currency)}</div>
                                 </div>
                             )}
-                            {Math.abs(taxAmount) >= 0.01 && (
+                            {/* Show tax row when subtotal is visible — even $0 — for uniformity */}
+                            {(Math.abs(taxAmount) >= 0.01 || (Math.abs(subtotal) >= 0.01 && subtotal !== grandTotal)) && (
                                 <div className="grid grid-cols-12 px-3 py-1 text-[14px]" style={{ color: colors.textMuted }}>
-                                    <div className="col-span-8">{taxLabel}</div>
+                                    <div className="col-span-8">{taxLabel || "Tax"}</div>
                                     <div className="col-span-4 text-right">{formatCurrency(taxAmount, currency)}</div>
                                 </div>
                             )}
