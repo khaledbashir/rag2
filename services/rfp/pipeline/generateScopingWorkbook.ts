@@ -730,7 +730,7 @@ export async function generateScopingWorkbook(
   buildTravel(wb, projectName);
 
   // 10. CMS
-  const cmsRefs = buildCMS(wb, projectName);
+  const cmsRefs = buildCMS(wb, projectName, ov?.cmsAllocation ?? 0);
 
   // 11. Scoring
   const scoringRefs = buildScoring(wb, projectName, displays);
@@ -2753,6 +2753,7 @@ function buildTravel(
 function buildCMS(
   wb: ExcelJS.Workbook,
   projectName: string,
+  cmsAllocation: number = 0,
 ): CostCenterSheetRefs {
   const ws = wb.addWorksheet("CMS", {
     properties: { tabColor: { argb: C.GREEN_TAB } },
@@ -2768,7 +2769,11 @@ function buildCMS(
   ws.getCell(row, 2).value = "CMS Platform";
   ws.getCell(row, 2).font = { bold: true, size: 12, name: "Calibri" };
   row++;
-  ws.getCell(row, 2).value = "All costs require project-specific pricing — update items below based on RFP requirements";
+  if (cmsAllocation > 0) {
+    ws.getCell(row, 2).value = `Budget Allocation: ${cmsAllocation.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })} — adjust line items below to match`;
+  } else {
+    ws.getCell(row, 2).value = "All costs require project-specific pricing — update items below based on RFP requirements";
+  }
   ws.getCell(row, 2).font = { italic: true, color: { argb: "FFCC0000" }, name: "Calibri", size: 10 };
   row++;
 
@@ -2780,11 +2785,16 @@ function buildCMS(
   ws.getRow(row).height = 24;
   row++;
 
+  // When an allocation is provided, distribute across primary items as starting point
+  // User can adjust individual line items — these are input cells
+  const primaryItemCount = 4; // PRIMARY category items
+  const perItemAlloc = cmsAllocation > 0 ? Math.round(cmsAllocation / primaryItemCount) : 0;
+
   const cmsItems = [
-    ["PRIMARY", "DESIGN & CONTROL SOFTWARE", 0],
-    ["PRIMARY", "GRAPHICS PLAYBACK ENGINE", 0],
-    ["PRIMARY", "IMAGE PROCESSING", 0],
-    ["PRIMARY", "DEDICATED LED ROUTER / SWITCH", 0],
+    ["PRIMARY", "DESIGN & CONTROL SOFTWARE", perItemAlloc],
+    ["PRIMARY", "GRAPHICS PLAYBACK ENGINE", perItemAlloc],
+    ["PRIMARY", "IMAGE PROCESSING", perItemAlloc],
+    ["PRIMARY", "DEDICATED LED ROUTER / SWITCH", cmsAllocation > 0 ? cmsAllocation - perItemAlloc * 3 : 0],
     ["REDUNDANT", "DESIGN & CONTROL SOFTWARE", 0],
     ["REDUNDANT", "GRAPHICS PLAYBACK ENGINE", 0],
     ["REDUNDANT", "IMAGE PROCESSING", 0],
@@ -2804,9 +2814,9 @@ function buildCMS(
     r.getCell(2).font = { name: "Calibri", size: 10, bold: !!cat };
     r.getCell(3).value = item;
     r.getCell(4).value = cost; r.getCell(4).numFmt = FMT_USD; inputCell(r.getCell(4));
-    r.getCell(5).value = 0; inputCell(r.getCell(5));
-    // Total Cost = Cost * Quantity (was hardcoded 0 — Bug 4)
-    r.getCell(6).value = { formula: `D${row}*E${row}`, result: 0 };
+    r.getCell(5).value = cost > 0 ? 1 : 0; inputCell(r.getCell(5));
+    // Total Cost = Cost * Quantity
+    r.getCell(6).value = { formula: `D${row}*E${row}`, result: cost > 0 ? cost : 0 };
     r.getCell(6).numFmt = FMT_USD;
     r.getCell(7).value = 0.10; r.getCell(7).numFmt = FMT_PCT;
     r.getCell(8).value = { formula: `IFERROR(F${row}/(1-G${row}),0)`, result: 0 };
@@ -2820,11 +2830,12 @@ function buildCMS(
   row++;
   const totR = ws.getRow(row);
   totR.getCell(3).value = "CMS TOTAL";
-  totR.getCell(6).value = { formula: `SUM(F${cmsStartRow}:F${row - 2})`, result: 0 };
+  totR.getCell(6).value = { formula: `SUM(F${cmsStartRow}:F${row - 2})`, result: cmsAllocation };
   totR.getCell(6).numFmt = FMT_USD;
-  totR.getCell(8).value = { formula: `SUM(H${cmsStartRow}:H${row - 2})`, result: 0 };
+  const cmsSellResult = cmsAllocation > 0 ? round2(cmsAllocation / (1 - 0.10)) : 0;
+  totR.getCell(8).value = { formula: `SUM(H${cmsStartRow}:H${row - 2})`, result: cmsSellResult };
   totR.getCell(8).numFmt = FMT_USD;
-  totR.getCell(9).value = { formula: `IFERROR(H${row}-F${row},0)`, result: 0 };
+  totR.getCell(9).value = { formula: `IFERROR(H${row}-F${row},0)`, result: round2(cmsSellResult - cmsAllocation) };
   totR.getCell(9).numFmt = FMT_USD;
   totalStyle(totR, 9, C.GREEN_BG);
 
@@ -2840,9 +2851,9 @@ function buildCMS(
   const subR = ws.getRow(row);
   subR.getCell(2).value = "SUB TOTAL";
   subR.getCell(3).value = "USD:";
-  subR.getCell(6).value = { formula: `F${totR.number}+F${cmsTaxRow}+F${cmsBondRow}`, result: 0 }; subR.getCell(6).numFmt = FMT_USD;
-  subR.getCell(8).value = { formula: `H${totR.number}`, result: 0 }; subR.getCell(8).numFmt = FMT_USD;
-  subR.getCell(9).value = { formula: `IFERROR(H${row}-F${row},0)`, result: 0 }; subR.getCell(9).numFmt = FMT_USD;
+  subR.getCell(6).value = { formula: `F${totR.number}+F${cmsTaxRow}+F${cmsBondRow}`, result: cmsAllocation }; subR.getCell(6).numFmt = FMT_USD;
+  subR.getCell(8).value = { formula: `H${totR.number}`, result: cmsSellResult }; subR.getCell(8).numFmt = FMT_USD;
+  subR.getCell(9).value = { formula: `IFERROR(H${row}-F${row},0)`, result: round2(cmsSellResult - cmsAllocation) }; subR.getCell(9).numFmt = FMT_USD;
   totalStyle(subR, 9, C.ANC_BLUE);
   subR.getCell(2).font = { bold: true, color: { argb: C.WHITE }, name: "Calibri" };
   subR.getCell(3).font = { bold: true, color: { argb: C.WHITE }, name: "Calibri" };

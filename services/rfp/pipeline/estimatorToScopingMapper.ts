@@ -120,12 +120,14 @@ function mapAltPitchVariants(d: DisplayAnswers, env: "indoor" | "outdoor"): Extr
 // ---------------------------------------------------------------------------
 
 function mapProject(answers: EstimatorAnswers): ExtractedProjectInfo {
+  // Explicit boolean coercion: guard against string "false" from JSON/form state
+  const isIndoor = answers.isIndoor === true || answers.isIndoor === "true" as unknown as boolean;
   return {
     clientName: answers.clientName || null,
     projectName: answers.projectName || null,
     venue: null,
     location: answers.location || null,
-    isOutdoor: !answers.isIndoor,
+    isOutdoor: !isIndoor,
     isUnionLabor: answers.isUnion,
     bondRequired: (answers.bondRate ?? 1.5) > 0,
     specialRequirements: [],
@@ -138,7 +140,9 @@ function mapProject(answers: EstimatorAnswers): ExtractedProjectInfo {
 // ---------------------------------------------------------------------------
 
 export function mapEstimatorToScoping(answers: EstimatorAnswers): ScopingWorkbookOptions {
-  const env: "indoor" | "outdoor" = answers.isIndoor ? "indoor" : "outdoor";
+  // Explicit boolean coercion: guard against string "false" from JSON/form state
+  const isIndoor = answers.isIndoor === true || answers.isIndoor === "true" as unknown as boolean;
+  const env: "indoor" | "outdoor" = isIndoor ? "indoor" : "outdoor";
 
   const complexityMap: Record<string, InstallComplexity> = {
     simple: "simple",
