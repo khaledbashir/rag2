@@ -249,6 +249,18 @@ export function parseRespMatrixDetailed(workbook: any): RespMatrixParseResult {
   const xlsx = require("xlsx");
   const sheet = workbook.Sheets[sheetName];
   const data: any[][] = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+
+  // Build a set of hidden row indices so we can skip them during parsing.
+  // Excel "hide row" doesn't delete data — xlsx still reads it — so we must filter manually.
+  const hiddenRows = new Set<number>();
+  const rowProps: any[] = sheet["!rows"] || [];
+  rowProps.forEach((rp: any, idx: number) => {
+    if (rp?.hidden) hiddenRows.add(idx);
+  });
+  if (hiddenRows.size > 0) {
+    console.log(`[RESP MATRIX] Skipping ${hiddenRows.size} hidden rows`);
+  }
+
   const col = detectColumns(data);
 
   if (data.length < 4) {
@@ -287,6 +299,9 @@ export function parseRespMatrixDetailed(workbook: any): RespMatrixParseResult {
 
   // Scan from row 3 onwards (skip title/date rows)
   for (let i = 2; i < data.length; i++) {
+    // Skip rows hidden in Excel (user hid them but xlsx still reads the data)
+    if (hiddenRows.has(i)) continue;
+
     const row = data[i] || [];
 
     // Skip artifact rows
