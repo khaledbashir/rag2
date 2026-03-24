@@ -596,9 +596,17 @@ export default function ProductCatalogAdmin() {
                                             </span>
                                         </td>
                                         <td className={tdClass}>{
-                                            p.productType === "led"
-                                                ? (p.costPerSqFt ? `$${Number(p.costPerSqFt).toFixed(2)}/ft²` : "—")
-                                                : (getUnitCost(p) != null ? `$${getUnitCost(p)!.toLocaleString()}` : (p.costPerSqFt ? `$${Number(p.costPerSqFt).toFixed(2)}` : "—"))
+                                            (() => {
+                                                const unitCost = getUnitCost(p);
+                                                const isUnitPriced = p.productType !== "led" || p.pixelPitch === 0 || unitCost != null;
+                                                if (isUnitPriced && unitCost != null) {
+                                                    return `$${unitCost.toLocaleString()}/unit`;
+                                                }
+                                                if (isUnitPriced && p.costPerSqFt) {
+                                                    return `$${Number(p.costPerSqFt).toLocaleString()}/unit`;
+                                                }
+                                                return p.costPerSqFt ? `$${Number(p.costPerSqFt).toFixed(2)}/ft²` : "—";
+                                            })()
                                         }</td>
                                         <td className={tdClass}>
                                             <div className="flex gap-1">

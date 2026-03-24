@@ -177,6 +177,8 @@ interface ComputedDisplay {
   // Processor
   totalPixels: number;
   portsNeeded: number;
+  // TV/LCD flag — priced per unit, not per sqft
+  isTV: boolean;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -323,7 +325,9 @@ const STANDARD_LCD_SIZES: Record<number, { widthFt: number; heightFt: number }> 
   65:  { widthFt: 4.72, heightFt: 2.66 },
   75:  { widthFt: 5.45, heightFt: 3.07 },
   85:  { widthFt: 6.18, heightFt: 3.47 },
+  86:  { widthFt: 6.35, heightFt: 3.65 },  // LG 86UH5J-H: 1935×1114mm
   98:  { widthFt: 7.12, heightFt: 4.00 },
+  110: { widthFt: 8.09, heightFt: 4.65 },  // LG 110UM5K-B: 2467×1418mm
 };
 
 /** Extract LCD screen size (inches) from display name, e.g. '55" LCD Display' → 55 */
@@ -368,7 +372,22 @@ function computeDisplays(
     const RATES = getBudgetRates();
     const BUNDLES = getSmartBundles();
 
+    // TV/LCD unit pricing — TVs are priced per unit, not per sqft
+    // TV unit cost lookup by screen size (from LG UH Series pricing — seed-tv-products.ts)
+    const TV_UNIT_COST: Record<number, number> = {
+      32: 390, 43: 600, 49: 638, 55: 875, 65: 1100,
+      75: 1990, 86: 2990, 98: 4300, 110: 10000,
+    };
+    // Detect TV by: name/product contains TV/LCD size pattern, or pixelPitch=0
+    const lcdSizeFromSpec = extractLcdSizeInches(spec);
+    const displayAndProductText = [spec.name, spec.selectedProductName].filter(Boolean).join(" ");
+    const tvSize = lcdSizeFromSpec
+      ?? (spec.selectedProductName ? extractLcdSizeInches({ ...spec, name: spec.selectedProductName }) : null);
+    const isTV = tvSize != null && (!spec.pixelPitchMm || spec.pixelPitchMm === 0
+      || /\btv\b|\blcd\b/i.test(displayAndProductText));
+
     // LED hardware cost priority:
+    //   0. TV/LCD unit pricing (per unit, not per sqft)
     //   1. priced display (from RFP pricing engine)
     //   2. user cost/sqft override
     //   3. explicit product selection → product-specific cost/sqm
@@ -377,6 +396,12 @@ function computeDisplays(
     //   6. catalog constant pitch lookup
     let ledHardwareCost = priced?.hardwareCost ?? 0;
     const selectedProduct = spec.selectedProductId ? getProduct(spec.selectedProductId) : null;
+    if (!ledHardwareCost && isTV) {
+      const tvCost = TV_UNIT_COST[tvSize!];
+      if (tvCost) {
+        ledHardwareCost = round2(tvCost * (Number(spec.quantity) || 1));
+      }
+    }
     if (!ledHardwareCost) {
       const overrideCostSqFt = (ov?.costPerSqFtOverride ?? 0) > 0 ? ov!.costPerSqFtOverride! : 0;
       if (overrideCostSqFt > 0) {
@@ -594,6 +619,7 @@ function computeDisplays(
       marginPct,
       totalPixels,
       portsNeeded,
+      isTV,
     };
   });
 }
@@ -1733,12 +1759,19 @@ function buildLedCostSheet(
     // Service
     dr.getCell(12).value = d.spec.serviceType || "Front";
     dr.getCell(12).alignment = { horizontal: "center" };
-    // $/SqFt = Display Cost / Total SqFt (guard against #DIV/0! when cost is $0)
+    // $/SqFt or $/Unit — TVs use per-unit pricing, LED uses per-sqft
     const ledWithSpares = d.ledHardwareCost + d.sparePartsCost;
-    const costPerSqFt = d.areaSqFt > 0 ? round2(ledWithSpares / d.areaSqFt) : 0;
-    dr.getCell(13).value = ledWithSpares > 0 && d.areaSqFt > 0
-      ? { formula: `N${row}/J${row}`, result: costPerSqFt }
-      : 0;
+    if (d.isTV) {
+      // TV: show unit cost (total cost / quantity)
+      const qty = Number(d.spec.quantity) || 1;
+      const unitCost = qty > 0 ? round2(ledWithSpares / qty) : 0;
+      dr.getCell(13).value = unitCost;
+    } else {
+      const costPerSqFt = d.areaSqFt > 0 ? round2(ledWithSpares / d.areaSqFt) : 0;
+      dr.getCell(13).value = ledWithSpares > 0 && d.areaSqFt > 0
+        ? { formula: `N${row}/J${row}`, result: costPerSqFt }
+        : 0;
+    }
     dr.getCell(13).numFmt = FMT_USD;
     // Display Cost (LED hardware + spare parts rolled in)
     dr.getCell(14).value = d.ledHardwareCost + d.sparePartsCost; dr.getCell(14).numFmt = FMT_USD;
