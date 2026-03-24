@@ -107,7 +107,8 @@ function mapAltPitchVariants(d: DisplayAnswers, env: "indoor" | "outdoor"): Extr
   if (!d.altPitches || d.altPitches.length === 0) return [];
 
   return d.altPitches.map((altPitch) => {
-    const spec = mapDisplay({ ...d, pixelPitch: altPitch }, env);
+    // Clear base product — alt pitch needs its own product resolution via pitch lookup
+    const spec = mapDisplay({ ...d, pixelPitch: altPitch, productId: "", productName: "" }, env);
     spec.name = `${d.displayName?.trim() || humanizeType(d.displayType) || "Unnamed Display"} — Alt ${altPitch}mm`;
     spec.isAlternate = true;
     spec.alternateDescription = `Alternate pixel pitch: ${altPitch}mm (base: ${d.pixelPitch}mm)`;

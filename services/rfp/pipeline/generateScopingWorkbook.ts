@@ -342,6 +342,47 @@ function extractLcdSizeInches(spec: ExtractedLEDSpec): number | null {
   return STANDARD_LCD_SIZES[size] ? size : null;
 }
 
+// ─── Environment-Aware Pitch Rate Lookup ────────────────────────────────────
+// Shared by both selectedProductId fallback and no-product paths.
+// Outdoor/perimeter displays use higher rates than indoor.
+
+const OUTDOOR_PITCH_MAP: Record<string, string> = {
+  '6': '5.95',     // 6mm outdoor → Yaham R6 ($260.14) not C6 ($136.51)
+  '8': '8.33',     // 8mm outdoor → Yaham R8 ($194.07) not C8 ($148)
+  '10': '10.417',  // 10mm outdoor → Yaham R10 ($154.79) not C10 ($112.22)
+};
+const PERIMETER_PITCH_MAP: Record<string, number> = {
+  '10': 206.59,    // Yaham A10 outdoor perimeter. Denver Cost Analysis 03/04/2026.
+};
+
+function resolveRateByPitch(pitchMm: number, areaSqFt: number, spec: ExtractedLEDSpec): number {
+  const displayText = getDisplayClassificationText(spec);
+  const isOutdoor = spec.environment === "outdoor"
+    || /outdoor|perimeter|field.?pitch|fascia|exterior/i.test(displayText);
+  const isPerimeter = /perimeter|field.?pitch|ribbon/i.test(displayText);
+
+  let effectivePitch = String(pitchMm);
+  let directRate: number | undefined;
+
+  // Check perimeter-specific override first
+  if (isPerimeter && PERIMETER_PITCH_MAP[effectivePitch] != null) {
+    directRate = PERIMETER_PITCH_MAP[effectivePitch];
+  }
+  // Then outdoor pitch remapping
+  else if (isOutdoor && OUTDOOR_PITCH_MAP[effectivePitch]) {
+    effectivePitch = OUTDOOR_PITCH_MAP[effectivePitch];
+  }
+
+  if (directRate != null) {
+    return round2(areaSqFt * directRate);
+  }
+  const pitchKey = `led_cost.${effectivePitch.replace(".", "_")}mm`;
+  const rcRate = rc(pitchKey, 0);
+  const catalogRate = LED_COST_PER_SQFT_BY_PITCH[effectivePitch];
+  const rate = rcRate > 0 ? rcRate : catalogRate;
+  return rate ? round2(areaSqFt * rate) : 0;
+}
+
 // ─── Compute Display Data ───────────────────────────────────────────────────
 
 function computeDisplays(
@@ -413,56 +454,14 @@ function computeDisplays(
         if (productCost != null && productCost > 0) {
           ledHardwareCost = round2(productCost);
         } else {
-          // Product exists but no cost/sqm entry — use its pitch for rate lookup
-          const effectivePitch = selectedProduct?.pitchMm ?? spec.pixelPitchMm;
-          if (effectivePitch) {
-            const pitchKey = `led_cost.${String(effectivePitch).replace(".", "_")}mm`;
-            const rcRate = rc(pitchKey, 0);
-            const catalogRate = LED_COST_PER_SQFT_BY_PITCH[String(effectivePitch)];
-            const rate = rcRate > 0 ? rcRate : catalogRate;
-            if (rate) ledHardwareCost = round2(areaSqFt * rate);
+          // Product not in static catalog — fall through to environment-aware pitch lookup
+          const effectivePitchFromProduct = selectedProduct?.pitchMm ?? spec.pixelPitchMm;
+          if (effectivePitchFromProduct) {
+            ledHardwareCost = resolveRateByPitch(effectivePitchFromProduct, areaSqFt, spec);
           }
         }
       } else if (spec.pixelPitchMm) {
-        // No explicit product — pitch-based lookup with outdoor/indoor awareness
-        // Round pitches (6, 10) map to outdoor variants for outdoor/perimeter displays
-    const displayText = getDisplayClassificationText(spec);
-        const isOutdoor = spec.environment === "outdoor"
-          || /outdoor|perimeter|field.?pitch|fascia|exterior/i.test(displayText);
-        const OUTDOOR_PITCH_MAP: Record<string, string> = {
-          '6': '5.95',     // 6mm outdoor → Yaham R6 ($260.14) not C6 ($136.51)
-          '8': '8.33',     // 8mm outdoor → Yaham R8 ($194.07) not C8 ($148)
-          '10': '10.417',  // 10mm outdoor → Yaham R10 ($154.79) not C10 ($112.22)
-        };
-        // Perimeter/ribbon boards at 10mm → Yaham A10 ($206.59) which is the actual field pitch product
-        const isPerimeter = /perimeter|field.?pitch|ribbon/i.test(displayText);
-        const PERIMETER_PITCH_MAP: Record<string, number> = {
-          '10': 206.59,    // Yaham A10 outdoor perimeter. Denver Cost Analysis 03/04/2026.
-        };
-
-        let effectivePitch = String(spec.pixelPitchMm);
-        let directRate: number | undefined;
-
-        // Check perimeter-specific override first
-        if (isPerimeter && PERIMETER_PITCH_MAP[effectivePitch] != null) {
-          directRate = PERIMETER_PITCH_MAP[effectivePitch];
-        }
-        // Then outdoor pitch remapping
-        else if (isOutdoor && OUTDOOR_PITCH_MAP[effectivePitch]) {
-          effectivePitch = OUTDOOR_PITCH_MAP[effectivePitch];
-        }
-
-        if (directRate != null) {
-          ledHardwareCost = round2(areaSqFt * directRate);
-        } else {
-          const pitchKey = `led_cost.${effectivePitch.replace(".", "_")}mm`;
-          const rcRate = rc(pitchKey, 0);
-          const catalogRate = LED_COST_PER_SQFT_BY_PITCH[effectivePitch];
-          const rate = rcRate > 0 ? rcRate : catalogRate;
-          // $0 is intentional for pitches without vendor quotes (e.g. 1.875mm).
-          // Natalia uses $0 to flag missing pricing info to the team. No fallback.
-          if (rate) ledHardwareCost = round2(areaSqFt * rate);
-        }
+        ledHardwareCost = resolveRateByPitch(spec.pixelPitchMm, areaSqFt, spec);
       }
     }
 
@@ -1759,22 +1758,27 @@ function buildLedCostSheet(
     // Service
     dr.getCell(12).value = d.spec.serviceType || "Front";
     dr.getCell(12).alignment = { horizontal: "center" };
-    // $/SqFt or $/Unit — TVs use per-unit pricing, LED uses per-sqft
+    // $/SqFt (or $/Unit for TVs) — this is the INPUT rate, Display Cost is calculated from it
     const ledWithSpares = d.ledHardwareCost + d.sparePartsCost;
     if (d.isTV) {
       // TV: show unit cost (total cost / quantity)
       const qty = Number(d.spec.quantity) || 1;
       const unitCost = qty > 0 ? round2(ledWithSpares / qty) : 0;
       dr.getCell(13).value = unitCost;
+      dr.getCell(13).numFmt = FMT_USD;
+      // Display Cost = $/Unit × Qty
+      dr.getCell(14).value = { formula: `M${row}*I${row}`, result: ledWithSpares };
     } else {
+      // LED: $/SqFt is the fixed rate from manufacturer pricing
       const costPerSqFt = d.areaSqFt > 0 ? round2(ledWithSpares / d.areaSqFt) : 0;
-      dr.getCell(13).value = ledWithSpares > 0 && d.areaSqFt > 0
-        ? { formula: `N${row}/J${row}`, result: costPerSqFt }
+      dr.getCell(13).value = costPerSqFt;
+      dr.getCell(13).numFmt = FMT_USD;
+      // Display Cost = $/SqFt × Total SqFt (editable: change $/SqFt → Display Cost recalculates)
+      dr.getCell(14).value = ledWithSpares > 0
+        ? { formula: `M${row}*J${row}`, result: ledWithSpares }
         : 0;
     }
-    dr.getCell(13).numFmt = FMT_USD;
-    // Display Cost (LED hardware + spare parts rolled in)
-    dr.getCell(14).value = d.ledHardwareCost + d.sparePartsCost; dr.getCell(14).numFmt = FMT_USD;
+    dr.getCell(14).numFmt = FMT_USD;
     const bundleSubtotalRow = bundleSubtotalRows[idx];
     // Processor — linked to the processor/equipment breakdown sheet subtotal for this zone
     const bundleEquipmentCost = d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost;

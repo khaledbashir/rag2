@@ -403,7 +403,11 @@ export default function QuestionFlow({
     }, [currentStep, questions.length, phase, currentQ, answers, onChange, onComplete]);
 
     const goBack = useCallback(() => {
-        if (currentStep > 0) {
+        if (phase === "complete") {
+            // Go back from completed state to last financial question
+            setPhase("financial");
+            setCurrentStep(FINANCIAL_QUESTIONS.length - 1);
+        } else if (currentStep > 0) {
             setCurrentStep((s) => s - 1);
         } else if (phase === "financial") {
             setPhase("display");
