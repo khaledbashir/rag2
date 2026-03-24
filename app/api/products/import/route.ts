@@ -233,7 +233,10 @@ function mapRowToProduct(
     const modelNumber = getVal(row, mapping, "modelNumber") as string;
     const productType = ((getVal(row, mapping, "productType") as string) || "led").toLowerCase().trim();
     const isTV = productType === "tv";
-    const isCMS = productType === "cms" || isTV;
+    const isCourtside = productType === "courtside";
+    const isStanchion = productType === "stanchion";
+    const isUnitPriced = isTV || isCourtside || isStanchion;
+    const isCMS = productType === "cms" || isUnitPriced;
 
     const pixelPitch = toFloat(getVal(row, mapping, "pixelPitch"));
     const cabinetWidthMm = toFloat(getVal(row, mapping, "cabinetWidthMm"));
@@ -304,7 +307,7 @@ function mapRowToProduct(
         productFamily: (getVal(row, mapping, "productFamily") as string) || (isCMS ? "Scoring & Timing" : "Unknown"),
         modelNumber,
         displayName,
-        productType: isTV ? "tv" : (isCMS ? "cms" : "led"),
+        productType: isUnitPriced ? productType : (isCMS ? "cms" : "led"),
         pixelPitch: pixelPitch || 0,
         cabinetWidthMm: cabinetWidthMm || 0,
         cabinetHeightMm: cabinetHeightMm || 0,

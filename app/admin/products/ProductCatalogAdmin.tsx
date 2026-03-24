@@ -53,8 +53,8 @@ interface Product {
 }
 
 function getUnitCost(p: Product): number | null {
-    // OES/CMS/TV products: unit cost from extendedSpecs
-    if (p.productType !== "led" && p.extendedSpecs?.unitCost != null) {
+    // Unit-priced products (TV, courtside, stanchion, CMS, OES): cost from extendedSpecs
+    if (p.extendedSpecs?.unitCost != null) {
         return Number(p.extendedSpecs.unitCost);
     }
     return null;
