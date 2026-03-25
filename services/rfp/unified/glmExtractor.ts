@@ -26,8 +26,10 @@ const GEMINI_MODEL = process.env.GEMINI_EXTRACTION_MODEL || "google/gemini-3-fla
 const MERCURY_MODEL = process.env.MERCURY_EXTRACTION_MODEL || "inception/mercury-2";
 // Fallback 2: Mistral Large (if OpenRouter unavailable)
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || "";
-const MISTRAL_API_BASE = process.env.MISTRAL_API_BASE || "https://api.mistral.ai";
+const MISTRAL_API_BASE = process.env.MISTRAL_API_BASE_URL || process.env.MISTRAL_API_BASE || "https://api.mistral.ai";
 const MISTRAL_MODEL = process.env.MISTRAL_CHAT_MODEL || "mistral-large-latest";
+// Mistral OCR — replaces pdftotext for text extraction
+const MISTRAL_OCR_MODEL = process.env.MISTRAL_OCR_MODEL || "mistral-ocr-latest";
 
 // LED-relevant keywords for page filtering (case-insensitive)
 const LED_KEYWORDS = [
@@ -51,10 +53,54 @@ const LED_KEYWORDS = [
 ];
 
 // ---------------------------------------------------------------------------
-// Step 1: pdftotext → full text, split by page (form-feed separated)
+// Step 1: Mistral OCR → structured text with tables preserved
+// Falls back to pdftotext if Mistral OCR fails or no API key
 // ---------------------------------------------------------------------------
 
 async function extractFullText(pdfPath: string): Promise<{ pages: string[]; fullText: string }> {
+  // Try Mistral OCR first — preserves tables, structure, layout
+  if (MISTRAL_API_KEY) {
+    try {
+      const { readFile: readPdf } = await import("fs/promises");
+      const pdfBuffer = await readPdf(pdfPath);
+      const b64 = pdfBuffer.toString("base64");
+      const sizeMb = (pdfBuffer.length / 1024 / 1024).toFixed(1);
+
+      console.log(`[RFP v2] Mistral OCR: sending PDF (${sizeMb}MB) to ${MISTRAL_OCR_MODEL}...`);
+
+      const ocrRes = await fetch(`${MISTRAL_API_BASE}/v1/ocr`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${MISTRAL_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: MISTRAL_OCR_MODEL,
+          document: {
+            type: "document_url",
+            document_url: `data:application/pdf;base64,${b64}`,
+          },
+          include_image_base64: false,
+        }),
+      });
+
+      if (ocrRes.ok) {
+        const ocrData = await ocrRes.json();
+        const ocrPages: string[] = (ocrData.pages || []).map((p: any) => p.markdown || "");
+        const fullText = ocrPages.join("\n\n---PAGE BREAK---\n\n");
+        console.log(`[RFP v2] Mistral OCR: ${ocrPages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB total`);
+        return { pages: ocrPages, fullText };
+      } else {
+        const errText = await ocrRes.text().catch(() => "");
+        console.error(`[RFP v2] Mistral OCR failed (${ocrRes.status}):`, errText.substring(0, 200));
+      }
+    } catch (err: any) {
+      console.error(`[RFP v2] Mistral OCR error:`, err.message);
+    }
+  }
+
+  // Fallback: pdftotext (free, instant, but loses table structure)
+  console.log(`[RFP v2] Falling back to pdftotext...`);
   const tmpFile = `/tmp/rfp-v2-${Date.now()}.txt`;
   await execFileAsync("pdftotext", ["-layout", pdfPath, tmpFile], { timeout: 120_000 });
 
@@ -62,9 +108,8 @@ async function extractFullText(pdfPath: string): Promise<{ pages: string[]; full
   const fullText = await readFile(tmpFile, "utf-8");
   unlink(tmpFile).catch(() => {});
 
-  // pdftotext inserts form feed (0x0C) between pages
   const pages = fullText.split("\f").filter(p => p.trim().length > 0);
-  console.log(`[RFP v2] pdftotext: ${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB total`);
+  console.log(`[RFP v2] pdftotext fallback: ${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB total`);
   return { pages, fullText };
 }
 
