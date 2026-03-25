@@ -22,7 +22,7 @@ const execFileAsync = promisify(execFile);
 // Primary reasoning: GLM-4.7 via Z.AI (best structured extraction)
 const Z_AI_API_KEY = process.env.Z_AI_API_KEY || "";
 const Z_AI_BASE_URL = process.env.Z_AI_VISION_BASE_URL || process.env.Z_AI_BASE_URL || "https://api.z.ai/api/paas/v4";
-const Z_AI_MODEL = process.env.Z_AI_EXTRACTION_MODEL || "glm-4.7";
+const Z_AI_MODEL = process.env.Z_AI_MODEL_NAME || process.env.Z_AI_EXTRACTION_MODEL || "glm-4.7";
 // Fallback 1: Gemini via OpenRouter (native PDF vision)
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const GEMINI_MODEL = process.env.GEMINI_EXTRACTION_MODEL || "google/gemini-3-flash-preview";
