@@ -502,6 +502,10 @@ Rules:
       }
     } catch (err: any) {
       console.error(`[RFP v2] Gemini error:`, err.message);
+      // Credit/billing errors — stop entirely, don't fallback to Mistral
+      if (err.message?.includes("credits exhausted") || err.message?.includes("top up")) {
+        throw err;
+      }
     }
   }
 
