@@ -1152,7 +1152,7 @@ export async function extractWithGLM5(
               },
               displays: {
                 type: "array",
-                description: "ALL display items found: LED videoboards, ribbon boards, scoreboards, clocks, control systems. Each unique item is a separate entry. Use quantity field for multiples — do NOT create separate rows for back-to-back pairs or identical units.",
+                description: "EVERY item in the document: LED videoboards, ribbon boards, scoreboards, clocks, scoring systems, game clock controllers, control operator positions, play clock paddles, display control systems, content playback systems, CMS, audio systems. Each section header = one entry. Use quantity field for multiples. Do NOT skip control systems, scoring equipment, or accessories.",
                 items: {
                   type: "object",
                   properties: {
@@ -1163,7 +1163,7 @@ export async function extractWithGLM5(
                     width_ft: { type: ["string", "null"], description: "Width as written (e.g. \"30'\" or \"57'6\\\"\"). null if not specified." },
                     height_ft: { type: ["string", "null"], description: "Height as written (e.g. \"18'\" or \"4'5\\\"\"). null if not specified." },
                     environment: { type: "string", enum: ["indoor", "outdoor"], description: "Indoor or outdoor installation" },
-                    category: { type: "string", enum: ["led_display", "scoreboard", "clock", "control_system", "other"], description: "led_display for LED video displays/ribbons. scoreboard for fixed digit scoreboards. clock for timing displays. control_system for controllers/playback/CMS. other for everything else." },
+                    category: { type: "string", enum: ["led_display", "scoreboard", "clock", "control_system", "other"], description: "led_display = LED video displays/ribbons. scoreboard = fixed digit scoreboards/OES. clock = game clocks/play clocks/locker room clocks. control_system = scorekeeping systems, game clock controllers, control operator positions, play clock paddles, display control, content playback, CMS, audio. other = anything else." },
                     quantity: { type: "integer", description: "Total quantity. Back-to-back pairs count as 2. Multiple locations listed = sum them." },
                     notes: { type: ["string", "null"], description: "Key specs: mounting type, service access, model references, special requirements" },
                   },
@@ -1192,14 +1192,24 @@ export async function extractWithGLM5(
         },
       };
 
-      const annotationPrompt = `Extract ALL LED displays, scoreboards, clocks, and control systems from this RFP/bid document.
+      const annotationPrompt = `Extract EVERY SINGLE item from this RFP/bid document. Miss nothing. Every section header with specs underneath is an item.
+
+You MUST extract ALL of the following categories — do NOT skip any:
+1. LED DISPLAYS: videoboards, ribbon boards, fascia displays, marquees, digital signage
+2. SCOREBOARDS: fixed digit scoreboards, OES scoreboards, scoring displays
+3. CLOCKS: game clocks, play clocks, shot clocks, locker room clocks, delay of game clocks
+4. SCORING SYSTEMS: scorekeeping systems, game clock controllers, control operator positions, play clock control paddles, scoring controllers
+5. CONTROL SYSTEMS: display control systems, content playback systems, CMS, ad control systems, audio systems
+
 Rules:
+- EVERY section header in the document is a separate item. If the document has 10 sections, you return 10 items.
 - Each unique item is ONE entry with the correct quantity. Do NOT split back-to-back pairs into separate rows.
 - "2 displays located back-to-back" = 1 entry with quantity: 2
-- "4 locations, 2 in each locker room" = 1 entry with quantity: 8
-- Include dimensions and pixel pitch ONLY if explicitly stated. Do not guess.
-- Classify correctly: LED videoboards/ribbons = led_display, fixed digit scoreboards = scoreboard, timing displays = clock, controllers/CMS/playback = control_system
-- Extract general requirements: warranty terms, labor scope, electrical scope, special conditions`;
+- "4 locations, 2 in each locker room" = 1 entry with quantity: 8 (4 locations x 2 each)
+- Include dimensions and pixel pitch ONLY if explicitly stated in the document.
+- Classify: LED videoboards/ribbons = led_display, fixed scoreboards = scoreboard, timing displays = clock, controllers/paddles/operators/scorekeeping = control_system, CMS/playback/audio = control_system
+- Extract general requirements: warranty terms, labor scope, electrical scope, special conditions
+- If you are unsure whether to include an item, INCLUDE IT. Missing items is worse than extra items.`;
 
       const ocrRes = await fetch(`${MISTRAL_API_BASE}/v1/ocr`, {
         method: "POST",
