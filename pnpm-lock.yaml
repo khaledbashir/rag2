@@ -94,7 +94,7 @@ importers:
         version: 35.0.1
       ag-grid-react:
         specifier: ^35.0.1
-        version: 35.0.1(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
+        version: 35.2.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       autoprefixer:
         specifier: 10.4.15
         version: 10.4.15(postcss@8.4.31)
@@ -2141,11 +2141,17 @@ packages:
   ag-charts-types@13.0.1:
     resolution: {integrity: sha512-qg9adyiAaeUaDtWZEEPF45dv55kdJTe6Ghi0EQXCS79h/7KvOd6dxhqGZjPL1zeFl/L9qEXuYgb+LkGStq4mgQ==}
 
+  ag-charts-types@13.2.0:
+    resolution: {integrity: sha512-O9TTqZmKwLpjylaxxfKqiQ3reWplCSkyB0yG/cRYKxyyIPxEIh312E/aFn63F0rqdY+yYvz/7xe4rmF6clL1gw==}
+
   ag-grid-community@35.0.1:
     resolution: {integrity: sha512-fYYZdymWKsN9/tZv+R6uZRnuiWYEQr+GHl85ZrB0ixbFcE8opYK4NJI29NnMc9ShYiCBnAO9hj54IFa+FI4aDA==}
 
-  ag-grid-react@35.0.1:
-    resolution: {integrity: sha512-NvrrgWUm+DsnsZVFho16srlyBNKSl9nqeSadk63HpHYerq4S4vN/2JCxdNtfqns7SpbYx7GbasbMFCXKYj7Qaw==}
+  ag-grid-community@35.2.0:
+    resolution: {integrity: sha512-YLprL+RsOLHbhgpCXN62MASHGhtR4g1z4bNTY4dnUqKU/RRts13TgHukOEA5JKjyDpeQic8JA17bY8hO/KZBfQ==}
+
+  ag-grid-react@35.2.0:
+    resolution: {integrity: sha512-m+o5n49unv+/E86k6s2Gsvd0CVaOqvgdqv9KakuaR7SUd8ZWUEX2Us0j97lRI1DKIqus65cd8LjvcseYe6nIsw==}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -2341,6 +2347,7 @@ packages:
   basic-ftp@5.1.0:
     resolution: {integrity: sha512-RkaJzeJKDbaDWTIPiJwubyljaEPwpVWkm9Rt5h9Nd6h7tEXTJ3VB4qxdZBioV7JO5yLUaOKwz7vDOzlncUsegw==}
     engines: {node: '>=10.0.0'}
+    deprecated: Security vulnerability fixed in 5.2.0, please upgrade
 
   bcrypt@6.0.0:
     resolution: {integrity: sha512-cU8v/EGSrnH+HnxV2z0J7/blxH8gq7Xh2JFT6Aroax7UohdmiJJlxApMxtKfuI7z68NvvVcmR78k2LbT6efhRg==}
@@ -3137,16 +3144,18 @@ packages:
 
   glob@10.5.0:
     resolution: {integrity: sha512-DfXN8DfhJ7NH3Oe7cFmu3NCu1wKbkReJ8TorzSAFbSKrlNaQSKfIzqYqVY8zlbs2NLBbWpRiU52GX2PbaBVNkg==}
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
     hasBin: true
 
   glob@11.1.0:
     resolution: {integrity: sha512-vuNwKSaKiqm7g0THUBu2x7ckSs3XJLXE+2ssL7/MfTGPLLcrJQ/4Uq1CjPTtO5cCIiRxqvN6Twy1qOwhL0Xjcw==}
     engines: {node: 20 || >=22}
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
     hasBin: true
 
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
-    deprecated: Glob versions prior to v9 are no longer supported
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   globals@13.24.0:
     resolution: {integrity: sha512-AhO5QUcj8llrbG09iWhPU2B204J1xnPeL8kQmVorSsy+Sjj1sk8gIyh6cUocGmH4L0UuhAJy+hJMRA4mgA4mFQ==}
@@ -6647,13 +6656,19 @@ snapshots:
 
   ag-charts-types@13.0.1: {}
 
+  ag-charts-types@13.2.0: {}
+
   ag-grid-community@35.0.1:
     dependencies:
       ag-charts-types: 13.0.1
 
-  ag-grid-react@35.0.1(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
+  ag-grid-community@35.2.0:
     dependencies:
-      ag-grid-community: 35.0.1
+      ag-charts-types: 13.2.0
+
+  ag-grid-react@35.2.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
+    dependencies:
+      ag-grid-community: 35.2.0
       prop-types: 15.8.1
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
@@ -7449,7 +7464,7 @@ snapshots:
       '@typescript-eslint/parser': 8.54.0(eslint@8.57.1)(typescript@5.2.2)
       eslint: 8.57.1
       eslint-import-resolver-node: 0.3.9
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.2.2))(eslint@8.57.1))(eslint@8.57.1)
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@8.57.1)
       eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.2.2))(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1)
       eslint-plugin-jsx-a11y: 6.10.2(eslint@8.57.1)
       eslint-plugin-react: 7.37.5(eslint@8.57.1)
@@ -7469,7 +7484,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.2.2))(eslint@8.57.1))(eslint@8.57.1):
+  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0)(eslint@8.57.1):
     dependencies:
       '@nolyfill/is-core-module': 1.0.39
       debug: 4.4.3
@@ -7484,14 +7499,14 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.2.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.2.2))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1):
+  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.2.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1):
     dependencies:
       debug: 3.2.7
     optionalDependencies:
       '@typescript-eslint/parser': 8.54.0(eslint@8.57.1)(typescript@5.2.2)
       eslint: 8.57.1
       eslint-import-resolver-node: 0.3.9
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.2.2))(eslint@8.57.1))(eslint@8.57.1)
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@8.57.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -7506,7 +7521,7 @@ snapshots:
       doctrine: 2.1.0
       eslint: 8.57.1
       eslint-import-resolver-node: 0.3.9
-      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.2.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.2.2))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1)
+      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.2.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1)
       hasown: 2.0.2
       is-core-module: 2.16.1
       is-glob: 4.0.3
