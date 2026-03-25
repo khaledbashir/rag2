@@ -870,9 +870,9 @@ async function extractViaOcr(
 
     if (combined.length === 0) return null;
 
-    const { ledItems, nonLedRequirements } = separateByCategory(combined);
+    const { nonLedRequirements } = separateByCategory(combined);
     return {
-      screens: regexToSpecs(ledItems),
+      screens: regexToSpecs(combined),
       project: extractProjectInfo(allMarkdown),
       requirements: nonLedRequirements,
     };
@@ -1029,11 +1029,11 @@ export async function extractWithGLM5(
     try {
       const plumberResult = await extractViaPdfPlumber(pdfPath);
       if (plumberResult && plumberResult.length > 0) {
-        const { ledItems: plumberLed, nonLedRequirements: plumberReqs } = separateByCategory(plumberResult);
-        console.log(`[RFP v2] pdfplumber SUCCESS: ${plumberResult.length} items → ${plumberLed.length} LED displays`);
-        options?.onProgress?.(`Found ${plumberLed.length} LED displays via table extraction`);
+        const { nonLedRequirements: plumberReqs } = separateByCategory(plumberResult);
+        console.log(`[RFP v2] pdfplumber SUCCESS: ${plumberResult.length} items`);
+        options?.onProgress?.(`Found ${plumberResult.length} items via table extraction`);
         return {
-          screens: regexToSpecs(plumberLed),
+          screens: regexToSpecs(plumberResult),
           project: extractProjectInfo(fullText),
           requirements: plumberReqs,
           source: "glm5",
@@ -1050,10 +1050,10 @@ export async function extractWithGLM5(
   const regexConfident = tableDisplays.length >= 10;
   if (regexConfident) {
     const { ledItems, nonLedRequirements } = separateByCategory(allRegexItems);
-    console.log(`[RFP v2] Regex confident: ${allRegexItems.length} items (${ledItems.length} LED, ${nonLedRequirements.length} non-LED) (${stats})`);
-    options?.onProgress?.(`Found ${ledItems.length} LED displays via table parsing`);
+    console.log(`[RFP v2] Regex confident: ${allRegexItems.length} items (${ledItems.length} LED, ${allRegexItems.length - ledItems.length} non-LED) (${stats})`);
+    options?.onProgress?.(`Found ${allRegexItems.length} items via table parsing`);
     return {
-      screens: regexToSpecs(ledItems),
+      screens: regexToSpecs(allRegexItems),
       project: extractProjectInfo(fullText),
       requirements: nonLedRequirements,
       source: "glm5",
@@ -1071,13 +1071,13 @@ export async function extractWithGLM5(
   try {
     const aiResult = await extractDisplaysViaAI(pdfPath, filtered);
     const allDisplays = aiResult.displays || [];
-    const { ledDisplays, nonLedRequirements } = separateAiByCategory(allDisplays);
-    console.log(`[RFP v2] AI extraction: ${allDisplays.length} total items → ${ledDisplays.length} LED displays, ${nonLedRequirements.length} non-LED → requirements`);
-    options?.onProgress?.(`Found ${ledDisplays.length} LED displays via AI extraction`);
+    const { nonLedRequirements } = separateAiByCategory(allDisplays);
+    console.log(`[RFP v2] AI extraction: ${allDisplays.length} total items`);
+    options?.onProgress?.(`Found ${allDisplays.length} items via AI extraction`);
 
     const project = aiResult.project || {};
 
-    // Merge AI requirements with non-LED items
+    // Merge AI requirements with non-LED items converted to requirements
     const aiRequirements = (aiResult.requirements || []).map((r: any) => ({
       description: r.description || "",
       category: r.category || "technical",
@@ -1088,7 +1088,7 @@ export async function extractWithGLM5(
     }));
 
     return {
-      screens: aiToSpecs(ledDisplays),
+      screens: aiToSpecs(allDisplays),
       project: {
         clientName: project.client || null,
         projectName: project.name || null,
