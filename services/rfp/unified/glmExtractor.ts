@@ -19,16 +19,20 @@ import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
 
-// AI extraction: Gemini via OpenRouter (native PDF vision, strict schema)
+// Primary reasoning: GLM-4.7 via Z.AI (best structured extraction)
+const Z_AI_API_KEY = process.env.Z_AI_API_KEY || "";
+const Z_AI_BASE_URL = process.env.Z_AI_VISION_BASE_URL || process.env.Z_AI_BASE_URL || "https://api.z.ai/api/paas/v4";
+const Z_AI_MODEL = process.env.Z_AI_EXTRACTION_MODEL || "glm-4.7";
+// Fallback 1: Gemini via OpenRouter (native PDF vision)
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const GEMINI_MODEL = process.env.GEMINI_EXTRACTION_MODEL || "google/gemini-3-flash-preview";
-// Fallback 1: Mercury 2 via OpenRouter (fast diffusion LLM, text-based)
+// Fallback 2: Mercury 2 via OpenRouter (fast diffusion LLM)
 const MERCURY_MODEL = process.env.MERCURY_EXTRACTION_MODEL || "inception/mercury-2";
-// Fallback 2: Mistral Large (if OpenRouter unavailable)
+// Fallback 3: Mistral Large
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || "";
 const MISTRAL_API_BASE = process.env.MISTRAL_API_BASE_URL || process.env.MISTRAL_API_BASE || "https://api.mistral.ai";
 const MISTRAL_MODEL = process.env.MISTRAL_CHAT_MODEL || "mistral-large-latest";
-// Mistral OCR — replaces pdftotext for text extraction
+// Mistral OCR — text extraction step
 const MISTRAL_OCR_MODEL = process.env.MISTRAL_OCR_MODEL || "mistral-ocr-latest";
 
 // LED-relevant keywords for page filtering (case-insensitive)
@@ -437,7 +441,47 @@ Rules:
 - Include LED videoboards, ribbons, scoreboards, clocks, control systems.
 - quantity defaults to 1 unless explicitly stated.`;
 
-  // Try Gemini via OpenRouter first (native PDF vision, best accuracy)
+  // Primary: GLM-4.7 via Z.AI (text-based, best structured extraction)
+  if (Z_AI_API_KEY) {
+    try {
+      const glmText = filteredText.length > 128000 ? filteredText.substring(0, 128000) : filteredText;
+      console.log(`[RFP v2] GLM-4.7: sending ${(glmText.length / 1024).toFixed(0)}KB text to ${Z_AI_MODEL}...`);
+
+      const glmRes = await fetch(`${Z_AI_BASE_URL}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Z_AI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: Z_AI_MODEL,
+          messages: [{ role: "user", content: prompt + "\n\n" + glmText }],
+          temperature: 0,
+          max_tokens: 65536,
+          response_format: { type: "json_object" },
+        }),
+      });
+
+      if (glmRes.ok) {
+        const data = await glmRes.json();
+        const content = data.choices?.[0]?.message?.content || "";
+        const start = content.indexOf("{");
+        const end = content.lastIndexOf("}");
+        if (start >= 0 && end > start) {
+          const parsed = JSON.parse(content.substring(start, end + 1));
+          console.log(`[RFP v2] GLM-4.7: ${parsed.displays?.length || 0} displays`);
+          return parsed;
+        }
+      } else {
+        const err = await glmRes.text();
+        console.error(`[RFP v2] GLM-4.7 failed (${glmRes.status}):`, err.substring(0, 200));
+      }
+    } catch (err: any) {
+      console.error(`[RFP v2] GLM-4.7 error:`, err.message);
+    }
+  }
+
+  // Fallback 1: Gemini via OpenRouter (native PDF vision)
   if (OPENROUTER_API_KEY) {
     try {
       const { readFile } = await import("fs/promises");
