@@ -1270,7 +1270,120 @@ Rules:
   }
 
   // =====================================================================
-  // FALLBACK: Text extraction + AI reasoning (if annotations unavailable)
+  // FALLBACK 1: Mistral Document QnA — send PDF directly to chat model
+  // The model handles OCR internally and reasons over the document
+  // =====================================================================
+  if (MISTRAL_API_KEY) {
+    options?.onProgress?.("Analyzing document with Mistral QnA...");
+    try {
+      const { readFile: readPdf2 } = await import("fs/promises");
+      const pdfBuf = await readPdf2(pdfPath);
+      const b64 = pdfBuf.toString("base64");
+
+      console.log(`[RFP v2] Mistral Document QnA: sending PDF (${(pdfBuf.length / 1024 / 1024).toFixed(1)}MB)...`);
+
+      const qnaPrompt = `Extract ALL LED displays, scoreboards, clocks, and control systems from this RFP document.
+
+Return ONLY a JSON object:
+{
+  "project": { "name": string, "client": string, "venue": string, "address": string },
+  "displays": [
+    {
+      "name": string,
+      "location": string | null,
+      "pixel_pitch_mm": number | null,
+      "brightness_nits": number | null,
+      "width_ft": string | null,
+      "height_ft": string | null,
+      "environment": "indoor" | "outdoor",
+      "category": "led_display" | "scoreboard" | "clock" | "control_system" | "other",
+      "quantity": number,
+      "notes": string | null
+    }
+  ],
+  "requirements": [
+    { "description": string, "category": string, "status": string }
+  ]
+}
+
+Rules:
+- Each unique item is ONE entry with the correct quantity. Do NOT split back-to-back pairs into separate rows.
+- "2 displays located back-to-back" = 1 entry with quantity: 2
+- Include dimensions and pixel pitch ONLY if explicitly stated.
+- Classify correctly: LED videoboards/ribbons = led_display, fixed digit scoreboards = scoreboard, timing displays = clock, controllers/CMS/playback = control_system`;
+
+      const qnaRes = await fetch(`${MISTRAL_API_BASE}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${MISTRAL_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "mistral-small-latest",
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: qnaPrompt },
+              { type: "document_url", document_url: `data:application/pdf;base64,${b64}` },
+            ],
+          }],
+          temperature: 0,
+          max_tokens: 65536,
+          response_format: { type: "json_object" },
+        }),
+      });
+
+      if (qnaRes.ok) {
+        const data = await qnaRes.json();
+        const content = data.choices?.[0]?.message?.content || "";
+        const start = content.indexOf("{");
+        const end = content.lastIndexOf("}");
+        if (start >= 0 && end > start) {
+          const parsed = JSON.parse(content.substring(start, end + 1));
+          const allDisplays = parsed.displays || [];
+          const { nonLedRequirements } = separateAiByCategory(allDisplays);
+
+          console.log(`[RFP v2] Mistral QnA: ${allDisplays.length} items`);
+          options?.onProgress?.(`Found ${allDisplays.length} items via document QnA`);
+
+          const project = parsed.project || {};
+          const qnaRequirements = (parsed.requirements || []).map((r: any) => ({
+            description: r.description || "",
+            category: r.category || "technical",
+            status: r.status || "info",
+            date: null,
+            sourcePages: [],
+            rawText: r.description || "",
+          }));
+
+          return {
+            screens: aiToSpecs(allDisplays),
+            project: {
+              clientName: project.client || null,
+              projectName: project.name || null,
+              venue: project.venue || null,
+              location: project.address || null,
+              isOutdoor: false,
+              isUnionLabor: false,
+              bondRequired: false,
+              specialRequirements: [],
+              schedulePhases: [],
+            },
+            requirements: [...qnaRequirements, ...nonLedRequirements],
+            source: "glm5",
+          };
+        }
+      } else {
+        const errText = await qnaRes.text().catch(() => "");
+        console.error(`[RFP v2] Mistral QnA failed (${qnaRes.status}):`, errText.substring(0, 300));
+      }
+    } catch (err: any) {
+      console.error(`[RFP v2] Mistral QnA error:`, err.message);
+    }
+  }
+
+  // =====================================================================
+  // FALLBACK 2: Text extraction + AI reasoning (last resort)
   // =====================================================================
   options?.onProgress?.("Extracting text from PDF...");
   const { pages, fullText } = await extractFullText(pdfPath);
