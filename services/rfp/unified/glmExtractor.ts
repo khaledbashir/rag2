@@ -1072,36 +1072,12 @@ export async function extractWithGLM5(
   requirements: any[];
   source: "glm5";
 }> {
-  // Step 1: pdftotext the entire document
+  // Step 1: Extract text via Mistral OCR (preserves tables, structure, layout)
   options?.onProgress?.("Extracting text from PDF...");
   const { pages, fullText } = await extractFullText(pdfPath);
 
-  // Step 2: Keyword filter — keep only LED-relevant pages
-  options?.onProgress?.("Filtering for LED specifications...");
-  const { filtered, keptPages, stats } = filterLedPages(pages);
-
-  // Check if pdftotext returned meaningful content
-  const hasText = fullText.trim().length > 500;
-
-  if (!hasText || keptPages.length === 0) {
-    // Image-based PDF or no LED-relevant text — try Mistral OCR
-    const reason = !hasText ? "image-based PDF (pdftotext returned no text)" : "no LED-relevant pages in text";
-    console.log(`[RFP v2] ${reason} — trying Mistral OCR fallback`);
-    options?.onProgress?.("Document appears to be image-based — running OCR...");
-
-    const ocrResult = await extractViaOcr(pdfPath, options?.onProgress);
-    if (ocrResult && ocrResult.screens.length > 0) {
-      console.log(`[RFP v2] Mistral OCR SUCCESS: ${ocrResult.screens.length} items found`);
-      options?.onProgress?.(`Found ${ocrResult.screens.length} items via OCR`);
-      return {
-        screens: ocrResult.screens,
-        project: ocrResult.project,
-        requirements: [],
-        source: "glm5",
-      };
-    }
-
-    console.log(`[RFP v2] Mistral OCR returned 0 items — no displays found in this document`);
+  if (fullText.trim().length < 100) {
+    console.log(`[RFP v2] No meaningful text extracted — document may be empty or corrupted`);
     return {
       screens: [],
       project: extractProjectInfo(fullText),
@@ -1110,64 +1086,23 @@ export async function extractWithGLM5(
     };
   }
 
-  // Step 3: Extract displays
-  // Strategy: Try regex first (free, instant). If regex gets a confident result
-  // (10+ displays from a known format like BOA spec tables), use it.
-  // Otherwise, use Mistral Large AI which handles ANY format.
-  options?.onProgress?.("Parsing display tables and specifications...");
-  const tableDisplays = extractDisplaysViaRegex(filtered);
-  const bulletItems = extractBulletItems(filtered);
-  const tableNames = new Set(tableDisplays.map(d => d.name.toLowerCase()));
-  const uniqueBulletItems = bulletItems.filter(b => !tableNames.has(b.name.toLowerCase()));
-  const allRegexItems = [...tableDisplays, ...uniqueBulletItems];
+  // Step 2: Keyword filter — keep only LED-relevant pages
+  options?.onProgress?.("Filtering for LED specifications...");
+  const { filtered, keptPages, stats } = filterLedPages(pages);
 
-  // Detect AV schedule format — use pdfplumber for multi-column drawings
-  const isAvSchedule = /A\/V\s+(?:INTERIOR|EXTERIOR|ENTRY|SCOREBOARD|RIBBON)/i.test(filtered);
-  const avScheduleExpected = (filtered.match(/A\/V\s+\w+.*?SCHEDULE/gi) || []).length;
-
-  if (isAvSchedule && avScheduleExpected > 1) {
-    console.log(`[RFP v2] AV schedule with ${avScheduleExpected} tables — trying pdfplumber`);
-    options?.onProgress?.("AV schedule detected — extracting tables...");
-    try {
-      const plumberResult = await extractViaPdfPlumber(pdfPath);
-      if (plumberResult && plumberResult.length > 0) {
-        const { nonLedRequirements: plumberReqs } = separateByCategory(plumberResult);
-        console.log(`[RFP v2] pdfplumber SUCCESS: ${plumberResult.length} items`);
-        options?.onProgress?.(`Found ${plumberResult.length} items via table extraction`);
-        return {
-          screens: regexToSpecs(plumberResult),
-          project: extractProjectInfo(fullText),
-          requirements: plumberReqs,
-          source: "glm5",
-        };
-      }
-    } catch (err: any) {
-      console.error(`[RFP v2] pdfplumber failed:`, err.message);
-    }
-  }
-
-  // Use regex results ONLY if we got a confident match (10+ items from
-  // structured spec tables like BOA Stadium). Low counts or bullet-only
-  // results go to AI for better accuracy across document formats.
-  const regexConfident = tableDisplays.length >= 10;
-  if (regexConfident) {
-    const { ledItems, nonLedRequirements } = separateByCategory(allRegexItems);
-    console.log(`[RFP v2] Regex confident: ${allRegexItems.length} items (${ledItems.length} LED, ${allRegexItems.length - ledItems.length} non-LED) (${stats})`);
-    options?.onProgress?.(`Found ${allRegexItems.length} items via table parsing`);
+  if (keptPages.length === 0) {
+    console.log(`[RFP v2] No LED-relevant pages found in ${pages.length} pages`);
     return {
-      screens: regexToSpecs(allRegexItems),
+      screens: [],
       project: extractProjectInfo(fullText),
-      requirements: nonLedRequirements,
+      requirements: [],
       source: "glm5",
     };
   }
 
-  // Primary path: Mistral Large AI extraction (handles any format)
-  if (allRegexItems.length > 0) {
-    console.log(`[RFP v2] Regex found ${allRegexItems.length} items but low confidence — trying AI for better results`);
-  } else {
-    console.log(`[RFP v2] Regex found 0 — using Mistral Large AI`);
-  }
+  console.log(`[RFP v2] ${keptPages.length}/${pages.length} LED-relevant pages (${stats})`);
+
+  // Step 3: AI extraction — no regex, no bullet parsing, let the AI reason
   options?.onProgress?.("Analyzing with AI...");
 
   try {
