@@ -22,7 +22,9 @@ const execFileAsync = promisify(execFile);
 // AI extraction: Gemini via OpenRouter (native PDF vision, strict schema)
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const GEMINI_MODEL = process.env.GEMINI_EXTRACTION_MODEL || "google/gemini-3-flash-preview";
-// Fallback: Mistral Large (if OpenRouter unavailable)
+// Fallback 1: Mercury 2 via OpenRouter (fast diffusion LLM, text-based)
+const MERCURY_MODEL = process.env.MERCURY_EXTRACTION_MODEL || "inception/mercury-2";
+// Fallback 2: Mistral Large (if OpenRouter unavailable)
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || "";
 const MISTRAL_API_BASE = process.env.MISTRAL_API_BASE || "https://api.mistral.ai";
 const MISTRAL_MODEL = process.env.MISTRAL_CHAT_MODEL || "mistral-large-latest";
@@ -509,7 +511,58 @@ Rules:
     }
   }
 
-  // Fallback: Mistral Large with text input
+  // Fallback 1: Mercury 2 via OpenRouter (fast, text-based)
+  if (OPENROUTER_API_KEY) {
+    try {
+      const mercuryText = filteredText.length > 128000 ? filteredText.substring(0, 128000) : filteredText;
+      console.log(`[RFP v2] Mercury 2 fallback: ${(mercuryText.length / 1024).toFixed(0)}KB text to ${MERCURY_MODEL}...`);
+
+      const mercuryRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: MERCURY_MODEL,
+          messages: [{ role: "user", content: prompt + "\n\n" + mercuryText }],
+          temperature: 0,
+          max_tokens: 50000,
+          response_format: { type: "json_object" },
+        }),
+      });
+
+      if (mercuryRes.status === 402 || mercuryRes.status === 429) {
+        const errText = await mercuryRes.text().catch(() => "");
+        const isCredit = mercuryRes.status === 402 || /credit|balance|payment|billing|insufficient/i.test(errText);
+        if (isCredit) {
+          throw new Error("AI extraction credits exhausted. Please top up your OpenRouter account at openrouter.ai/credits to continue analyzing RFPs.");
+        }
+      }
+
+      if (mercuryRes.ok) {
+        const data = await mercuryRes.json();
+        const content = data.choices?.[0]?.message?.content || "";
+        const start = content.indexOf("{");
+        const end = content.lastIndexOf("}");
+        if (start >= 0 && end > start) {
+          const parsed = JSON.parse(content.substring(start, end + 1));
+          console.log(`[RFP v2] Mercury 2: ${parsed.displays?.length || 0} displays`);
+          return parsed;
+        }
+      } else {
+        const err = await mercuryRes.text();
+        console.error(`[RFP v2] Mercury 2 failed (${mercuryRes.status}):`, err.substring(0, 200));
+      }
+    } catch (err: any) {
+      console.error(`[RFP v2] Mercury 2 error:`, err.message);
+      if (err.message?.includes("credits exhausted") || err.message?.includes("top up")) {
+        throw err;
+      }
+    }
+  }
+
+  // Fallback 2: Mistral Large with text input
   if (!MISTRAL_API_KEY) {
     throw new Error("No AI extraction available — set OPENROUTER_API_KEY or MISTRAL_API_KEY");
   }
