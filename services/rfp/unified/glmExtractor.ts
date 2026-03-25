@@ -1116,12 +1116,167 @@ export async function extractWithGLM5(
   requirements: any[];
   source: "glm5";
 }> {
-  // Step 1: Extract text via Mistral OCR (preserves tables, structure, layout)
+  // =====================================================================
+  // PRIMARY: Mistral OCR + Document Annotation — one call, PDF → JSON
+  // The OCR model sees the actual PDF layout and extracts structured data
+  // directly into our schema. No intermediary text step needed.
+  // =====================================================================
+  if (MISTRAL_API_KEY) {
+    options?.onProgress?.("Analyzing document with Mistral OCR...");
+    try {
+      const { readFile: readPdf } = await import("fs/promises");
+      const pdfBuffer = await readPdf(pdfPath);
+      const b64 = pdfBuffer.toString("base64");
+      const sizeMb = (pdfBuffer.length / 1024 / 1024).toFixed(1);
+
+      console.log(`[RFP v2] Mistral OCR + Annotations: sending PDF (${sizeMb}MB)...`);
+
+      const annotationSchema = {
+        type: "json_schema" as const,
+        json_schema: {
+          name: "led_extraction",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              project: {
+                type: "object",
+                properties: {
+                  name: { type: ["string", "null"], description: "Project name from the document title or header" },
+                  client: { type: ["string", "null"], description: "Client or owner organization name" },
+                  venue: { type: ["string", "null"], description: "Venue or facility name" },
+                  address: { type: ["string", "null"], description: "City, state, or full address" },
+                },
+                required: ["name", "client", "venue", "address"],
+                additionalProperties: false,
+              },
+              displays: {
+                type: "array",
+                description: "ALL display items found: LED videoboards, ribbon boards, scoreboards, clocks, control systems. Each unique item is a separate entry. Use quantity field for multiples — do NOT create separate rows for back-to-back pairs or identical units.",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string", description: "Display name exactly as written in the document" },
+                    location: { type: ["string", "null"], description: "Where in the venue this display is located" },
+                    pixel_pitch_mm: { type: ["number", "null"], description: "Pixel pitch in millimeters (e.g. 10 for 10mm). null if not specified or not an LED display." },
+                    brightness_nits: { type: ["integer", "null"], description: "Brightness in nits. null if not specified." },
+                    width_ft: { type: ["string", "null"], description: "Width as written (e.g. \"30'\" or \"57'6\\\"\"). null if not specified." },
+                    height_ft: { type: ["string", "null"], description: "Height as written (e.g. \"18'\" or \"4'5\\\"\"). null if not specified." },
+                    environment: { type: "string", enum: ["indoor", "outdoor"], description: "Indoor or outdoor installation" },
+                    category: { type: "string", enum: ["led_display", "scoreboard", "clock", "control_system", "other"], description: "led_display for LED video displays/ribbons. scoreboard for fixed digit scoreboards. clock for timing displays. control_system for controllers/playback/CMS. other for everything else." },
+                    quantity: { type: "integer", description: "Total quantity. Back-to-back pairs count as 2. Multiple locations listed = sum them." },
+                    notes: { type: ["string", "null"], description: "Key specs: mounting type, service access, model references, special requirements" },
+                  },
+                  required: ["name", "location", "pixel_pitch_mm", "brightness_nits", "width_ft", "height_ft", "environment", "category", "quantity", "notes"],
+                  additionalProperties: false,
+                },
+              },
+              requirements: {
+                type: "array",
+                description: "General project requirements: scope items, warranty terms, labor requirements, special conditions",
+                items: {
+                  type: "object",
+                  properties: {
+                    description: { type: "string" },
+                    category: { type: "string" },
+                    status: { type: "string" },
+                  },
+                  required: ["description", "category", "status"],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ["project", "displays", "requirements"],
+            additionalProperties: false,
+          },
+        },
+      };
+
+      const annotationPrompt = `Extract ALL LED displays, scoreboards, clocks, and control systems from this RFP/bid document.
+Rules:
+- Each unique item is ONE entry with the correct quantity. Do NOT split back-to-back pairs into separate rows.
+- "2 displays located back-to-back" = 1 entry with quantity: 2
+- "4 locations, 2 in each locker room" = 1 entry with quantity: 8
+- Include dimensions and pixel pitch ONLY if explicitly stated. Do not guess.
+- Classify correctly: LED videoboards/ribbons = led_display, fixed digit scoreboards = scoreboard, timing displays = clock, controllers/CMS/playback = control_system
+- Extract general requirements: warranty terms, labor scope, electrical scope, special conditions`;
+
+      const ocrRes = await fetch(`${MISTRAL_API_BASE}/v1/ocr`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${MISTRAL_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: MISTRAL_OCR_MODEL,
+          document: {
+            type: "document_url",
+            document_url: `data:application/pdf;base64,${b64}`,
+          },
+          document_annotation_format: annotationSchema,
+          document_annotation_prompt: annotationPrompt,
+          include_image_base64: false,
+        }),
+      });
+
+      if (ocrRes.ok) {
+        const ocrData = await ocrRes.json();
+        const annotation = ocrData.document_annotation;
+
+        if (annotation) {
+          const parsed = typeof annotation === "string" ? JSON.parse(annotation) : annotation;
+          const allDisplays = parsed.displays || [];
+          const { nonLedRequirements } = separateAiByCategory(allDisplays);
+
+          console.log(`[RFP v2] Mistral OCR Annotations: ${allDisplays.length} items extracted directly from PDF`);
+          options?.onProgress?.(`Found ${allDisplays.length} items via document analysis`);
+
+          const project = parsed.project || {};
+          const docRequirements = (parsed.requirements || []).map((r: any) => ({
+            description: r.description || "",
+            category: r.category || "technical",
+            status: r.status || "info",
+            date: null,
+            sourcePages: [],
+            rawText: r.description || "",
+          }));
+
+          return {
+            screens: aiToSpecs(allDisplays),
+            project: {
+              clientName: project.client || null,
+              projectName: project.name || null,
+              venue: project.venue || null,
+              location: project.address || null,
+              isOutdoor: false,
+              isUnionLabor: false,
+              bondRequired: false,
+              specialRequirements: [],
+              schedulePhases: [],
+            },
+            requirements: [...docRequirements, ...nonLedRequirements],
+            source: "glm5",
+          };
+        } else {
+          console.log(`[RFP v2] Mistral OCR returned no annotation — falling back to text + AI`);
+        }
+      } else {
+        const errText = await ocrRes.text().catch(() => "");
+        console.error(`[RFP v2] Mistral OCR Annotations failed (${ocrRes.status}):`, errText.substring(0, 300));
+      }
+    } catch (err: any) {
+      console.error(`[RFP v2] Mistral OCR Annotations error:`, err.message);
+    }
+  }
+
+  // =====================================================================
+  // FALLBACK: Text extraction + AI reasoning (if annotations unavailable)
+  // =====================================================================
   options?.onProgress?.("Extracting text from PDF...");
   const { pages, fullText } = await extractFullText(pdfPath);
 
   if (fullText.trim().length < 100) {
-    console.log(`[RFP v2] No meaningful text extracted — document may be empty or corrupted`);
+    console.log(`[RFP v2] No meaningful text extracted`);
     return {
       screens: [],
       project: extractProjectInfo(fullText),
@@ -1130,7 +1285,6 @@ export async function extractWithGLM5(
     };
   }
 
-  // Step 2: Keyword filter — keep only LED-relevant pages
   options?.onProgress?.("Filtering for LED specifications...");
   const { filtered, keptPages, stats } = filterLedPages(pages);
 
@@ -1144,9 +1298,7 @@ export async function extractWithGLM5(
     };
   }
 
-  console.log(`[RFP v2] ${keptPages.length}/${pages.length} LED-relevant pages (${stats})`);
-
-  // Step 3: AI extraction — no regex, no bullet parsing, let the AI reason
+  console.log(`[RFP v2] Fallback path: ${keptPages.length}/${pages.length} LED-relevant pages (${stats})`);
   options?.onProgress?.("Analyzing with AI...");
 
   try {
@@ -1157,8 +1309,6 @@ export async function extractWithGLM5(
     options?.onProgress?.(`Found ${allDisplays.length} items via AI extraction`);
 
     const project = aiResult.project || {};
-
-    // Merge AI requirements with non-LED items converted to requirements
     const aiRequirements = (aiResult.requirements || []).map((r: any) => ({
       description: r.description || "",
       category: r.category || "technical",
