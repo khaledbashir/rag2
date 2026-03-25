@@ -158,7 +158,7 @@ export default function DashboardSidebar() {
         <>
             <aside
                 className={cn(
-                    "h-screen border-r border-border bg-background flex flex-col z-50 transition-all duration-200 sticky top-0 overflow-hidden shrink-0",
+                    "h-full border-r border-border bg-background flex flex-col z-50 transition-all duration-200 overflow-hidden shrink-0",
                     expanded ? "w-52" : "w-16",
                 )}
             >
