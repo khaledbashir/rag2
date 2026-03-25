@@ -19,7 +19,9 @@ const BaseNavbar = () => {
     pathname.startsWith("/share") ||
     pathname.startsWith("/tools") ||
     pathname.startsWith("/admin") ||
-    pathname.startsWith("/estimator");
+    pathname.startsWith("/estimator") ||
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/pipeline");
 
   if (isAuth || isEditor) return null;
 

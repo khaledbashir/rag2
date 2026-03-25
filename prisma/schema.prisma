@@ -947,6 +947,7 @@ model RfpAnalysis {
   fileSize    Int      // Bytes
   pageCount   Int      // Total pages in PDF
   pdfFilePath String?  // Persistent path to uploaded PDF for split-panel view
+  pdfData     Bytes?   // PDF binary stored in DB — survives container restarts
 
   // Pipeline stats
   relevantPages    Int      @default(0)

@@ -185,7 +185,7 @@ export default function DashboardSidebar() {
                 </div>
 
                 {/* Nav sections */}
-                <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-5 scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                <nav className="flex-1 min-h-0 overflow-y-auto py-3 px-2 space-y-5 scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                     {/* Main */}
                     <NavSection label="Main" expanded={expanded}>
                         {mainMenuItems.filter((i) => !i.hidden).map((item) => (

@@ -18,24 +18,30 @@ export async function GET(
 
   const analysis = await prisma.rfpAnalysis.findUnique({
     where: { id },
-    select: { pdfFilePath: true, filename: true },
+    select: { pdfFilePath: true, pdfData: true, filename: true },
   });
 
   if (!analysis) {
     return NextResponse.json({ error: "Analysis not found" }, { status: 404 });
   }
 
-  // Try persistent path first
+  const filename = analysis.filename || "rfp.pdf";
+  const headers = {
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `inline; filename="${filename}"`,
+    "Cache-Control": "private, max-age=3600",
+  };
+
+  // Try persistent file path first
   const pdfPath = analysis.pdfFilePath;
   if (pdfPath && existsSync(pdfPath)) {
     const buffer = await readFile(pdfPath);
-    return new NextResponse(buffer, {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="${analysis.filename || "rfp.pdf"}"`,
-        "Cache-Control": "private, max-age=3600",
-      },
-    });
+    return new NextResponse(buffer, { headers });
+  }
+
+  // Fall back to database-stored PDF
+  if (analysis.pdfData) {
+    return new NextResponse(analysis.pdfData, { headers });
   }
 
   return NextResponse.json(

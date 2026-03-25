@@ -12,7 +12,7 @@
  */
 
 import { NextRequest } from "next/server";
-import { stat } from "fs/promises";
+import { stat, readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { randomUUID } from "crypto";
 import path from "path";
@@ -255,12 +255,14 @@ export async function POST(request: NextRequest) {
               let analysisId: string | null = null;
               try {
                 const fileStat2 = await stat(filePath).catch(() => ({ size: 0 }));
+                const pdfBuffer = await readFile(filePath).catch(() => null);
                 const analysis = await prisma.rfpAnalysis.create({
                   data: {
                     filename: body.filename || "RFP",
                     fileSize: fileStat2.size,
                     pageCount: totalPages,
                     pdfFilePath: filePath,
+                    pdfData: pdfBuffer,
                     projectName: finalProject.projectName,
                     clientName: finalProject.clientName,
                     venue: finalProject.venue,
@@ -300,12 +302,21 @@ export async function POST(request: NextRequest) {
             }
           } catch (glmErr: any) {
             clearInterval(thinkingInterval);
-            log.warn("[Pipeline] GLM5 failed, trying AnythingLLM fallback:", glmErr.message);
+            // Credit/billing errors — stop immediately, don't fallback
+            if (glmErr.message?.includes("credits exhausted") || glmErr.message?.includes("top up")) {
+              send("error", {
+                message: glmErr.message,
+              });
+              clearInterval(globalHeartbeat);
+              controller.close();
+              return;
+            }
+            log.warn("[Pipeline] GLM5 failed:", glmErr.message);
           }
         }
 
-        // No fallback chain — single model (Mercury 2) for determinism.
-        // If Mercury returned 0 screens, report it clearly. Don't switch models.
+        // No fallback chain — single model for determinism.
+        // If extraction returned 0 screens, report it clearly. Don't switch models.
         send("error", {
           message: "Extraction returned 0 displays. The AI could not find LED specifications in this document. Try re-uploading or check that the PDF contains display schedule tables.",
         });
@@ -869,6 +880,7 @@ export async function POST(request: NextRequest) {
           persistentPdfPath = filePath;
           log.info(`[Pipeline] PDF persisted at ${persistentPdfPath}`);
 
+          const pdfBuffer2 = await readFile(filePath).catch(() => null);
           const saved = await prisma.rfpAnalysis.create({
             data: {
               projectName: finalProject.projectName,
@@ -879,6 +891,7 @@ export async function POST(request: NextRequest) {
               fileSize: fileStat.size,
               pageCount: ocrResult.totalPages,
               pdfFilePath: persistentPdfPath,
+              pdfData: pdfBuffer2,
               relevantPages: relevantPages.length,
               noisePages: noisePages.length,
               drawingPages: classifiedPages.filter((p) => p.isDrawing).length,

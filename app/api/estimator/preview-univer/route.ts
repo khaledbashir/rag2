@@ -71,7 +71,14 @@ function convertCell(cell: ExcelJS.Cell): UniverCell | null {
       result.v = fObj.result;
       result.t = 2; // CellValueType.NUMBER
     } else if (fObj.result != null) {
-      result.v = fObj.result;
+      // Coerce string results that look like numbers (prevents "numbers stored as text")
+      const parsed = typeof fObj.result === "string" ? parseFloat(fObj.result) : NaN;
+      if (!isNaN(parsed) && isFinite(parsed)) {
+        result.v = parsed;
+        result.t = 2;
+      } else {
+        result.v = fObj.result;
+      }
     } else {
       // No cached result — fall back to formula (may show #VALUE! but better than blank)
       result.f = `=${fObj.formula}`;
@@ -95,7 +102,20 @@ function convertCell(cell: ExcelJS.Cell): UniverCell | null {
   } else if (typeof result.v === "boolean") {
     result.t = 3; // CellValueType.BOOLEAN
   } else if (typeof result.v === "string") {
-    result.t = 1; // CellValueType.STRING
+    // Coerce numeric strings to numbers when cell has a number format
+    // (prevents "numbers stored as text" warnings in spreadsheet)
+    const numFmt = cell.numFmt;
+    if (numFmt && (numFmt.includes("%") || numFmt.includes("#") || numFmt.includes("0"))) {
+      const parsed = parseFloat(result.v);
+      if (!isNaN(parsed) && isFinite(parsed) && String(parsed) === result.v.trim()) {
+        result.v = parsed;
+        result.t = 2;
+      } else {
+        result.t = 1; // CellValueType.STRING
+      }
+    } else {
+      result.t = 1; // CellValueType.STRING
+    }
   }
 
   // Number format
