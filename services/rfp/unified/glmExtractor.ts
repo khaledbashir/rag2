@@ -1459,18 +1459,6 @@ Rules:
     };
   } catch (err: any) {
     console.error(`[RFP v2] AI extraction failed:`, err.message);
-
-    // If AI failed but regex had some results, use those as last resort
-    if (allRegexItems.length > 0) {
-      console.log(`[RFP v2] AI failed — falling back to regex results (${allRegexItems.length} items)`);
-      return {
-        screens: regexToSpecs(allRegexItems),
-        project: extractProjectInfo(fullText),
-        requirements: [],
-        source: "glm5",
-      };
-    }
-
     throw err;
   }
 }
