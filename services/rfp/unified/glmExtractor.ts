@@ -625,6 +625,77 @@ function extractProjectInfo(fullText: string): ExtractedProjectInfo {
 }
 
 // ---------------------------------------------------------------------------
+// Category filtering — only LED displays become screens; rest → requirements
+// ---------------------------------------------------------------------------
+
+const LED_CATEGORIES = new Set(["led_display"]);
+
+/** Split items into LED screens and non-LED requirements */
+function separateByCategory(items: RegexDisplay[]): {
+  ledItems: RegexDisplay[];
+  nonLedRequirements: { description: string; category: string; status: string; date: null; sourcePages: never[]; rawText: string }[];
+} {
+  const ledItems: RegexDisplay[] = [];
+  const nonLedRequirements: any[] = [];
+
+  for (const item of items) {
+    if (LED_CATEGORIES.has(item.category)) {
+      ledItems.push(item);
+    } else {
+      // Convert clocks, scoreboards, control systems, etc. to requirements
+      const label = `${item.name}${item.quantity > 1 ? ` (qty: ${item.quantity})` : ""}`;
+      nonLedRequirements.push({
+        description: item.notes ? `${label} — ${item.notes}` : label,
+        category: item.category === "clock" ? "scoring_timing"
+          : item.category === "scoreboard" ? "scoring_timing"
+          : item.category === "control_system" ? "control_system"
+          : "technical",
+        status: "info",
+        date: null,
+        sourcePages: [],
+        rawText: item.notes || label,
+      });
+    }
+  }
+
+  console.log(`[RFP v2] Category filter: ${ledItems.length} LED displays, ${nonLedRequirements.length} non-LED items moved to requirements`);
+  return { ledItems, nonLedRequirements };
+}
+
+/** Same filter for AI-extracted displays (different shape) */
+function separateAiByCategory(displays: any[]): {
+  ledDisplays: any[];
+  nonLedRequirements: any[];
+} {
+  const ledDisplays: any[] = [];
+  const nonLedRequirements: any[] = [];
+
+  for (const d of displays) {
+    const cat = d.category || "led_display";
+    if (LED_CATEGORIES.has(cat)) {
+      ledDisplays.push(d);
+    } else {
+      const name = d.name || d.location || "Unknown Item";
+      const label = `${name}${d.quantity > 1 ? ` (qty: ${d.quantity})` : ""}`;
+      nonLedRequirements.push({
+        description: d.notes ? `${label} — ${d.notes}` : label,
+        category: cat === "clock" ? "scoring_timing"
+          : cat === "scoreboard" ? "scoring_timing"
+          : cat === "control_system" ? "control_system"
+          : "technical",
+        status: "info",
+        date: null,
+        sourcePages: [],
+        rawText: d.notes || label,
+      });
+    }
+  }
+
+  console.log(`[RFP v2] AI category filter: ${ledDisplays.length} LED displays, ${nonLedRequirements.length} non-LED items moved to requirements`);
+  return { ledDisplays, nonLedRequirements };
+}
+
+// ---------------------------------------------------------------------------
 // Map regex results to ExtractedLEDSpec
 // ---------------------------------------------------------------------------
 
@@ -799,9 +870,11 @@ async function extractViaOcr(
 
     if (combined.length === 0) return null;
 
+    const { ledItems, nonLedRequirements } = separateByCategory(combined);
     return {
-      screens: regexToSpecs(combined),
+      screens: regexToSpecs(ledItems),
       project: extractProjectInfo(allMarkdown),
+      requirements: nonLedRequirements,
     };
   } catch (err: any) {
     console.error(`[RFP v2] Mistral OCR failed:`, err.message);
@@ -956,12 +1029,13 @@ export async function extractWithGLM5(
     try {
       const plumberResult = await extractViaPdfPlumber(pdfPath);
       if (plumberResult && plumberResult.length > 0) {
-        console.log(`[RFP v2] pdfplumber SUCCESS: ${plumberResult.length} items`);
-        options?.onProgress?.(`Found ${plumberResult.length} items via table extraction`);
+        const { ledItems: plumberLed, nonLedRequirements: plumberReqs } = separateByCategory(plumberResult);
+        console.log(`[RFP v2] pdfplumber SUCCESS: ${plumberResult.length} items → ${plumberLed.length} LED displays`);
+        options?.onProgress?.(`Found ${plumberLed.length} LED displays via table extraction`);
         return {
-          screens: regexToSpecs(plumberResult),
+          screens: regexToSpecs(plumberLed),
           project: extractProjectInfo(fullText),
-          requirements: [],
+          requirements: plumberReqs,
           source: "glm5",
         };
       }
@@ -975,12 +1049,13 @@ export async function extractWithGLM5(
   // results go to AI for better accuracy across document formats.
   const regexConfident = tableDisplays.length >= 10;
   if (regexConfident) {
-    console.log(`[RFP v2] Regex confident: ${allRegexItems.length} items (${tableDisplays.length} table + ${uniqueBulletItems.length} bullet) (${stats})`);
-    options?.onProgress?.(`Found ${allRegexItems.length} items via table parsing`);
+    const { ledItems, nonLedRequirements } = separateByCategory(allRegexItems);
+    console.log(`[RFP v2] Regex confident: ${allRegexItems.length} items (${ledItems.length} LED, ${nonLedRequirements.length} non-LED) (${stats})`);
+    options?.onProgress?.(`Found ${ledItems.length} LED displays via table parsing`);
     return {
-      screens: regexToSpecs(allRegexItems),
+      screens: regexToSpecs(ledItems),
       project: extractProjectInfo(fullText),
-      requirements: [],
+      requirements: nonLedRequirements,
       source: "glm5",
     };
   }
@@ -995,14 +1070,25 @@ export async function extractWithGLM5(
 
   try {
     const aiResult = await extractDisplaysViaAI(pdfPath, filtered);
-    const displays = aiResult.displays || [];
-    console.log(`[RFP v2] AI fallback: ${displays.length} displays`);
-    options?.onProgress?.(`Found ${displays.length} LED displays via AI extraction`);
+    const allDisplays = aiResult.displays || [];
+    const { ledDisplays, nonLedRequirements } = separateAiByCategory(allDisplays);
+    console.log(`[RFP v2] AI extraction: ${allDisplays.length} total items → ${ledDisplays.length} LED displays, ${nonLedRequirements.length} non-LED → requirements`);
+    options?.onProgress?.(`Found ${ledDisplays.length} LED displays via AI extraction`);
 
     const project = aiResult.project || {};
 
+    // Merge AI requirements with non-LED items
+    const aiRequirements = (aiResult.requirements || []).map((r: any) => ({
+      description: r.description || "",
+      category: r.category || "technical",
+      status: r.status || "info",
+      date: null,
+      sourcePages: [],
+      rawText: r.description || "",
+    }));
+
     return {
-      screens: aiToSpecs(displays),
+      screens: aiToSpecs(ledDisplays),
       project: {
         clientName: project.client || null,
         projectName: project.name || null,
@@ -1014,14 +1100,7 @@ export async function extractWithGLM5(
         specialRequirements: [],
         schedulePhases: [],
       },
-      requirements: (aiResult.requirements || []).map((r: any) => ({
-        description: r.description || "",
-        category: r.category || "technical",
-        status: r.status || "info",
-        date: null,
-        sourcePages: [],
-        rawText: r.description || "",
-      })),
+      requirements: [...aiRequirements, ...nonLedRequirements],
       source: "glm5",
     };
   } catch (err: any) {
