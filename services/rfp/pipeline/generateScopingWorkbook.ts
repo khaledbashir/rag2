@@ -1636,13 +1636,22 @@ function buildMarginAnalysis(
   const baseBidRow = row;
   const bbR = ws.getRow(row);
   bbR.getCell(2).value = "BASE BID GRAND TOTAL";
+  // Result must include tax+bond to match the per-screen grand total formulas
+  const bbTaxRate = ov?.taxRate ?? 0;
+  const bbBondRate = ov?.servicesMarginPct === 0 ? 0 : (ov?.bondRate ?? (includeBond ? 0.015 : 0));
+  const baseBidSelling = displays.reduce((s, d) => {
+    const sell = d.sellingPrice;
+    return s + sell + round2(sell * bbTaxRate) + round2(sell * bbBondRate);
+  }, 0);
+  const baseBidMargin = round2(baseBidSelling - grandCost);
+  const baseBidMarginPct = baseBidSelling > 0 ? round2(baseBidMargin / baseBidSelling) : 0;
   bbR.getCell(3).value = { formula: `SUM(${costGtRefs})`, result: grandCost };
   bbR.getCell(3).numFmt = FMT_USD;
-  bbR.getCell(4).value = { formula: `SUM(${sellGtRefs})`, result: grandSelling };
+  bbR.getCell(4).value = { formula: `SUM(${sellGtRefs})`, result: round2(baseBidSelling) };
   bbR.getCell(4).numFmt = FMT_USD;
-  bbR.getCell(5).value = { formula: `IFERROR(D${baseBidRow}-C${baseBidRow},0)`, result: grandMargin };
+  bbR.getCell(5).value = { formula: `IFERROR(D${baseBidRow}-C${baseBidRow},0)`, result: baseBidMargin };
   bbR.getCell(5).numFmt = FMT_USD;
-  bbR.getCell(6).value = { formula: `IFERROR(1-C${baseBidRow}/D${baseBidRow},0)`, result: grandMarginPct };
+  bbR.getCell(6).value = { formula: `IFERROR(1-C${baseBidRow}/D${baseBidRow},0)`, result: baseBidMarginPct };
   bbR.getCell(6).numFmt = FMT_PCT;
   totalStyle(bbR, 6, C.ANC_BLUE);
   for (let c = 2; c <= 6; c++) {
