@@ -23,8 +23,9 @@ const execFileAsync = promisify(execFile);
 const Z_AI_API_KEY = process.env.Z_AI_API_KEY || "";
 const Z_AI_BASE_URL = process.env.Z_AI_BASE_URL || "https://api.z.ai/api/coding/paas/v4";
 const Z_AI_MODEL = process.env.Z_AI_MODEL_NAME || process.env.Z_AI_EXTRACTION_MODEL || "glm-4.7";
-// Fallback 1: Gemini via OpenRouter (native PDF vision)
+// Fallback 1: Gemini via OpenRouter-compatible API (native PDF vision)
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
+const OPENROUTER_BASE_URL = process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
 const GEMINI_MODEL = process.env.GEMINI_EXTRACTION_MODEL || "google/gemini-3-flash-preview";
 // Fallback 2: Mercury 2 via OpenRouter (fast diffusion LLM)
 const MERCURY_MODEL = process.env.MERCURY_EXTRACTION_MODEL || "inception/mercury-2";
@@ -490,7 +491,7 @@ Rules:
 
       console.log(`[RFP v2] Gemini extraction: sending PDF (${(buffer.length / 1024 / 1024).toFixed(1)}MB) to ${GEMINI_MODEL}...`);
 
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const res = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -606,7 +607,7 @@ Rules:
       const mercuryText = filteredText.length > 128000 ? filteredText.substring(0, 128000) : filteredText;
       console.log(`[RFP v2] Mercury 2 fallback: ${(mercuryText.length / 1024).toFixed(0)}KB text to ${MERCURY_MODEL}...`);
 
-      const mercuryRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const mercuryRes = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
