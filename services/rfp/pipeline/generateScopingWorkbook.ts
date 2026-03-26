@@ -810,6 +810,16 @@ export async function generateScopingWorkbook(
   );
 
   // Cross-sheet links: Project Overview → MA BASE BID GRAND TOTAL + LED display count
+  // Compute document total including tax+bond (matches MA BASE BID GRAND TOTAL)
+  const taxRateOv = ov?.taxRate ?? 0;
+  const bondRateOv = supplyOnlyProject ? 0 : (ov?.bondRate ?? (effectiveIncludeBond ? 0.015 : 0));
+  const docTotal = displays.reduce((s, d) => {
+    const sell = d.sellingPrice;
+    return s + sell + round2(sell * taxRateOv) + round2(sell * bondRateOv);
+  }, 0);
+  const docMargin = round2(docTotal - grandCost);
+  const docMarginPct = docTotal > 0 ? round2(docMargin / docTotal) : 0;
+
   const ledDataEndPO = 3 + displays.length;
   const overviewSheet = wb.getWorksheet("Project Overview");
   if (overviewSheet) {
@@ -824,20 +834,20 @@ export async function generateScopingWorkbook(
       if (label === "DOCUMENT TOTAL") {
         row.getCell(3).value = {
           formula: `'Margin Analysis'!D${maGrandTotalRow}`,
-          result: grandSelling,
+          result: round2(docTotal),
         };
       }
       if (label === "Total Cost") {
         row.getCell(3).value = { formula: `'Margin Analysis'!C${maGrandTotalRow}`, result: grandCost };
       }
       if (label === "Total Selling Price") {
-        row.getCell(3).value = { formula: `'Margin Analysis'!D${maGrandTotalRow}`, result: grandSelling };
+        row.getCell(3).value = { formula: `'Margin Analysis'!D${maGrandTotalRow}`, result: round2(docTotal) };
       }
       if (label === "Project Margin $") {
-        row.getCell(3).value = { formula: `'Margin Analysis'!E${maGrandTotalRow}`, result: grandMargin };
+        row.getCell(3).value = { formula: `'Margin Analysis'!E${maGrandTotalRow}`, result: docMargin };
       }
       if (label === "Project Margin %") {
-        row.getCell(3).value = { formula: `'Margin Analysis'!F${maGrandTotalRow}`, result: grandMarginPct };
+        row.getCell(3).value = { formula: `'Margin Analysis'!F${maGrandTotalRow}`, result: docMarginPct };
       }
     });
   }
