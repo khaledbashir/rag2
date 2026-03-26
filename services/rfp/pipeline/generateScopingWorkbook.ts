@@ -1217,6 +1217,7 @@ function buildBudgetSummary(
   taxR.getCell(6).value = taxRateVal;
   taxR.getCell(6).numFmt = FMT_PCT;
   stripe(taxR, 7, row % 2 === 0);
+  const taxRow = row;
   row++;
 
   const bondR = ws.getRow(row);
@@ -1232,16 +1233,20 @@ function buildBudgetSummary(
   bondR.getCell(6).value = budgetBondRateVal;
   bondR.getCell(6).numFmt = FMT_PCT;
   stripe(bondR, 7, row % 2 === 0);
+  const bondRow = row;
   row++;
 
   // Grand total — must match the authoritative Margin Analysis / Project Overview bottom line exactly
+  // Includes subtotal + tax + bond so it matches MA's BASE BID GRAND TOTAL
   const gtR = ws.getRow(row);
   gtR.getCell(2).value = "GRAND TOTAL";
-  const documentTotal = grandSelling;
-  const documentMargin = grandMargin;
-  const documentMarginPct = grandMarginPct;
+  const taxAmt = round2(grandSelling * taxRateVal);
+  const bondAmt = round2(grandSelling * budgetBondRateVal);
+  const documentTotal = round2(grandSelling + taxAmt + bondAmt);
+  const documentMargin = round2(documentTotal - grandCost);
+  const documentMarginPct = documentTotal > 0 ? round2(documentMargin / documentTotal) : 0;
   gtR.getCell(3).value = { formula: `C${subtotalRow}`, result: grandCost }; gtR.getCell(3).numFmt = FMT_USD;
-  gtR.getCell(4).value = { formula: `D${subtotalRow}`, result: documentTotal }; gtR.getCell(4).numFmt = FMT_USD;
+  gtR.getCell(4).value = { formula: `D${subtotalRow}+D${taxRow}+D${bondRow}`, result: documentTotal }; gtR.getCell(4).numFmt = FMT_USD;
   gtR.getCell(5).value = { formula: `IFERROR(D${row}-C${row},0)`, result: documentMargin }; gtR.getCell(5).numFmt = FMT_USD;
   gtR.getCell(6).value = { formula: `IFERROR(1-C${row}/D${row},0)`, result: documentMarginPct }; gtR.getCell(6).numFmt = FMT_PCT;
   gtR.getCell(7).value = totalDisplaySqFt > 0 ? { formula: `IFERROR(C${row}/${totalDisplaySqFt},0)`, result: round2(grandCost / totalDisplaySqFt) } : "";
