@@ -568,7 +568,7 @@ function computeDisplays(
     // Margin: per-category approach (override > priced > default)
     // Hardware and services get separate margins, then sum for blended selling price
     const hwMarginPct = co?.marginPct != null ? co.marginPct : (ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware);
-    const svcMarginPct = ov?.servicesMarginPct ?? DEFAULT_MARGINS.install;
+    const svcMarginPct = ov?.servicesMarginPct ?? getServiceMargin(areaSqFt);
     const hwCosts = ledHardwareCost + sparePartsCost;
     const svcCosts = round2(structuralMaterialsCost * unionMult)
       + round2(structuralLaborCost * unionMult)
@@ -1090,7 +1090,9 @@ function buildBudgetSummary(
   const marginFormula = (r: number) => `IFERROR(D${r}-C${r},0)`;
 
   const hwMargin = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
-  const svcMargin = ov?.servicesMarginPct ?? DEFAULT_MARGINS.install;
+  // Use size-based margin matching the Install tab logic (30% for small displays <100sqft)
+  const totalDisplaySqFtForMargin = displays.reduce((sum, d) => sum + d.areaSqFt, 0);
+  const svcMargin = ov?.servicesMarginPct ?? getServiceMargin(totalDisplaySqFtForMargin);
 
   const ledDataEnd = 3 + displays.length; // LED Cost Sheet rows: 4..4+len-1
   const installCostSum = (builder: (tab: string) => string) => installTabNames.length > 0
@@ -1372,11 +1374,11 @@ function buildMarginAnalysis(
     row++;
 
     // ─── Category rows — each with Cost | Selling | Margin$ | Margin% ───
-    // Margin priority: financial override > display priced > default
+    // Margin priority: financial override > size-based > default
     const catStartRow = row;
     const ledHardwareWithSpares = d.ledHardwareCost + d.sparePartsCost;
     const hwMargin = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
-    const svcMargin = ov?.servicesMarginPct ?? DEFAULT_MARGINS.install;
+    const svcMargin = ov?.servicesMarginPct ?? getServiceMargin(d.areaSqFt);
 
     // Cross-sheet formula refs: LED Cost Sheet data row = 4 + display index
     const ledSheetRow = 4 + idx;
