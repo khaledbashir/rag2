@@ -742,7 +742,7 @@ export async function generateScopingWorkbook(
       tabName = `${baseName.substring(0, 22)}${idx + 1} - Install`;
     }
     usedInstallNames.add(tabName);
-    buildInstallSheet(wb, projectName, today, d, d.installComplexity, tabName);
+    buildInstallSheet(wb, projectName, today, d, d.installComplexity, tabName, ov);
   });
 
   // 7. Processor Count
@@ -1934,6 +1934,7 @@ function buildInstallSheet(
   d: ComputedDisplay,
   complexity: InstallComplexity,
   tabName?: string,
+  ov?: FinancialOverrides,
 ): InstallSheetInfo {
   const shortName = d.spec.name.length > 25 ? d.spec.name.substring(0, 25) + "…" : d.spec.name;
   const ws = wb.addWorksheet(sanitizeSheetName(tabName || `${shortName} - Install`), {
@@ -1956,7 +1957,8 @@ function buildInstallSheet(
 
   // Compute the service margin for this display BEFORE the margin assignment section
   // so the header cells and the data rows use the exact same value.
-  const svcMargin = getServiceMargin(d.areaSqFt);
+  // Respect user override (ov?.servicesMarginPct) to stay consistent with MA tab.
+  const svcMargin = ov?.servicesMarginPct ?? getServiceMargin(d.areaSqFt);
 
   // Margin assignment — track row numbers so data rows can reference them
   row += 2;
