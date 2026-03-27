@@ -880,6 +880,19 @@ export default function RfpAnalyzerClient() {
   }, [autoSaveSpecs]);
 
   // ========================================================================
+  // Qty change handler
+  // ========================================================================
+
+  const handleQtyChange = useCallback((displayName: string, qty: number) => {
+    const base = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
+    const updatedSpecs = base.map((s: ExtractedLEDSpec) =>
+      s.name === displayName ? { ...s, quantity: qty } : s
+    );
+    setEditableSpecs(updatedSpecs);
+    if (result?.id) autoSaveSpecs(updatedSpecs, result.id);
+  }, [editableSpecs, result?.screens, result?.id, autoSaveSpecs]);
+
+  // ========================================================================
   // Workbook data — computed from state for WorkbookShell rendering
   // ========================================================================
 
@@ -900,12 +913,13 @@ export default function RfpAnalyzerClient() {
       onAddLineItem: handleAddLineItem,
       onAddScreen: handleAddScreen,
       onRemoveScreen: handleRemoveScreen,
+      onQtyChange: handleQtyChange,
       onSourcePageClick: (pg) => {
         setPdfViewerPage(pg);
         setShowPdfPanel(true);
       },
     });
-  }, [result, editableSpecs, pricingPreview, requirements, bidFormResult, specMismatches, availableProducts, handleProductSelect, handleAddLineItem, handleAddScreen, handleRemoveScreen]);
+  }, [result, editableSpecs, pricingPreview, requirements, bidFormResult, specMismatches, availableProducts, handleProductSelect, handleAddLineItem, handleAddScreen, handleRemoveScreen, handleQtyChange]);
 
   // ========================================================================
   // Auto-run pricing when extraction completes (no manual step needed)

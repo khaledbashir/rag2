@@ -312,6 +312,17 @@ export const DISPLAY_QUESTIONS: Question[] = [
         affectsSheet: "Display Details",
     },
     {
+        id: "quantity",
+        phase: "display",
+        type: "number",
+        label: "Quantity",
+        subtitle: "How many identical displays of this type?",
+        placeholder: "1",
+        defaultValue: "1",
+        required: false,
+        affectsSheet: "Display Details",
+    },
+    {
         id: "pixelPitch",
         phase: "display",
         type: "select",

@@ -101,6 +101,8 @@ export interface RfpWorkbookInput {
   onAddScreen?: () => void;
   /** Callback to remove a screen by name from LED Cost Sheet */
   onRemoveScreen?: (screenName: string) => void;
+  /** Callback when user changes quantity for a display */
+  onQtyChange?: (displayName: string, qty: number) => void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -247,7 +249,15 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
         num(displayPxH > 0 ? displayPxH : null),
         num(displayPxW > 0 ? displayPxW : null),
         num(Math.round(sqFtPerScreen * 100) / 100 || null),
-        num(qty, { align: "center" }),                                     // Qty — editable
+        // Qty — editable via dropdown (1-20)
+        input.onQtyChange
+          ? {
+              value: String(qty),
+              align: "center" as const,
+              dropdown: Array.from({ length: 20 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) })),
+              onDropdownChange: (val: string) => input.onQtyChange!(spec.name, parseInt(val, 10) || 1),
+            }
+          : num(qty, { align: "center" }),
         num(Math.round(totalSqFt * 100) / 100 || null),
         num(nits),
         c(serviceType || "—", { align: "center" }),
