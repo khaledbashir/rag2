@@ -255,13 +255,28 @@ export async function extractWithGemini(
   requirements: any[];
   source: "gemini";
 }> {
-  options?.onProgress?.("Uploading PDF to Gemini...");
+  const pdfBuffer = await readFile(pdfPath);
+  const sizeMb = pdfBuffer.length / 1024 / 1024;
 
-  // Upload PDF
-  const fileUri = await uploadToGemini(pdfPath);
+  console.log(`[GeminiExtractor] Key present: ${GEMINI_API_KEY.length > 0}, model: ${GEMINI_MODEL}, PDF: ${sizeMb.toFixed(1)}MB`);
+
+  // For PDFs under 15MB, use inline base64 (simpler, no File API roundtrip)
+  // For larger PDFs, use the File API upload
+  let filePart: any;
+  if (sizeMb < 15) {
+    options?.onProgress?.("Sending PDF to Gemini Flash...");
+    const b64 = pdfBuffer.toString("base64");
+    filePart = { inlineData: { mimeType: "application/pdf", data: b64 } };
+    console.log(`[GeminiExtractor] Using inline base64 (${sizeMb.toFixed(1)}MB)`);
+  } else {
+    options?.onProgress?.("Uploading large PDF to Gemini...");
+    const fileUri = await uploadToGemini(pdfPath);
+    filePart = { fileData: { mimeType: "application/pdf", fileUri } };
+    console.log(`[GeminiExtractor] Using File API (${sizeMb.toFixed(1)}MB) → ${fileUri}`);
+  }
+
   options?.onProgress?.("AI analyzing document...");
 
-  // Call Gemini with the uploaded file
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
 
   const body = {
@@ -271,12 +286,7 @@ export async function extractWithGemini(
     contents: [
       {
         parts: [
-          {
-            fileData: {
-              mimeType: "application/pdf",
-              fileUri,
-            },
-          },
+          filePart,
           { text: USER_PROMPT },
         ],
       },

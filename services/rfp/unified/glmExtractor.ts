@@ -1261,37 +1261,31 @@ export async function extractWithGLM5(
   // Uses Google's File API to upload the PDF, then generateContent
   // =====================================================================
   if (isGeminiAvailable()) {
+    console.log(`[RFP v2] Gemini available — using as primary extractor (key: ${(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "").substring(0, 8)}..., model: ${process.env.GEMINI_EXTRACTION_MODEL || "gemini-2.5-flash"})`);
     options?.onProgress?.("Analyzing document with Gemini Flash...");
-    try {
-      const geminiResult = await extractWithGemini(pdfPath, {
-        timeout: options?.timeout,
-        onProgress: options?.onProgress,
-      });
 
-      if (geminiResult.screens.length > 0) {
-        // Apply equipment filter to Gemini results
-        const filtered = geminiResult.screens.filter((s) => !isEquipmentItem(s.name));
-        const equipmentRemoved = geminiResult.screens.length - filtered.length;
-        if (equipmentRemoved > 0) {
-          console.log(`[RFP v2] Gemini: removed ${equipmentRemoved} equipment items from screens`);
-        }
+    // No try/catch — if Gemini fails, let it fail loud. No silent fallbacks.
+    const geminiResult = await extractWithGemini(pdfPath, {
+      timeout: options?.timeout,
+      onProgress: options?.onProgress,
+    });
 
-        console.log(`[RFP v2] Gemini Flash: ${filtered.length} LED displays extracted`);
-        options?.onProgress?.(`Found ${filtered.length} LED displays via Gemini Flash`);
-
-        return {
-          screens: filtered,
-          project: geminiResult.project,
-          requirements: geminiResult.requirements,
-          source: "glm5",
-        };
-      } else {
-        console.log(`[RFP v2] Gemini Flash returned 0 screens — falling back to Mistral OCR`);
-      }
-    } catch (err: any) {
-      console.error(`[RFP v2] Gemini Flash failed:`, err.message);
-      // Fall through to Mistral
+    // Apply equipment filter to Gemini results
+    const filtered = geminiResult.screens.filter((s) => !isEquipmentItem(s.name));
+    const equipmentRemoved = geminiResult.screens.length - filtered.length;
+    if (equipmentRemoved > 0) {
+      console.log(`[RFP v2] Gemini: removed ${equipmentRemoved} equipment items from screens`);
     }
+
+    console.log(`[RFP v2] Gemini Flash: ${filtered.length} LED displays extracted`);
+    options?.onProgress?.(`Found ${filtered.length} LED displays via Gemini Flash`);
+
+    return {
+      screens: filtered,
+      project: geminiResult.project,
+      requirements: geminiResult.requirements,
+      source: "glm5",
+    };
   }
 
   // =====================================================================
