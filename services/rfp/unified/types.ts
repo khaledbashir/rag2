@@ -106,6 +106,16 @@ export interface ExtractedLEDSpec {
   alternateId?: string | null;
   /** Description of what this alternate changes */
   alternateDescription?: string | null;
+  /** Cabinet-snapped width after product selection (original widthFt stays locked) */
+  activeWidthFt?: number | null;
+  /** Cabinet-snapped height after product selection (original heightFt stays locked) */
+  activeHeightFt?: number | null;
+  /** Number of full cabinets (from packCabinetsAndModules) */
+  cabinetCount?: number | null;
+  /** Number of fill modules for remainder (from packCabinetsAndModules) */
+  moduleCount?: number | null;
+  /** Blended price per sqft (80% standard + 20% custom if modules needed) */
+  blendedPriceSqFt?: number | null;
   /** Explicit product selection from user (e.g. estimator catalog browser) */
   selectedProductId?: string | null;
   /** Cached display name of selected product */

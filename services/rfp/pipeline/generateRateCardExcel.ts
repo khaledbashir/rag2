@@ -168,8 +168,8 @@ function computeProcessorAndShipping(spec: ExtractedLEDSpec, areaSqFt: number): 
   processorCost: number;
   shippingCost: number;
 } {
-  const widthFt = spec.widthFt || 0;
-  const heightFt = spec.heightFt || 0;
+  const widthFt = spec.activeWidthFt || spec.widthFt || 0;
+  const heightFt = spec.activeHeightFt || spec.heightFt || 0;
   const qty = spec.quantity || 1;
   const pitch = spec.pixelPitchMm || 0;
   const widthPx = spec.widthPx || (pitch > 0 ? Math.round(widthFt * 304.8 / pitch) : 0);
@@ -211,9 +211,9 @@ async function priceDisplay(
     spec = { ...spec, environment: "indoor" };
   }
 
-  // Calculate area — do NOT fake dimensions if missing
-  const widthFt = spec.widthFt || 0;
-  const heightFt = spec.heightFt || 0;
+  // Calculate area — use active (cabinet-snapped) dimensions if available, else RFP originals
+  const widthFt = spec.activeWidthFt || spec.widthFt || 0;
+  const heightFt = spec.activeHeightFt || spec.heightFt || 0;
   const hasDimensions = widthFt > 0 && heightFt > 0;
   const areaSqFt = hasDimensions ? round2(widthFt * heightFt) : 0;
   const areaSqM = areaSqFt / 10.7639;

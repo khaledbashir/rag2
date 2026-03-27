@@ -161,10 +161,12 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const mp = pd?.matchedProduct;
 
     // Product-matched dimensions take priority when a product is selected.
-    // Fall back to RFP/bid dimensions when no product matched.
+    // Check spec.activeWidthFt/activeHeightFt first (persisted from handleProductSelect),
+    // then matchedProduct, then fall back to RFP/bid dimensions.
+    const hasSpecDims = spec.activeWidthFt && spec.activeHeightFt;
     const hasProductDims = mp?.activeWidthFt && mp?.activeHeightFt;
-    const displayH = hasProductDims ? mp.activeHeightFt : bidH;
-    const displayW = hasProductDims ? mp.activeWidthFt : bidW;
+    const displayH = hasSpecDims ? spec.activeHeightFt! : hasProductDims ? mp.activeHeightFt : bidH;
+    const displayW = hasSpecDims ? spec.activeWidthFt! : hasProductDims ? mp.activeWidthFt : bidW;
     const activePitch = hasProductDims && mp.pitch ? mp.pitch : bidPitch;
     const displayPxH = (hasProductDims && mp.resolutionY) ? mp.resolutionY : bidHPx;
     const displayPxW = (hasProductDims && mp.resolutionX) ? mp.resolutionX : bidWPx;
@@ -1282,8 +1284,8 @@ function buildConfig(input: RfpWorkbookInput): SheetTab {
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
     const mp = pd?.matchedProduct;
     const pitch = spec.pixelPitchMm ?? 10;
-    const wFt = mp?.activeWidthFt ?? spec.widthFt ?? 0;
-    const hFt = mp?.activeHeightFt ?? spec.heightFt ?? 0;
+    const wFt = spec.activeWidthFt ?? mp?.activeWidthFt ?? spec.widthFt ?? 0;
+    const hFt = spec.activeHeightFt ?? mp?.activeHeightFt ?? spec.heightFt ?? 0;
 
     // Estimate panel counts from display size and pitch
     const panelW = pitch <= 4 ? 1.64 : pitch <= 8 ? 1.64 : 3.28; // panel width in ft
@@ -1714,8 +1716,8 @@ function buildVendorPricing(input: RfpWorkbookInput): SheetTab {
     const mp = d.matchedProduct;
     const spec = input.screens.find((s) => s.name === d.name);
     const pitch = spec?.pixelPitchMm ?? 10;
-    const wFt = mp?.activeWidthFt ?? spec?.widthFt ?? 0;
-    const hFt = mp?.activeHeightFt ?? spec?.heightFt ?? 0;
+    const wFt = spec?.activeWidthFt ?? mp?.activeWidthFt ?? spec?.widthFt ?? 0;
+    const hFt = spec?.activeHeightFt ?? mp?.activeHeightFt ?? spec?.heightFt ?? 0;
 
     // Estimate panel count
     const panelW = pitch <= 4 ? 1.64 : pitch <= 8 ? 1.64 : 3.28;
