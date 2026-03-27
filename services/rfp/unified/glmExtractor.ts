@@ -14,6 +14,7 @@
 
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "./types";
 import { extractWithMistral } from "./mistralOcrClient";
+import { extractWithGemini, isGeminiAvailable } from "./geminiExtractor";
 import { execFile } from "child_process";
 import { promisify } from "util";
 
@@ -1256,7 +1257,45 @@ export async function extractWithGLM5(
   source: "glm5";
 }> {
   // =====================================================================
-  // PRIMARY: Mistral OCR + Document Annotation — one call, PDF → JSON
+  // PRIMARY: Gemini Flash — native PDF vision, best accuracy on tables
+  // Uses Google's File API to upload the PDF, then generateContent
+  // =====================================================================
+  if (isGeminiAvailable()) {
+    options?.onProgress?.("Analyzing document with Gemini Flash...");
+    try {
+      const geminiResult = await extractWithGemini(pdfPath, {
+        timeout: options?.timeout,
+        onProgress: options?.onProgress,
+      });
+
+      if (geminiResult.screens.length > 0) {
+        // Apply equipment filter to Gemini results
+        const filtered = geminiResult.screens.filter((s) => !isEquipmentItem(s.name));
+        const equipmentRemoved = geminiResult.screens.length - filtered.length;
+        if (equipmentRemoved > 0) {
+          console.log(`[RFP v2] Gemini: removed ${equipmentRemoved} equipment items from screens`);
+        }
+
+        console.log(`[RFP v2] Gemini Flash: ${filtered.length} LED displays extracted`);
+        options?.onProgress?.(`Found ${filtered.length} LED displays via Gemini Flash`);
+
+        return {
+          screens: filtered,
+          project: geminiResult.project,
+          requirements: geminiResult.requirements,
+          source: "glm5",
+        };
+      } else {
+        console.log(`[RFP v2] Gemini Flash returned 0 screens — falling back to Mistral OCR`);
+      }
+    } catch (err: any) {
+      console.error(`[RFP v2] Gemini Flash failed:`, err.message);
+      // Fall through to Mistral
+    }
+  }
+
+  // =====================================================================
+  // FALLBACK 1: Mistral OCR + Document Annotation — one call, PDF → JSON
   // The OCR model sees the actual PDF layout and extracts structured data
   // directly into our schema. No intermediary text step needed.
   // =====================================================================

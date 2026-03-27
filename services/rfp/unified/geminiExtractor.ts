@@ -10,8 +10,10 @@
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "./types";
 import { readFile } from "fs/promises";
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AQ.Ab8RN6JwV9a4iFiNkS8ugjS3IPLG3etdk-AcFq_3Cr9imNsUDw";
-const GEMINI_MODEL = "gemini-3.1-pro-preview";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
+const GEMINI_MODEL = process.env.GEMINI_EXTRACTION_MODEL || "gemini-2.5-flash";
+// Note: Gemini also supports inline base64 for smaller PDFs (<20MB)
+// For larger PDFs, the File API upload is used (uploadToGemini)
 
 // ---------------------------------------------------------------------------
 // System prompt — proven to extract all 43 displays from BOA Stadium RFP
@@ -66,7 +68,9 @@ const USER_PROMPT = `Extract ALL LED displays and requirements from this RFP doc
       "width_ft_decimal": 14.0,
       "height_ft_decimal": 8.0,
       "environment": "indoor",
-      "application": "Indoor"
+      "category": "led_display",
+      "quantity": 1,
+      "notes": null
     }
   ],
   "requirements": [
@@ -76,7 +80,10 @@ const USER_PROMPT = `Extract ALL LED displays and requirements from this RFP doc
       "status": "critical"
     }
   ]
-}`;
+}
+
+IMPORTANT: Only include actual LED video displays, ribbon boards, fascia boards, and videoboards in the displays array. Do NOT include game clocks, play clocks, scoring controllers, headend racks, spare parts, cable packages, audio systems, or other non-LED equipment. Those belong in requirements.
+Category must be one of: "led_display", "scoreboard", "clock", "control_system", "other". Only "led_display" items go in displays.`;
 
 // ---------------------------------------------------------------------------
 // Parse feet/inches strings to decimal
@@ -126,7 +133,7 @@ function mapToExtractedSpecs(displays: any[]): ExtractedLEDSpec[] {
       pixelPitchMm: d.pixel_pitch_mm ?? null,
       brightnessNits: d.brightness_nits ?? null,
       environment: env.includes("outdoor") ? "outdoor" : "indoor",
-      quantity: 1,
+      quantity: d.quantity || 1,
       serviceType: null,
       mountingType: null,
       maxPowerW: null,
@@ -135,8 +142,9 @@ function mapToExtractedSpecs(displays: any[]): ExtractedLEDSpec[] {
       confidence: 0.95,
       sourcePages: [],
       sourceType: "text" as const,
-      citation: "Gemini 3.1 Pro Preview — Direct PDF extraction",
-      notes: null,
+      citation: `${GEMINI_MODEL} — Direct PDF extraction`,
+      notes: d.notes || null,
+      category: d.category || "led_display",
       isAlternate: false,
       alternateDescription: null,
       selectedProductId: null,
