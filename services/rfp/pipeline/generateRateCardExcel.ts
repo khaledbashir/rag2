@@ -203,13 +203,9 @@ async function priceDisplay(
   installComplexity: "simple" | "standard" | "complex" | "heavy",
   projectIsOutdoor: boolean = false,
 ): Promise<PricedDisplay> {
-  // Project-level environment override: if the project is indoor but the AI
-  // tagged a screen as "outdoor", correct it. This fixes the common case where
-  // ribbon boards in indoor arenas get misclassified as outdoor by the AI.
-  if (!projectIsOutdoor && spec.environment === "outdoor") {
-    console.log(`[priceDisplay] ⚠ Overriding "${spec.name}" from outdoor → indoor (project is indoor)`);
-    spec = { ...spec, environment: "indoor" };
-  }
+  // Trust the per-display environment from the RFP extraction.
+  // Mixed projects (indoor + outdoor) are common — don't override individual display environments.
+  // The AI classifies each display based on its nits, location, and context.
 
   // Calculate area — use active (cabinet-snapped) dimensions if available, else RFP originals
   const widthFt = spec.activeWidthFt || spec.widthFt || 0;
