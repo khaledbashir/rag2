@@ -1261,24 +1261,24 @@ export async function extractWithGLM5(
   // Uses Google's File API to upload the PDF, then generateContent
   // =====================================================================
   if (isGeminiAvailable()) {
-    console.log(`[RFP v2] Gemini available — using as primary extractor (key: ${(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "").substring(0, 8)}..., model: ${process.env.GEMINI_EXTRACTION_MODEL || "gemini-2.5-flash"})`);
+    console.log(`[RFP v2] Gemini primary (key: ${(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "").substring(0, 8)}..., model: ${process.env.GEMINI_EXTRACTION_MODEL || "gemini-2.5-flash"})`);
     options?.onProgress?.("Analyzing document with Gemini Flash...");
 
-    // No try/catch — if Gemini fails, let it fail loud. No silent fallbacks.
+    // Full PDF → Gemini. No preprocessing. Gemini handles 500+ pages natively.
     const geminiResult = await extractWithGemini(pdfPath, {
       timeout: options?.timeout,
       onProgress: options?.onProgress,
     });
 
-    // Apply equipment filter to Gemini results
+    // Equipment filter — catch anything Gemini miscategorized
     const filtered = geminiResult.screens.filter((s) => !isEquipmentItem(s.name));
     const equipmentRemoved = geminiResult.screens.length - filtered.length;
     if (equipmentRemoved > 0) {
-      console.log(`[RFP v2] Gemini: removed ${equipmentRemoved} equipment items from screens`);
+      console.log(`[RFP v2] Gemini: removed ${equipmentRemoved} equipment items`);
     }
 
-    console.log(`[RFP v2] Gemini Flash: ${filtered.length} LED displays extracted`);
-    options?.onProgress?.(`Found ${filtered.length} LED displays via Gemini Flash`);
+    console.log(`[RFP v2] Gemini Flash: ${filtered.length} LED displays`);
+    options?.onProgress?.(`Found ${filtered.length} LED displays`);
 
     return {
       screens: filtered,
