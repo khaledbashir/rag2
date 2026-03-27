@@ -258,6 +258,7 @@ async function priceDisplay(
           widthFt,
           heightFt,
           pixelPitch: spec.pixelPitchMm ?? undefined,
+          brightnessNits: spec.brightnessNits ?? undefined,
           isOutdoor: spec.environment === "outdoor",
         });
         const product = getProductByPitch(
@@ -284,6 +285,7 @@ async function priceDisplay(
       widthFt,
       heightFt,
       pixelPitch: spec.pixelPitchMm ?? undefined,
+      brightnessNits: spec.brightnessNits ?? undefined,
       isOutdoor: spec.environment === "outdoor",
     });
     if (match) {

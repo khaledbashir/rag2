@@ -151,6 +151,9 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     isHeader: true,
   };
 
+  // Build a used-index tracker so duplicate names get matched to different pricing entries
+  const usedPricingIdx = new Set<number>();
+
   const dataRows: SheetRow[] = input.screens.map((spec) => {
     const bidPitch = spec.pixelPitchMm ?? 0;
     const bidW = spec.widthFt ?? 0;
@@ -159,7 +162,11 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const bidHPx = spec.heightPx ?? (bidPitch > 0 ? Math.round(bidH * 304.8 / bidPitch) : 0);
     const qty = spec.quantity || 1;
 
-    const pd = input.pricingDisplays.find((d) => d.name === spec.name);
+    // Match pricing by name, but if there are duplicate names, pick the next unused entry
+    let pdIdx = input.pricingDisplays.findIndex((d, i) => d.name === spec.name && !usedPricingIdx.has(i));
+    if (pdIdx === -1) pdIdx = input.pricingDisplays.findIndex((d) => d.name === spec.name);
+    if (pdIdx >= 0) usedPricingIdx.add(pdIdx);
+    const pd = pdIdx >= 0 ? input.pricingDisplays[pdIdx] : undefined;
     const mp = pd?.matchedProduct;
 
     // Product-matched dimensions take priority when a product is selected.

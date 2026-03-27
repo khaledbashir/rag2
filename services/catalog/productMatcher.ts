@@ -5,6 +5,7 @@ export interface ScreenSpec {
     widthFt: number;
     heightFt: number;
     pixelPitch?: number; // Desired pitch from RFP
+    brightnessNits?: number; // Desired brightness from RFP
     isOutdoor?: boolean; // Inferred from context or explicit
     manufacturer?: string; // Optional preference
 }
@@ -97,11 +98,12 @@ export class ProductMatcher {
                 });
                 if (suitable.length === 0) suitable = dbProducts;
 
-                // Score by pitch closeness + type appropriateness
-                // Courtside tables, stanchions, clocks should NOT match corridor/scoreboard displays
+                // Score by pitch closeness + type appropriateness + nits + mesh penalty
                 const displayAreaSqFt = spec.widthFt * spec.heightFt;
                 const isLargeDisplay = displayAreaSqFt > 50;
                 const SPECIALTY_PATTERNS = /courtside|stanchion|clock|table|counter|desk/i;
+                const MESH_PATTERNS = /mesh|transparent|see.?through/i;
+                const targetNits = spec.brightnessNits || 0;
 
                 suitable.sort((a, b) => {
                     const pitchA = Math.abs(a.pixelPitch - targetPitch);
@@ -113,7 +115,17 @@ export class ProductMatcher {
                     const penaltyA = (isLargeDisplay && isSpecialtyA) ? 100 : 0;
                     const penaltyB = (isLargeDisplay && isSpecialtyB) ? 100 : 0;
 
-                    return (pitchA + penaltyA) - (pitchB + penaltyB);
+                    // Penalize mesh products for solid-panel applications (indoor videoboards)
+                    const isMeshA = MESH_PATTERNS.test(a.displayName) || MESH_PATTERNS.test(a.modelNumber);
+                    const isMeshB = MESH_PATTERNS.test(b.displayName) || MESH_PATTERNS.test(b.modelNumber);
+                    const meshPenaltyA = isMeshA ? 50 : 0;
+                    const meshPenaltyB = isMeshB ? 50 : 0;
+
+                    // Penalize products that don't meet the brightness requirement
+                    const nitsPenaltyA = (targetNits > 0 && a.maxNits < targetNits) ? 20 : 0;
+                    const nitsPenaltyB = (targetNits > 0 && b.maxNits < targetNits) ? 20 : 0;
+
+                    return (pitchA + penaltyA + meshPenaltyA + nitsPenaltyA) - (pitchB + penaltyB + meshPenaltyB + nitsPenaltyB);
                 });
 
                 const best = suitable[0];
@@ -253,7 +265,20 @@ export class ProductMatcher {
         if (suitable.length === 0) suitable = candidates;
 
         const targetPitch = spec.pixelPitch || (isOutdoorRequest ? 10 : 3.9);
-        suitable.sort((a, b) => Math.abs(a.pitchMm - targetPitch) - Math.abs(b.pitchMm - targetPitch));
+        const targetNits = spec.brightnessNits || 0;
+        const MESH_PATTERNS = /mesh|transparent|see.?through/i;
+
+        suitable.sort((a, b) => {
+            const pitchA = Math.abs(a.pitchMm - targetPitch);
+            const pitchB = Math.abs(b.pitchMm - targetPitch);
+            // Penalize mesh for solid-panel applications
+            const meshA = MESH_PATTERNS.test(a.name) ? 50 : 0;
+            const meshB = MESH_PATTERNS.test(b.name) ? 50 : 0;
+            // Penalize products below required brightness
+            const nitsA = (targetNits > 0 && a.brightnessNits < targetNits) ? 20 : 0;
+            const nitsB = (targetNits > 0 && b.brightnessNits < targetNits) ? 20 : 0;
+            return (pitchA + meshA + nitsA) - (pitchB + meshB + nitsB);
+        });
 
         const best = suitable[0];
         return ProductMatcher.calculateSolution(spec, catalogToMatched(best));

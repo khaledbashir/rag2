@@ -41,26 +41,32 @@ Step 4: Extract Requirements. Scan equipment specs for technical, compliance, an
 OUTPUT FORMAT:
 Return ONLY a JSON object matching the exact schema. You MUST complete the _extraction_log first to guarantee you have reached the end of the file.`;
 
-const USER_PROMPT = `Extract ALL LED displays and requirements from this RFP document. Return JSON with this exact schema:
+const USER_PROMPT = `Extract ALL LED displays and requirements from this RFP document.
+
+CRITICAL — name field: Use the ACTUAL room/location name from the document for each display (e.g., "Panthers Den", "Elev Lobby", "North Cor", "Field Ribbon North"). Do NOT use generic names like "LED Display" or "Display 1". If the table has a Location/Room column, use that value verbatim.
+
+CRITICAL — pixel_pitch_mm: If a display's pixel pitch is not explicitly stated but every other display in the same table/section has the same pitch (e.g., all 3.9mm), use that same pitch value. Do NOT leave it null when the context makes it obvious.
+
+Return ONLY a JSON object with this schema:
 
 {
   "_extraction_log": {
-    "sections_found": ["List all specific section names/numbers found in the body"],
-    "anomalies_detected": ["List any formatting errors you ignored to keep parsing, e.g., 'Duplicate header 116843 found'"],
+    "sections_found": ["List all specific section names/numbers found"],
+    "anomalies_detected": ["List formatting errors you ignored"],
     "total_displays_counted_in_text": 0,
     "reached_end_of_document": true,
-    "step_by_step_verification": "Briefly state how you ensured you scanned the entire document and didn't stop at false boundaries."
+    "step_by_step_verification": "How you ensured you scanned the entire document"
   },
   "project": {
-    "name": "Project Name",
-    "client": "Client Name",
-    "venue": "Venue Name",
+    "name": "Actual project name from document",
+    "client": "Actual client/owner name",
+    "venue": "Actual venue name",
     "address": "City, State"
   },
   "displays": [
     {
-      "name": "Screen Name",
-      "location": "Screen Name",
+      "name": "Actual location/room name from the table (e.g., Panthers Den, Elev Lobby, North Cor)",
+      "location": "Same as name — the room/area name",
       "pixel_pitch_mm": 3.9,
       "brightness_nits": 8000,
       "width_ft": "14'",
@@ -82,8 +88,7 @@ const USER_PROMPT = `Extract ALL LED displays and requirements from this RFP doc
   ]
 }
 
-IMPORTANT: Only include actual LED video displays, ribbon boards, fascia boards, and videoboards in the displays array. Do NOT include game clocks, play clocks, scoring controllers, headend racks, spare parts, cable packages, audio systems, or other non-LED equipment. Those belong in requirements.
-Category must be one of: "led_display", "scoreboard", "clock", "control_system", "other". Only "led_display" items go in displays.`;
+IMPORTANT: Only include actual LED video displays, ribbon boards, fascia boards, and videoboards in the displays array. Do NOT include game clocks, play clocks, scoring controllers, headend racks, spare parts, cable packages, audio systems, or other non-LED equipment. Those belong in requirements.`;
 
 // ---------------------------------------------------------------------------
 // Parse feet/inches strings to decimal
