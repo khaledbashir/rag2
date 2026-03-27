@@ -2257,7 +2257,12 @@ export default function RfpAnalyzerClient() {
                 accent="text-emerald-500"
               />
               <StatCard icon={FileText} label="Noise Filtered" value={result.stats.noisePages.toString()} sub="auto-removed" />
-              <StatCard icon={Monitor} label="LED Displays" value={(result.screens.length || result.stats.specsFound).toString()} accent="text-primary" />
+              <StatCard icon={Monitor} label="LED Displays" value={(() => {
+                const screens = editableSpecs.length > 0 ? editableSpecs : result.screens;
+                const totalQty = screens.reduce((sum: number, s: any) => sum + (s.quantity || 1), 0);
+                const unique = screens.length;
+                return totalQty > unique ? `${totalQty} (${unique} unique)` : String(unique);
+              })()} accent="text-primary" />
               <StatCard
                 icon={AlertTriangle}
                 label="Requirements"
@@ -2706,7 +2711,12 @@ export default function RfpAnalyzerClient() {
                     )}
                   </div>
                   <span className="text-muted-foreground">
-                    {result.screens.length} displays • {typeof (result.pricingDocument?.documentTotal ?? pricingPreview?.summary?.totalSellingPrice) === "number"
+                    {(() => {
+                      const screens = editableSpecs.length > 0 ? editableSpecs : result.screens;
+                      const totalQty = screens.reduce((sum: number, s: any) => sum + (s.quantity || 1), 0);
+                      const unique = screens.length;
+                      return totalQty > unique ? `${totalQty} displays (${unique} unique)` : `${unique} displays`;
+                    })()} • {typeof (result.pricingDocument?.documentTotal ?? pricingPreview?.summary?.totalSellingPrice) === "number"
                       ? `$${(result.pricingDocument?.documentTotal ?? pricingPreview?.summary?.totalSellingPrice ?? 0).toLocaleString()}`
                       : "—"}
                   </span>

@@ -724,7 +724,13 @@ export default function EstimatorStudio({
                     {answers.displays.length > 0 && (
                         <>
                             <span className="text-[10px] text-muted-foreground">
-                                {answers.displays.length} display{answers.displays.length !== 1 ? "s" : ""}
+                                {(() => {
+                                    const totalQty = answers.displays.reduce((sum, d) => sum + (d.quantity || 1), 0);
+                                    const uniqueCount = answers.displays.length;
+                                    return totalQty > uniqueCount
+                                        ? `${totalQty} displays (${uniqueCount} unique)`
+                                        : `${uniqueCount} display${uniqueCount !== 1 ? "s" : ""}`;
+                                })()}
                             </span>
                             {questionsComplete && !editingAnswers && (
                                 <button
