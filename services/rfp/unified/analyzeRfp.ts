@@ -278,13 +278,18 @@ export async function analyzeRfp(
     .filter((p) => p.extractedSpecs && p.extractedSpecs.length > 0)
     .flatMap((p) => p.extractedSpecs!);
 
-  // Separate incomplete specs (name/location but no physical data) for quarantine
+  // Separate incomplete specs — only quarantine if truly empty (no name or no useful data at all)
+  // Lowered threshold: include if display has a name + at least width OR height
   const incompleteSpecs: IncompleteSpec[] = [];
   const filteredSpecs = [...textSpecs, ...drawingSpecs].filter((s) => {
-    const hasSpec = s.widthFt != null || s.heightFt != null ||
-      s.pixelPitchMm != null || s.brightnessNits != null ||
+    // Must have a name to be useful
+    if (!s.name || s.name.trim().length === 0) return false;
+    // Include if it has width OR height (the minimum for sizing)
+    const hasDimension = s.widthFt != null || s.heightFt != null;
+    // Also include if it has pitch or nits (still useful for product matching)
+    const hasAnySpec = hasDimension || s.pixelPitchMm != null || s.brightnessNits != null ||
       s.widthPx != null || s.heightPx != null;
-    if (!hasSpec) {
+    if (!hasAnySpec) {
       console.log(`[analyzeRfp] Quarantining "${s.name}" — no physical specs (manual entry required)`);
       incompleteSpecs.push({
         name: s.name,
@@ -294,7 +299,7 @@ export async function analyzeRfp(
         reason: "Referenced in RFP but no physical specs provided — manual entry required",
       });
     }
-    return hasSpec;
+    return hasAnySpec;
   });
   const allSpecs = deduplicateSpecs(filteredSpecs);
 
@@ -369,7 +374,14 @@ function deduplicateSpecs(specs: ExtractedLEDSpec[]): ExtractedLEDSpec[] {
       // For alternates, only merge if same alternate ID
       if (d.isAlternate && spec.isAlternate && d.alternateId !== spec.alternateId) return false;
       // Name match
-      return normalizeName(d.name) === normalizeName(spec.name);
+      if (normalizeName(d.name) !== normalizeName(spec.name)) return false;
+      // Don't merge if both have dimensions and they differ — these are different physical displays
+      // (e.g., two "Elev Lobby" displays with different sizes are separate screens)
+      if (d.widthFt != null && spec.widthFt != null && Math.abs(d.widthFt - spec.widthFt) > 0.5) return false;
+      if (d.heightFt != null && spec.heightFt != null && Math.abs(d.heightFt - spec.heightFt) > 0.5) return false;
+      // Don't merge if both have different pixel pitches
+      if (d.pixelPitchMm != null && spec.pixelPitchMm != null && d.pixelPitchMm !== spec.pixelPitchMm) return false;
+      return true;
     });
 
     if (existing) {

@@ -382,6 +382,102 @@ function extractBulletItems(text: string): RegexDisplay[] {
 }
 
 // ---------------------------------------------------------------------------
+// Step 3a-iii: Markdown table extraction (for Mistral OCR output)
+// OCR returns markdown with | delimited tables — regex patterns don't match these
+// ---------------------------------------------------------------------------
+
+function extractDisplaysFromMarkdownTables(text: string): RegexDisplay[] {
+  const displays: RegexDisplay[] = [];
+
+  // Find markdown tables: header | separator | data rows
+  const tablePattern = /(\|[^\n]+\|\n\|[-\s|:]+\|\n(?:\|[^\n]+\|\n?)+)/gm;
+  let tableMatch;
+
+  while ((tableMatch = tablePattern.exec(text)) !== null) {
+    const tableText = tableMatch[1];
+    const rows = tableText.trim().split("\n").filter((r) => r.trim());
+    if (rows.length < 3) continue; // Need header + separator + at least 1 data row
+
+    // Parse header
+    const headers = rows[0]
+      .split("|")
+      .map((h) => h.trim().toLowerCase())
+      .filter(Boolean);
+
+    // Check if this is an LED-related table
+    const isLedTable = headers.some((h) =>
+      /led|display|pixel|pitch|nit|brightness|location|videoboard|ribbon|av\s*device|room|area/i.test(h),
+    );
+    if (!isLedTable) continue;
+
+    // Map columns by header text
+    let nameCol = -1,
+      pitchCol = -1,
+      nitsCol = -1,
+      widthCol = -1,
+      heightCol = -1,
+      qtyCol = -1,
+      envCol = -1;
+    headers.forEach((h, idx) => {
+      if (/name|location|display|device|room|area|description/i.test(h) && nameCol === -1) nameCol = idx;
+      if (/pitch/i.test(h)) pitchCol = idx;
+      if (/nit|brightness/i.test(h)) nitsCol = idx;
+      if (/width|w\s*[\((]|w\s*$/i.test(h) && widthCol === -1) widthCol = idx;
+      if (/height|h\s*[\((]|h\s*$/i.test(h) && heightCol === -1) heightCol = idx;
+      if (/qty|quantity|count/i.test(h)) qtyCol = idx;
+      if (/env|indoor|outdoor|type/i.test(h)) envCol = idx;
+    });
+
+    // Detect environment from text before this table
+    const preTableIdx = text.indexOf(tableText);
+    const preTableText = preTableIdx > 0 ? text.substring(Math.max(0, preTableIdx - 500), preTableIdx) : "";
+    const sectionEnv: "indoor" | "outdoor" =
+      /outdoor/i.test(preTableText) && !/indoor/i.test(preTableText.slice(-200)) ? "outdoor" : "indoor";
+
+    // Skip separator row (index 1), parse data rows
+    for (let i = 2; i < rows.length; i++) {
+      const cells = rows[i]
+        .split("|")
+        .map((c) => c.trim())
+        .filter((_, idx, arr) => idx > 0 && idx < arr.length); // strip empty leading/trailing from |...|
+      if (cells.length < 2) continue;
+
+      const name = nameCol >= 0 && nameCol < cells.length ? cells[nameCol] : cells[0] || "";
+      if (!name || /^(total|subtotal|sum|header|---|—)/i.test(name)) continue;
+
+      const pitchStr = pitchCol >= 0 && pitchCol < cells.length ? cells[pitchCol] : "";
+      const nitsStr = nitsCol >= 0 && nitsCol < cells.length ? cells[nitsCol] : "";
+      const widthStr = widthCol >= 0 && widthCol < cells.length ? cells[widthCol] : "";
+      const heightStr = heightCol >= 0 && heightCol < cells.length ? cells[heightCol] : "";
+      const qtyStr = qtyCol >= 0 && qtyCol < cells.length ? cells[qtyCol] : "";
+      const envStr = envCol >= 0 && envCol < cells.length ? cells[envCol] : "";
+
+      const nits = nitsStr ? parseInt(nitsStr.replace(/[^\d]/g, ""), 10) : null;
+      const env: "indoor" | "outdoor" = envStr
+        ? /outdoor/i.test(envStr) ? "outdoor" : "indoor"
+        : nits && nits >= 5000 ? "outdoor" : sectionEnv;
+
+      displays.push({
+        name,
+        pixelPitchMm: pitchStr ? parseFloat(pitchStr.replace(/[^\d.]/g, "")) || null : null,
+        brightnessNits: nits && nits >= 100 ? nits : null,
+        widthRaw: widthStr,
+        heightRaw: heightStr,
+        environment: env,
+        category: "led_display",
+        quantity: qtyStr ? parseInt(qtyStr, 10) || 1 : 1,
+        notes: null,
+      });
+    }
+  }
+
+  if (displays.length > 0) {
+    console.log(`[RFP v2] Markdown table extraction: ${displays.length} displays found`);
+  }
+  return displays;
+}
+
+// ---------------------------------------------------------------------------
 // Parse feet/inches strings to decimal
 // ---------------------------------------------------------------------------
 
@@ -1193,7 +1289,9 @@ export async function extractWithGLM5(
         },
       };
 
-      const annotationPrompt = `Extract EVERY SINGLE item from this RFP/bid document. Miss nothing. Every section header with specs underneath is an item.
+      const annotationPrompt = `Extract EVERY SINGLE item from this RFP/bid document. Miss nothing.
+
+CRITICAL: EVERY ROW in EVERY TABLE is a separate display entry. Do NOT group, summarize, or merge table rows. If a table has 47 rows, you return 47 items. Every section header with specs underneath is also an item.
 
 You MUST extract ALL of the following categories — do NOT skip any:
 1. LED DISPLAYS: videoboards, ribbon boards, fascia displays, marquees, digital signage
@@ -1203,7 +1301,7 @@ You MUST extract ALL of the following categories — do NOT skip any:
 5. CONTROL SYSTEMS: display control systems, content playback systems, CMS, ad control systems, audio systems
 
 Rules:
-- EVERY section header in the document is a separate item. If the document has 10 sections, you return 10 items.
+- EVERY TABLE ROW is a separate item. Even if two rows have the same name (e.g. "Elev Lobby" appearing twice), each row is a SEPARATE entry — they are different physical displays.
 - Each unique item is ONE entry with the correct quantity. Do NOT split back-to-back pairs into separate rows.
 - "2 displays located back-to-back" = 1 entry with quantity: 2
 - "4 locations, 2 in each locker room" = 1 entry with quantity: 8 (4 locations x 2 each)
@@ -1236,10 +1334,68 @@ Rules:
 
         if (annotation) {
           const parsed = typeof annotation === "string" ? JSON.parse(annotation) : annotation;
-          const allDisplays = parsed.displays || [];
+          let allDisplays = parsed.displays || [];
           const { nonLedRequirements } = separateAiByCategory(allDisplays);
 
           console.log(`[RFP v2] Mistral OCR Annotations: ${allDisplays.length} items extracted directly from PDF`);
+
+          // ── Supplementary pass: run regex on OCR page text ──
+          // Mistral OCR annotation may miss table rows in dense AV schedules.
+          // The OCR response also includes page markdown — run regex + markdown
+          // table parsing on that text. If it finds more items, use the larger set.
+          const ocrPages: string[] = (ocrData.pages || []).map((p: any) => p.markdown || "");
+          const ocrFullText = ocrPages.join("\n\n");
+          if (ocrFullText.length > 100) {
+            const mdTableDisplays = extractDisplaysFromMarkdownTables(ocrFullText);
+            const regexDisplays = extractDisplaysViaRegex(ocrFullText);
+            const bulletDisplays = extractBulletItems(ocrFullText);
+            const allRegex = [...mdTableDisplays, ...regexDisplays, ...bulletDisplays];
+            const { ledItems: regexLed } = separateByCategory(allRegex);
+
+            if (regexLed.length > allDisplays.length) {
+              console.log(`[RFP v2] Regex supplement found ${regexLed.length} LED items vs ${allDisplays.length} from annotation — using regex results`);
+              const regexSpecs = regexToSpecs(regexLed);
+              options?.onProgress?.(`Found ${regexLed.length} displays via text analysis (supplemented)`);
+
+              const project = parsed.project || {};
+              const docRequirements = (parsed.requirements || []).map((r: any) => ({
+                description: r.description || "",
+                category: r.category || "technical",
+                status: r.status || "info",
+                date: null,
+                sourcePages: [],
+                rawText: r.description || "",
+              }));
+              // Non-LED items from regex go to requirements too
+              const { nonLedRequirements: regexNonLed } = separateByCategory(allRegex);
+              const regexReqs = regexNonLed.map((r: any) => ({
+                description: r.description || "",
+                category: r.category || "technical",
+                status: r.status || "info",
+                date: null,
+                sourcePages: [],
+                rawText: r.rawText || r.description || "",
+              }));
+
+              return {
+                screens: regexSpecs,
+                project: {
+                  clientName: project.client || null,
+                  projectName: project.name || null,
+                  venue: project.venue || null,
+                  location: project.address || null,
+                  isOutdoor: false,
+                  isUnionLabor: false,
+                  bondRequired: false,
+                  specialRequirements: [],
+                  schedulePhases: [],
+                },
+                requirements: [...docRequirements, ...regexReqs, ...nonLedRequirements],
+                source: "glm5",
+              };
+            }
+          }
+
           options?.onProgress?.(`Found ${allDisplays.length} items via document analysis`);
 
           const project = parsed.project || {};
