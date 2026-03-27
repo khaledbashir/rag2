@@ -8,6 +8,8 @@ import UploadZone, { type PipelineEvent } from "./_components/UploadZone";
 import PipelineCheckpoint from "./_components/PipelineCheckpoint";
 import { buildRfpWorkbook } from "./_components/rfpWorkbookBuilder";
 import { LED_COST_PER_SQFT_BY_PITCH } from "@/services/rfp/productCatalog";
+import { packCabinetsAndModules } from "@/services/module-matching";
+import { LED_MODULES } from "@/data/catalogs/led-products";
 import type { PricingDocument } from "@/types/pricing";
 import dynamic from "next/dynamic";
 
@@ -591,6 +593,23 @@ export default function RfpAnalyzerClient() {
   // Product dropdown handler (must be defined before workbookData useMemo)
   // ========================================================================
 
+  // Find the LED_MODULES key for a given product by matching name or pitch
+  function findModuleKeyForProduct(productName: string, pitch: number): string | null {
+    const upperName = productName.toUpperCase();
+    for (const key of Object.keys(LED_MODULES)) {
+      if (key === "DEFAULT") continue;
+      // NX product keys (e.g., "NX-R25-MIP") appear in product names
+      if (upperName.includes(key.replace(/-/g, " ")) || upperName.includes(key)) return key;
+    }
+    // Fallback: match by pitch + has cabinet data
+    for (const [key, mod] of Object.entries(LED_MODULES)) {
+      if (key === "DEFAULT") continue;
+      if (!mod.cabinetWidthFt) continue;
+      if (Math.abs(mod.pitch - pitch) < 0.5) return key;
+    }
+    return null;
+  }
+
   const handleProductSelect = useCallback((displayName: string, productId: string) => {
     const product = availableProducts.find((p) => p.id === productId);
     if (!product) return;
@@ -631,20 +650,42 @@ export default function RfpAnalyzerClient() {
     let activeWidthFt: number, activeHeightFt: number;
     let activeWidthMm: number, activeHeightMm: number;
     let totalCabs: number;
+    let cabinetCount: number | null = null;
+    let moduleCount: number | null = null;
+    let blendedPriceSqFt: number | null = null;
 
     if (isLedPanel) {
-      // Recalculate active dimensions using new product's cabinet size
-      const cabWidthMm = product.widthMm!;
-      const cabHeightMm = product.heightMm!;
-      const requestedWidthMm = (currentSpec?.widthFt || 0) * 304.8;
-      const requestedHeightMm = (currentSpec?.heightFt || 0) * 304.8;
-      const cols = requestedWidthMm > 0 ? Math.max(1, Math.round(requestedWidthMm / cabWidthMm)) : 1;
-      const rows = requestedHeightMm > 0 ? Math.max(1, Math.round(requestedHeightMm / cabHeightMm)) : 1;
-      activeWidthMm = cols * cabWidthMm;
-      activeHeightMm = rows * cabHeightMm;
-      activeWidthFt = activeWidthMm / 304.8;
-      activeHeightFt = activeHeightMm / 304.8;
-      totalCabs = cols * rows;
+      // Try cabinet-first packing from LED_MODULES catalog (80/20 pricing)
+      const moduleKey = findModuleKeyForProduct(product.name, newPitch);
+      const packResult = moduleKey
+        ? packCabinetsAndModules(currentSpec?.widthFt || 0, currentSpec?.heightFt || 0, moduleKey)
+        : null;
+
+      if (packResult) {
+        // Cabinet-first packing succeeded — use its dimensions and pricing
+        activeWidthFt = packResult.actualWidthFt;
+        activeHeightFt = packResult.actualHeightFt;
+        activeWidthMm = activeWidthFt * 304.8;
+        activeHeightMm = activeHeightFt * 304.8;
+        totalCabs = packResult.totalCabinets;
+        cabinetCount = packResult.totalCabinets;
+        moduleCount = packResult.totalFillModules;
+        blendedPriceSqFt = packResult.blendedPricePerSqft;
+        console.log(`[ProductSelect] ${displayName} → ${product.name}: cabinet packing: ${packResult.cabinetsW}×${packResult.cabinetsH} cabs + ${packResult.totalFillModules} modules, ${packResult.fitPercentage}% fit, $${packResult.blendedPricePerSqft}/sqft`);
+      } else {
+        // No cabinet data — fall back to simple cabinet-grid snapping
+        const cabWidthMm = product.widthMm!;
+        const cabHeightMm = product.heightMm!;
+        const requestedWidthMm = (currentSpec?.widthFt || 0) * 304.8;
+        const requestedHeightMm = (currentSpec?.heightFt || 0) * 304.8;
+        const cols = requestedWidthMm > 0 ? Math.max(1, Math.floor(requestedWidthMm / cabWidthMm)) : 1;
+        const rows = requestedHeightMm > 0 ? Math.max(1, Math.floor(requestedHeightMm / cabHeightMm)) : 1;
+        activeWidthMm = cols * cabWidthMm;
+        activeHeightMm = rows * cabHeightMm;
+        activeWidthFt = activeWidthMm / 304.8;
+        activeHeightFt = activeHeightMm / 304.8;
+        totalCabs = cols * rows;
+      }
     } else {
       // Non-LED product (OES, scoring, CMS, TV) — keep original dimensions
       activeWidthFt = currentSpec?.widthFt || 0;
@@ -676,6 +717,9 @@ export default function RfpAnalyzerClient() {
             brightnessNits: productNits || s.brightnessNits,
             weightLbs: totalWeightLbs || s.weightLbs,
             maxPowerW: totalPowerW || s.maxPowerW,
+            cabinetCount,
+            moduleCount,
+            blendedPriceSqFt,
             selectedProductId: productId,
             selectedProductName: product.name,
           }
