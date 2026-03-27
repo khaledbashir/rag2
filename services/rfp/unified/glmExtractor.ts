@@ -873,6 +873,39 @@ function extractProjectInfo(fullText: string): ExtractedProjectInfo {
 
 const LED_CATEGORIES = new Set(["led_display"]);
 
+/**
+ * Equipment keywords — items matching these are infrastructure/accessories, NOT LED displays.
+ * Catches mis-classified items that the AI labels as "led_display" but aren't.
+ */
+const EQUIPMENT_EXCLUDE_PATTERNS = [
+  /\bgame\s*clock/i,
+  /\bplay\s*clock/i,
+  /\bshot\s*clock/i,
+  /\bdelay\s*of\s*game/i,
+  /\blocker\s*room\s*clock/i,
+  /\bwarm.?up\s*clock/i,
+  /\b(?:scoring|score)\s*(?:controller|system|keeper)/i,
+  /\bcontrol\s*operator/i,
+  /\bcontrol\s*paddle/i,
+  /\bheadend\s*rack/i,
+  /\brack\s*mount/i,
+  /\bspare\s*part/i,
+  /\bcontent\s*(?:management|playback)\s*(?:system|server)/i,
+  /\bad\s*control\s*system/i,
+  /\baudio\s*system/i,
+  /\bsignal\s*distribut/i,
+  /\bvideo\s*processor\b/i,
+  /\bmatrix\s*switch/i,
+  /\bpower\s*distribut/i,
+  /\bups\s*(?:battery|system)/i,
+  /\bcabling\s*(?:package|system)/i,
+];
+
+/** Returns true if an item name matches infrastructure/equipment patterns */
+function isEquipmentItem(name: string): boolean {
+  return EQUIPMENT_EXCLUDE_PATTERNS.some((pattern) => pattern.test(name));
+}
+
 /** Split items into LED screens and non-LED requirements */
 function separateByCategory(items: RegexDisplay[]): {
   ledItems: RegexDisplay[];
@@ -882,7 +915,9 @@ function separateByCategory(items: RegexDisplay[]): {
   const nonLedRequirements: any[] = [];
 
   for (const item of items) {
-    if (LED_CATEGORIES.has(item.category)) {
+    const isCategoryLed = LED_CATEGORIES.has(item.category);
+    const isEquipment = isEquipmentItem(item.name);
+    if (isCategoryLed && !isEquipment) {
       ledItems.push(item);
     } else {
       // Convert clocks, scoreboards, control systems, etc. to requirements
@@ -915,9 +950,16 @@ function separateAiByCategory(displays: any[]): {
 
   for (const d of displays) {
     const cat = d.category || "led_display";
-    if (LED_CATEGORIES.has(cat)) {
+    const itemName = d.name || d.location || "";
+    // Two-pass filter: category check + equipment keyword safety net
+    const isCategoryLed = LED_CATEGORIES.has(cat);
+    const isEquipment = isEquipmentItem(itemName);
+    if (isCategoryLed && !isEquipment) {
       ledDisplays.push(d);
     } else {
+      if (isEquipment && isCategoryLed) {
+        console.log(`[RFP v2] Equipment filter: "${itemName}" was categorized as led_display but matches equipment pattern — moving to requirements`);
+      }
       const name = d.name || d.location || "Unknown Item";
       const label = `${name}${d.quantity > 1 ? ` (qty: ${d.quantity})` : ""}`;
       nonLedRequirements.push({
@@ -1334,10 +1376,10 @@ Rules:
 
         if (annotation) {
           const parsed = typeof annotation === "string" ? JSON.parse(annotation) : annotation;
-          let allDisplays = parsed.displays || [];
-          const { nonLedRequirements } = separateAiByCategory(allDisplays);
+          const allDisplays = parsed.displays || [];
+          const { ledDisplays, nonLedRequirements } = separateAiByCategory(allDisplays);
 
-          console.log(`[RFP v2] Mistral OCR Annotations: ${allDisplays.length} items extracted directly from PDF`);
+          console.log(`[RFP v2] Mistral OCR Annotations: ${allDisplays.length} total items, ${ledDisplays.length} LED displays, ${nonLedRequirements.length} non-LED → requirements`);
 
           // ── Supplementary pass: run regex on OCR page text ──
           // Mistral OCR annotation may miss table rows in dense AV schedules.
@@ -1352,8 +1394,8 @@ Rules:
             const allRegex = [...mdTableDisplays, ...regexDisplays, ...bulletDisplays];
             const { ledItems: regexLed } = separateByCategory(allRegex);
 
-            if (regexLed.length > allDisplays.length) {
-              console.log(`[RFP v2] Regex supplement found ${regexLed.length} LED items vs ${allDisplays.length} from annotation — using regex results`);
+            if (regexLed.length > ledDisplays.length) {
+              console.log(`[RFP v2] Regex supplement found ${regexLed.length} LED items vs ${ledDisplays.length} from annotation — using regex results`);
               const regexSpecs = regexToSpecs(regexLed);
               options?.onProgress?.(`Found ${regexLed.length} displays via text analysis (supplemented)`);
 
@@ -1396,7 +1438,7 @@ Rules:
             }
           }
 
-          options?.onProgress?.(`Found ${allDisplays.length} items via document analysis`);
+          options?.onProgress?.(`Found ${ledDisplays.length} LED displays via document analysis`);
 
           const project = parsed.project || {};
           const docRequirements = (parsed.requirements || []).map((r: any) => ({
@@ -1409,7 +1451,7 @@ Rules:
           }));
 
           return {
-            screens: aiToSpecs(allDisplays),
+            screens: aiToSpecs(ledDisplays),
             project: {
               clientName: project.client || null,
               projectName: project.name || null,
@@ -1508,10 +1550,10 @@ Rules:
         if (start >= 0 && end > start) {
           const parsed = JSON.parse(content.substring(start, end + 1));
           const allDisplays = parsed.displays || [];
-          const { nonLedRequirements } = separateAiByCategory(allDisplays);
+          const { ledDisplays, nonLedRequirements } = separateAiByCategory(allDisplays);
 
-          console.log(`[RFP v2] Mistral QnA: ${allDisplays.length} items`);
-          options?.onProgress?.(`Found ${allDisplays.length} items via document QnA`);
+          console.log(`[RFP v2] Mistral QnA: ${allDisplays.length} total, ${ledDisplays.length} LED displays`);
+          options?.onProgress?.(`Found ${ledDisplays.length} LED displays via document QnA`);
 
           const project = parsed.project || {};
           const qnaRequirements = (parsed.requirements || []).map((r: any) => ({
@@ -1524,7 +1566,7 @@ Rules:
           }));
 
           return {
-            screens: aiToSpecs(allDisplays),
+            screens: aiToSpecs(ledDisplays),
             project: {
               clientName: project.client || null,
               projectName: project.name || null,
@@ -1584,9 +1626,9 @@ Rules:
   try {
     const aiResult = await extractDisplaysViaAI(pdfPath, filtered);
     const allDisplays = aiResult.displays || [];
-    const { nonLedRequirements } = separateAiByCategory(allDisplays);
-    console.log(`[RFP v2] AI extraction: ${allDisplays.length} total items`);
-    options?.onProgress?.(`Found ${allDisplays.length} items via AI extraction`);
+    const { ledDisplays, nonLedRequirements } = separateAiByCategory(allDisplays);
+    console.log(`[RFP v2] AI extraction: ${allDisplays.length} total, ${ledDisplays.length} LED displays`);
+    options?.onProgress?.(`Found ${ledDisplays.length} LED displays via AI extraction`);
 
     const project = aiResult.project || {};
     const aiRequirements = (aiResult.requirements || []).map((r: any) => ({
@@ -1599,7 +1641,7 @@ Rules:
     }));
 
     return {
-      screens: aiToSpecs(allDisplays),
+      screens: aiToSpecs(ledDisplays),
       project: {
         clientName: project.client || null,
         projectName: project.name || null,
