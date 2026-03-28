@@ -1440,12 +1440,23 @@ export async function extractWithGLM5(
   if (MERCURY_API_KEY) {
     options?.onProgress?.("Analyzing document with Mercury 2...");
     try {
-      const { fullText, pages } = await extractFullText(pdfPath);
-      const totalPages = pages.length;
-      console.log(`[RFP v2] Mercury: extracted ${totalPages} pages, ${(fullText.length / 1024).toFixed(1)}KB`);
+      // Use pdftotext -layout directly for Mercury. NOT Mistral OCR.
+      // pdftotext preserves whitespace-aligned table columns exactly as-is.
+      // Mistral OCR converts to markdown which can lose table rows at page breaks.
+      // Tested: pdftotext → Mercury = 25/25, Mistral OCR → Mercury = 24/25.
+      options?.onProgress?.("Extracting text from PDF...");
+      let fullText: string;
+      try {
+        const { stdout } = await execFileAsync("pdftotext", ["-layout", pdfPath, "-"], { timeout: 30_000 });
+        fullText = stdout;
+      } catch {
+        // If pdftotext fails, fall back to extractFullText (Mistral OCR)
+        const extracted = await extractFullText(pdfPath);
+        fullText = extracted.fullText;
+      }
+      const totalPages = fullText.split("\f").filter(p => p.trim()).length;
+      console.log(`[RFP v2] Mercury: pdftotext ${totalPages} pages, ${(fullText.length / 1024).toFixed(1)}KB`);
 
-      // Mercury is fast — just send the full text (up to 128KB). No need to slice by headers.
-      // Header-slicing was causing tables to get chopped (8KB window missed displays at the end).
       const textToSend = fullText.length > 128000 ? fullText.substring(0, 128000) : fullText;
       options?.onProgress?.(`Sending ${(textToSend.length / 1024).toFixed(0)}KB to Mercury 2...`);
 
