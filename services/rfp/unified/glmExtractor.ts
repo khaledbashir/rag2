@@ -1484,8 +1484,57 @@ Rules:
               rawText: r.description || "",
             }));
 
+            let mimoScreens = aiToSpecs(ledDisplays);
+
+            // Validation
+            options?.onProgress?.("Validating MiMo extraction...");
+            const mimoSourceText = mimoText.substring(0, 50000);
+            const mimoTableHeaders = detectTableHeaders(mimoSourceText);
+            const mimoValidation = validateExtraction(mimoScreens, mimoSourceText, null, mimoTableHeaders);
+            for (const check of mimoValidation.checks) {
+              const icon = check.passed ? "PASS" : check.severity === "block" ? "BLOCK" : "REVIEW";
+              console.log(`[RFP v2] [MiMo] Validation [${icon}] ${check.name}: ${check.message}`);
+            }
+            options?.onProgress?.(`Validation: ${mimoValidation.summary}`);
+
+            const mimoWarnings: string[] = [];
+            for (const check of mimoValidation.checks) {
+              if (!check.passed) mimoWarnings.push(`[${check.severity.toUpperCase()}] ${check.name}: ${check.message}`);
+            }
+
+            // Extract QA
+            try {
+              const qa = await runExtractQA(mimoScreens, mimoSourceText, pdfPath.split("/").pop() || "document.pdf", options?.onProgress);
+              if (qa.changes.length > 0) {
+                mimoScreens = qa.correctedDisplays as ExtractedLEDSpec[];
+                for (const change of qa.changes) mimoWarnings.push(`[QA] ${change}`);
+              }
+              if (qa.verified) options?.onProgress?.(`Extract QA: ${qa.message}`);
+            } catch (qaErr: any) {
+              console.error(`[RFP v2] MiMo QA failed:`, qaErr.message);
+              mimoWarnings.push(`Extract QA failed: ${qaErr.message}`);
+            }
+
+            // AI product matching
+            try {
+              const aiMatches = await matchProductsWithAI(mimoScreens, options?.onProgress);
+              for (const match of aiMatches) {
+                const spec = mimoScreens.find(s => s.name === match.displayName);
+                if (spec && match.productId) {
+                  spec.selectedProductId = match.productId;
+                  spec.selectedProductName = match.productName || undefined;
+                  spec.notes = spec.notes
+                    ? `${spec.notes} | AI match: ${match.matchReason}`
+                    : `AI match: ${match.matchReason}`;
+                }
+              }
+            } catch (matchErr: any) {
+              console.error(`[RFP v2] MiMo product matching failed:`, matchErr.message);
+              mimoWarnings.push(`AI product matching failed: ${matchErr.message}`);
+            }
+
             return {
-              screens: aiToSpecs(ledDisplays),
+              screens: mimoScreens,
               project: {
                 clientName: project.client || null,
                 projectName: project.name || null,
@@ -1498,6 +1547,8 @@ Rules:
                 schedulePhases: [],
               },
               requirements: [...mimoRequirements, ...nonLedRequirements],
+              warnings: mimoWarnings.length > 0 ? mimoWarnings : undefined,
+              validation: mimoValidation,
               source: "glm5",
             };
           }
