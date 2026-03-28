@@ -1508,8 +1508,8 @@ Rules:
           const allDisplays = parsed.displays || [];
           const { ledDisplays, nonLedRequirements } = separateAiByCategory(allDisplays);
 
-          console.log(`[RFP v2] Mercury: ${allDisplays.length} total, ${ledDisplays.length} LED displays`);
-          options?.onProgress?.(`Mercury 2 found ${ledDisplays.length} LED displays`);
+          console.log(`[RFP v2] GPT-5.4-mini: ${allDisplays.length} total, ${ledDisplays.length} LED displays`);
+          options?.onProgress?.(`GPT-5.4-mini found ${ledDisplays.length} LED displays`);
 
           const project = parsed.project || {};
           const mercuryRequirements = (parsed.requirements || []).map((r: any) => ({
