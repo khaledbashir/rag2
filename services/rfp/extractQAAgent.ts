@@ -11,10 +11,13 @@
 import type { ExtractedLEDSpec } from "./unified/types";
 
 // QA uses a DIFFERENT model than extraction — different architecture catches different errors
-// GLM-5 Turbo via Z.AI: fast (53s), free, completely different from Gemini
+// Primary: GLM-5 Turbo via Z.AI. Fallback: MiMo-V2-Omni.
 const QA_API_KEY = process.env.Z_AI_API_KEY || "";
 const QA_MODEL = process.env.QA_MODEL || "glm-5-turbo";
 const QA_BASE_URL = process.env.Z_AI_BASE_URL || "https://api.z.ai/api/coding/paas/v4";
+const MIMO_QA_KEY = process.env.MIMO_API_KEY || "";
+const MIMO_QA_MODEL = process.env.MIMO_MODEL || "mimo-v2-omni";
+const MIMO_QA_BASE = process.env.MIMO_API_BASE || "https://api.xiaomimimo.com/v1";
 
 // ── PHASE 1: Scout — find LED pages in large documents ──
 
@@ -143,6 +146,8 @@ Return ONLY a JSON object:
 If everything is correct, return:
 {"corrections": [], "missing": [], "duplicates": [], "verified": true, "totalExpected": 47, "message": "All 47 displays verified against source. Ready for Natalia."}`;
 
+  const QA_TIMEOUT_MS = 120_000; // 2 minutes max — don't let QA hang the pipeline
+
   try {
     const res = await fetch(`${QA_BASE_URL}/chat/completions`, {
       method: "POST",
@@ -156,6 +161,7 @@ If everything is correct, return:
         temperature: 0,
         max_tokens: 8192,
       }),
+      signal: AbortSignal.timeout(QA_TIMEOUT_MS),
     });
 
     if (!res.ok) {
