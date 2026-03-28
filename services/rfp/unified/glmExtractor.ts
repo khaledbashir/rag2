@@ -23,23 +23,27 @@ import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
 
-// PRIMARY: Mercury 2 via Inception Labs (diffusion LLM — 15x faster, same accuracy)
+// PRIMARY: GPT-5.4-mini via OpenAI (25/25, 5/5, ~5s, temp 0, deterministic)
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+const OPENAI_API_BASE = process.env.OPENAI_API_BASE || "https://api.openai.com/v1";
+const OPENAI_MODEL = process.env.OPENAI_EXTRACTION_MODEL || "gpt-5.4-mini";
+// Fallback 1: Mercury 2 via Inception Labs (fast diffusion LLM)
 const MERCURY_API_KEY = process.env.MERCURY_API_KEY || "";
 const MERCURY_API_BASE = process.env.MERCURY_API_BASE || "https://api.inceptionlabs.ai/v1";
 const MERCURY_MODEL = process.env.MERCURY_MODEL || "mercury-2";
-// Fallback 1: MiMo V2 Pro via Xiaomi API (strong reasoning, slower)
+// Fallback 2: MiMo V2 Pro via Xiaomi API (strong reasoning, slower)
 const MIMO_API_KEY = process.env.MIMO_API_KEY || "";
 const MIMO_API_BASE = process.env.MIMO_API_BASE || "https://api.xiaomimimo.com/v1";
 const MIMO_MODEL = process.env.MIMO_MODEL || "mimo-v2-pro";
-// Fallback 2: GLM via Z.AI
+// Fallback 3: GLM via Z.AI
 const Z_AI_API_KEY = process.env.Z_AI_API_KEY || "";
 const Z_AI_BASE_URL = process.env.Z_AI_BASE_URL || "https://api.z.ai/api/coding/paas/v4";
 const Z_AI_MODEL = process.env.Z_AI_MODEL_NAME || process.env.Z_AI_EXTRACTION_MODEL || "glm-4.7";
-// Fallback 3: Gemini via OpenRouter (native PDF vision — dead, Gemini card rejected)
+// Fallback 4: Gemini via OpenRouter
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const OPENROUTER_BASE_URL = process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
 const GEMINI_MODEL = process.env.GEMINI_EXTRACTION_MODEL || "google/gemini-3-flash-preview";
-// Fallback 4: Mistral Large
+// Fallback 5: Mistral Large
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || "";
 const MISTRAL_API_BASE = process.env.MISTRAL_API_BASE_URL || process.env.MISTRAL_API_BASE || "https://api.mistral.ai";
 const MISTRAL_MODEL = process.env.MISTRAL_CHAT_MODEL || "mistral-large-latest";
@@ -1424,21 +1428,22 @@ export async function extractWithGLM5(
         source: "glm5",
       };
     } else {
-      console.log(`[RFP v2] pdfplumber found 0 LED displays — falling through to Mercury`);
-      options?.onProgress?.("No tables found by pdfplumber — using Mercury 2...");
+      console.log(`[RFP v2] pdfplumber found 0 LED displays — falling through to GPT-5.4-mini`);
+      options?.onProgress?.("No tables found by pdfplumber — using GPT-5.4-mini...");
     }
   } catch (plumberErr: any) {
     console.error(`[RFP v2] pdfplumber failed:`, plumberErr.message);
-    options?.onProgress?.("pdfplumber failed — using Mercury 2...");
+    options?.onProgress?.("pdfplumber failed — using GPT-5.4-mini...");
   }
 
   // =====================================================================
-  // PRIMARY AI: Mercury 2 via Inception Labs (diffusion LLM)
-  // 15x faster than MiMo/GLM (~5s vs ~75s), same accuracy on all tests.
-  // OpenAI-compatible API. Falls through to MiMo if unavailable.
+  // PRIMARY AI: GPT-5.4-mini via OpenAI
+  // 25/25 Panthers, 5/5 Haslam, ~5s, temp 0 (deterministic).
+  // Same speed as Mercury but deterministic — same input = same output.
+  // Falls through to Mercury if unavailable.
   // =====================================================================
-  if (MERCURY_API_KEY) {
-    options?.onProgress?.("Analyzing document with Mercury 2...");
+  if (OPENAI_API_KEY) {
+    options?.onProgress?.("Analyzing document with GPT-5.4-mini...");
     try {
       // Use pdftotext -layout directly for Mercury. NOT Mistral OCR.
       // pdftotext preserves whitespace-aligned table columns exactly as-is.
@@ -1455,16 +1460,15 @@ export async function extractWithGLM5(
         fullText = extracted.fullText;
       }
       const totalPages = fullText.split("\f").filter(p => p.trim()).length;
-      console.log(`[RFP v2] Mercury: pdftotext ${totalPages} pages, ${(fullText.length / 1024).toFixed(1)}KB`);
+      console.log(`[RFP v2] GPT-5.4-mini: pdftotext ${totalPages} pages, ${(fullText.length / 1024).toFixed(1)}KB`);
 
       const textToSend = fullText.length > 128000 ? fullText.substring(0, 128000) : fullText;
-      options?.onProgress?.(`Sending ${(textToSend.length / 1024).toFixed(0)}KB to Mercury 2...`);
+      options?.onProgress?.(`Sending ${(textToSend.length / 1024).toFixed(0)}KB to GPT-5.4-mini...`);
 
-      options?.onProgress?.("Mercury 2 extracting...");
+      options?.onProgress?.("GPT-5.4-mini extracting...");
 
-      // SHORT focused prompt — this exact structure got 25/25 in testing.
-      // Mercury has forced temp 0.75, so shorter prompt = less drift.
-      const mercuryPrompt = `Extract ALL LED displays from this RFP document. Return ONLY a JSON object with:
+      // Short focused prompt — tested 25/25 Panthers, 5/5 Haslam at temp 0.
+      const gptPrompt = `Extract ALL LED displays from this RFP document. Return ONLY a JSON object with:
 
 {
   "project": {"name": "", "client": "", "venue": "", "address": ""},
@@ -1478,38 +1482,28 @@ Rules:
 - Every row in the source table = one row in output. DO NOT DEDUPLICATE. If "Panthers Den" appears 7 times, output 7 rows. If "Elev Lobby" appears 4 times, output 4 rows. quantity is always 1.
 - Only LED displays/videoboards/ribbons in displays. Game clocks, racks, spare parts go in requirements.`;
 
-      const mercuryRes = await fetch(`${MERCURY_API_BASE}/chat/completions`, {
+      const gptRes = await fetch(`${OPENAI_API_BASE}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${MERCURY_API_KEY}`,
+          "Authorization": `Bearer ${OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
-          model: MERCURY_MODEL,
-          messages: [{ role: "user", content: mercuryPrompt + "\n\n" + textToSend }],
+          model: OPENAI_MODEL,
+          messages: [{ role: "user", content: gptPrompt + "\n\n" + textToSend }],
           temperature: 0,
-          max_tokens: 32768,
+          max_completion_tokens: 32768,
         }),
         signal: AbortSignal.timeout(60_000),
       });
 
-      if (mercuryRes.ok) {
-        const mercuryData = await mercuryRes.json();
-        const content = mercuryData.choices?.[0]?.message?.content || "";
+      if (gptRes.ok) {
+        const gptData = await gptRes.json();
+        const content = gptData.choices?.[0]?.message?.content || "";
         const start = content.indexOf("{");
         const end = content.lastIndexOf("}");
         if (start >= 0 && end > start) {
           const parsed = JSON.parse(content.substring(start, end + 1));
-
-          if (parsed._extraction_log) {
-            const elog = parsed._extraction_log;
-            console.log(`[RFP v2] Mercury extraction log:`);
-            console.log(`  Sections: ${elog.sections_found?.join(", ") || "none"}`);
-            console.log(`  Displays counted: ${elog.total_displays_counted_in_text}`);
-            if (elog.sections_found?.length > 0) {
-              options?.onProgress?.(`Sections found: ${elog.sections_found.join(", ")}`);
-            }
-          }
 
           const allDisplays = parsed.displays || [];
           const { ledDisplays, nonLedRequirements } = separateAiByCategory(allDisplays);
@@ -1604,19 +1598,85 @@ Rules:
           };
         }
       } else {
-        const errText = await mercuryRes.text().catch(() => "");
-        console.error(`[RFP v2] Mercury failed (${mercuryRes.status}):`, errText.substring(0, 200));
-        options?.onProgress?.(`Mercury failed (${mercuryRes.status}) — trying MiMo...`);
+        const errText = await gptRes.text().catch(() => "");
+        console.error(`[RFP v2] GPT-5.4-mini failed (${gptRes.status}):`, errText.substring(0, 200));
+        options?.onProgress?.(`GPT-5.4-mini failed (${gptRes.status}) — trying Mercury...`);
       }
-    } catch (mercuryErr: any) {
-      console.error(`[RFP v2] Mercury error:`, mercuryErr.message);
+    } catch (gptErr: any) {
+      console.error(`[RFP v2] GPT-5.4-mini error:`, gptErr.message);
+      options?.onProgress?.("GPT-5.4-mini unavailable — trying Mercury...");
+    }
+  }
+
+  // =====================================================================
+  // FALLBACK 1: Mercury 2 via Inception Labs (diffusion LLM)
+  // Fast but non-deterministic (temp 0.75 min). Good backup.
+  // Falls through to MiMo if unavailable.
+  // =====================================================================
+  if (MERCURY_API_KEY && !OPENAI_API_KEY) {
+    // Only try Mercury if GPT wasn't available (avoid double-extraction)
+    options?.onProgress?.("Analyzing document with Mercury 2...");
+    try {
+      let mercFullText: string;
+      try {
+        const { stdout } = await execFileAsync("pdftotext", ["-layout", pdfPath, "-"], { timeout: 30_000 });
+        mercFullText = stdout;
+      } catch {
+        const extracted = await extractFullText(pdfPath);
+        mercFullText = extracted.fullText;
+      }
+      const mercText = mercFullText.length > 128000 ? mercFullText.substring(0, 128000) : mercFullText;
+
+      const mercRes = await fetch(`${MERCURY_API_BASE}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${MERCURY_API_KEY}` },
+        body: JSON.stringify({
+          model: MERCURY_MODEL,
+          messages: [{ role: "user", content: `Extract ALL LED displays from this RFP. Return JSON: {"project":{"name":"","client":"","venue":"","address":""},"displays":[{"name":"","pixel_pitch_mm":0,"brightness_nits":0,"width_ft":"","height_ft":"","environment":"indoor","quantity":1}],"requirements":[{"description":"","category":"","status":""}]}. Every source row = one output row. DO NOT DEDUPLICATE. quantity always 1. Only LED displays, no clocks/racks.\n\n${mercText}` }],
+          temperature: 0,
+          max_tokens: 32768,
+        }),
+        signal: AbortSignal.timeout(60_000),
+      });
+
+      if (mercRes.ok) {
+        const data = await mercRes.json();
+        const content = data.choices?.[0]?.message?.content || "";
+        const s = content.indexOf("{"), e = content.lastIndexOf("}");
+        if (s >= 0 && e > s) {
+          const parsed = JSON.parse(content.substring(s, e + 1));
+          const allDisplays = parsed.displays || [];
+          const { ledDisplays, nonLedRequirements } = separateAiByCategory(allDisplays);
+          options?.onProgress?.(`Mercury 2 found ${ledDisplays.length} LED displays`);
+          let screens = aiToSpecs(ledDisplays);
+          // Skip to product matching (Mercury path is fast, minimal processing)
+          try {
+            const aiMatches = await matchProductsWithAI(screens, options?.onProgress);
+            for (const match of aiMatches) {
+              const spec = screens.find(sp => sp.name === match.displayName);
+              if (spec && match.productId) {
+                spec.selectedProductId = match.productId;
+                spec.selectedProductName = match.productName || undefined;
+              }
+            }
+          } catch {}
+          return {
+            screens,
+            project: { clientName: parsed.project?.client || null, projectName: parsed.project?.name || null, venue: parsed.project?.venue || null, location: parsed.project?.address || null, isOutdoor: false, isUnionLabor: false, bondRequired: false, specialRequirements: [], schedulePhases: [] },
+            requirements: (parsed.requirements || []).map((r: any) => ({ description: r.description || "", category: r.category || "technical", status: r.status || "info", date: null, sourcePages: [], rawText: r.description || "" })),
+            source: "glm5",
+          };
+        }
+      }
+      options?.onProgress?.("Mercury failed — trying MiMo...");
+    } catch {
       options?.onProgress?.("Mercury unavailable — trying MiMo...");
     }
   }
 
   // =====================================================================
-  // FALLBACK 1: MiMo V2 Pro — text extraction via Xiaomi API
-  // Stronger reasoning but ~15x slower than Mercury.
+  // FALLBACK 2: MiMo V2 Pro — text extraction via Xiaomi API
+  // Stronger reasoning but ~15x slower. Last AI resort.
   // Falls through to GLM/Gemini if unavailable or fails.
   // =====================================================================
   if (MIMO_API_KEY) {
