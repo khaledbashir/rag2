@@ -1541,12 +1541,27 @@ CRITICAL — DEDUPLICATION: Each unique display must appear ONLY ONCE in the out
       });
 
       if (mimoRes.ok) {
-          // Stream response — forward reasoning/thinking tokens as progress
+          // Stream response — buffer reasoning tokens into complete sentences
           let content = "";
           let lastThought = "";
+          let reasoningBuffer = ""; // Buffer fragments until we have a complete thought
           const reader = mimoRes.body?.getReader();
           const decoder = new TextDecoder();
           let sseBuffer = "";
+
+          const flushReasoning = () => {
+            if (!reasoningBuffer.trim()) return;
+            // Split by sentence boundaries and forward complete thoughts
+            const sentences = reasoningBuffer.split(/(?<=[.!?:])[\s\n]+|(?:\n)/);
+            for (const sentence of sentences) {
+              const cleaned = sentence.replace(/^\*+|\*+$/g, "").replace(/^[-–—]\s*/, "").trim();
+              if (cleaned && cleaned !== lastThought && cleaned.length > 15) {
+                lastThought = cleaned;
+                options?.onProgress?.(cleaned);
+              }
+            }
+            reasoningBuffer = "";
+          };
 
           if (reader) {
             while (true) {
@@ -1567,12 +1582,10 @@ CRITICAL — DEDUPLICATION: Each unique display must appear ONLY ONCE in the out
                   // Reasoning/thinking tokens (DeepSeek/MiMo style)
                   const reasoning = delta.reasoning_content || delta.thinking || delta.thought;
                   if (reasoning) {
-                    for (const thoughtLine of reasoning.split("\n")) {
-                      const cleaned = thoughtLine.replace(/^\*+|\*+$/g, "").trim();
-                      if (cleaned && cleaned !== lastThought && cleaned.length > 5) {
-                        lastThought = cleaned;
-                        options?.onProgress?.(cleaned);
-                      }
+                    reasoningBuffer += reasoning;
+                    // Flush when we hit a sentence boundary or buffer gets long
+                    if (/[.!?:]\s*$/.test(reasoningBuffer) || reasoningBuffer.length > 120) {
+                      flushReasoning();
                     }
                   }
 
@@ -1583,6 +1596,8 @@ CRITICAL — DEDUPLICATION: Each unique display must appear ONLY ONCE in the out
                 } catch { /* skip malformed SSE chunks */ }
               }
             }
+            // Flush any remaining reasoning
+            flushReasoning();
           } else {
             // Fallback: non-streaming (body not readable)
             const mimoData = await mimoRes.json();
