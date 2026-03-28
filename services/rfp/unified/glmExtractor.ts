@@ -1261,14 +1261,126 @@ export async function extractWithGLM5(
   source: "glm5";
 }> {
   // =====================================================================
-  // PRIMARY: Gemini Flash — native PDF vision, best accuracy on tables
-  // Uses Google's File API to upload the PDF, then generateContent
+  // PRIMARY: pdfplumber deterministic extraction — no AI, same result every time
+  // Falls through to Gemini only if pdfplumber finds 0 LED displays
+  // =====================================================================
+  options?.onProgress?.("Extracting tables with pdfplumber...");
+  try {
+    const path = await import("path");
+    const scriptPath = path.join(process.cwd(), "scripts", "pdfplumber-extract.py");
+    const { stdout } = await execFileAsync("python3", [scriptPath, pdfPath], { timeout: 60_000 });
+    const plumberResult = JSON.parse(stdout);
+
+    if (plumberResult.displays && plumberResult.displays.length > 0) {
+      const displays = plumberResult.displays;
+      console.log(`[RFP v2] pdfplumber: ${displays.length} displays (${plumberResult.stats.interior} indoor, ${plumberResult.stats.outdoor} outdoor)`);
+      options?.onProgress?.(`pdfplumber found ${displays.length} displays — deterministic extraction`);
+
+      // Map pdfplumber output to ExtractedLEDSpec
+      const specs: ExtractedLEDSpec[] = displays.map((d: any) => ({
+        name: d.name || "Unknown",
+        location: d.name || "",
+        widthFt: null, // Raw strings preserved, decimal conversion done downstream
+        heightFt: null,
+        widthPx: null,
+        heightPx: null,
+        pixelPitchMm: d.pixel_pitch_mm ?? null,
+        brightnessNits: d.brightness_nits ?? null,
+        environment: d.environment === "outdoor" ? "outdoor" as const : "indoor" as const,
+        quantity: d.quantity || 1,
+        serviceType: null,
+        mountingType: null,
+        maxPowerW: null,
+        weightLbs: null,
+        specialRequirements: [],
+        confidence: 1.0, // Deterministic — highest confidence
+        sourcePages: d.page ? [d.page] : [],
+        sourceType: "table" as const,
+        citation: "pdfplumber deterministic extraction",
+        notes: d.led_id ? `LED ID: ${d.led_id}` : null,
+        category: "led_display" as const,
+        isAlternate: false,
+        alternateDescription: null,
+        selectedProductId: null,
+        selectedProductName: null,
+        // Preserve raw dimension strings for audit
+        widthRaw: d.width || null,
+        heightRaw: d.height || null,
+      }));
+
+      // Parse raw dimensions to decimal feet
+      for (const spec of specs) {
+        if (spec.widthRaw) spec.widthFt = parseFeetInches(spec.widthRaw);
+        if (spec.heightRaw) spec.heightFt = parseFeetInches(spec.heightRaw);
+      }
+
+      // Equipment filter
+      const filtered = specs.filter((s) => !isEquipmentItem(s.name));
+
+      // Validation
+      options?.onProgress?.("Validating extraction...");
+      const sourceText = await (async () => {
+        try {
+          const { stdout: txt } = await execFileAsync("pdftotext", ["-layout", pdfPath, "-"], { timeout: 30_000 });
+          return txt;
+        } catch { return ""; }
+      })();
+      const tableHeaders = detectTableHeaders(sourceText);
+      const validation = validateExtraction(filtered, sourceText, null, tableHeaders);
+
+      for (const check of validation.checks) {
+        const icon = check.passed ? "PASS" : check.severity === "block" ? "BLOCK" : "REVIEW";
+        console.log(`[RFP v2] Validation [${icon}] ${check.name}: ${check.message}`);
+      }
+      options?.onProgress?.(`Validation: ${validation.summary}`);
+
+      const warnings: string[] = [];
+      for (const check of validation.checks) {
+        if (!check.passed) warnings.push(`[${check.severity.toUpperCase()}] ${check.name}: ${check.message}`);
+      }
+
+      // AI product matching
+      try {
+        const aiMatches = await matchProductsWithAI(filtered, options?.onProgress);
+        for (const match of aiMatches) {
+          const spec = filtered.find(s => s.name === match.displayName);
+          if (spec && match.productId) {
+            spec.selectedProductId = match.productId;
+            spec.selectedProductName = match.productName || undefined;
+          }
+        }
+      } catch (matchErr: any) {
+        console.error(`[RFP v2] AI product matching failed:`, matchErr.message);
+        warnings.push(`AI product matching failed: ${matchErr.message}`);
+      }
+
+      // Extract project info from text
+      const project = extractProjectInfo(sourceText);
+
+      return {
+        screens: filtered,
+        project,
+        requirements: [],
+        warnings: warnings.length > 0 ? warnings : undefined,
+        validation,
+        source: "glm5",
+      };
+    } else {
+      console.log(`[RFP v2] pdfplumber found 0 LED displays — falling through to Gemini`);
+      options?.onProgress?.("No tables found by pdfplumber — using Gemini...");
+    }
+  } catch (plumberErr: any) {
+    console.error(`[RFP v2] pdfplumber failed:`, plumberErr.message);
+    options?.onProgress?.("pdfplumber failed — using Gemini...");
+  }
+
+  // =====================================================================
+  // SECONDARY: Gemini Flash — for documents where pdfplumber found nothing
   // =====================================================================
   if (isGeminiAvailable()) {
-    console.log(`[RFP v2] Gemini primary (key: ${(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "").substring(0, 8)}..., model: ${process.env.GEMINI_EXTRACTION_MODEL || "gemini-2.5-flash"})`);
+    console.log(`[RFP v2] Gemini secondary (key: ${(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "").substring(0, 8)}..., model: ${process.env.GEMINI_EXTRACTION_MODEL || "gemini-2.5-flash"})`);
     options?.onProgress?.("Analyzing document with Gemini Flash...");
 
-    // Full PDF → Gemini. No preprocessing. Gemini handles 500+ pages natively.
     const geminiResult = await extractWithGemini(pdfPath, {
       timeout: options?.timeout,
       onProgress: options?.onProgress,

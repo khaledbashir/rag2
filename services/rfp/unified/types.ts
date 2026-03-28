@@ -106,6 +106,10 @@ export interface ExtractedLEDSpec {
   alternateId?: string | null;
   /** Description of what this alternate changes */
   alternateDescription?: string | null;
+  /** Raw width string from source document (e.g., "14' X 8'") for audit trail */
+  widthRaw?: string | null;
+  /** Raw height string from source document */
+  heightRaw?: string | null;
   /** Cabinet-snapped width after product selection (original widthFt stays locked) */
   activeWidthFt?: number | null;
   /** Cabinet-snapped height after product selection (original heightFt stays locked) */

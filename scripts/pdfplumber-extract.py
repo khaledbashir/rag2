@@ -1,159 +1,224 @@
 #!/usr/bin/env python3
 """
-PDF Table Extractor using pdfplumber.
+Deterministic PDF Table Extractor using pdfplumber.
 Called from Node.js via child_process.execFile.
 
 Usage: python3 pdfplumber-extract.py <pdf_path>
-Output: JSON to stdout with extracted LED displays from all tables.
+Output: JSON to stdout with extracted LED displays.
 
-Handles multi-column AV schedule drawings that pdftotext can't parse.
+Uses find_tables() with cell boundaries for accurate extraction.
+No AI. No model. Same input = same output, every time.
 """
 
 import sys
 import json
 import pdfplumber
 
+# LED schedule table identifiers
+LED_TABLE_HEADERS = [
+    "led board schedule",
+    "scoreboard",
+    "ribbon board",
+    "entry led",
+    "exterior led",
+    "display schedule",
+    "display matrix",
+    "led videoboard",
+]
 
-def extract_led_tables(pdf_path: str) -> dict:
-    """Extract all LED-related tables from a PDF using pdfplumber."""
+# Column header labels (exact cell matches, not substring)
+COLUMN_HEADER_LABELS = {
+    "av device no.", "av device no", "led id", "pixel pitch", "pixel pitch [mm]",
+    "brightness", "brightness [nits]", "led brightness", "led pixel pitch",
+    "room", "description", "led size", "display width", "display height",
+    "approximate total area", "mee av display width", "mee av display height",
+}
+
+
+def is_led_table_header(row):
+    text = " ".join(str(c or "") for c in row).lower()
+    return any(h in text for h in LED_TABLE_HEADERS)
+
+
+def is_column_header(row):
+    cells = [str(c or "").strip().lower() for c in row]
+    matches = sum(1 for c in cells if c in COLUMN_HEADER_LABELS)
+    return matches >= 3
+
+
+def is_data_row(row):
+    non_empty = [c for c in row if c and str(c).strip()]
+    if len(non_empty) < 2:
+        return False
+    if is_led_table_header(row) or is_column_header(row):
+        return False
+    return True
+
+
+def parse_interior_row(row):
+    if len(row) < 6:
+        return None
+    device_id = str(row[0] or "").strip()
+    size_raw = str(row[1] or "").strip()
+    brightness = str(row[2] or "").strip()
+    pitch = str(row[3] or "").strip()
+    room = str(row[4] or "").strip()
+
+    if not room or not size_raw:
+        return None
+
+    width, height = "", ""
+    for sep in ["x", "X"]:
+        if sep in size_raw:
+            parts = size_raw.split(sep, 1)
+            width = parts[0].strip()
+            height = parts[1].strip()
+            break
+
+    return {
+        "name": room,
+        "led_id": device_id,
+        "pixel_pitch_mm": float(pitch) if pitch and pitch.replace(".", "").isdigit() else None,
+        "brightness_nits": int(brightness) if brightness.isdigit() else None,
+        "width": width,
+        "height": height,
+        "environment": "indoor",
+        "category": "led_display",
+        "quantity": 1,
+    }
+
+
+def parse_outdoor_row(row, table_context=""):
+    if len(row) < 6:
+        return None
+    led_id = str(row[0] or "").strip()
+    pitch = str(row[1] or "").strip()
+    brightness = str(row[2] or "").strip()
+    width = str(row[3] or "").strip()
+    height = str(row[4] or "").strip()
+
+    if not led_id:
+        return None
+
+    # Skip non-numeric brightness
+    try:
+        nits = int(brightness)
+        if nits < 100:
+            return None
+    except ValueError:
+        return None
+
+    # Build name from context
+    name = led_id
+    ctx = table_context.lower()
+    if "entry" in ctx and "east" in ctx:
+        name = f"EAST ENTRY {led_id}"
+    elif "north entry" in ctx:
+        name = f"NORTH ENTRY {led_id}"
+    elif "north" in ctx and "exterior" in ctx:
+        name = f"NORTH EAST EXTERIOR {led_id}"
+    elif "south" in ctx and "exterior" in ctx:
+        name = f"SOUTH EAST EXTERIOR {led_id}"
+    elif "scoreboard" in ctx and led_id in ("EAST", "WEST"):
+        name = f"SCOREBOARD {led_id}"
+    elif led_id in ("NW", "SW"):
+        name = f"RIBBON {led_id}"
+
+    return {
+        "name": name,
+        "led_id": led_id,
+        "pixel_pitch_mm": float(pitch) if pitch and pitch.replace(".", "").isdigit() else None,
+        "brightness_nits": nits,
+        "width": width,
+        "height": height,
+        "environment": "outdoor",
+        "category": "led_display",
+        "quantity": 1,
+    }
+
+
+def extract_led_tables(pdf_path):
     pdf = pdfplumber.open(pdf_path)
-    led_displays = []
-    non_led_tables = 0
+    all_displays = []
+    tables_found = []
+    current_table_name = ""
+    current_schema = None
 
-    for page_idx, page in enumerate(pdf.pages):
-        tables = page.extract_tables()
+    for page_num, page in enumerate(pdf.pages, 1):
+        tables = page.find_tables()
 
-        # Track whether the previous table was an LED header (for split header/data tables)
-        prev_was_led_header = False
-
-        for ti, table in enumerate(tables):
-            if not table or not table[0]:
-                prev_was_led_header = False
+        for table in tables:
+            data = table.extract()
+            if not data:
                 continue
 
-            cells_flat = ' '.join(str(c or '') for row in table for c in row).upper()
+            for row in data:
+                row_text = " ".join(str(c or "") for c in row).lower().strip()
 
-            # Detect LED-related tables
-            is_interior_led = 'INTERIOR LED' in cells_flat or 'LED BOARD' in cells_flat
-            is_outdoor_led = any(kw in cells_flat for kw in [
-                'SCOREBOARD', 'RIBBON BOARD', 'ENTRY LED',
-                'EXTERIOR LED', 'NORTH ENTRY', 'SOUTH ENTRY',
-                'EAST ENTRY', 'WEST ENTRY',
-            ])
-            is_led_data = 'PIXEL PITCH' in cells_flat or 'BRIGHTNESS' in cells_flat
+                # Table title header
+                if is_led_table_header(row):
+                    current_table_name = " ".join(str(c or "") for c in row).strip()
+                    tables_found.append(current_table_name)
+                    if "interior" in row_text or "led board schedule" in row_text:
+                        current_schema = "interior"
+                    else:
+                        current_schema = "outdoor"
+                    continue
 
-            # Check if this table has LED data rows (6 cols with nits >= 1000)
-            # Handles split header/data tables AND orphaned data tables
-            is_data_after_header = False
-            if len(table[0]) == 6:
-                first_cells = [str(c or '').strip() for c in table[0]]
-                try:
-                    nits_check = int(first_cells[2]) if first_cells[2].isdigit() else 0
-                    if nits_check >= 1000:
-                        is_data_after_header = True
-                except (ValueError, IndexError):
-                    pass
+                # Column header
+                if is_column_header(row):
+                    if "av device" in row_text and "room" in row_text:
+                        current_schema = "interior"
+                    elif "led id" in row_text or "display width" in row_text:
+                        current_schema = "outdoor"
+                    continue
 
-            # Update header tracking
-            if is_outdoor_led or is_led_data:
-                prev_was_led_header = True
-            elif not is_data_after_header:
-                prev_was_led_header = False
+                if not is_data_row(row):
+                    continue
 
-            if is_interior_led:
-                # Interior LED Board Schedule — LED.xxx IDs with WxH sizes
-                for row in table:
-                    cells = [str(c or '').strip() for c in row]
-                    if not cells[0].startswith('LED.'):
-                        continue
-                    led_id = cells[0]
-                    size = cells[1] if len(cells) > 1 else None
-                    nits = cells[2] if len(cells) > 2 else None
-                    pitch = cells[3] if len(cells) > 3 else None
-                    room = cells[4] if len(cells) > 4 else None
+                # Parse data row
+                display = None
+                if current_schema == "interior":
+                    display = parse_interior_row(row)
+                elif current_schema == "outdoor":
+                    display = parse_outdoor_row(row, current_table_name)
+                else:
+                    first_cell = str(row[0] or "")
+                    if first_cell.startswith("LED."):
+                        display = parse_interior_row(row)
+                    elif len(row) >= 6:
+                        display = parse_outdoor_row(row, current_table_name)
 
-                    # Parse WxH from size field
-                    width, height = None, None
-                    if size and ('x' in size.lower()):
-                        parts = size.lower().split('x')
-                        width = parts[0].strip() if len(parts) > 0 else None
-                        height = parts[1].strip() if len(parts) > 1 else None
-
-                    led_displays.append({
-                        'name': room or led_id,
-                        'led_id': led_id,
-                        'pixel_pitch_mm': float(pitch) if pitch and pitch.replace('.', '').isdigit() else None,
-                        'brightness_nits': int(nits) if nits and nits.isdigit() else None,
-                        'width': width,
-                        'height': height,
-                        'environment': 'indoor',
-                        'category': 'led_display',
-                        'quantity': 1,
-                        'page': page_idx + 1,
-                    })
-
-            elif is_outdoor_led or is_led_data or is_data_after_header:
-                # Outdoor/scoreboard/ribbon/entry LED tables
-                # Format: Location | Pitch | Nits | Width | Height | Area
-                for row in table:
-                    cells = [str(c or '').strip() for c in row]
-                    # Skip header rows
-                    if not cells[0] or cells[0].upper() in ('LED ID', 'LOCATION', ''):
-                        continue
-                    if cells[0].upper().startswith('A/V '):
-                        continue
-
-                    # Try to parse as LED data (need at least nits)
-                    try:
-                        nits_val = int(cells[2]) if len(cells) > 2 and cells[2].isdigit() else None
-                        if nits_val and nits_val >= 1000:
-                            pitch = cells[1] if len(cells) > 1 else None
-                            width = cells[3] if len(cells) > 3 else None
-                            height = cells[4] if len(cells) > 4 else None
-
-                            led_displays.append({
-                                'name': cells[0],
-                                'led_id': None,
-                                'pixel_pitch_mm': float(pitch) if pitch and pitch.replace('.', '').isdigit() else None,
-                                'brightness_nits': nits_val,
-                                'width': width,
-                                'height': height,
-                                'environment': 'outdoor',
-                                'category': 'led_display',
-                                'quantity': 1,
-                                'page': page_idx + 1,
-                            })
-                    except (ValueError, IndexError):
-                        pass
-            else:
-                non_led_tables += 1
+                if display:
+                    display["page"] = page_num
+                    display["source_table"] = current_table_name
+                    all_displays.append(display)
 
     pdf.close()
 
-    # Summary
-    interior = [d for d in led_displays if d['environment'] == 'indoor']
-    outdoor = [d for d in led_displays if d['environment'] == 'outdoor']
+    interior = [d for d in all_displays if d["environment"] == "indoor"]
+    outdoor = [d for d in all_displays if d["environment"] == "outdoor"]
 
     return {
-        'displays': led_displays,
-        'stats': {
-            'total': len(led_displays),
-            'interior': len(interior),
-            'outdoor': len(outdoor),
-            'non_led_tables_skipped': non_led_tables,
-            'pages_processed': len(pdf.pages) if hasattr(pdf, 'pages') else 0,
+        "displays": all_displays,
+        "tables_found": tables_found,
+        "stats": {
+            "total": len(all_displays),
+            "interior": len(interior),
+            "outdoor": len(outdoor),
+            "pages_processed": len(pdf.pages) if hasattr(pdf, "pages") else 0,
         },
     }
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print(json.dumps({'error': 'Usage: pdfplumber-extract.py <pdf_path>'}))
+        print(json.dumps({"error": "Usage: pdfplumber-extract.py <pdf_path>"}))
         sys.exit(1)
 
     try:
         result = extract_led_tables(sys.argv[1])
         print(json.dumps(result))
     except Exception as e:
-        print(json.dumps({'error': str(e)}))
+        print(json.dumps({"error": str(e)}))
         sys.exit(1)
