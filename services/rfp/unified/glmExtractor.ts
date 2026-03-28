@@ -15,6 +15,7 @@
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "./types";
 import { extractWithMistral } from "./mistralOcrClient";
 import { extractWithGemini, isGeminiAvailable } from "./geminiExtractor";
+import { matchProductsWithAI } from "../aiProductMatcher";
 import { execFile } from "child_process";
 import { promisify } from "util";
 
@@ -1254,6 +1255,7 @@ export async function extractWithGLM5(
   screens: ExtractedLEDSpec[];
   project: ExtractedProjectInfo;
   requirements: any[];
+  warnings?: string[];
   source: "glm5";
 }> {
   // =====================================================================
@@ -1280,10 +1282,33 @@ export async function extractWithGLM5(
     console.log(`[RFP v2] Gemini Flash: ${filtered.length} LED displays`);
     options?.onProgress?.(`Found ${filtered.length} LED displays`);
 
+    // AI product matching — Gemini queries the live DB and picks the best product per display
+    try {
+      const aiMatches = await matchProductsWithAI(filtered, options?.onProgress);
+      for (const match of aiMatches) {
+        const spec = filtered.find(s => s.name === match.displayName);
+        if (spec && match.productId) {
+          spec.selectedProductId = match.productId;
+          spec.selectedProductName = match.productName || undefined;
+          spec.notes = spec.notes
+            ? `${spec.notes} | AI match: ${match.matchReason}`
+            : `AI match: ${match.matchReason}`;
+        }
+      }
+      const matched = aiMatches.filter(m => m.productId).length;
+      console.log(`[RFP v2] AI product matching: ${matched}/${filtered.length} displays matched`);
+      options?.onProgress?.(`Matched ${matched}/${filtered.length} displays to products`);
+    } catch (matchErr: any) {
+      console.error(`[RFP v2] AI product matching failed:`, matchErr.message);
+      // Non-fatal — displays still have specs, just no pre-matched product
+      (geminiResult.warnings ??= []).push(`AI product matching failed: ${matchErr.message}`);
+    }
+
     return {
       screens: filtered,
       project: geminiResult.project,
       requirements: geminiResult.requirements,
+      warnings: geminiResult.warnings,
       source: "glm5",
     };
   }
