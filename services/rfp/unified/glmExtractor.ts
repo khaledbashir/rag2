@@ -17,6 +17,7 @@ import { extractWithMistral } from "./mistralOcrClient";
 import { extractWithGemini, isGeminiAvailable } from "./geminiExtractor";
 import { matchProductsWithAI } from "../aiProductMatcher";
 import { validateExtraction, detectTableHeaders } from "../extractionValidator";
+import { runExtractQA } from "../extractQAAgent";
 import { execFile } from "child_process";
 import { promisify } from "util";
 
@@ -1339,11 +1340,31 @@ export async function extractWithGLM5(
         if (!check.passed) warnings.push(`[${check.severity.toUpperCase()}] ${check.name}: ${check.message}`);
       }
 
+      // ── EXTRACT QA — automatic review and correction ──
+      let qaDisplays = filtered;
+      try {
+        const qa = await runExtractQA(filtered, sourceText, pdfPath.split("/").pop() || "document.pdf", options?.onProgress);
+        if (qa.changes.length > 0) {
+          qaDisplays = qa.correctedDisplays as ExtractedLEDSpec[];
+          for (const change of qa.changes) {
+            warnings.push(`[QA] ${change}`);
+          }
+          console.log(`[RFP v2] Extract QA: ${qa.changes.length} corrections applied`);
+        }
+        if (qa.verified) {
+          options?.onProgress?.(`Extract QA: ${qa.message}`);
+        }
+      } catch (qaErr: any) {
+        console.error(`[RFP v2] Extract QA failed:`, qaErr.message);
+        warnings.push(`Extract QA failed: ${qaErr.message}`);
+        // Non-fatal — keep original extraction
+      }
+
       // AI product matching
       try {
-        const aiMatches = await matchProductsWithAI(filtered, options?.onProgress);
+        const aiMatches = await matchProductsWithAI(qaDisplays, options?.onProgress);
         for (const match of aiMatches) {
-          const spec = filtered.find(s => s.name === match.displayName);
+          const spec = qaDisplays.find(s => s.name === match.displayName);
           if (spec && match.productId) {
             spec.selectedProductId = match.productId;
             spec.selectedProductName = match.productName || undefined;
@@ -1358,7 +1379,7 @@ export async function extractWithGLM5(
       const project = extractProjectInfo(sourceText);
 
       return {
-        screens: filtered,
+        screens: qaDisplays,
         project,
         requirements: [],
         warnings: warnings.length > 0 ? warnings : undefined,
@@ -1458,6 +1479,28 @@ export async function extractWithGLM5(
     }
 
     options?.onProgress?.(`Validation: ${finalResult.validation.summary}`);
+
+    // ── EXTRACT QA — automatic review and correction ──
+    try {
+      const qa = await runExtractQA(
+        finalResult.filtered,
+        finalResult.geminiResult.sourceText || "",
+        pdfPath.split("/").pop() || "document.pdf",
+        options?.onProgress,
+      );
+      if (qa.changes.length > 0) {
+        finalResult.filtered = qa.correctedDisplays as ExtractedLEDSpec[];
+        for (const change of qa.changes) {
+          finalResult.warnings.push(`[QA] ${change}`);
+        }
+      }
+      if (qa.verified) {
+        options?.onProgress?.(`Extract QA: ${qa.message}`);
+      }
+    } catch (qaErr: any) {
+      console.error(`[RFP v2] Extract QA failed:`, qaErr.message);
+      finalResult.warnings.push(`Extract QA failed: ${qaErr.message}`);
+    }
 
     // AI product matching
     try {
