@@ -1502,7 +1502,7 @@ Return ONLY a JSON object with this schema:
 
 IMPORTANT: Only include actual LED video displays, ribbon boards, fascia boards, and videoboards in the displays array. Do NOT include game clocks, play clocks, scoring controllers, headend racks, spare parts, cable packages, audio systems, or other non-LED equipment. Those belong in requirements.
 
-CRITICAL — DEDUPLICATION: Do NOT merge or collapse displays. Output EVERY display as its OWN row with quantity: 1. If the document lists "Panthers Den" 7 times with 7 different dimension sets, output 7 separate rows. If "S.E Corridor" appears twice in the table with the same dimensions, output 2 separate rows (quantity: 1 each). The ONLY deduplication you should do: if the exact same display (same name, same dimensions) appears on DIFFERENT PAGES of the document, output it once. Never use quantity > 1. Every row in the source table = one row in your output.`;
+CRITICAL — DO NOT DEDUPLICATE. Output EVERY row from the source table exactly as listed. If "Panthers Den" appears 7 times, output 7 rows. If "Elev Lobby" appears 4 times with identical dimensions, output 4 rows. If "S.E Corridor" appears twice, output 2 rows. Always set quantity: 1. The source table is the truth — one source row = one output row, no exceptions, no merging, no collapsing.`;
 
       const mercuryRes = await fetch(`${MERCURY_API_BASE}/chat/completions`, {
         method: "POST",
@@ -1734,7 +1734,7 @@ Return ONLY a JSON object with this schema:
 
 IMPORTANT: Only include actual LED video displays, ribbon boards, fascia boards, and videoboards in the displays array. Do NOT include game clocks, play clocks, scoring controllers, headend racks, spare parts, cable packages, audio systems, or other non-LED equipment. Those belong in requirements.
 
-CRITICAL — DEDUPLICATION: Do NOT merge or collapse displays. Output EVERY display as its OWN row with quantity: 1. If the document lists "Panthers Den" 7 times with 7 different dimension sets, output 7 separate rows. If "S.E Corridor" appears twice in the table with the same dimensions, output 2 separate rows (quantity: 1 each). The ONLY deduplication you should do: if the exact same display (same name, same dimensions) appears on DIFFERENT PAGES of the document, output it once. Never use quantity > 1. Every row in the source table = one row in your output.`;
+CRITICAL — DO NOT DEDUPLICATE. Output EVERY row from the source table exactly as listed. If "Panthers Den" appears 7 times, output 7 rows. If "Elev Lobby" appears 4 times with identical dimensions, output 4 rows. If "S.E Corridor" appears twice, output 2 rows. Always set quantity: 1. The source table is the truth — one source row = one output row, no exceptions, no merging, no collapsing.`;
 
       console.log(`[RFP v2] MiMo: sending text to ${MIMO_MODEL} (streaming)...`);
       options?.onProgress?.("Sending to MiMo...");
