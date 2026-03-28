@@ -1,6 +1,6 @@
 /**
  * Lux API — Chat with the ANC Proposals AI agent.
- * Platform owner only. Talks to OpenClaw's anc-proposals agent.
+ * Platform owner only. Routes through OpenClaw HTTP bridge on the host.
  *
  * POST /api/rfp/lux
  * Body: { message: string, context?: { displays: any[], sourceText?: string } }
@@ -44,28 +44,63 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Call OpenClaw bridge — agent mode for anc-proposals
-    const { execFile } = await import("child_process");
-    const { promisify } = await import("util");
-    const execFileAsync = promisify(execFile);
-
-    const { stdout } = await execFileAsync(
-      "openclaw",
-      ["agent", "--agent", "anc-proposals", "--message", fullMessage, "--json"],
-      {
-        timeout: 60_000,
-        maxBuffer: 5 * 1024 * 1024,
-        env: { ...process.env, HOME: "/root" },
+    // Route through OpenClaw HTTP bridge (host:18790) — NOT the CLI.
+    // The bridge accepts JSON with agent + message and returns the response.
+    // This works from Docker because the bridge runs on the host.
+    const res = await fetch(`${OPENCLAW_BRIDGE_URL}/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENCLAW_TOKEN}`,
       },
-    );
+      body: JSON.stringify({
+        agent: "anc-proposals",
+        message: fullMessage,
+      }),
+      signal: AbortSignal.timeout(90_000),
+    });
 
-    const data = JSON.parse(stdout);
-    const reply = data.result?.payloads?.[0]?.text
-      || data.reply
-      || data.message
-      || "No response from Lux";
+    if (res.ok) {
+      const data = await res.json();
+      const reply = data.text || data.reply || data.message || data.result?.payloads?.[0]?.text || "No response from Lux";
+      return NextResponse.json({ reply });
+    }
 
-    return NextResponse.json({ reply });
+    // Bridge might not have /chat endpoint yet — fall back to direct OpenAI call
+    // using the same model Lux is configured with (MiniMax M2.7 or GPT-5.4-mini)
+    const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+    if (!OPENAI_API_KEY) {
+      return NextResponse.json({ error: "Bridge unavailable and no OpenAI key" }, { status: 502 });
+    }
+
+    const gptRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-5.4-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are Lux, the AI assistant for ANC's Proposal Engine. You help review and fix LED display extractions from RFPs. You are sharp, precise, and domain-expert. Fix first, explain only if asked. Use real numbers. If something's wrong, say what and fix it. You know LED specs: pixel pitch, brightness (nits), cabinet sizing, 80/20 pricing, indoor vs outdoor. You know LG, Yaham, Absen product lines.`,
+          },
+          { role: "user", content: fullMessage },
+        ],
+        temperature: 0,
+        max_completion_tokens: 4096,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (gptRes.ok) {
+      const gptData = await gptRes.json();
+      const reply = gptData.choices?.[0]?.message?.content || "No response";
+      return NextResponse.json({ reply });
+    }
+
+    return NextResponse.json({ error: `API failed: ${gptRes.status}` }, { status: 502 });
   } catch (err: any) {
     console.error("[Lux API] Error:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
