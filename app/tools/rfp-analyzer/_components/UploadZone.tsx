@@ -38,7 +38,50 @@ export interface PipelineEvent {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// AI Thinking Panel — collapsible dark log showing Gemini's reasoning
+// Diffusion Text Effect — characters scramble and resolve into place
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,:;-+=#@!?";
+
+function DiffusionText({ text, duration = 600 }: { text: string; duration?: number }) {
+  const [display, setDisplay] = useState(text);
+  const [resolved, setResolved] = useState(false);
+  const frameRef = useRef<number>(0);
+
+  useEffect(() => {
+    const startTime = Date.now();
+    const chars = text.split("");
+    const stepMs = duration / chars.length;
+
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const resolvedCount = Math.min(chars.length, Math.floor(elapsed / stepMs));
+
+      if (resolvedCount >= chars.length) {
+        setDisplay(text);
+        setResolved(true);
+        return;
+      }
+
+      const result = chars.map((ch, i) => {
+        if (i < resolvedCount) return ch;
+        if (ch === " ") return " ";
+        return CHARS[Math.floor(Math.random() * CHARS.length)];
+      }).join("");
+
+      setDisplay(result);
+      frameRef.current = requestAnimationFrame(animate);
+    };
+
+    frameRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frameRef.current);
+  }, [text, duration]);
+
+  return <span className={resolved ? "" : "opacity-90"}>{display}</span>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AI Thinking Panel — collapsible dark log showing Mercury's reasoning
 // ═══════════════════════════════════════════════════════════════════════════
 
 function AIThinkingPanel({ events, isComplete }: { events: PipelineEvent[]; isComplete: boolean }) {
@@ -89,6 +132,8 @@ function AIThinkingPanel({ events, isComplete }: { events: PipelineEvent[]; isCo
           {logLines.map((line, i) => {
             const isAI = line.startsWith("AI: ");
             const isCount = /\d+ displays|\d+ pages|matched|verified/i.test(line);
+            const isLatest = i === logLines.length - 1 && !isComplete;
+            const displayText = isAI ? line.substring(4) : line;
             return (
               <div key={i} className="flex gap-2">
                 <span className="text-gray-600 select-none shrink-0">{String(i + 1).padStart(2, "0")}</span>
@@ -97,7 +142,7 @@ function AIThinkingPanel({ events, isComplete }: { events: PipelineEvent[]; isCo
                   isCount ? "text-[#9ece6a]" :
                   "text-gray-400"
                 }>
-                  {isAI ? line.substring(4) : line}
+                  {isLatest ? <DiffusionText text={displayText} duration={400} /> : displayText}
                 </span>
               </div>
             );
