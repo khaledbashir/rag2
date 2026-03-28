@@ -75,9 +75,7 @@ export class ProductMatcher {
                 });
                 if (suitable.length === 0) suitable = dbProducts;
 
-                // Score by pitch closeness + type appropriateness + nits + mesh penalty
-                const displayAreaSqFt = spec.widthFt * spec.heightFt;
-                const isLargeDisplay = displayAreaSqFt > 50;
+                // Score by pitch closeness + type + nits + mesh penalty
                 const SPECIALTY_PATTERNS = /courtside|stanchion|clock|table|counter|desk/i;
                 const MESH_PATTERNS = /mesh|transparent|see.?through/i;
                 const targetNits = spec.brightnessNits || 0;
@@ -86,21 +84,26 @@ export class ProductMatcher {
                     const pitchA = Math.abs(a.pixelPitch - targetPitch);
                     const pitchB = Math.abs(b.pixelPitch - targetPitch);
 
-                    // Penalize specialty products (tables, stanchions) for large displays
+                    // Specialty products (courtside tables, stanchions) NEVER match regular displays
                     const isSpecialtyA = SPECIALTY_PATTERNS.test(a.displayName);
                     const isSpecialtyB = SPECIALTY_PATTERNS.test(b.displayName);
-                    const penaltyA = (isLargeDisplay && isSpecialtyA) ? 100 : 0;
-                    const penaltyB = (isLargeDisplay && isSpecialtyB) ? 100 : 0;
+                    const penaltyA = isSpecialtyA ? 200 : 0;
+                    const penaltyB = isSpecialtyB ? 200 : 0;
 
-                    // Penalize mesh products for solid-panel applications (indoor videoboards)
+                    // Mesh products should not match solid-panel applications
                     const isMeshA = MESH_PATTERNS.test(a.displayName) || MESH_PATTERNS.test(a.modelNumber);
                     const isMeshB = MESH_PATTERNS.test(b.displayName) || MESH_PATTERNS.test(b.modelNumber);
                     const meshPenaltyA = isMeshA ? 50 : 0;
                     const meshPenaltyB = isMeshB ? 50 : 0;
 
-                    // Penalize products that don't meet the brightness requirement
-                    const nitsPenaltyA = (targetNits > 0 && a.maxNits < targetNits) ? 20 : 0;
-                    const nitsPenaltyB = (targetNits > 0 && b.maxNits < targetNits) ? 20 : 0;
+                    // Nits penalty scales with how far under spec the product is
+                    // 1500 nits vs 8000 required = 81% deficit = penalty of 81
+                    let nitsPenaltyA = 0;
+                    let nitsPenaltyB = 0;
+                    if (targetNits > 0) {
+                        if (a.maxNits < targetNits) nitsPenaltyA = Math.round(((targetNits - a.maxNits) / targetNits) * 100);
+                        if (b.maxNits < targetNits) nitsPenaltyB = Math.round(((targetNits - b.maxNits) / targetNits) * 100);
+                    }
 
                     return (pitchA + penaltyA + meshPenaltyA + nitsPenaltyA) - (pitchB + penaltyB + meshPenaltyB + nitsPenaltyB);
                 });
