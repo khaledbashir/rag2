@@ -28,11 +28,12 @@ CRITICAL DIRECTIVES - READ BEFORE PROCEEDING:
 3. CONTINUOUS TABLE PARSING: Display matrices often span across multiple pages or are interrupted by other text. You must connect rows across page breaks and scan the entire document to ensure no matrix fragments are left behind.
 4. NO DEDUPLICATION: Identical names or specs on different rows mean separate physical displays. Extract every single row as an independent object.
 5. STRICT JSON ONLY: Your entire response must be a single, valid JSON object. No markdown formatting, no preamble, no explanations.
+6. MULTIPLE TABLES PER PAGE: AV schedule drawings often contain MULTIPLE separate LED schedule tables on a SINGLE page. You MUST extract displays from EVERY table. Common table names include: Interior LED Board Schedule, Scoreboard & Ribbon Board Schedule, Entry LED Schedule, Exterior LED Schedule, Outdoor LED Schedule, Indoor LED Schedule. Do NOT stop after the first table — scan the entire document for all tables.
 
 EXTRACTION PROTOCOL:
 Step 1: Locate Project Details (Name, Client, Venue, Address).
-Step 2: Inventory Sections via ToC & Full Scan. Identify all sections related to LED Videoboards, Displays, Scoreboards, Ribbons, Entry LEDs, and Fascia. Scan the entire document body for these keywords, as headers may be misnumbered or duplicated.
-Step 3: Extract Every Display. For every row in EVERY matrix found anywhere in the document:
+Step 2: Inventory ALL tables in the document. AV schedule drawings typically have 3-6 separate tables (indoor displays, outdoor displays, scoreboards, ribbons, entry displays). List every table you find before extracting. If you find fewer than 3 tables, re-scan — you likely missed some.
+Step 3: Extract Every Display from EVERY table. For every row in EVERY matrix found anywhere in the document:
 - Name/Location: Extract EXACTLY as written in the RFP. Do NOT add numbers, suffixes, or disambiguation (e.g., do NOT write "Panthers Den 1", "Panthers Den 2" — write "Panthers Den" for each row exactly as it appears in the source table).
 - Pixel Pitch / Brightness: Extract numbers. If a range is given, use the highest value.
 - Dimensions: Convert feet and fractional inches into a pure decimal format for width_ft_decimal and height_ft_decimal (e.g., 7' 9" = 7.75; 2' 10 7/16" = 2.87). Round to two decimal places.
@@ -253,6 +254,7 @@ export async function extractWithGemini(
   screens: ExtractedLEDSpec[];
   project: ExtractedProjectInfo;
   requirements: any[];
+  warnings: string[];
   source: "gemini";
 }> {
   const pdfBuffer = await readFile(pdfPath);
@@ -346,6 +348,27 @@ export async function extractWithGemini(
     const displays = Array.isArray(parsed.displays) ? parsed.displays : [];
     const requirements = Array.isArray(parsed.requirements) ? parsed.requirements : [];
     const project = parsed.project || null;
+    const warnings: string[] = [];
+
+    // Validate extraction count against document's own total
+    const elog = parsed._extraction_log;
+    const docCount = elog?.total_displays_counted_in_text;
+    if (docCount && typeof docCount === "number" && docCount > 0) {
+      const extractedCount = displays.length;
+      if (extractedCount < docCount) {
+        const missing = docCount - extractedCount;
+        const msg = `Document mentions ${docCount} displays but we extracted ${extractedCount} — ${missing} may be missing`;
+        warnings.push(msg);
+        console.warn(`[GeminiExtractor] COUNT MISMATCH: ${msg}`);
+      } else if (extractedCount > docCount) {
+        const extra = extractedCount - docCount;
+        const msg = `Extracted ${extractedCount} displays but document mentions ${docCount} — ${extra} extra items (may include non-LED equipment)`;
+        warnings.push(msg);
+        console.warn(`[GeminiExtractor] COUNT MISMATCH: ${msg}`);
+      } else {
+        console.log(`[GeminiExtractor] Count validated: ${extractedCount} extracted = ${docCount} in document`);
+      }
+    }
 
     options?.onProgress?.(`Extracted ${displays.length} displays, ${requirements.length} requirements`);
     console.log(`[GeminiExtractor] Extracted ${displays.length} displays, ${requirements.length} requirements`);
@@ -361,6 +384,7 @@ export async function extractWithGemini(
         sourcePages: [],
         rawText: r.description || "",
       })),
+      warnings,
       source: "gemini",
     };
   } catch (err: any) {
