@@ -736,18 +736,18 @@ function buildPageTriage(input: RfpWorkbookInput): SheetTab | null {
 
   const dataRows: SheetRow[] = input.triage.map((t) => ({
     cells: [
-      c(t.pageNumber, {
+      c(t.pageNumber ?? "", {
         align: "center",
-        onClick: input.onSourcePageClick ? () => input.onSourcePageClick!(t.pageNumber) : undefined,
+        onClick: t.pageNumber && input.onSourcePageClick ? () => input.onSourcePageClick!(t.pageNumber) : undefined,
       }),
-      c(t.category.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())),
-      c(`${t.relevance}%`, {
+      c((t.category || t.message || "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())),
+      c(t.relevance != null ? `${t.relevance}%` : "", {
         align: "center",
-        className: t.relevance >= 70 ? "text-emerald-600" : t.relevance >= 40 ? "text-amber-600" : "text-muted-foreground",
+        className: (t.relevance ?? 0) >= 70 ? "text-emerald-600" : (t.relevance ?? 0) >= 40 ? "text-amber-600" : "text-muted-foreground",
       }),
       c(t.isDrawing ? "YES" : "", {
         align: "center",
-        bold: t.isDrawing,
+        bold: !!t.isDrawing,
         className: t.isDrawing ? "text-blue-600" : "",
       }),
     ],
