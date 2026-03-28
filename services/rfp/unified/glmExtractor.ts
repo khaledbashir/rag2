@@ -1407,30 +1407,39 @@ export async function extractWithGLM5(
   if (MIMO_API_KEY) {
     options?.onProgress?.("Analyzing document with MiMo...");
     try {
-      const { readFile: readPdfBuffer } = await import("fs/promises");
-      const pdfBuffer = await readPdfBuffer(pdfPath);
-      const pdfB64 = pdfBuffer.toString("base64");
-      const sizeMb = (pdfBuffer.length / 1024 / 1024).toFixed(1);
+      const { readFile, mkdir, unlink, readdir } = await import("fs/promises");
+
+      // Get page count
+      let totalPages = 0;
+      try {
+        const { stdout: info } = await execFileAsync("pdfinfo", [pdfPath], { timeout: 30_000 });
+        const match = info.match(/Pages:\s+(\d+)/);
+        totalPages = match ? parseInt(match[1], 10) : 0;
+      } catch { totalPages = 0; }
 
       const mimoPrompt = `Extract ALL LED displays and requirements from this RFP document.
 
-CRITICAL: Extract EVERY LED video display, ribbon board, fascia board, or videoboard mentioned — whether in a table OR described in prose/narrative text. If the document describes what they need without detailed specs, still extract each display as an entry with null for missing fields.
+CRITICAL RULES:
+1. Use the EXACT display name/location from the table (e.g., "Panthers Den", "Elev Lobby", "North Corridor"). NEVER use generic names like "LED Videoboard" or "Display 1".
+2. Extract EVERY LED video display, ribbon board, fascia board, or videoboard — whether in a table OR described in prose.
+3. If the document is a table, extract EVERY ROW. Do not skip any rows.
+4. Count carefully — if the table has 25 rows, you must return 25 displays.
 
 Return ONLY a JSON object:
 {
   "project": { "name": string | null, "client": string | null, "venue": string | null, "address": string | null },
   "displays": [
     {
-      "name": string,
-      "location": string | null,
+      "name": "EXACT name from table row — e.g., Panthers Den Display 1, Elev Lobby, Field Ribbon North",
+      "location": "Same as name — the room/area/location",
       "pixel_pitch_mm": number | null,
       "brightness_nits": number | null,
-      "width_ft": string | null,
-      "height_ft": string | null,
+      "width_ft": "e.g., 14' or 22'8\"",
+      "height_ft": "e.g., 8' or 3'4\"",
       "environment": "indoor" | "outdoor",
-      "category": "led_display" | "scoreboard" | "clock" | "control_system" | "other",
-      "quantity": number,
-      "notes": string | null
+      "category": "led_display",
+      "quantity": 1,
+      "notes": null
     }
   ],
   "requirements": [
@@ -1439,41 +1448,83 @@ Return ONLY a JSON object:
 }
 
 Rules:
-- Include LED videoboards, ribbons, fascia boards — even from narrative descriptions without dimensions.
-- quantity defaults to 1 unless explicitly stated otherwise.
-- Clocks, scoreboards, scoring systems, CMS, control systems → requirements only (not displays).
-- If a field is not specified, use null.
-- Do NOT skip any LED display just because specs are incomplete.`;
+- EVERY row in the LED display table = one display entry. Count them all.
+- Clocks, scoreboards, scoring controllers → requirements only, NOT displays.
+- If a field is not specified, use null.`;
 
-      let mimoRes: Response;
+      let mimoRes: Response | null = null;
       let mimoUsedVision = false;
 
-      if (pdfBuffer.length < 20 * 1024 * 1024) {
-        console.log(`[RFP v2] MiMo vision: sending PDF (${sizeMb}MB) to ${MIMO_MODEL}...`);
-        mimoRes = await fetch(`${MIMO_API_BASE}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${MIMO_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: MIMO_MODEL,
-            messages: [{
-              role: "user",
-              content: [
-                { type: "text", text: mimoPrompt },
-                { type: "image_url", image_url: { url: `data:application/pdf;base64,${pdfB64}` } },
-              ],
-            }],
-            temperature: 0,
-            max_tokens: 32768,
-            response_format: { type: "json_object" },
-          }),
-          signal: AbortSignal.timeout(120_000),
-        });
-        mimoUsedVision = true;
-      } else {
-        console.log(`[RFP v2] MiMo text: PDF too large (${sizeMb}MB), extracting text first...`);
+      // Vision path: convert PDF pages to PNG images, send to MiMo
+      if (totalPages > 0 && totalPages <= 50) {
+        const tmpDir = `/tmp/mimo-vision-${Date.now()}`;
+        await mkdir(tmpDir, { recursive: true });
+
+        try {
+          options?.onProgress?.(`Converting ${totalPages} pages to images for MiMo vision...`);
+          console.log(`[RFP v2] MiMo vision: converting ${totalPages} pages to PNG...`);
+
+          await execFileAsync("pdftoppm", ["-png", "-r", "200", "-l", String(totalPages), pdfPath, `${tmpDir}/page`], { timeout: 120_000 });
+
+          const imgFiles = (await readdir(tmpDir)).filter(f => f.endsWith(".png")).sort();
+          console.log(`[RFP v2] MiMo vision: ${imgFiles.length} pages converted to PNG`);
+
+          if (imgFiles.length > 0) {
+            // Build vision content — text prompt + images
+            const visionContent: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
+              { type: "text", text: mimoPrompt },
+            ];
+
+            // Send up to 20 pages (context limit)
+            const pagesToSend = imgFiles.slice(0, 20);
+            for (const imgFile of pagesToSend) {
+              const imgBuffer = await readFile(`${tmpDir}/${imgFile}`);
+              const imgB64 = imgBuffer.toString("base64");
+              visionContent.push({
+                type: "image_url",
+                image_url: { url: `data:image/png;base64,${imgB64}` },
+              });
+            }
+
+            if (imgFiles.length > 20) {
+              visionContent.push({ type: "text", text: `Note: Only first 20 of ${imgFiles.length} pages shown. The remaining pages may contain additional displays.` });
+            }
+
+            console.log(`[RFP v2] MiMo vision: sending ${pagesToSend.length} page images (${(visionContent.length * 100).toFixed(0)}KB approx) to ${MIMO_MODEL}...`);
+            options?.onProgress?.(`MiMo analyzing ${pagesToSend.length} pages...`);
+
+            mimoRes = await fetch(`${MIMO_API_BASE}/chat/completions`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${MIMO_API_KEY}`,
+              },
+              body: JSON.stringify({
+                model: MIMO_MODEL,
+                messages: [{ role: "user", content: visionContent }],
+                temperature: 0,
+                max_tokens: 32768,
+                response_format: { type: "json_object" },
+              }),
+              signal: AbortSignal.timeout(180_000),
+            });
+            mimoUsedVision = true;
+          }
+        } finally {
+          // Cleanup temp files
+          try {
+            const files = await readdir(tmpDir);
+            for (const f of files) unlink(`${tmpDir}/${f}`).catch(() => {});
+            await unlink(tmpDir).catch(() => {});
+          } catch { /* ignore cleanup errors */ }
+        }
+      }
+
+      // Text fallback — if vision didn't run (too many pages, no pdftoppm, etc.)
+      if (!mimoUsedVision) {
+        const pdfBuffer = await readFile(pdfPath);
+        const sizeMb = (pdfBuffer.length / 1024 / 1024).toFixed(1);
+        console.log(`[RFP v2] MiMo text: extracting text from ${sizeMb}MB PDF...`);
         const { fullText: mimoText } = await extractFullText(pdfPath);
         const textToSend = mimoText.length > 128000 ? mimoText.substring(0, 128000) : mimoText;
         console.log(`[RFP v2] MiMo text: sending ${(textToSend.length / 1024).toFixed(0)}KB text to ${MIMO_MODEL}...`);
@@ -1494,7 +1545,7 @@ Rules:
         });
       }
 
-      if (mimoRes.ok) {
+      if (mimoRes?.ok) {
           const mimoData = await mimoRes.json();
           const content = mimoData.choices?.[0]?.message?.content || "";
           const start = content.indexOf("{");
@@ -1590,7 +1641,7 @@ Rules:
               source: "glm5",
             };
           }
-        } else {
+        } else if (mimoRes) {
           const errText = await mimoRes.text().catch(() => "");
           console.error(`[RFP v2] MiMo failed (${mimoRes.status}):`, errText.substring(0, 200));
           options?.onProgress?.(`MiMo failed (${mimoRes.status}) — trying Gemini...`);
