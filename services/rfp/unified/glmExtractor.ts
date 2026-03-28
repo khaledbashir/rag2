@@ -1575,17 +1575,26 @@ CRITICAL — DEDUPLICATION: Do NOT merge or collapse displays. Output EVERY disp
             if (!check.passed) warnings.push(`[${check.severity.toUpperCase()}] ${check.name}: ${check.message}`);
           }
 
-          // Extract QA
-          try {
-            const qa = await runExtractQA(mercuryScreens, sourceText, pdfPath.split("/").pop() || "document.pdf", options?.onProgress);
-            if (qa.changes.length > 0) {
-              mercuryScreens = qa.correctedDisplays as ExtractedLEDSpec[];
-              for (const change of qa.changes) warnings.push(`[QA] ${change}`);
+          // Extract QA — only run if validation flagged issues.
+          // Clean extraction (all checks pass) skips QA entirely (~0s vs ~30s).
+          // QA uses a DIFFERENT model (MiMo Pro) to catch Mercury's blind spots.
+          const hasValidationIssues = validation.checks.some(c => !c.passed);
+          if (hasValidationIssues) {
+            options?.onProgress?.("Validation flagged issues — running deep QA with MiMo...");
+            try {
+              const qa = await runExtractQA(mercuryScreens, sourceText, pdfPath.split("/").pop() || "document.pdf", options?.onProgress);
+              if (qa.changes.length > 0) {
+                mercuryScreens = qa.correctedDisplays as ExtractedLEDSpec[];
+                for (const change of qa.changes) warnings.push(`[QA] ${change}`);
+              }
+              if (qa.verified) options?.onProgress?.(`Extract QA: ${qa.message}`);
+            } catch (qaErr: any) {
+              console.error(`[RFP v2] Mercury QA failed:`, qaErr.message);
+              warnings.push(`Extract QA failed: ${qaErr.message}`);
             }
-            if (qa.verified) options?.onProgress?.(`Extract QA: ${qa.message}`);
-          } catch (qaErr: any) {
-            console.error(`[RFP v2] Mercury QA failed:`, qaErr.message);
-            warnings.push(`Extract QA failed: ${qaErr.message}`);
+          } else {
+            console.log(`[RFP v2] Mercury extraction passed all validation checks — skipping QA`);
+            options?.onProgress?.(`Validation passed — QA skipped (${mercuryScreens.length} displays clean)`);
           }
 
           // AI product matching

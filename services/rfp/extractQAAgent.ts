@@ -285,11 +285,12 @@ export async function runExtractQA(
 
   const prompt = buildQAPrompt(displays, sourceText, filename);
 
-  // Try Mercury → OpenClaw → MiMo → Z.AI
-  const mercuryResult = await callMercuryQA(prompt);
-  if (mercuryResult) {
-    console.log("[ExtractQA] Mercury QA responded");
-    const parsed = parseQAResponse(mercuryResult, displays);
+  // QA uses a DIFFERENT model than extraction (best practice — same model repeats its own mistakes).
+  // Chain: MiMo Pro (thorough reasoning) → OpenClaw → Z.AI → Mercury (last resort)
+  const mimoResult = await callMiMoQA(prompt);
+  if (mimoResult) {
+    console.log("[ExtractQA] MiMo QA responded");
+    const parsed = parseQAResponse(mimoResult, displays);
     if (parsed) {
       onProgress?.(`QA: ${parsed.message}`);
       return parsed;
@@ -300,16 +301,6 @@ export async function runExtractQA(
   if (openclawResult) {
     console.log("[ExtractQA] OpenClaw QA responded");
     const parsed = parseQAResponse(openclawResult, displays);
-    if (parsed) {
-      onProgress?.(`QA: ${parsed.message}`);
-      return parsed;
-    }
-  }
-
-  const mimoResult = await callMiMoQA(prompt);
-  if (mimoResult) {
-    console.log("[ExtractQA] MiMo QA responded");
-    const parsed = parseQAResponse(mimoResult, displays);
     if (parsed) {
       onProgress?.(`QA: ${parsed.message}`);
       return parsed;
