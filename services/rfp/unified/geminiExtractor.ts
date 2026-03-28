@@ -12,8 +12,9 @@ import { readFile } from "fs/promises";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
 const GEMINI_MODEL = process.env.GEMINI_EXTRACTION_MODEL || "gemini-2.5-flash";
-// Note: Gemini also supports inline base64 for smaller PDFs (<20MB)
-// For larger PDFs, the File API upload is used (uploadToGemini)
+const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || "";
+const MISTRAL_API_BASE = process.env.MISTRAL_API_BASE_URL || "https://api.mistral.ai";
+const MISTRAL_OCR_MODEL = process.env.MISTRAL_OCR_MODEL || "mistral-ocr-latest";
 
 // ---------------------------------------------------------------------------
 // System prompt — proven to extract all 43 displays from BOA Stadium RFP
@@ -283,7 +284,7 @@ export async function extractWithGemini(
   const activeModelForLog = options?.model || GEMINI_MODEL;
   console.log(`[GeminiExtractor] model: ${activeModelForLog}, ${pageCount} pages`);
 
-  // Step 1: Extract full text via pdftotext -layout
+  // Step 1: Extract full text — pdftotext first, Mistral OCR if no text
   options?.onProgress?.("Extracting text from PDF...");
   let sourceText = "";
   try {
@@ -293,7 +294,37 @@ export async function extractWithGemini(
     console.error(`[GeminiExtractor] pdftotext failed:`, err.message);
   }
 
-  console.log(`[GeminiExtractor] pdftotext: ${sourceText.length} chars extracted`);
+  console.log(`[GeminiExtractor] pdftotext: ${sourceText.length} chars`);
+
+  // If pdftotext got nothing, run Mistral OCR — turns scanned pages into text
+  if (sourceText.trim().length < 200 && MISTRAL_API_KEY) {
+    options?.onProgress?.("No selectable text — running OCR...");
+    console.log(`[GeminiExtractor] Running Mistral OCR on scanned PDF...`);
+    try {
+      const pdfBuffer = await readFile(pdfPath);
+      const b64 = pdfBuffer.toString("base64");
+      const ocrRes = await fetch(`${MISTRAL_API_BASE}/v1/ocr`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${MISTRAL_API_KEY}` },
+        body: JSON.stringify({
+          model: MISTRAL_OCR_MODEL,
+          document: { type: "document_url", document_url: `data:application/pdf;base64,${b64}` },
+          include_image_base64: false,
+        }),
+      });
+      if (ocrRes.ok) {
+        const ocrData = await ocrRes.json();
+        const ocrPages: string[] = (ocrData.pages || []).map((p: any) => p.markdown || "");
+        sourceText = ocrPages.join("\f");
+        console.log(`[GeminiExtractor] Mistral OCR: ${ocrPages.length} pages, ${sourceText.length} chars`);
+        options?.onProgress?.(`OCR complete: ${ocrPages.length} pages, ${(sourceText.length / 1024).toFixed(0)}KB text`);
+      } else {
+        console.error(`[GeminiExtractor] Mistral OCR failed: ${ocrRes.status}`);
+      }
+    } catch (ocrErr: any) {
+      console.error(`[GeminiExtractor] Mistral OCR error:`, ocrErr.message);
+    }
+  }
 
   // Step 2: Decide path based on text quality
   const hasUsableText = sourceText.trim().length > 200;
