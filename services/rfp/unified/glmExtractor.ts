@@ -27,6 +27,10 @@ const execFileAsync = promisify(execFile);
 const Z_AI_API_KEY = process.env.Z_AI_API_KEY || "";
 const Z_AI_BASE_URL = process.env.Z_AI_BASE_URL || "https://api.z.ai/api/coding/paas/v4";
 const Z_AI_MODEL = process.env.Z_AI_MODEL_NAME || process.env.Z_AI_EXTRACTION_MODEL || "glm-4.7";
+// MiMo-V2-Omni via Xiaomi API (primary text AI fallback — OpenAI-compatible)
+const MIMO_API_KEY = process.env.MIMO_API_KEY || "";
+const MIMO_API_BASE = process.env.MIMO_API_BASE || "https://api.xiaomimimo.com/v1";
+const MIMO_MODEL = process.env.MIMO_MODEL || "mimo-v2-omni";
 // Fallback 1: Gemini via OpenRouter-compatible API (native PDF vision)
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const OPENROUTER_BASE_URL = process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
@@ -1387,12 +1391,126 @@ export async function extractWithGLM5(
         source: "glm5",
       };
     } else {
-      console.log(`[RFP v2] pdfplumber found 0 LED displays — falling through to Gemini`);
-      options?.onProgress?.("No tables found by pdfplumber — using Gemini...");
+      console.log(`[RFP v2] pdfplumber found 0 LED displays — falling through to MiMo`);
+      options?.onProgress?.("No tables found by pdfplumber — using MiMo...");
     }
   } catch (plumberErr: any) {
     console.error(`[RFP v2] pdfplumber failed:`, plumberErr.message);
-    options?.onProgress?.("pdfplumber failed — using Gemini...");
+    options?.onProgress?.("pdfplumber failed — using MiMo...");
+  }
+
+  // =====================================================================
+  // SECONDARY: MiMo-V2-Omni — text extraction via Xiaomi API
+  // OpenAI-compatible, fast, handles narrative + table RFPs well.
+  // Falls through to Gemini if unavailable or fails.
+  // =====================================================================
+  if (MIMO_API_KEY) {
+    options?.onProgress?.("Analyzing document with MiMo...");
+    try {
+      // Extract text first (pdftotext or Mistral OCR)
+      const { fullText: mimoText } = await extractFullText(pdfPath);
+      if (mimoText.trim().length > 50) {
+        const textToSend = mimoText.length > 128000 ? mimoText.substring(0, 128000) : mimoText;
+        console.log(`[RFP v2] MiMo: sending ${(textToSend.length / 1024).toFixed(0)}KB text to ${MIMO_MODEL}...`);
+
+        const mimoPrompt = `Extract ALL LED displays and requirements from this RFP document.
+
+CRITICAL: Extract EVERY LED video display, ribbon board, fascia board, or videoboard mentioned — whether in a table OR described in prose/narrative text. If the document describes what they need without detailed specs, still extract each display as an entry with null for missing fields.
+
+Return ONLY a JSON object:
+{
+  "project": { "name": string | null, "client": string | null, "venue": string | null, "address": string | null },
+  "displays": [
+    {
+      "name": string,
+      "location": string | null,
+      "pixel_pitch_mm": number | null,
+      "brightness_nits": number | null,
+      "width_ft": string | null,
+      "height_ft": string | null,
+      "environment": "indoor" | "outdoor",
+      "category": "led_display" | "scoreboard" | "clock" | "control_system" | "other",
+      "quantity": number,
+      "notes": string | null
+    }
+  ],
+  "requirements": [
+    { "description": string, "category": string, "status": string }
+  ]
+}
+
+Rules:
+- Include LED videoboards, ribbons, fascia boards — even from narrative descriptions without dimensions.
+- quantity defaults to 1 unless explicitly stated otherwise.
+- Clocks, scoreboards, scoring systems, CMS, control systems → requirements only (not displays).
+- If a field is not specified, use null.
+- Do NOT skip any LED display just because specs are incomplete.`;
+
+        const mimoRes = await fetch(`${MIMO_API_BASE}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${MIMO_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: MIMO_MODEL,
+            messages: [{ role: "user", content: mimoPrompt + "\n\n" + textToSend }],
+            temperature: 0,
+            max_tokens: 32768,
+            response_format: { type: "json_object" },
+          }),
+        });
+
+        if (mimoRes.ok) {
+          const mimoData = await mimoRes.json();
+          const content = mimoData.choices?.[0]?.message?.content || "";
+          const start = content.indexOf("{");
+          const end = content.lastIndexOf("}");
+          if (start >= 0 && end > start) {
+            const parsed = JSON.parse(content.substring(start, end + 1));
+            const allDisplays = parsed.displays || [];
+            const { ledDisplays, nonLedRequirements } = separateAiByCategory(allDisplays);
+
+            console.log(`[RFP v2] MiMo: ${allDisplays.length} total items, ${ledDisplays.length} LED displays, ${nonLedRequirements.length} non-LED`);
+            options?.onProgress?.(`MiMo found ${ledDisplays.length} LED displays`);
+
+            const project = parsed.project || {};
+            const mimoRequirements = (parsed.requirements || []).map((r: any) => ({
+              description: r.description || "",
+              category: r.category || "technical",
+              status: r.status || "info",
+              date: null,
+              sourcePages: [],
+              rawText: r.description || "",
+            }));
+
+            return {
+              screens: aiToSpecs(ledDisplays),
+              project: {
+                clientName: project.client || null,
+                projectName: project.name || null,
+                venue: project.venue || null,
+                location: project.address || null,
+                isOutdoor: false,
+                isUnionLabor: false,
+                bondRequired: false,
+                specialRequirements: [],
+                schedulePhases: [],
+              },
+              requirements: [...mimoRequirements, ...nonLedRequirements],
+              source: "glm5",
+            };
+          }
+        } else {
+          const errText = await mimoRes.text().catch(() => "");
+          console.error(`[RFP v2] MiMo failed (${mimoRes.status}):`, errText.substring(0, 200));
+          options?.onProgress?.(`MiMo failed (${mimoRes.status}) — trying Gemini...`);
+        }
+      }
+    } catch (mimoErr: any) {
+      console.error(`[RFP v2] MiMo error:`, mimoErr.message);
+      options?.onProgress?.("MiMo unavailable — trying Gemini...");
+    }
   }
 
   // =====================================================================
