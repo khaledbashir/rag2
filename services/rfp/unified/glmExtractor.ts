@@ -1517,7 +1517,9 @@ Return ONLY a JSON object with this schema:
   ]
 }
 
-IMPORTANT: Only include actual LED video displays, ribbon boards, fascia boards, and videoboards in the displays array. Do NOT include game clocks, play clocks, scoring controllers, headend racks, spare parts, cable packages, audio systems, or other non-LED equipment. Those belong in requirements.`;
+IMPORTANT: Only include actual LED video displays, ribbon boards, fascia boards, and videoboards in the displays array. Do NOT include game clocks, play clocks, scoring controllers, headend racks, spare parts, cable packages, audio systems, or other non-LED equipment. Those belong in requirements.
+
+CRITICAL — DEDUPLICATION: Each unique display must appear ONLY ONCE in the output, even if it is mentioned on multiple pages or in multiple sections of the document. If a display called "Panthers Den" appears in an LED schedule on page 5 and again in a spec table on page 12, output it ONCE. If there are genuinely MULTIPLE distinct displays with the same name (e.g., 7 different "Panthers Den" screens with different dimensions), output each one separately with its own dimensions. Use the "quantity" field ONLY when multiple identical displays share the EXACT same name, dimensions, pitch, and brightness.`;
 
       console.log(`[RFP v2] MiMo: sending text to ${MIMO_MODEL}...`);
       options?.onProgress?.("Sending to MiMo (text path)...");
@@ -1561,6 +1563,36 @@ IMPORTANT: Only include actual LED video displays, ribbon boards, fascia boards,
             }));
 
             let mimoScreens = aiToSpecs(ledDisplays);
+
+            // Deterministic dedup — merge rows with identical (name + width + height)
+            // before sending to QA. MiMo often extracts the same display from multiple
+            // pages/sections. True duplicates share exact name+dims. Displays with same
+            // name but different dims are genuinely different screens (keep them).
+            {
+              const before = mimoScreens.length;
+              const seen = new Map<string, number>(); // key → first index
+              const toRemove: number[] = [];
+              for (let i = 0; i < mimoScreens.length; i++) {
+                const s = mimoScreens[i];
+                const key = `${(s.name || "").toLowerCase().trim()}|${s.widthFt ?? ""}|${s.heightFt ?? ""}`;
+                const firstIdx = seen.get(key);
+                if (firstIdx !== undefined) {
+                  // Exact duplicate — increment quantity on first occurrence, mark this one for removal
+                  // But only if quantity is 1 (don't double-count if AI already set quantity)
+                  if ((mimoScreens[firstIdx].quantity ?? 1) === 1 && (s.quantity ?? 1) === 1) {
+                    // Just remove the dupe, keep quantity at 1 (they're the same physical screen mentioned twice)
+                  }
+                  toRemove.push(i);
+                } else {
+                  seen.set(key, i);
+                }
+              }
+              if (toRemove.length > 0) {
+                mimoScreens = mimoScreens.filter((_, i) => !toRemove.includes(i));
+                console.log(`[RFP v2] MiMo dedup: ${before} → ${mimoScreens.length} (removed ${toRemove.length} exact duplicates)`);
+                options?.onProgress?.(`Dedup: removed ${toRemove.length} duplicate rows (${mimoScreens.length} unique displays)`);
+              }
+            }
 
             // Validation — extract source text for comparison
             options?.onProgress?.("Validating MiMo extraction...");

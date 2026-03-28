@@ -105,11 +105,16 @@ ${sourceText.substring(0, 60000)}
 
 TASKS:
 1. Check every display name matches the source exactly
-2. Check every dimension matches the source exactly
+2. Check every dimension matches the source exactly (watch for width/height swaps — ribbons are wide and short)
 3. Check pixel pitch and brightness match
 4. Check environment (indoor/outdoor) is correct
 5. Find any displays in the source that are MISSING from the extracted list
-6. Find any DUPLICATE or FABRICATED rows in the extracted list
+6. Find any DUPLICATE rows — BUT BE VERY CAREFUL:
+   - A TRUE duplicate is the EXACT SAME physical display listed twice (same name, same dimensions, same specs)
+   - Multiple displays with the SAME NAME but DIFFERENT dimensions are NOT duplicates — they are different screens (e.g., 7 different "Panthers Den" screens of different sizes)
+   - Multiple displays with the SAME NAME and SAME dimensions ARE legitimate if the source lists them separately (e.g., 4x "Elev Lobby" at 6'x4' each)
+   - When in doubt, KEEP the row. It is far worse to remove a real display than to leave a duplicate.
+   - Count how many unique displays the source document describes. Your final count should MATCH that number.
 
 Return ONLY a JSON object:
 {
@@ -125,6 +130,8 @@ Return ONLY a JSON object:
   "totalExpected": 47,
   "message": "Fixed 2 values, added 1 missing display, removed 0 duplicates. 47/47 verified."
 }
+
+IMPORTANT: Only put indices in "duplicates" if you are 100% certain that row is an exact copy of another row already in the list. If the source says there are N unique displays, your final count (extracted - duplicates + missing) must equal N. Never remove rows that would make the count go BELOW what the source document describes.
 
 If everything is correct, return:
 {"corrections": [], "missing": [], "duplicates": [], "verified": true, "totalExpected": 47, "message": "All 47 displays verified against source. Ready for Natalia."}`;
