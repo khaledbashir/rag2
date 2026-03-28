@@ -276,20 +276,32 @@ export async function extractWithGemini(
   console.log(`[GeminiExtractor] Key present: ${GEMINI_API_KEY.length > 0}, model: ${GEMINI_MODEL}, ${pageCount} pages`);
   options?.onProgress?.(`Classifying ${pageCount} pages...`);
 
+  // Short documents (5 pages or fewer) — always convert to PNG.
+  // AV schedule drawings, single-page specs, and small documents all render
+  // better as high-res images. Gemini Vision reads them more reliably than PDF.
+  // Long documents (6+ pages) — classify each page individually.
+  const SHORT_DOC_THRESHOLD = 5;
   const TEXT_THRESHOLD = 50; // chars — below this, page is a drawing
   const textPages: number[] = [];   // 1-indexed
   const drawingPages: number[] = []; // 1-indexed
 
-  for (let p = 1; p <= pageCount; p++) {
-    try {
-      const { stdout } = await execFileAsync("pdftotext", ["-f", String(p), "-l", String(p), "-layout", pdfPath, "-"], { timeout: 10_000 });
-      if (stdout.trim().length >= TEXT_THRESHOLD) {
-        textPages.push(p);
-      } else {
+  if (pageCount <= SHORT_DOC_THRESHOLD) {
+    // Short doc — ALL pages go as PNG (covers AV drawings, schedules, small specs)
+    for (let p = 1; p <= pageCount; p++) drawingPages.push(p);
+    console.log(`[GeminiExtractor] Short document (${pageCount} pages) — all pages as PNG`);
+  } else {
+    // Long doc — classify per page
+    for (let p = 1; p <= pageCount; p++) {
+      try {
+        const { stdout } = await execFileAsync("pdftotext", ["-f", String(p), "-l", String(p), "-layout", pdfPath, "-"], { timeout: 10_000 });
+        if (stdout.trim().length >= TEXT_THRESHOLD) {
+          textPages.push(p);
+        } else {
+          drawingPages.push(p);
+        }
+      } catch {
         drawingPages.push(p);
       }
-    } catch {
-      drawingPages.push(p); // If pdftotext fails on a page, treat as drawing
     }
   }
 
@@ -356,7 +368,8 @@ export async function extractWithGemini(
 
   options?.onProgress?.(`Sending ${textPages.length} text + ${drawingPages.length} drawing pages to Gemini Flash...`);
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  // Streaming endpoint — read chunks incrementally, forward thinking tokens in real time
+  const streamUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
 
   const body = {
     systemInstruction: {
@@ -386,7 +399,7 @@ export async function extractWithGemini(
   const timer = setTimeout(() => controller.abort(), timeout);
 
   try {
-    const res = await fetch(url, {
+    const res = await fetch(streamUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -399,19 +412,45 @@ export async function extractWithGemini(
       throw new Error(`Gemini API error ${res.status}: ${err}`);
     }
 
-    const data = await res.json();
-    const parts = data.candidates?.[0]?.content?.parts || [];
-
-    // Extract thinking summaries and output text from response parts
+    // Read stream chunk by chunk — no buffering the entire response
     let text = "";
-    for (const part of parts) {
-      if (part.thought && part.text) {
-        const thoughtLine = part.text.split("\n")[0].replace(/^\*+|\*+$/g, "").trim();
-        if (thoughtLine) {
-          options?.onProgress?.(`AI: ${thoughtLine}`);
-        }
-      } else if (part.text) {
-        text += part.text;
+    let lastThought = "";
+    const reader = res.body?.getReader();
+    const decoder = new TextDecoder();
+    let sseBuffer = "";
+
+    if (!reader) throw new Error("No response body to stream");
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      sseBuffer += decoder.decode(value, { stream: true });
+
+      // Process complete SSE events from the buffer
+      const lines = sseBuffer.split("\n");
+      sseBuffer = lines.pop() || ""; // Keep incomplete last line in buffer
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        try {
+          const chunk = JSON.parse(line.substring(6));
+          const parts = chunk.candidates?.[0]?.content?.parts || [];
+          for (const part of parts) {
+            if (part.thought && part.text) {
+              // Real AI thinking — forward each thought line to UI immediately
+              for (const thoughtLine of part.text.split("\n")) {
+                const cleaned = thoughtLine.replace(/^\*+|\*+$/g, "").trim();
+                if (cleaned && cleaned !== lastThought && cleaned.length > 5) {
+                  lastThought = cleaned;
+                  options?.onProgress?.(`AI: ${cleaned}`);
+                }
+              }
+            } else if (part.text) {
+              text += part.text;
+            }
+          }
+        } catch { /* skip malformed SSE chunks */ }
       }
     }
 
