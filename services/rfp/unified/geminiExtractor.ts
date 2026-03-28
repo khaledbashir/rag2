@@ -257,27 +257,104 @@ export async function extractWithGemini(
   warnings: string[];
   source: "gemini";
 }> {
-  const pdfBuffer = await readFile(pdfPath);
-  const sizeMb = pdfBuffer.length / 1024 / 1024;
+  // =========================================================================
+  // LEVEL 1: Classify each page — text or drawing
+  // pdftotext per page. If < 50 chars → drawing (vector graphics). Else → text.
+  // =========================================================================
+  const { execFile: execFileCb } = await import("child_process");
+  const { promisify } = await import("util");
+  const { readFile: readImg, readdir, mkdir, rm, writeFile } = await import("fs/promises");
+  const execFileAsync = promisify(execFileCb);
 
-  console.log(`[GeminiExtractor] Key present: ${GEMINI_API_KEY.length > 0}, model: ${GEMINI_MODEL}, PDF: ${sizeMb.toFixed(1)}MB`);
+  let pageCount = 0;
+  try {
+    const { stdout } = await execFileAsync("pdfinfo", [pdfPath], { timeout: 10_000 });
+    const m = stdout.match(/Pages:\s+(\d+)/);
+    pageCount = m ? parseInt(m[1], 10) : 0;
+  } catch { pageCount = 0; }
 
-  // For PDFs under 15MB, use inline base64 (simpler, no File API roundtrip)
-  // For larger PDFs, use the File API upload
-  let filePart: any;
-  if (sizeMb < 15) {
-    options?.onProgress?.("Sending PDF to Gemini Flash...");
-    const b64 = pdfBuffer.toString("base64");
-    filePart = { inlineData: { mimeType: "application/pdf", data: b64 } };
-    console.log(`[GeminiExtractor] Using inline base64 (${sizeMb.toFixed(1)}MB)`);
-  } else {
-    options?.onProgress?.("Uploading large PDF to Gemini...");
-    const fileUri = await uploadToGemini(pdfPath);
-    filePart = { fileData: { mimeType: "application/pdf", fileUri } };
-    console.log(`[GeminiExtractor] Using File API (${sizeMb.toFixed(1)}MB) → ${fileUri}`);
+  console.log(`[GeminiExtractor] Key present: ${GEMINI_API_KEY.length > 0}, model: ${GEMINI_MODEL}, ${pageCount} pages`);
+  options?.onProgress?.(`Classifying ${pageCount} pages...`);
+
+  const TEXT_THRESHOLD = 50; // chars — below this, page is a drawing
+  const textPages: number[] = [];   // 1-indexed
+  const drawingPages: number[] = []; // 1-indexed
+
+  for (let p = 1; p <= pageCount; p++) {
+    try {
+      const { stdout } = await execFileAsync("pdftotext", ["-f", String(p), "-l", String(p), "-layout", pdfPath, "-"], { timeout: 10_000 });
+      if (stdout.trim().length >= TEXT_THRESHOLD) {
+        textPages.push(p);
+      } else {
+        drawingPages.push(p);
+      }
+    } catch {
+      drawingPages.push(p); // If pdftotext fails on a page, treat as drawing
+    }
   }
 
-  options?.onProgress?.("AI analyzing document...");
+  console.log(`[GeminiExtractor] Level 1: ${textPages.length} text pages, ${drawingPages.length} drawing pages`);
+  if (drawingPages.length > 0) {
+    options?.onProgress?.(`${pageCount} pages scanned: ${textPages.length} text, ${drawingPages.length} drawings (pages ${drawingPages.join(", ")})`);
+  } else {
+    options?.onProgress?.(`${pageCount} pages scanned: all text`);
+  }
+
+  // =========================================================================
+  // LEVEL 2: Build content parts — right format per page
+  // Text pages → PDF inline. Drawing pages → 300 DPI PNG images.
+  // Everything goes in one Gemini request.
+  // =========================================================================
+  const contentParts: any[] = [];
+
+  // Drawing pages → convert to PNG
+  if (drawingPages.length > 0) {
+    options?.onProgress?.(`Converting ${drawingPages.length} drawing pages to images...`);
+    const tmpDir = `/tmp/gemini-vision-${Date.now()}`;
+    await mkdir(tmpDir, { recursive: true });
+
+    for (const p of drawingPages) {
+      try {
+        await execFileAsync("pdftoppm", [
+          "-png", "-r", "300",
+          "-f", String(p), "-l", String(p),
+          pdfPath, `${tmpDir}/page-${String(p).padStart(4, "0")}`,
+        ], { timeout: 30_000 });
+      } catch (err: any) {
+        console.error(`[GeminiExtractor] Failed to convert page ${p} to PNG:`, err.message);
+      }
+    }
+
+    const pngFiles = (await readdir(tmpDir)).filter(f => f.endsWith(".png")).sort();
+    for (const png of pngFiles) {
+      const imgBuf = await readImg(`${tmpDir}/${png}`);
+      contentParts.push({ inlineData: { mimeType: "image/png", data: imgBuf.toString("base64") } });
+    }
+    console.log(`[GeminiExtractor] Added ${pngFiles.length} drawing images`);
+    rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
+
+  // Text pages → send as PDF
+  if (textPages.length > 0) {
+    const pdfBuffer = await readFile(pdfPath);
+    const sizeMb = pdfBuffer.length / 1024 / 1024;
+
+    if (sizeMb < 15) {
+      const b64 = pdfBuffer.toString("base64");
+      contentParts.push({ inlineData: { mimeType: "application/pdf", data: b64 } });
+      console.log(`[GeminiExtractor] Added PDF inline (${sizeMb.toFixed(1)}MB, ${textPages.length} text pages)`);
+    } else {
+      const fileUri = await uploadToGemini(pdfPath);
+      contentParts.push({ fileData: { mimeType: "application/pdf", fileUri } });
+      console.log(`[GeminiExtractor] Added PDF via File API (${sizeMb.toFixed(1)}MB, ${textPages.length} text pages)`);
+    }
+  }
+
+  if (contentParts.length === 0) {
+    throw new Error("No content to send to Gemini — PDF has 0 classifiable pages");
+  }
+
+  options?.onProgress?.(`Sending ${textPages.length} text + ${drawingPages.length} drawing pages to Gemini Flash...`);
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
 
@@ -288,7 +365,7 @@ export async function extractWithGemini(
     contents: [
       {
         parts: [
-          filePart,
+          ...contentParts,
           { text: USER_PROMPT },
         ],
       },

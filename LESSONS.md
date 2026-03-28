@@ -79,3 +79,21 @@ gunzip -c /root/backups/db/ancdb_YYYY-MM-DD_HHMM.sql.gz \
 **Avoid "hardcoded."** Use "static file" or "in-code data" instead. "Hardcoded" sounds temporary and acceptable. It isn't. Data that changes (products, rates, pricing) belongs in the database. Code that references static data should be called out as tech debt, not described with a neutral term.
 
 **Never frame silent failure recovery as a feature.** If something fails, say it failed. A try/catch that swallows an error and returns stale data is not "resilience" — it's hiding a problem. The user sees incorrect results and trusts them. The developer never finds out the primary path is broken. If an error is caught, it must be surfaced: logged with context, shown to the user, or both.
+
+## Build Philosophy
+
+Build it right, not fast. Every feature, fix, or change follows these rules:
+
+**Fix the root cause, not the symptom.** If a display count is wrong, don't add a retry — fix why it's wrong. If product matching is off, don't add a manual override — fix the scoring logic.
+
+**If the data is wrong, nothing else matters.** Extraction accuracy comes before UI polish, performance, or any other feature. If Gemini returns 10 displays instead of 47, everything downstream is garbage. Fix extraction first, always.
+
+**No silent failures.** If something fails, throw an error. Log it. Show it to the user. Never swallow an exception and return stale or partial data. The user trusts what they see — if it's wrong and silent, that's worse than a visible error.
+
+**One source of truth.** Products live in the database. Rates live in the database. Config lives in environment variables. No in-code data files that duplicate or contradict the database.
+
+**Validate outputs.** After any AI extraction, compare the result count against what the document claims (e.g., "Grand total: 29"). Flag mismatches. Never assume the AI got it right.
+
+**No band-aids.** If someone suggests a root fix, build the root fix. Don't say "we can do that later" and ship a workaround. Workarounds become permanent and compound into bigger problems.
+
+**Test before the client sees it.** Run every file 3 times. Check counts, names, specs, product matches. If anything is off by 1, it's a failure. Fix it before showing anyone.
