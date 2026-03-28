@@ -4,21 +4,21 @@
  * Human-in-the-loop row repair. Natalia clicks "Fix this" on a row,
  * the agent reads the source text, finds the correct value, fixes it.
  *
- * Input: { analysisId, rowIndex, displayName, issue, sourceText }
- * Output: { fixed: true, display: {...corrected fields}, reason: "..." }
+ * Pipeline: OpenClaw → MiMo → Z.AI → error
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
-const GEMINI_MODEL = "gemini-3.1-pro-preview"; // Use Pro for repair — accuracy matters more than speed
-const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
-
-// OpenClaw agent — try this first, fall back to direct Gemini
 const OPENCLAW_BRIDGE_URL = process.env.OPENCLAW_BRIDGE_URL || "http://172.17.0.1:18790";
-const OPENCLAW_TOKEN = process.env.OPENCLAW_TOKEN || "d1cd954f0f49c7e03ed01693727d811bc9778e892d32c5812473e53a8673c144";
+const OPENCLAW_TOKEN = process.env.OPENCLAW_TOKEN || "";
+const MIMO_API_KEY = process.env.MIMO_API_KEY || "";
+const MIMO_API_BASE = process.env.MIMO_API_BASE || "https://api.xiaomimimo.com/v1";
+const MIMO_MODEL = process.env.MIMO_MODEL || "mimo-v2-omni";
+const Z_AI_API_KEY = process.env.Z_AI_API_KEY || "";
+const Z_AI_MODEL = process.env.QA_MODEL || "glm-5-turbo";
+const Z_AI_BASE_URL = process.env.Z_AI_BASE_URL || "https://api.z.ai/api/coding/paas/v4";
 
 export async function POST(request: NextRequest) {
   const session = await auth();
@@ -33,7 +33,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing required fields: analysisId, displayName, sourceText" }, { status: 400 });
   }
 
-  // Build the repair prompt — narrow, specific, bounded
   const prompt = `You are repairing ONE row of extracted LED display data. The user flagged this row as incorrect.
 
 DISPLAY: "${displayName}" (row ${rowIndex})
@@ -61,55 +60,78 @@ If you cannot find this display in the source text, return:
 
   try {
     let text = "";
-    let repairSource = "gemini";
+    let repairSource = "";
 
-    // Try OpenClaw agent first
-    try {
-      const clawRes = await fetch(`${OPENCLAW_BRIDGE_URL}/extract`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${OPENCLAW_TOKEN}`,
-        },
-        body: JSON.stringify({
-          agent: "rfp-extractor",
-          message: prompt,
-        }),
-        signal: AbortSignal.timeout(60_000),
-      });
-
-      if (clawRes.ok) {
-        const clawData = await clawRes.json();
-        text = clawData.text || clawData.content || clawData.message || "";
-        if (text) {
-          repairSource = "openclaw";
-          console.log(`[RepairRow] OpenClaw agent responded (${text.length} chars)`);
+    // 1. Try OpenClaw agent
+    if (OPENCLAW_TOKEN) {
+      try {
+        const clawRes = await fetch(`${OPENCLAW_BRIDGE_URL}/extract`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENCLAW_TOKEN}` },
+          body: JSON.stringify({ agent: "rfp-extractor", message: prompt }),
+          signal: AbortSignal.timeout(60_000),
+        });
+        if (clawRes.ok) {
+          const clawData = await clawRes.json();
+          text = clawData.text || clawData.content || clawData.message || "";
+          if (text) {
+            repairSource = "openclaw";
+            console.log(`[RepairRow] OpenClaw responded (${text.length} chars)`);
+          }
         }
+      } catch (err: any) {
+        console.log(`[RepairRow] OpenClaw unavailable: ${err.message}`);
       }
-    } catch (clawErr: any) {
-      console.log(`[RepairRow] OpenClaw not available (${clawErr.message}) — using Gemini directly`);
     }
 
-    // Fall back to Gemini direct if OpenClaw didn't respond
+    // 2. Try MiMo
+    if (!text && MIMO_API_KEY) {
+      try {
+        const res = await fetch(`${MIMO_API_BASE}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${MIMO_API_KEY}` },
+          body: JSON.stringify({ model: MIMO_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: 2048, response_format: { type: "json_object" } }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          text = data.choices?.[0]?.message?.content || "";
+          if (text) {
+            repairSource = "mimo";
+            console.log(`[RepairRow] MiMo responded (${text.length} chars)`);
+          }
+        }
+      } catch (err: any) {
+        console.log(`[RepairRow] MiMo unavailable: ${err.message}`);
+      }
+    }
+
+    // 3. Try Z.AI
+    if (!text && Z_AI_API_KEY) {
+      try {
+        const res = await fetch(`${Z_AI_BASE_URL}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${Z_AI_API_KEY}` },
+          body: JSON.stringify({ model: Z_AI_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: 2048 }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          text = data.choices?.[0]?.message?.content || "";
+          if (text) {
+            repairSource = "z-ai";
+            console.log(`[RepairRow] Z.AI responded (${text.length} chars)`);
+          }
+        }
+      } catch (err: any) {
+        console.log(`[RepairRow] Z.AI unavailable: ${err.message}`);
+      }
+    }
+
     if (!text) {
-      const res = await fetch(`${BASE_URL}/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0, maxOutputTokens: 2048 },
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.text();
-        return NextResponse.json({ error: `AI repair failed: ${res.status}` }, { status: 502 });
-      }
-
-      const data = await res.json();
-      text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      repairSource = "gemini-pro";
+      return NextResponse.json({ error: "All AI models unavailable for repair" }, { status: 502 });
     }
+
     const cleaned = text.replace(/```json/gi, "").replace(/```/g, "").trim();
     const si = cleaned.indexOf("{");
     const ei = cleaned.lastIndexOf("}") + 1;
@@ -123,17 +145,14 @@ If you cannot find this display in the source text, return:
       return NextResponse.json({ fixed: false, error: repair.error, reason: repair.reason }, { status: 200 });
     }
 
-    // Log the repair for audit trail
     console.log(`[RepairRow] ${session.user.name || session.user.email} repaired "${displayName}" in analysis ${analysisId}: ${repair.reason}`);
 
-    // Update the analysis in the database
     try {
       const analysis = await prisma.rfpAnalysis.findUnique({ where: { id: analysisId } });
       if (analysis?.screens) {
         const screens = analysis.screens as any[];
         const screen = screens[rowIndex] || screens.find((s: any) => s.name === displayName);
         if (screen) {
-          // Apply corrections
           if (repair.name != null) screen.name = repair.name;
           if (repair.widthFt != null) screen.widthFt = repair.widthFt;
           if (repair.heightFt != null) screen.heightFt = repair.heightFt;
