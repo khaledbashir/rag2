@@ -1521,8 +1521,8 @@ IMPORTANT: Only include actual LED video displays, ribbon boards, fascia boards,
 
 CRITICAL — DEDUPLICATION: Each unique display must appear ONLY ONCE in the output, even if it is mentioned on multiple pages or in multiple sections of the document. If a display called "Panthers Den" appears in an LED schedule on page 5 and again in a spec table on page 12, output it ONCE. If there are genuinely MULTIPLE distinct displays with the same name (e.g., 7 different "Panthers Den" screens with different dimensions), output each one separately with its own dimensions. Use the "quantity" field ONLY when multiple identical displays share the EXACT same name, dimensions, pitch, and brightness.`;
 
-      console.log(`[RFP v2] MiMo: sending text to ${MIMO_MODEL}...`);
-      options?.onProgress?.("Sending to MiMo (text path)...");
+      console.log(`[RFP v2] MiMo: sending text to ${MIMO_MODEL} (streaming)...`);
+      options?.onProgress?.("Sending to MiMo...");
 
       const mimoRes = await fetch(`${MIMO_API_BASE}/chat/completions`, {
         method: "POST",
@@ -1535,22 +1535,86 @@ CRITICAL — DEDUPLICATION: Each unique display must appear ONLY ONCE in the out
           messages: [{ role: "user", content: mimoPrompt + "\n\n" + textToSend }],
           temperature: 0,
           max_tokens: 32768,
+          stream: true,
         }),
         signal: AbortSignal.timeout(120_000),
       });
 
       if (mimoRes.ok) {
-          const mimoData = await mimoRes.json();
-          const content = mimoData.choices?.[0]?.message?.content || "";
+          // Stream response — forward reasoning/thinking tokens as progress
+          let content = "";
+          let lastThought = "";
+          const reader = mimoRes.body?.getReader();
+          const decoder = new TextDecoder();
+          let sseBuffer = "";
+
+          if (reader) {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              sseBuffer += decoder.decode(value, { stream: true });
+              const lines = sseBuffer.split("\n");
+              sseBuffer = lines.pop() || "";
+
+              for (const line of lines) {
+                if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
+                try {
+                  const chunk = JSON.parse(line.substring(6));
+                  const delta = chunk.choices?.[0]?.delta;
+                  if (!delta) continue;
+
+                  // Reasoning/thinking tokens (DeepSeek/MiMo style)
+                  const reasoning = delta.reasoning_content || delta.thinking || delta.thought;
+                  if (reasoning) {
+                    for (const thoughtLine of reasoning.split("\n")) {
+                      const cleaned = thoughtLine.replace(/^\*+|\*+$/g, "").trim();
+                      if (cleaned && cleaned !== lastThought && cleaned.length > 5) {
+                        lastThought = cleaned;
+                        options?.onProgress?.(cleaned);
+                      }
+                    }
+                  }
+
+                  // Content tokens (the actual JSON output)
+                  if (delta.content) {
+                    content += delta.content;
+                  }
+                } catch { /* skip malformed SSE chunks */ }
+              }
+            }
+          } else {
+            // Fallback: non-streaming (body not readable)
+            const mimoData = await mimoRes.json();
+            content = mimoData.choices?.[0]?.message?.content || "";
+          }
+
           const start = content.indexOf("{");
           const end = content.lastIndexOf("}");
           if (start >= 0 && end > start) {
             const parsed = JSON.parse(content.substring(start, end + 1));
+            // Log the extraction log (chain-of-thought) for transparency
+            if (parsed._extraction_log) {
+              const elog = parsed._extraction_log;
+              console.log(`[RFP v2] MiMo extraction log:`);
+              console.log(`  Sections: ${elog.sections_found?.join(", ") || "none"}`);
+              console.log(`  Anomalies: ${elog.anomalies_detected?.join(", ") || "none"}`);
+              console.log(`  Displays counted: ${elog.total_displays_counted_in_text}`);
+              console.log(`  EOF reached: ${elog.reached_end_of_document}`);
+              console.log(`  Verification: ${elog.step_by_step_verification}`);
+              if (elog.sections_found?.length > 0) {
+                options?.onProgress?.(`Sections found: ${elog.sections_found.join(", ")}`);
+              }
+              if (elog.total_displays_counted_in_text) {
+                options?.onProgress?.(`Document states ${elog.total_displays_counted_in_text} displays`);
+              }
+            }
+
             const allDisplays = parsed.displays || [];
             const { ledDisplays, nonLedRequirements } = separateAiByCategory(allDisplays);
 
             console.log(`[RFP v2] MiMo: ${allDisplays.length} total items, ${ledDisplays.length} LED displays, ${nonLedRequirements.length} non-LED`);
-            options?.onProgress?.(`MiMo found ${ledDisplays.length} LED displays`);
+            options?.onProgress?.(`Extracted ${ledDisplays.length} displays, ${(parsed.requirements || []).length} requirements`);
 
             const project = parsed.project || {};
             const mimoRequirements = (parsed.requirements || []).map((r: any) => ({
