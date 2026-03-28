@@ -315,9 +315,32 @@ export async function extractWithGemini(
       if (ocrRes.ok) {
         const ocrData = await ocrRes.json();
         const ocrPages: string[] = (ocrData.pages || []).map((p: any) => p.markdown || "");
-        sourceText = ocrPages.join("\f");
-        console.log(`[GeminiExtractor] Mistral OCR: ${ocrPages.length} pages, ${sourceText.length} chars`);
-        options?.onProgress?.(`OCR complete: ${ocrPages.length} pages, ${(sourceText.length / 1024).toFixed(0)}KB text`);
+        console.log(`[GeminiExtractor] Mistral OCR: ${ocrPages.length} pages, ${ocrPages.reduce((s, p) => s + p.length, 0)} chars total`);
+        options?.onProgress?.(`OCR complete: ${ocrPages.length} pages`);
+
+        // Ctrl+F: find only LED-relevant pages by keyword
+        const LED_KEYWORDS = ["led", "videoboard", "pixel pitch", "nits", "brightness", "display schedule",
+          "scoreboard", "ribbon board", "116843", "116643", "110660", "display matrix",
+          "led board schedule", "entry led", "exterior led"];
+        const ledPageIndices: number[] = [];
+        for (let i = 0; i < ocrPages.length; i++) {
+          const lower = ocrPages[i].toLowerCase();
+          if (LED_KEYWORDS.some(kw => lower.includes(kw))) {
+            ledPageIndices.push(i);
+          }
+        }
+
+        if (ledPageIndices.length > 0) {
+          // Only keep LED pages — this is the Ctrl+F
+          const ledText = ledPageIndices.map(i => ocrPages[i]).join("\f");
+          sourceText = ledText;
+          console.log(`[GeminiExtractor] Ctrl+F: ${ledPageIndices.length}/${ocrPages.length} pages have LED content (${(ledText.length / 1024).toFixed(0)}KB)`);
+          options?.onProgress?.(`Found LED content on ${ledPageIndices.length} of ${ocrPages.length} pages`);
+        } else {
+          // No LED keywords found — use all text as fallback
+          sourceText = ocrPages.join("\f");
+          console.log(`[GeminiExtractor] No LED keywords in OCR — using all ${ocrPages.length} pages`);
+        }
       } else {
         console.error(`[GeminiExtractor] Mistral OCR failed: ${ocrRes.status}`);
       }
