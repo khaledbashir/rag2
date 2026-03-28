@@ -137,7 +137,7 @@ Return ONLY a JSON object:
 IMPORTANT: Only put indices in "duplicates" if you are 100% certain that row is an exact copy of another row already in the list. If the source says there are N unique displays, your final count (extracted - duplicates + missing) must equal N. Never remove rows that would make the count go BELOW what the source document describes.
 
 If everything is correct, return:
-{"corrections": [], "missing": [], "duplicates": [], "verified": true, "totalExpected": 47, "message": "All 47 displays verified against source. Ready for Natalia."}`;
+{"corrections": [], "missing": [], "duplicates": [], "verified": true, "totalExpected": 47, "message": "All 47 displays verified against source."}`;
 }
 
 function parseQAResponse(text: string, displays: ExtractedLEDSpec[]): QAResult | null {
