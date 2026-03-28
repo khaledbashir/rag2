@@ -69,3 +69,11 @@ gunzip -c /root/backups/db/ancdb_YYYY-MM-DD_HHMM.sql.gz \
 **Env vars are in EasyPanel, not in `.env` files.** The repo has no `.env`. All keys are configured in EasyPanel's service environment section. After changing an env var, the container must restart to pick it up.
 
 **The entrypoint runs `npx prisma db push --accept-data-loss`.** New schema fields are applied automatically on container restart. But if you add fields that conflict with existing data, this can drop columns. Only add nullable fields or fields with defaults.
+
+## Communication
+
+**Avoid the word "fallback."** Use "secondary lookup" or "backup path" instead. "Fallback" implies graceful degradation — in practice it means silent failure. If there IS a legitimate reason for a backup path, explain WHY it exists and what happens if it fails. Document the failure mode, not just the happy path.
+
+**Avoid "hardcoded."** Use "static file" or "in-code data" instead. "Hardcoded" sounds temporary and acceptable. It isn't. Data that changes (products, rates, pricing) belongs in the database. Code that references static data should be called out as tech debt, not described with a neutral term.
+
+**Never frame silent failure recovery as a feature.** If something fails, say it failed. A try/catch that swallows an error and returns stale data is not "resilience" — it's hiding a problem. The user sees incorrect results and trusts them. The developer never finds out the primary path is broken. If an error is caught, it must be surfaced: logged with context, shown to the user, or both.
