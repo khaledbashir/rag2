@@ -1444,24 +1444,10 @@ export async function extractWithGLM5(
       const totalPages = pages.length;
       console.log(`[RFP v2] Mercury: extracted ${totalPages} pages, ${(fullText.length / 1024).toFixed(1)}KB`);
 
-      const tableHeaders = detectTableHeaders(fullText);
-      let textToSend: string;
-      if (tableHeaders.length > 0) {
-        const sections: string[] = [];
-        for (const header of tableHeaders) {
-          const idx = fullText.indexOf(header);
-          if (idx >= 0) {
-            const start = Math.max(0, idx - 200);
-            const end = Math.min(fullText.length, idx + 8000);
-            sections.push(fullText.substring(start, end));
-          }
-        }
-        textToSend = sections.join("\n\n---SECTION---\n\n");
-        options?.onProgress?.(`${tableHeaders.length} schedule headers detected`);
-      } else {
-        textToSend = fullText.length > 128000 ? fullText.substring(0, 128000) : fullText;
-        options?.onProgress?.(`Sending full document (${(textToSend.length / 1024).toFixed(0)}KB)`);
-      }
+      // Mercury is fast — just send the full text (up to 128KB). No need to slice by headers.
+      // Header-slicing was causing tables to get chopped (8KB window missed displays at the end).
+      const textToSend = fullText.length > 128000 ? fullText.substring(0, 128000) : fullText;
+      options?.onProgress?.(`Sending ${(textToSend.length / 1024).toFixed(0)}KB to Mercury 2...`);
 
       options?.onProgress?.("Mercury 2 extracting...");
 
@@ -1568,28 +1554,9 @@ CRITICAL — DEDUPLICATION: Do NOT merge or collapse displays. Output EVERY disp
           }));
 
           let mercuryScreens = aiToSpecs(ledDisplays);
-
-          // Deterministic dedup
-          {
-            const before = mercuryScreens.length;
-            const seen = new Map<string, number>();
-            const toRemove: number[] = [];
-            for (let i = 0; i < mercuryScreens.length; i++) {
-              const s = mercuryScreens[i];
-              const key = `${(s.name || "").toLowerCase().trim()}|${s.widthFt ?? ""}|${s.heightFt ?? ""}`;
-              const firstIdx = seen.get(key);
-              if (firstIdx !== undefined) {
-                toRemove.push(i);
-              } else {
-                seen.set(key, i);
-              }
-            }
-            if (toRemove.length > 0) {
-              mercuryScreens = mercuryScreens.filter((_, i) => !toRemove.includes(i));
-              console.log(`[RFP v2] Mercury dedup: ${before} → ${mercuryScreens.length}`);
-              options?.onProgress?.(`Dedup: ${toRemove.length} duplicates removed (${mercuryScreens.length} unique)`);
-            }
-          }
+          // No deterministic dedup for Mercury — it handles dedup correctly via prompt.
+          // The dedup step was for MiMo's cross-page duplicate problem. Mercury gets
+          // the full text in one shot and follows the "1 row per table row" instruction.
 
           // Validation
           options?.onProgress?.("Validating extraction...");
