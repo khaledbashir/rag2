@@ -16,6 +16,69 @@ const QA_API_KEY = process.env.Z_AI_API_KEY || "";
 const QA_MODEL = process.env.QA_MODEL || "glm-5-turbo";
 const QA_BASE_URL = process.env.Z_AI_BASE_URL || "https://api.z.ai/api/coding/paas/v4";
 
+// ── PHASE 1: Scout — find LED pages in large documents ──
+
+export interface ScoutResult {
+  ledPages: number[];
+  totalPages: number;
+  reason: string;
+}
+
+export async function scoutLedPages(
+  sourceText: string,
+  totalPages: number,
+  onProgress?: (msg: string) => void,
+): Promise<ScoutResult> {
+  if (!QA_API_KEY || sourceText.length < 100) {
+    return { ledPages: [], totalPages, reason: "No API key or no text" };
+  }
+
+  onProgress?.("Extract: scanning for LED pages...");
+
+  // Build page summaries — first 300 chars per page
+  const pages = sourceText.split("\f").filter(p => p.trim());
+  const summaries = pages.map((p, i) => `Page ${i + 1}: ${p.trim().substring(0, 300).replace(/\n/g, " ")}`).join("\n");
+
+  const prompt = `You are Extract — scanning a ${totalPages}-page construction document to find LED display pages.
+
+Which pages contain LED display specification TABLES with dimensions, pixel pitch, brightness values? Not pages that just mention "LED" in passing — pages with actual data tables.
+
+Return ONLY JSON: {"ledPages": [page numbers], "reason": "brief explanation"}
+
+Page summaries:
+${summaries.substring(0, 60000)}`;
+
+  try {
+    const res = await fetch(`${QA_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${QA_API_KEY}` },
+      body: JSON.stringify({ model: QA_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: 2048 }),
+    });
+
+    if (!res.ok) return { ledPages: [], totalPages, reason: `API error ${res.status}` };
+
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || "";
+    const cleaned = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+    const si = cleaned.indexOf("{");
+    const ei = cleaned.lastIndexOf("}") + 1;
+    if (si < 0 || ei <= si) return { ledPages: [], totalPages, reason: "No JSON returned" };
+
+    const result = JSON.parse(cleaned.substring(si, ei));
+    const ledPages = result.ledPages || [];
+
+    console.log(`[ExtractScout] Found ${ledPages.length} LED pages out of ${totalPages}: ${ledPages.join(", ")}`);
+    onProgress?.(`Extract: found ${ledPages.length} LED pages out of ${totalPages}`);
+
+    return { ledPages, totalPages, reason: result.reason || "" };
+  } catch (err: any) {
+    console.error(`[ExtractScout] Failed:`, err.message);
+    return { ledPages: [], totalPages, reason: err.message };
+  }
+}
+
+// ── PHASE 2: QA — review and fix extraction results ──
+
 export interface QAResult {
   correctedDisplays: ExtractedLEDSpec[];
   changes: string[];

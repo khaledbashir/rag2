@@ -348,20 +348,103 @@ export async function extractWithGemini(
 
     contentParts = [{ text: `Extracted text from display schedule sections of the PDF (pdftotext -layout). Each section between TABLE BOUNDARY markers is a separate table. Columns are aligned by whitespace.\n\n${relevantText}` }];
   } else {
-    // VISION PATH — no usable text, convert to PNG
-    // Only for truly raster/image PDFs where pdftotext returns nothing
+    // VISION PATH — no usable text (scanned/image PDF)
     extractionMethod = "vision";
-    options?.onProgress?.("No extractable text — converting to images for vision...");
-    console.log(`[GeminiExtractor] Vision path: ${sourceText.length} chars (below threshold), converting to PNG`);
-
     const tmpDir = `/tmp/gemini-vision-${Date.now()}`;
     await mkdir(tmpDir, { recursive: true });
-    await execFileAsync("pdftoppm", ["-png", "-r", "300", pdfPath, `${tmpDir}/page`], { timeout: 120_000 });
-    const pngFiles = (await readdir(tmpDir)).filter(f => f.endsWith(".png")).sort();
+
+    if (pageCount > 20) {
+      // LARGE SCANNED PDF — Extract scouts first
+      // Convert every Nth page to thumbnail, ask Extract which pages have LED tables
+      options?.onProgress?.(`Large scanned PDF (${pageCount} pages) — Extract scouting for LED pages...`);
+      console.log(`[GeminiExtractor] Large scanned PDF: ${pageCount} pages, scouting with thumbnails`);
+
+      const step = Math.max(1, Math.floor(pageCount / 25)); // ~25 sample pages
+      const samplePages: number[] = [];
+      for (let p = 1; p <= pageCount; p += step) samplePages.push(p);
+      // Always include last page
+      if (!samplePages.includes(pageCount)) samplePages.push(pageCount);
+
+      // Convert sample pages to low-res thumbnails
+      options?.onProgress?.(`Converting ${samplePages.length} sample pages to thumbnails...`);
+      for (const p of samplePages) {
+        try {
+          await execFileAsync("pdftoppm", ["-png", "-r", "72", "-f", String(p), "-l", String(p), pdfPath, `${tmpDir}/thumb-${String(p).padStart(4, "0")}`], { timeout: 15_000 });
+        } catch { /* skip failed pages */ }
+      }
+
+      const thumbFiles = (await readdir(tmpDir)).filter(f => f.startsWith("thumb-") && f.endsWith(".png")).sort();
+      if (thumbFiles.length > 0) {
+        // Send thumbnails to Gemini to find LED pages
+        options?.onProgress?.(`Asking AI to identify LED pages from ${thumbFiles.length} thumbnails...`);
+        const thumbParts: any[] = [];
+        for (const t of thumbFiles) {
+          const buf = await readImg(`${tmpDir}/${t}`);
+          thumbParts.push({ inlineData: { mimeType: "image/png", data: buf.toString("base64") } });
+          // Extract page number from filename
+          const pageNum = parseInt(t.match(/thumb-(\d+)/)?.[1] || "0");
+          thumbParts.push({ text: `This is page ${pageNum} of ${pageCount}.` });
+        }
+
+        const scoutBody = {
+          contents: [{ parts: [...thumbParts, { text: "Which of these pages contain LED display specification tables, AV schedules, or display matrices? Return ONLY JSON: {\"ledPages\": [page numbers]}" }] }],
+          generationConfig: { temperature: 0, maxOutputTokens: 500 },
+        };
+
+        try {
+          const scoutUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${GEMINI_API_KEY}`;
+          const scoutRes = await fetch(scoutUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(scoutBody) });
+          if (scoutRes.ok) {
+            const scoutData = await scoutRes.json();
+            const scoutText = scoutData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            const scoutCleaned = scoutText.replace(/```json/gi, "").replace(/```/g, "").trim();
+            const si = scoutCleaned.indexOf("{");
+            const ei = scoutCleaned.lastIndexOf("}") + 1;
+            if (si >= 0 && ei > si) {
+              const scoutResult = JSON.parse(scoutCleaned.substring(si, ei));
+              const ledPages: number[] = scoutResult.ledPages || [];
+              if (ledPages.length > 0) {
+                // Expand: include ±2 pages around each LED page for context
+                const expanded = new Set<number>();
+                for (const p of ledPages) {
+                  for (let i = Math.max(1, p - 2); i <= Math.min(pageCount, p + 2); i++) expanded.add(i);
+                }
+                const targetPages = [...expanded].sort((a, b) => a - b);
+                console.log(`[GeminiExtractor] Scout found LED on pages: ${ledPages.join(", ")} → processing ${targetPages.length} pages`);
+                options?.onProgress?.(`Found LED content on ${ledPages.length} pages — extracting ${targetPages.length} pages at full resolution...`);
+
+                // Convert target pages to 300 DPI
+                for (const p of targetPages) {
+                  try {
+                    await execFileAsync("pdftoppm", ["-png", "-r", "300", "-f", String(p), "-l", String(p), pdfPath, `${tmpDir}/page-${String(p).padStart(4, "0")}`], { timeout: 30_000 });
+                  } catch { /* skip */ }
+                }
+              }
+            }
+          }
+        } catch (scoutErr: any) {
+          console.error(`[GeminiExtractor] Scout failed:`, scoutErr.message);
+          options?.onProgress?.("Scout failed — converting first 20 pages...");
+          // Fall back to first 20 pages
+          for (let p = 1; p <= Math.min(20, pageCount); p++) {
+            try {
+              await execFileAsync("pdftoppm", ["-png", "-r", "300", "-f", String(p), "-l", String(p), pdfPath, `${tmpDir}/page-${String(p).padStart(4, "0")}`], { timeout: 30_000 });
+            } catch { /* skip */ }
+          }
+        }
+      }
+    } else {
+      // Small scanned PDF — convert all pages
+      options?.onProgress?.("No extractable text — converting to images...");
+      console.log(`[GeminiExtractor] Vision path: ${pageCount} pages, converting all to PNG`);
+      await execFileAsync("pdftoppm", ["-png", "-r", "300", pdfPath, `${tmpDir}/page`], { timeout: 120_000 });
+    }
+
+    const pngFiles = (await readdir(tmpDir)).filter(f => f.startsWith("page") && f.endsWith(".png")).sort();
 
     if (pngFiles.length === 0) {
       await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-      throw new Error("PDF has no extractable text and image conversion failed");
+      throw new Error("PDF has no extractable text and image conversion produced 0 pages");
     }
 
     contentParts = [];
@@ -369,7 +452,7 @@ export async function extractWithGemini(
       const imgBuf = await readImg(`${tmpDir}/${png}`);
       contentParts.push({ inlineData: { mimeType: "image/png", data: imgBuf.toString("base64") } });
     }
-    console.log(`[GeminiExtractor] Added ${pngFiles.length} page images`);
+    console.log(`[GeminiExtractor] Added ${pngFiles.length} page images for extraction`);
     rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }
 
