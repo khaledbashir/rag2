@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import { getAllProducts, type ProductType } from "@/services/rfp/productCatalog";
 
 export interface ScreenSpec {
     widthFt: number;
@@ -44,32 +43,10 @@ export interface MatchedSolution {
 }
 
 /**
- * Convert a productCatalog.ts ProductType → MatchedProduct shape.
- */
-function catalogToMatched(p: ProductType): MatchedProduct {
-    const cab = p.defaultCabinet;
-    return {
-        id: p.id,
-        manufacturer: p.manufacturer,
-        name: p.name,
-        modelNumber: p.id,
-        widthMm: cab?.widthMm ?? 500,
-        heightMm: cab?.heightMm ?? 500,
-        pitch: p.pitchMm,
-        nits: p.brightnessNits,
-        weightKg: cab?.weightKg ?? 15,
-        maxPowerWatts: cab?.maxPowerW ?? 200,
-        supportsHalfModule: !!p.smallCabinet,
-        environment: p.environment === "Indoor" ? "indoor" : p.environment === "Outdoor" ? "outdoor" : "indoor_outdoor",
-    };
-}
-
-/**
  * Product Matcher Service
  *
- * Priority order:
- * 1. Prisma ManufacturerProduct table (seeded or user-added products)
- * 2. productCatalog.ts (22 Yaham NX + Nitxeon products with validated rate card pricing)
+ * All products live in the ManufacturerProduct DB table.
+ * No hardcoded fallback — if the DB is down, the app is down.
  */
 export class ProductMatcher {
 
@@ -148,11 +125,10 @@ export class ProductMatcher {
             }
         } catch (err) {
             console.error("[ProductMatcher] DB query failed:", err);
+            throw new Error(`Product matching failed — database unreachable: ${err}`);
         }
 
-        // Fallback: productCatalog.ts — only used if DB is empty or unreachable
-        console.warn("[ProductMatcher] No DB products found, falling back to hardcoded catalog");
-        return ProductMatcher.matchFromCatalog(spec);
+        throw new Error("No products found in database. Run the seed script: npx tsx prisma/seed-products.ts");
     }
 
     /**
@@ -234,54 +210,11 @@ export class ProductMatcher {
                 }));
             }
         } catch (err) {
-            console.error("[ProductMatcher] DB query failed, falling back to catalog:", err);
+            console.error("[ProductMatcher] DB query failed:", err);
+            throw new Error(`Product listing failed — database unreachable: ${err}`);
         }
 
-        // Fallback: productCatalog.ts (22 Yaham NX products)
-        const candidates = getAllProducts();
-        let suitable = candidates;
-        if (environment) {
-            suitable = candidates.filter((p) => {
-                const env = p.environment;
-                if (environment === "outdoor") return env === "Outdoor" || env === "Both";
-                return env === "Indoor" || env === "Both";
-            });
-            if (suitable.length === 0) suitable = candidates;
-        }
-        return suitable.map(catalogToMatched);
+        return [];
     }
 
-    /**
-     * Fallback: match from productCatalog.ts (Yaham NX + Nitxeon products).
-     * Has exact entries for 2.5mm, 4mm, 6mm, 10mm and all Yaham variants.
-     */
-    private static matchFromCatalog(spec: ScreenSpec): MatchedSolution {
-        const candidates = getAllProducts();
-        const isOutdoorRequest = spec.isOutdoor === true;
-
-        let suitable = candidates.filter((p) => {
-            if (isOutdoorRequest) return p.environment === "Outdoor" || p.environment === "Both";
-            return p.environment === "Indoor" || p.environment === "Both";
-        });
-        if (suitable.length === 0) suitable = candidates;
-
-        const targetPitch = spec.pixelPitch || (isOutdoorRequest ? 10 : 3.9);
-        const targetNits = spec.brightnessNits || 0;
-        const MESH_PATTERNS = /mesh|transparent|see.?through/i;
-
-        suitable.sort((a, b) => {
-            const pitchA = Math.abs(a.pitchMm - targetPitch);
-            const pitchB = Math.abs(b.pitchMm - targetPitch);
-            // Penalize mesh for solid-panel applications
-            const meshA = MESH_PATTERNS.test(a.name) ? 50 : 0;
-            const meshB = MESH_PATTERNS.test(b.name) ? 50 : 0;
-            // Penalize products below required brightness
-            const nitsA = (targetNits > 0 && a.brightnessNits < targetNits) ? 20 : 0;
-            const nitsB = (targetNits > 0 && b.brightnessNits < targetNits) ? 20 : 0;
-            return (pitchA + meshA + nitsA) - (pitchB + meshB + nitsB);
-        });
-
-        const best = suitable[0];
-        return ProductMatcher.calculateSolution(spec, catalogToMatched(best));
-    }
 }
