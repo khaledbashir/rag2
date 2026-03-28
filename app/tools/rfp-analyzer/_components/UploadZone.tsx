@@ -37,6 +37,83 @@ export interface PipelineEvent {
   result?: any;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// AI Thinking Panel — collapsible dark log showing Gemini's reasoning
+// ═══════════════════════════════════════════════════════════════════════════
+
+function AIThinkingPanel({ events, isComplete }: { events: PipelineEvent[]; isComplete: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  // Collect all progress messages as log lines
+  const logLines = events
+    .filter((e) => e.type === "progress" && e.message)
+    .map((e) => e.message!);
+
+  // Auto-scroll to bottom when new lines appear
+  useEffect(() => {
+    if (expanded && logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [logLines.length, expanded]);
+
+  // Don't show if no log lines yet
+  if (logLines.length === 0) return null;
+
+  const aiLines = logLines.filter((l) => l.startsWith("AI: "));
+  const hasThinking = aiLines.length > 0;
+
+  return (
+    <div className="mb-4 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+      {/* Toggle header */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-left"
+      >
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-3.5 h-3.5 text-[#0A52EF]" />
+          <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+            {hasThinking ? "AI Thinking" : "Pipeline Log"}
+          </span>
+          <span className="text-[10px] text-gray-400 font-mono">{logLines.length} steps</span>
+        </div>
+        <span className="text-[10px] text-gray-400">{expanded ? "Hide" : "Show"} {expanded ? "\u25B2" : "\u25BC"}</span>
+      </button>
+
+      {/* Collapsible log body */}
+      {expanded && (
+        <div
+          ref={logRef}
+          className="max-h-48 overflow-y-auto bg-[#1a1b26] px-3 py-2 font-mono text-[11px] leading-5 space-y-0.5"
+        >
+          {logLines.map((line, i) => {
+            const isAI = line.startsWith("AI: ");
+            const isCount = /\d+ displays|\d+ pages|matched|verified/i.test(line);
+            return (
+              <div key={i} className="flex gap-2">
+                <span className="text-gray-600 select-none shrink-0">{String(i + 1).padStart(2, "0")}</span>
+                <span className={
+                  isAI ? "text-[#7aa2f7] italic" :
+                  isCount ? "text-[#9ece6a]" :
+                  "text-gray-400"
+                }>
+                  {isAI ? line.substring(4) : line}
+                </span>
+              </div>
+            );
+          })}
+          {!isComplete && (
+            <div className="flex gap-2">
+              <span className="text-gray-600 select-none shrink-0">{String(logLines.length + 1).padStart(2, "0")}</span>
+              <span className="text-gray-500 animate-pulse">...</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface UploadZoneProps {
   onUpload: (files: File[], bidFormFile?: File) => void;
   onExcelUpload?: (file: File) => void;
@@ -359,13 +436,16 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
           </div>
 
           {/* Live status message */}
-          <div className="mb-6">
+          <div className="mb-4">
             <p className={`text-sm font-medium ${
               isComplete ? "text-emerald-600" : hasError ? "text-red-600" : "text-gray-600"
             }`}>
               {latestMessage}
             </p>
           </div>
+
+          {/* AI Thinking panel — collapsible dark log showing AI reasoning */}
+          <AIThinkingPanel events={events} isComplete={isComplete} />
 
           {/* Pipeline stages — horizontal stepper */}
           <div className="flex items-start gap-1 mb-6">
