@@ -1459,10 +1459,23 @@ export async function extractWithGLM5(
         const extracted = await extractFullText(pdfPath);
         fullText = extracted.fullText;
       }
-      const totalPages = fullText.split("\f").filter(p => p.trim()).length;
+      const pages = fullText.split("\f").filter(p => p.trim().length > 0);
+      const totalPages = pages.length;
       console.log(`[RFP v2] GPT-5.4-mini: pdftotext ${totalPages} pages, ${(fullText.length / 1024).toFixed(1)}KB`);
 
-      const textToSend = fullText.length > 128000 ? fullText.substring(0, 128000) : fullText;
+      // Triage: for large docs (50+ pages), only send LED-relevant pages.
+      // A 600-page RFP has ~5-20 LED pages. Sending everything wastes tokens
+      // and risks truncation losing the actual LED tables.
+      let textToSend: string;
+      if (totalPages > 50) {
+        const { filtered, keptPages, stats } = filterLedPages(pages);
+        options?.onProgress?.(`Page triage: ${stats}`);
+        console.log(`[RFP v2] Large doc triage: ${stats}`);
+        textToSend = filtered.length > 128000 ? filtered.substring(0, 128000) : filtered;
+      } else {
+        // Small docs (≤50 pages) — send everything, no risk of truncation
+        textToSend = fullText.length > 128000 ? fullText.substring(0, 128000) : fullText;
+      }
       options?.onProgress?.(`Sending ${(textToSend.length / 1024).toFixed(0)}KB to GPT-5.4-mini...`);
 
       options?.onProgress?.("GPT-5.4-mini extracting...");
