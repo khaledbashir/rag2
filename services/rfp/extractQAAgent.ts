@@ -1,25 +1,25 @@
 /**
- * Extract QA Agent — Reviews and fixes extraction results automatically.
+ * Extract QA Agent — Reviews and fixes extraction results.
  *
- * Runs after every extraction. Compares extracted displays against the
- * source PDF text, fixes wrong values, adds missing displays, removes
- * duplicates. Reports every change.
- *
- * This is the last line of defense before Natalia sees the data.
+ * Pipeline: OpenClaw → MiMo → Z.AI → skip (non-blocking)
+ * No single model dependency. If one fails, try the next.
+ * 30s timeout per attempt. Never hangs the pipeline.
  */
 
 import type { ExtractedLEDSpec } from "./unified/types";
 
-// QA uses a DIFFERENT model than extraction — different architecture catches different errors
-// Primary: GLM-5 Turbo via Z.AI. Fallback: MiMo-V2-Omni.
-const QA_API_KEY = process.env.Z_AI_API_KEY || "";
-const QA_MODEL = process.env.QA_MODEL || "glm-5-turbo";
-const QA_BASE_URL = process.env.Z_AI_BASE_URL || "https://api.z.ai/api/coding/paas/v4";
-const MIMO_QA_KEY = process.env.MIMO_API_KEY || "";
-const MIMO_QA_MODEL = process.env.MIMO_MODEL || "mimo-v2-omni";
-const MIMO_QA_BASE = process.env.MIMO_API_BASE || "https://api.xiaomimimo.com/v1";
+const OPENCLAW_BRIDGE_URL = process.env.OPENCLAW_BRIDGE_URL || "http://172.17.0.1:18790";
+const OPENCLAW_TOKEN = process.env.OPENCLAW_TOKEN || "";
+const Z_AI_API_KEY = process.env.Z_AI_API_KEY || "";
+const Z_AI_MODEL = process.env.QA_MODEL || "glm-5-turbo";
+const Z_AI_BASE_URL = process.env.Z_AI_BASE_URL || "https://api.z.ai/api/coding/paas/v4";
+const MIMO_API_KEY = process.env.MIMO_API_KEY || "";
+const MIMO_MODEL = process.env.MIMO_MODEL || "mimo-v2-omni";
+const MIMO_BASE_URL = process.env.MIMO_API_BASE || "https://api.xiaomimimo.com/v1";
 
-// ── PHASE 1: Scout — find LED pages in large documents ──
+const QA_TIMEOUT_MS = 30_000;
+
+// ── Scout: find LED pages in large documents ──
 
 export interface ScoutResult {
   ledPages: number[];
@@ -32,13 +32,12 @@ export async function scoutLedPages(
   totalPages: number,
   onProgress?: (msg: string) => void,
 ): Promise<ScoutResult> {
-  if (!QA_API_KEY || sourceText.length < 100) {
+  if (!Z_AI_API_KEY || sourceText.length < 100) {
     return { ledPages: [], totalPages, reason: "No API key or no text" };
   }
 
   onProgress?.("Extract: scanning for LED pages...");
 
-  // Build page summaries — first 300 chars per page
   const pages = sourceText.split("\f").filter(p => p.trim());
   const summaries = pages.map((p, i) => `Page ${i + 1}: ${p.trim().substring(0, 300).replace(/\n/g, " ")}`).join("\n");
 
@@ -52,10 +51,11 @@ Page summaries:
 ${summaries.substring(0, 60000)}`;
 
   try {
-    const res = await fetch(`${QA_BASE_URL}/chat/completions`, {
+    const res = await fetch(`${Z_AI_BASE_URL}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${QA_API_KEY}` },
-      body: JSON.stringify({ model: QA_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: 2048 }),
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Z_AI_API_KEY}` },
+      body: JSON.stringify({ model: Z_AI_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: 2048 }),
+      signal: AbortSignal.timeout(QA_TIMEOUT_MS),
     });
 
     if (!res.ok) return { ledPages: [], totalPages, reason: `API error ${res.status}` };
@@ -80,7 +80,7 @@ ${summaries.substring(0, 60000)}`;
   }
 }
 
-// ── PHASE 2: QA — review and fix extraction results ──
+// ── QA: review and fix extraction results ──
 
 export interface QAResult {
   correctedDisplays: ExtractedLEDSpec[];
@@ -89,29 +89,12 @@ export interface QAResult {
   message: string;
 }
 
-export async function runExtractQA(
-  displays: ExtractedLEDSpec[],
-  sourceText: string,
-  filename: string,
-  onProgress?: (msg: string) => void,
-): Promise<QAResult> {
-  if (!QA_API_KEY || displays.length === 0 || sourceText.length < 100) {
-    return {
-      correctedDisplays: displays,
-      changes: [],
-      verified: false,
-      message: "QA skipped — no API key, no displays, or no source text",
-    };
-  }
-
-  onProgress?.("Extract QA: reviewing all displays against source...");
-
-  // Build the display list for review
+function buildQAPrompt(displays: ExtractedLEDSpec[], sourceText: string, filename: string): string {
   const displayList = displays.map((d, i) =>
     `${i + 1}. ${d.name} | ${d.widthFt ?? "?"}' x ${d.heightFt ?? "?"}' | ${d.pixelPitchMm ?? "?"}mm | ${d.brightnessNits ?? "?"} nits | ${d.environment}`
   ).join("\n");
 
-  const prompt = `You are Extract — the QA manager for LED display extraction. Review EVERY row against the source text and fix anything wrong.
+  return `You are Extract — the QA manager for LED display extraction. Review EVERY row against the source text and fix anything wrong.
 
 FILENAME: ${filename}
 EXTRACTED DISPLAYS (${displays.length}):
@@ -132,10 +115,10 @@ Return ONLY a JSON object:
 {
   "corrections": [
     {"index": 0, "field": "name", "from": "OPS UNIT", "to": "DEF UNIT", "reason": "Source says DEF UNIT not OPS UNIT"},
-    {"index": 2, "field": "widthFt", "from": 16, "to": 200, "reason": "Source shows 200' x 3' for FIELD RIBBON WEST, 16 is North Club's width"},
+    {"index": 2, "field": "widthFt", "from": 16, "to": 200, "reason": "Source shows 200' x 3' for FIELD RIBBON WEST, 16 is North Club's width"}
   ],
   "missing": [
-    {"name": "LARGE ADMIN ROOM", "widthFt": 28, "heightFt": 8, "pixelPitchMm": 3.9, "brightnessNits": 4000, "environment": "indoor", "reason": "Present in source at LED.200.D.01 but not in extracted list"}
+    {"name": "LARGE ADMIN ROOM", "widthFt": 28, "heightFt": 8, "pixelPitchMm": 3.9, "brightnessNits": 4000, "environment": "indoor", "reason": "Present in source but not in extracted list"}
   ],
   "duplicates": [3],
   "verified": true,
@@ -145,46 +128,19 @@ Return ONLY a JSON object:
 
 If everything is correct, return:
 {"corrections": [], "missing": [], "duplicates": [], "verified": true, "totalExpected": 47, "message": "All 47 displays verified against source. Ready for Natalia."}`;
+}
 
-  const QA_TIMEOUT_MS = 120_000; // 2 minutes max — don't let QA hang the pipeline
+function parseQAResponse(text: string, displays: ExtractedLEDSpec[]): QAResult | null {
+  const cleaned = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const si = cleaned.indexOf("{");
+  const ei = cleaned.lastIndexOf("}") + 1;
+  if (si < 0 || ei <= si) return null;
 
   try {
-    const res = await fetch(`${QA_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${QA_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: QA_MODEL,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0,
-        max_tokens: 8192,
-      }),
-      signal: AbortSignal.timeout(QA_TIMEOUT_MS),
-    });
-
-    if (!res.ok) {
-      const err = await res.text();
-      console.error(`[ExtractQA] ${QA_MODEL} error ${res.status}:`, err.substring(0, 200));
-      return { correctedDisplays: displays, changes: [], verified: false, message: `QA API error: ${res.status}` };
-    }
-
-    const data = await res.json();
-    const text = data.choices?.[0]?.message?.content || "";
-    const cleaned = text.replace(/```json/gi, "").replace(/```/g, "").trim();
-    const si = cleaned.indexOf("{");
-    const ei = cleaned.lastIndexOf("}") + 1;
-
-    if (si < 0 || ei <= si) {
-      return { correctedDisplays: displays, changes: [], verified: false, message: "QA returned no valid JSON" };
-    }
-
     const qa = JSON.parse(cleaned.substring(si, ei));
     const changes: string[] = [];
     const corrected = [...displays];
 
-    // Apply corrections
     if (qa.corrections && Array.isArray(qa.corrections)) {
       for (const fix of qa.corrections) {
         if (fix.index >= 0 && fix.index < corrected.length && fix.field && fix.to != null) {
@@ -196,7 +152,6 @@ If everything is correct, return:
       }
     }
 
-    // Add missing displays
     if (qa.missing && Array.isArray(qa.missing)) {
       for (const missing of qa.missing) {
         corrected.push({
@@ -204,32 +159,21 @@ If everything is correct, return:
           location: missing.name || "",
           widthFt: missing.widthFt ?? null,
           heightFt: missing.heightFt ?? null,
-          widthPx: null,
-          heightPx: null,
+          widthPx: null, heightPx: null,
           pixelPitchMm: missing.pixelPitchMm ?? null,
           brightnessNits: missing.brightnessNits ?? null,
           environment: missing.environment === "outdoor" ? "outdoor" : "indoor",
           quantity: 1,
-          serviceType: null,
-          mountingType: null,
-          maxPowerW: null,
-          weightLbs: null,
-          specialRequirements: [],
-          confidence: 0.9,
-          sourcePages: [],
-          sourceType: "text",
-          citation: "Extract QA — added missing display",
-          notes: `QA: ${missing.reason}`,
-          isAlternate: false,
-          alternateDescription: null,
-          selectedProductId: null,
-          selectedProductName: null,
+          serviceType: null, mountingType: null, maxPowerW: null, weightLbs: null,
+          specialRequirements: [], confidence: 0.9, sourcePages: [],
+          sourceType: "text", citation: "Extract QA — added missing display",
+          notes: `QA: ${missing.reason}`, isAlternate: false, alternateDescription: null,
+          selectedProductId: null, selectedProductName: null,
         });
         changes.push(`Added missing: "${missing.name}" (${missing.reason})`);
       }
     }
 
-    // Remove duplicates (process in reverse order to keep indices stable)
     if (qa.duplicates && Array.isArray(qa.duplicates)) {
       const dupeIndices = [...qa.duplicates].sort((a, b) => b - a);
       for (const idx of dupeIndices) {
@@ -244,17 +188,107 @@ If everything is correct, return:
       ? `Extract QA: ${changes.length} changes applied. ${corrected.length} displays.`
       : `Extract QA: verified ${corrected.length} displays. No changes needed.`);
 
-    console.log(`[ExtractQA] ${message}`);
-    onProgress?.(`QA: ${message}`);
-
-    return {
-      correctedDisplays: corrected,
-      changes,
-      verified: qa.verified ?? changes.length === 0,
-      message,
-    };
-  } catch (err: any) {
-    console.error(`[ExtractQA] Failed:`, err.message);
-    return { correctedDisplays: displays, changes: [], verified: false, message: `QA failed: ${err.message}` };
+    return { correctedDisplays: corrected, changes, verified: qa.verified ?? changes.length === 0, message };
+  } catch {
+    return null;
   }
+}
+
+async function callOpenClawQA(prompt: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${OPENCLAW_BRIDGE_URL}/qa`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENCLAW_TOKEN}` },
+      body: JSON.stringify({ prompt }),
+      signal: AbortSignal.timeout(QA_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.text || data.content || data.response || null;
+  } catch {
+    return null;
+  }
+}
+
+async function callMiMoQA(prompt: string): Promise<string | null> {
+  if (!MIMO_API_KEY) return null;
+  try {
+    const res = await fetch(`${MIMO_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${MIMO_API_KEY}` },
+      body: JSON.stringify({ model: MIMO_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: 8192, response_format: { type: "json_object" } }),
+      signal: AbortSignal.timeout(QA_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || null;
+  } catch {
+    return null;
+  }
+}
+
+async function callZAIQA(prompt: string): Promise<string | null> {
+  if (!Z_AI_API_KEY) return null;
+  try {
+    const res = await fetch(`${Z_AI_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${Z_AI_API_KEY}` },
+      body: JSON.stringify({ model: Z_AI_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: 8192 }),
+      signal: AbortSignal.timeout(QA_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function runExtractQA(
+  displays: ExtractedLEDSpec[],
+  sourceText: string,
+  filename: string,
+  onProgress?: (msg: string) => void,
+): Promise<QAResult> {
+  if (displays.length === 0 || sourceText.length < 100) {
+    return { correctedDisplays: displays, changes: [], verified: false, message: "QA skipped — no displays or no source text" };
+  }
+
+  onProgress?.("Extract QA: reviewing all displays against source...");
+
+  const prompt = buildQAPrompt(displays, sourceText, filename);
+
+  // Try OpenClaw → MiMo → Z.AI
+  const openclawResult = await callOpenClawQA(prompt);
+  if (openclawResult) {
+    console.log("[ExtractQA] OpenClaw QA responded");
+    const parsed = parseQAResponse(openclawResult, displays);
+    if (parsed) {
+      onProgress?.(`QA: ${parsed.message}`);
+      return parsed;
+    }
+  }
+
+  const mimoResult = await callMiMoQA(prompt);
+  if (mimoResult) {
+    console.log("[ExtractQA] MiMo QA responded");
+    const parsed = parseQAResponse(mimoResult, displays);
+    if (parsed) {
+      onProgress?.(`QA: ${parsed.message}`);
+      return parsed;
+    }
+  }
+
+  const zaiResult = await callZAIQA(prompt);
+  if (zaiResult) {
+    console.log("[ExtractQA] Z.AI QA responded");
+    const parsed = parseQAResponse(zaiResult, displays);
+    if (parsed) {
+      onProgress?.(`QA: ${parsed.message}`);
+      return parsed;
+    }
+  }
+
+  console.log("[ExtractQA] All QA models unavailable — skipping");
+  return { correctedDisplays: displays, changes: [], verified: false, message: "QA skipped — no AI model available" };
 }
