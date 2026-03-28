@@ -354,83 +354,117 @@ export async function extractWithGemini(
     await mkdir(tmpDir, { recursive: true });
 
     if (pageCount > 20) {
-      // LARGE SCANNED PDF — Extract scouts first
-      // Convert every Nth page to thumbnail, ask Extract which pages have LED tables
-      options?.onProgress?.(`Large scanned PDF (${pageCount} pages) — Extract scouting for LED pages...`);
-      console.log(`[GeminiExtractor] Large scanned PDF: ${pageCount} pages, scouting with thumbnails`);
+      // LARGE SCANNED PDF — Read TOC first, then go to LED sections
+      // This is how a human would do it: open the TOC, find "LED Videoboards",
+      // note the page number, flip directly to that page.
+      options?.onProgress?.(`Large scanned PDF (${pageCount} pages) — reading Table of Contents...`);
+      console.log(`[GeminiExtractor] Large scanned PDF: ${pageCount} pages, reading TOC first`);
 
-      const step = Math.max(1, Math.floor(pageCount / 25)); // ~25 sample pages
-      const samplePages: number[] = [];
-      for (let p = 1; p <= pageCount; p += step) samplePages.push(p);
-      // Always include last page
-      if (!samplePages.includes(pageCount)) samplePages.push(pageCount);
-
-      // Convert sample pages to low-res thumbnails
-      options?.onProgress?.(`Converting ${samplePages.length} sample pages to thumbnails...`);
-      for (const p of samplePages) {
+      // Step 1: Convert TOC pages (typically pages 2-10) to images
+      const tocPages = Math.min(10, pageCount);
+      options?.onProgress?.(`Converting first ${tocPages} pages (TOC) to images...`);
+      for (let p = 1; p <= tocPages; p++) {
         try {
-          await execFileAsync("pdftoppm", ["-png", "-r", "72", "-f", String(p), "-l", String(p), pdfPath, `${tmpDir}/thumb-${String(p).padStart(4, "0")}`], { timeout: 15_000 });
-        } catch { /* skip failed pages */ }
+          await execFileAsync("pdftoppm", ["-png", "-r", "200", "-f", String(p), "-l", String(p), pdfPath, `${tmpDir}/toc-${String(p).padStart(4, "0")}`], { timeout: 15_000 });
+        } catch { /* skip */ }
       }
 
-      const thumbFiles = (await readdir(tmpDir)).filter(f => f.startsWith("thumb-") && f.endsWith(".png")).sort();
-      if (thumbFiles.length > 0) {
-        // Send thumbnails to Gemini to find LED pages
-        options?.onProgress?.(`Asking AI to identify LED pages from ${thumbFiles.length} thumbnails...`);
-        const thumbParts: any[] = [];
-        for (const t of thumbFiles) {
+      const tocFiles = (await readdir(tmpDir)).filter(f => f.startsWith("toc-") && f.endsWith(".png")).sort();
+      let targetPages: number[] = [];
+
+      if (tocFiles.length > 0) {
+        // Step 2: Send TOC pages to Gemini — "read this TOC, find LED sections"
+        options?.onProgress?.("AI reading Table of Contents to find LED sections...");
+        const tocParts: any[] = [];
+        for (const t of tocFiles) {
           const buf = await readImg(`${tmpDir}/${t}`);
-          thumbParts.push({ inlineData: { mimeType: "image/png", data: buf.toString("base64") } });
-          // Extract page number from filename
-          const pageNum = parseInt(t.match(/thumb-(\d+)/)?.[1] || "0");
-          thumbParts.push({ text: `This is page ${pageNum} of ${pageCount}.` });
+          tocParts.push({ inlineData: { mimeType: "image/png", data: buf.toString("base64") } });
         }
 
-        const scoutBody = {
-          contents: [{ parts: [...thumbParts, { text: "Which of these pages contain LED display specification tables, AV schedules, or display matrices? Return ONLY JSON: {\"ledPages\": [page numbers]}" }] }],
-          generationConfig: { temperature: 0, maxOutputTokens: 500 },
-        };
+        const tocPrompt = `This is the Table of Contents from a ${pageCount}-page construction project manual.
+
+Find ALL sections related to LED displays, videoboards, scoreboards, AV systems, or Division 11 equipment.
+
+For each section found, tell me:
+- The section number (e.g., 116643, 116843)
+- The section name
+- The page number or approximate location in the document
+
+Also look for: "Visual Display Units", "Audio Video Systems", "Display Schedule", "LED", "AV"
+
+Return ONLY JSON:
+{
+  "sections": [
+    {"number": "116843", "name": "Indoor LED Videoboards", "startPage": 84}
+  ],
+  "estimatedLedPages": [84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107]
+}
+
+The estimatedLedPages should include a generous range around each LED section (±20 pages) to catch the full section content. If you can't determine exact page numbers, estimate based on position in the TOC.`;
 
         try {
-          const scoutUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${GEMINI_API_KEY}`;
-          const scoutRes = await fetch(scoutUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(scoutBody) });
-          if (scoutRes.ok) {
-            const scoutData = await scoutRes.json();
-            const scoutText = scoutData.candidates?.[0]?.content?.parts?.[0]?.text || "";
-            const scoutCleaned = scoutText.replace(/```json/gi, "").replace(/```/g, "").trim();
-            const si = scoutCleaned.indexOf("{");
-            const ei = scoutCleaned.lastIndexOf("}") + 1;
-            if (si >= 0 && ei > si) {
-              const scoutResult = JSON.parse(scoutCleaned.substring(si, ei));
-              const ledPages: number[] = scoutResult.ledPages || [];
-              if (ledPages.length > 0) {
-                // Expand: include ±2 pages around each LED page for context
-                const expanded = new Set<number>();
-                for (const p of ledPages) {
-                  for (let i = Math.max(1, p - 2); i <= Math.min(pageCount, p + 2); i++) expanded.add(i);
-                }
-                const targetPages = [...expanded].sort((a, b) => a - b);
-                console.log(`[GeminiExtractor] Scout found LED on pages: ${ledPages.join(", ")} → processing ${targetPages.length} pages`);
-                options?.onProgress?.(`Found LED content on ${ledPages.length} pages — extracting ${targetPages.length} pages at full resolution...`);
+          const tocUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${GEMINI_API_KEY}`;
+          const tocRes = await fetch(tocUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [...tocParts, { text: tocPrompt }] }],
+              generationConfig: { temperature: 0, maxOutputTokens: 2048 },
+            }),
+          });
 
-                // Convert target pages to 300 DPI
-                for (const p of targetPages) {
-                  try {
-                    await execFileAsync("pdftoppm", ["-png", "-r", "300", "-f", String(p), "-l", String(p), pdfPath, `${tmpDir}/page-${String(p).padStart(4, "0")}`], { timeout: 30_000 });
-                  } catch { /* skip */ }
-                }
+          if (tocRes.ok) {
+            const tocData = await tocRes.json();
+            const tocText = tocData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            const tocCleaned = tocText.replace(/```json/gi, "").replace(/```/g, "").trim();
+            const si = tocCleaned.indexOf("{");
+            const ei = tocCleaned.lastIndexOf("}") + 1;
+            if (si >= 0 && ei > si) {
+              const tocResult = JSON.parse(tocCleaned.substring(si, ei));
+
+              // Log found sections
+              const sections = tocResult.sections || [];
+              for (const s of sections) {
+                console.log(`[GeminiExtractor] TOC: Section ${s.number} "${s.name}" → page ${s.startPage}`);
               }
+
+              targetPages = tocResult.estimatedLedPages || [];
+              if (targetPages.length === 0 && sections.length > 0) {
+                // Build page range from sections: ±20 pages around each section start
+                for (const s of sections) {
+                  const start = Math.max(1, (s.startPage || 80) - 5);
+                  const end = Math.min(pageCount, (s.startPage || 80) + 30);
+                  for (let p = start; p <= end; p++) targetPages.push(p);
+                }
+                targetPages = [...new Set(targetPages)].sort((a, b) => a - b);
+              }
+
+              console.log(`[GeminiExtractor] TOC analysis: ${sections.length} LED sections → ${targetPages.length} target pages`);
+              options?.onProgress?.(`Found ${sections.length} LED sections in TOC → processing ${targetPages.length} pages...`);
             }
           }
-        } catch (scoutErr: any) {
-          console.error(`[GeminiExtractor] Scout failed:`, scoutErr.message);
-          options?.onProgress?.("Scout failed — converting first 20 pages...");
-          // Fall back to first 20 pages
-          for (let p = 1; p <= Math.min(20, pageCount); p++) {
-            try {
-              await execFileAsync("pdftoppm", ["-png", "-r", "300", "-f", String(p), "-l", String(p), pdfPath, `${tmpDir}/page-${String(p).padStart(4, "0")}`], { timeout: 30_000 });
-            } catch { /* skip */ }
-          }
+        } catch (tocErr: any) {
+          console.error(`[GeminiExtractor] TOC reading failed:`, tocErr.message);
+        }
+      }
+
+      // Step 3: If TOC analysis worked, convert target pages. Otherwise sample.
+      if (targetPages.length > 0) {
+        options?.onProgress?.(`Converting ${targetPages.length} LED pages to high-res images...`);
+        for (const p of targetPages.slice(0, 40)) { // Max 40 pages
+          try {
+            await execFileAsync("pdftoppm", ["-png", "-r", "300", "-f", String(p), "-l", String(p), pdfPath, `${tmpDir}/page-${String(p).padStart(4, "0")}`], { timeout: 30_000 });
+          } catch { /* skip */ }
+        }
+      } else {
+        // TOC failed — fall back to sampling every 20th page
+        console.log(`[GeminiExtractor] TOC analysis failed — falling back to page sampling`);
+        options?.onProgress?.("TOC reading failed — sampling pages...");
+        const step = Math.max(1, Math.floor(pageCount / 25));
+        for (let p = 1; p <= pageCount; p += step) {
+          try {
+            await execFileAsync("pdftoppm", ["-png", "-r", "300", "-f", String(p), "-l", String(p), pdfPath, `${tmpDir}/page-${String(p).padStart(4, "0")}`], { timeout: 30_000 });
+          } catch { /* skip */ }
         }
       }
     } else {
