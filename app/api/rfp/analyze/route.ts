@@ -143,8 +143,14 @@ export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      let streamClosed = false;
       const send = (type: string, data: any) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type, ...data })}\n\n`));
+        if (streamClosed) return;
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type, ...data })}\n\n`));
+        } catch {
+          streamClosed = true;
+        }
       };
 
       // Global heartbeat — keeps SSE alive across ALL phases.
@@ -283,7 +289,7 @@ export async function POST(request: NextRequest) {
               });
 
               clearInterval(globalHeartbeat);
-              controller.close();
+              try { controller.close() } catch { streamClosed = true };
               return; // DONE
             } else {
               log.warn("[Pipeline] GLM5 returned 0 displays — trying AnythingLLM fallback");
@@ -295,7 +301,7 @@ export async function POST(request: NextRequest) {
                 message: glmErr.message,
               });
               clearInterval(globalHeartbeat);
-              controller.close();
+              try { controller.close() } catch { streamClosed = true };
               return;
             }
             log.warn("[Pipeline] GLM5 failed:", glmErr.message);
@@ -308,7 +314,7 @@ export async function POST(request: NextRequest) {
           message: "Extraction returned 0 displays. The AI could not find LED specifications in this document. Try re-uploading or check that the PDF contains display schedule tables.",
         });
         clearInterval(globalHeartbeat);
-        controller.close();
+        try { controller.close() } catch { streamClosed = true };
         return;
 
         // =============================================================
@@ -959,7 +965,7 @@ export async function POST(request: NextRequest) {
         send("error", { message: err.message || "Pipeline failed" });
       } finally {
         clearInterval(globalHeartbeat);
-        controller.close();
+        try { controller.close() } catch { streamClosed = true };
       }
     },
   });
