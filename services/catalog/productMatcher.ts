@@ -147,10 +147,11 @@ export class ProductMatcher {
                 return ProductMatcher.calculateSolution(spec, matched);
             }
         } catch (err) {
-            console.error("[ProductMatcher] DB query failed, falling back to catalog:", err);
+            console.error("[ProductMatcher] DB query failed:", err);
         }
 
-        // Priority 2: productCatalog.ts (Yaham NX rate card products)
+        // Fallback: productCatalog.ts — only used if DB is empty or unreachable
+        console.warn("[ProductMatcher] No DB products found, falling back to hardcoded catalog");
         return ProductMatcher.matchFromCatalog(spec);
     }
 

@@ -520,6 +520,16 @@ model ManufacturerProduct {
   supportsHalfModule Boolean @default(false)
   isCurved           Boolean @default(false)
 
+  // Cabinet packing (NX Yaham rate card — cabinet-first sizing with 80/20 pricing)
+  moduleWidthMm        Float?  // Individual module width within cabinet
+  moduleHeightMm       Float?  // Individual module height within cabinet
+  modulesPerCabinetW   Int?    // Modules wide per cabinet
+  modulesPerCabinetH   Int?    // Modules high per cabinet
+  standardPricePerSqft Float?  // Full cabinet $/sqft
+  customPricePerSqft   Float?  // Custom module $/sqft (~10% higher)
+  productLine          String? // "Radiance", "Corona", "Aura", "Halo"
+  application          String? // "FIXED INSTALLATION", "STADIUM PERIMETER"
+
   // Pricing (ANC internal)
   costPerSqFt Decimal? // ANC buy cost per sq ft
   msrpPerSqFt Decimal? // Manufacturer suggested retail
