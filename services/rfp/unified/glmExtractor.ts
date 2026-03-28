@@ -1463,15 +1463,44 @@ export async function extractWithGLM5(
       const totalPages = pages.length;
       console.log(`[RFP v2] GPT-5.4-mini: pdftotext ${totalPages} pages, ${(fullText.length / 1024).toFixed(1)}KB`);
 
-      // Triage: for large docs (50+ pages), only send LED-relevant pages.
-      // A 600-page RFP has ~5-20 LED pages. Sending everything wastes tokens
-      // and risks truncation losing the actual LED tables.
+      // Triage: for large docs (50+ pages), use strict table-signal scoring.
+      // A 500-page project manual has ~3-5 pages with actual LED schedule tables.
+      // The rest is legal, structural, MEP boilerplate. Sending it all drowns the signal.
       let textToSend: string;
       if (totalPages > 50) {
-        const { filtered, keptPages, stats } = filterLedPages(pages);
-        options?.onProgress?.(`Page triage: ${stats}`);
-        console.log(`[RFP v2] Large doc triage: ${stats}`);
-        textToSend = filtered.length > 128000 ? filtered.substring(0, 128000) : filtered;
+        // Strict triage: score each page by table-specific signals (not just "LED" mentions)
+        const TABLE_SIGNALS = [
+          "pixel pitch", "display schedule", "display matrix", "av schedule",
+          "led board schedule", "a/v interior led", "a/v scoreboard",
+          "a/v east entry", "a/v north", "a/v south", "a/v west",
+          "entry led", "exterior led", "videoboard schedule",
+          "location", "width", "height", "nits",
+        ];
+
+        const keptIndices: number[] = [0]; // Always keep cover page
+        for (let i = 1; i < pages.length; i++) {
+          const lower = pages[i].toLowerCase();
+          let score = 0;
+          for (const sig of TABLE_SIGNALS) {
+            if (lower.includes(sig)) score++;
+          }
+          // Need 4+ signals — actual schedule tables have location+width+height+nits+pitch
+          if (score >= 4) keptIndices.push(i);
+        }
+
+        // If strict triage found nothing, fall back to the normal keyword filter
+        if (keptIndices.length <= 1) {
+          const { filtered, stats } = filterLedPages(pages);
+          options?.onProgress?.(`Page triage (keyword): ${stats}`);
+          console.log(`[RFP v2] Large doc triage (keyword fallback): ${stats}`);
+          textToSend = filtered.length > 128000 ? filtered.substring(0, 128000) : filtered;
+        } else {
+          const filtered = keptIndices.map(i => pages[i]).join("\n\n--- PAGE BREAK ---\n\n");
+          const stats = `${keptIndices.length}/${pages.length} pages (strict table scoring)`;
+          options?.onProgress?.(`Page triage: ${stats}`);
+          console.log(`[RFP v2] Large doc triage (strict): ${stats}, ${(filtered.length / 1024).toFixed(0)}KB`);
+          textToSend = filtered.length > 128000 ? filtered.substring(0, 128000) : filtered;
+        }
       } else {
         // Small docs (≤50 pages) — send everything, no risk of truncation
         textToSend = fullText.length > 128000 ? fullText.substring(0, 128000) : fullText;
