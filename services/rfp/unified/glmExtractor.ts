@@ -1407,13 +1407,12 @@ export async function extractWithGLM5(
   if (MIMO_API_KEY) {
     options?.onProgress?.("Analyzing document with MiMo...");
     try {
-      // Extract text first (pdftotext or Mistral OCR)
-      const { fullText: mimoText } = await extractFullText(pdfPath);
-      if (mimoText.trim().length > 50) {
-        const textToSend = mimoText.length > 128000 ? mimoText.substring(0, 128000) : mimoText;
-        console.log(`[RFP v2] MiMo: sending ${(textToSend.length / 1024).toFixed(0)}KB text to ${MIMO_MODEL}...`);
+      const { readFile: readPdfBuffer } = await import("fs/promises");
+      const pdfBuffer = await readPdfBuffer(pdfPath);
+      const pdfB64 = pdfBuffer.toString("base64");
+      const sizeMb = (pdfBuffer.length / 1024 / 1024).toFixed(1);
 
-        const mimoPrompt = `Extract ALL LED displays and requirements from this RFP document.
+      const mimoPrompt = `Extract ALL LED displays and requirements from this RFP document.
 
 CRITICAL: Extract EVERY LED video display, ribbon board, fascia board, or videoboard mentioned — whether in a table OR described in prose/narrative text. If the document describes what they need without detailed specs, still extract each display as an entry with null for missing fields.
 
@@ -1446,7 +1445,39 @@ Rules:
 - If a field is not specified, use null.
 - Do NOT skip any LED display just because specs are incomplete.`;
 
-        const mimoRes = await fetch(`${MIMO_API_BASE}/chat/completions`, {
+      let mimoRes: Response;
+      let mimoUsedVision = false;
+
+      if (pdfBuffer.length < 20 * 1024 * 1024) {
+        console.log(`[RFP v2] MiMo vision: sending PDF (${sizeMb}MB) to ${MIMO_MODEL}...`);
+        mimoRes = await fetch(`${MIMO_API_BASE}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${MIMO_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: MIMO_MODEL,
+            messages: [{
+              role: "user",
+              content: [
+                { type: "text", text: mimoPrompt },
+                { type: "image_url", image_url: { url: `data:application/pdf;base64,${pdfB64}` } },
+              ],
+            }],
+            temperature: 0,
+            max_tokens: 32768,
+            response_format: { type: "json_object" },
+          }),
+          signal: AbortSignal.timeout(120_000),
+        });
+        mimoUsedVision = true;
+      } else {
+        console.log(`[RFP v2] MiMo text: PDF too large (${sizeMb}MB), extracting text first...`);
+        const { fullText: mimoText } = await extractFullText(pdfPath);
+        const textToSend = mimoText.length > 128000 ? mimoText.substring(0, 128000) : mimoText;
+        console.log(`[RFP v2] MiMo text: sending ${(textToSend.length / 1024).toFixed(0)}KB text to ${MIMO_MODEL}...`);
+        mimoRes = await fetch(`${MIMO_API_BASE}/chat/completions`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1459,9 +1490,11 @@ Rules:
             max_tokens: 32768,
             response_format: { type: "json_object" },
           }),
+          signal: AbortSignal.timeout(120_000),
         });
+      }
 
-        if (mimoRes.ok) {
+      if (mimoRes.ok) {
           const mimoData = await mimoRes.json();
           const content = mimoData.choices?.[0]?.message?.content || "";
           const start = content.indexOf("{");
@@ -1486,9 +1519,14 @@ Rules:
 
             let mimoScreens = aiToSpecs(ledDisplays);
 
-            // Validation
+            // Validation — extract source text for comparison
             options?.onProgress?.("Validating MiMo extraction...");
-            const mimoSourceText = mimoText.substring(0, 50000);
+            let validationText = "";
+            try {
+              const { stdout: txt } = await execFileAsync("pdftotext", ["-layout", pdfPath, "-"], { timeout: 30_000 });
+              validationText = txt;
+            } catch { validationText = ""; }
+            const mimoSourceText = validationText.substring(0, 50000);
             const mimoTableHeaders = detectTableHeaders(mimoSourceText);
             const mimoValidation = validateExtraction(mimoScreens, mimoSourceText, null, mimoTableHeaders);
             for (const check of mimoValidation.checks) {
@@ -1557,7 +1595,6 @@ Rules:
           console.error(`[RFP v2] MiMo failed (${mimoRes.status}):`, errText.substring(0, 200));
           options?.onProgress?.(`MiMo failed (${mimoRes.status}) — trying Gemini...`);
         }
-      }
     } catch (mimoErr: any) {
       console.error(`[RFP v2] MiMo error:`, mimoErr.message);
       options?.onProgress?.("MiMo unavailable — trying Gemini...");
