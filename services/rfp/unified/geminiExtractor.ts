@@ -249,6 +249,7 @@ export async function extractWithGemini(
   options?: {
     timeout?: number;
     onProgress?: (message: string) => void;
+    model?: string;
   },
 ): Promise<{
   screens: ExtractedLEDSpec[];
@@ -279,7 +280,8 @@ export async function extractWithGemini(
     pageCount = m ? parseInt(m[1], 10) : 0;
   } catch { pageCount = 0; }
 
-  console.log(`[GeminiExtractor] Key present: ${GEMINI_API_KEY.length > 0}, model: ${GEMINI_MODEL}, ${pageCount} pages`);
+  const activeModelForLog = options?.model || GEMINI_MODEL;
+  console.log(`[GeminiExtractor] model: ${activeModelForLog}, ${pageCount} pages`);
 
   // Step 1: Extract full text via pdftotext -layout
   options?.onProgress?.("Extracting text from PDF...");
@@ -374,7 +376,8 @@ export async function extractWithGemini(
   options?.onProgress?.(`Sending to Gemini Flash (${extractionMethod} path)...`);
 
   // Streaming endpoint — read chunks incrementally, forward thinking tokens in real time
-  const streamUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
+  const activeModel = options?.model || GEMINI_MODEL;
+  const streamUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
 
   const body = {
     systemInstruction: {

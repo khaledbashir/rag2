@@ -1375,57 +1375,95 @@ export async function extractWithGLM5(
   }
 
   // =====================================================================
-  // SECONDARY: Gemini Flash — for documents where pdfplumber found nothing
+  // SECONDARY: Gemini — gated pipeline with auto-escalation
+  // 1. Try 2.5 Flash (fast, cheap)
+  // 2. Validate output
+  // 3. If validation fails → escalate to 3.1 Pro automatically
+  // 4. If Pro also fails → BLOCKED
+  // Natalia never knows which model ran. She gets correct data or a review flag.
   // =====================================================================
   if (isGeminiAvailable()) {
-    console.log(`[RFP v2] Gemini secondary (key: ${(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "").substring(0, 8)}..., model: ${process.env.GEMINI_EXTRACTION_MODEL || "gemini-2.5-flash"})`);
-    options?.onProgress?.("Analyzing document with Gemini Flash...");
+    const FLASH_MODEL = "gemini-2.5-flash";
+    const PRO_MODEL = "gemini-3.1-pro-preview";
 
-    const geminiResult = await extractWithGemini(pdfPath, {
-      timeout: options?.timeout,
-      onProgress: options?.onProgress,
-    });
+    // Helper: run extraction + validation on a given model
+    async function tryModel(modelName: string): Promise<{
+      filtered: ExtractedLEDSpec[];
+      geminiResult: any;
+      validation: import("../extractionValidator").ValidationResult;
+      warnings: string[];
+    }> {
+      console.log(`[RFP v2] Trying ${modelName}...`);
+      options?.onProgress?.(`Analyzing with ${modelName === FLASH_MODEL ? "Gemini Flash" : "Gemini Pro"}...`);
 
-    // Equipment filter — catch anything Gemini miscategorized
-    const filtered = geminiResult.screens.filter((s) => !isEquipmentItem(s.name));
-    const equipmentRemoved = geminiResult.screens.length - filtered.length;
-    if (equipmentRemoved > 0) {
-      console.log(`[RFP v2] Gemini: removed ${equipmentRemoved} equipment items`);
-    }
+      const result = await extractWithGemini(pdfPath, {
+        timeout: options?.timeout,
+        onProgress: options?.onProgress,
+        model: modelName,
+      });
 
-    console.log(`[RFP v2] Gemini Flash: ${filtered.length} LED displays (${geminiResult.extractionMethod} path)`);
-    options?.onProgress?.(`Found ${filtered.length} LED displays`);
+      const filtered = result.screens.filter((s) => !isEquipmentItem(s.name));
+      const equipmentRemoved = result.screens.length - filtered.length;
+      if (equipmentRemoved > 0) console.log(`[RFP v2] ${modelName}: removed ${equipmentRemoved} equipment items`);
 
-    // ── VALIDATION ENGINE — hard gates that block export on failure ──
-    options?.onProgress?.("Validating extraction...");
-    const tableHeaders = detectTableHeaders(geminiResult.sourceText);
-    const validation = validateExtraction(
-      filtered,
-      geminiResult.sourceText,
-      geminiResult.documentTotal,
-      tableHeaders,
-    );
+      console.log(`[RFP v2] ${modelName}: ${filtered.length} LED displays`);
 
-    // Log every check result
-    for (const check of validation.checks) {
-      const icon = check.passed ? "PASS" : check.severity === "block" ? "BLOCK" : "REVIEW";
-      console.log(`[RFP v2] Validation [${icon}] ${check.name}: ${check.message}`);
-    }
-    console.log(`[RFP v2] Validation result: ${validation.summary}`);
-    options?.onProgress?.(`Validation: ${validation.summary}`);
+      const tableHeaders = detectTableHeaders(result.sourceText);
+      const validation = validateExtraction(filtered, result.sourceText, result.documentTotal, tableHeaders);
 
-    // Add validation warnings to the result
-    for (const check of validation.checks) {
-      if (!check.passed) {
-        (geminiResult.warnings ??= []).push(`[${check.severity.toUpperCase()}] ${check.name}: ${check.message}`);
+      const warnings: string[] = [];
+      for (const check of validation.checks) {
+        const icon = check.passed ? "PASS" : check.severity === "block" ? "BLOCK" : "REVIEW";
+        console.log(`[RFP v2] [${modelName}] Validation [${icon}] ${check.name}: ${check.message}`);
+        if (!check.passed) warnings.push(`[${check.severity.toUpperCase()}] ${check.name}: ${check.message}`);
       }
+
+      return { filtered, geminiResult: result, validation, warnings };
     }
 
-    // AI product matching — Gemini queries the live DB and picks the best product per display
+    // Step 1: Try Flash
+    options?.onProgress?.("Analyzing document with Gemini Flash...");
+    const flash = await tryModel(FLASH_MODEL);
+
+    let finalResult = flash;
+
+    // Step 2: If Flash validation has blockers, escalate to Pro
+    const flashBlockers = flash.validation.checks.filter(c => !c.passed && c.severity === "block");
+    if (flashBlockers.length > 0) {
+      console.log(`[RFP v2] Flash validation FAILED (${flashBlockers.length} blockers) — escalating to 3.1 Pro`);
+      options?.onProgress?.(`Flash validation failed — escalating to Gemini Pro...`);
+
+      try {
+        const pro = await tryModel(PRO_MODEL);
+        const proBlockers = pro.validation.checks.filter(c => !c.passed && c.severity === "block");
+
+        if (proBlockers.length < flashBlockers.length) {
+          // Pro is better — use it
+          console.log(`[RFP v2] Pro validation: ${proBlockers.length} blockers (Flash had ${flashBlockers.length}) — using Pro result`);
+          options?.onProgress?.(`Pro result is better — using Pro extraction`);
+          finalResult = pro;
+          finalResult.warnings.push(`Escalated from Flash to Pro (Flash had ${flashBlockers.length} validation failures)`);
+        } else {
+          // Pro is not better — use Flash (it was closer)
+          console.log(`[RFP v2] Pro not better (${proBlockers.length} blockers) — keeping Flash result`);
+          finalResult = flash;
+        }
+      } catch (proErr: any) {
+        console.error(`[RFP v2] Pro escalation failed:`, proErr.message);
+        finalResult.warnings.push(`Pro escalation failed: ${proErr.message}`);
+      }
+    } else {
+      console.log(`[RFP v2] Flash validation passed — no escalation needed`);
+      options?.onProgress?.("Flash validation passed");
+    }
+
+    options?.onProgress?.(`Validation: ${finalResult.validation.summary}`);
+
+    // AI product matching
     try {
-      const aiMatches = await matchProductsWithAI(filtered, options?.onProgress);
+      const aiMatches = await matchProductsWithAI(finalResult.filtered, options?.onProgress);
       for (const match of aiMatches) {
-        const spec = filtered.find(s => s.name === match.displayName);
+        const spec = finalResult.filtered.find(s => s.name === match.displayName);
         if (spec && match.productId) {
           spec.selectedProductId = match.productId;
           spec.selectedProductName = match.productName || undefined;
@@ -1434,21 +1472,17 @@ export async function extractWithGLM5(
             : `AI match: ${match.matchReason}`;
         }
       }
-      const matched = aiMatches.filter(m => m.productId).length;
-      console.log(`[RFP v2] AI product matching: ${matched}/${filtered.length} displays matched`);
-      options?.onProgress?.(`Matched ${matched}/${filtered.length} displays to products`);
     } catch (matchErr: any) {
       console.error(`[RFP v2] AI product matching failed:`, matchErr.message);
-      // Non-fatal — displays still have specs, just no pre-matched product
-      (geminiResult.warnings ??= []).push(`AI product matching failed: ${matchErr.message}`);
+      finalResult.warnings.push(`AI product matching failed: ${matchErr.message}`);
     }
 
     return {
-      screens: filtered,
-      project: geminiResult.project,
-      requirements: geminiResult.requirements,
-      warnings: geminiResult.warnings,
-      validation,
+      screens: finalResult.filtered,
+      project: finalResult.geminiResult.project,
+      requirements: finalResult.geminiResult.requirements,
+      warnings: finalResult.warnings.length > 0 ? finalResult.warnings : undefined,
+      validation: finalResult.validation,
       source: "glm5",
     };
   }
