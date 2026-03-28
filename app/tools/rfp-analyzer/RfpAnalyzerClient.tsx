@@ -714,7 +714,6 @@ export default function RfpAnalyzerClient() {
               heightPx: newPitch > 0 ? Math.round(activeHeightMm / newPitch) : (s.heightPx ?? null),
               pixelPitchMm: newPitch,
             } : {}),
-            brightnessNits: productNits || s.brightnessNits,
             weightLbs: totalWeightLbs || s.weightLbs,
             maxPowerW: totalPowerW || s.maxPowerW,
             cabinetCount,
