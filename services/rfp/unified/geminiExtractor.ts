@@ -356,8 +356,7 @@ export async function extractWithGemini(
 
   options?.onProgress?.(`Sending ${textPages.length} text + ${drawingPages.length} drawing pages to Gemini Flash...`);
 
-  // Use streaming endpoint with thinking enabled — streams AI reasoning to the UI in real time
-  const streamUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
 
   const body = {
     systemInstruction: {
@@ -387,7 +386,7 @@ export async function extractWithGemini(
   const timer = setTimeout(() => controller.abort(), timeout);
 
   try {
-    const res = await fetch(streamUrl, {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -400,29 +399,20 @@ export async function extractWithGemini(
       throw new Error(`Gemini API error ${res.status}: ${err}`);
     }
 
-    // Read SSE stream — collect output text and forward thinking tokens to UI
-    const rawBody = await res.text();
-    let text = "";
-    let lastThought = "";
+    const data = await res.json();
+    const parts = data.candidates?.[0]?.content?.parts || [];
 
-    for (const line of rawBody.split("\n")) {
-      if (!line.startsWith("data: ")) continue;
-      try {
-        const chunk = JSON.parse(line.substring(6));
-        const parts = chunk.candidates?.[0]?.content?.parts || [];
-        for (const part of parts) {
-          if (part.thought && part.text) {
-            // Stream thinking to UI — take the first line as a status update
-            const thoughtLine = part.text.split("\n")[0].replace(/^\*+|\*+$/g, "").trim();
-            if (thoughtLine && thoughtLine !== lastThought) {
-              lastThought = thoughtLine;
-              options?.onProgress?.(`AI: ${thoughtLine}`);
-            }
-          } else if (part.text) {
-            text += part.text;
-          }
+    // Extract thinking summaries and output text from response parts
+    let text = "";
+    for (const part of parts) {
+      if (part.thought && part.text) {
+        const thoughtLine = part.text.split("\n")[0].replace(/^\*+|\*+$/g, "").trim();
+        if (thoughtLine) {
+          options?.onProgress?.(`AI: ${thoughtLine}`);
         }
-      } catch { /* skip malformed SSE lines */ }
+      } else if (part.text) {
+        text += part.text;
+      }
     }
 
     if (!text) {
