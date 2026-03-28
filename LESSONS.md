@@ -68,6 +68,8 @@ gunzip -c /root/backups/db/ancdb_YYYY-MM-DD_HHMM.sql.gz \
 
 **Env vars are in EasyPanel, not in `.env` files.** The repo has no `.env`. All keys are configured in EasyPanel's service environment section. After changing an env var, the container must restart to pick it up.
 
+**Never push while a previous commit is still building.** Wait for the EasyPanel build to finish before pushing the next commit. Stacking commits during a build can cause it to pick up a half-finished state, or worse, auto-deploy triggers on an intermediate commit that doesn't include all the fixes. One commit, one build, one deploy, verify, then next.
+
 **The entrypoint runs `npx prisma db push --accept-data-loss`.** New schema fields are applied automatically on container restart. But if you add fields that conflict with existing data, this can drop columns. Only add nullable fields or fields with defaults.
 
 ## Communication
