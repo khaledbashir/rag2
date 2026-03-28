@@ -12,6 +12,9 @@ import { prisma } from "@/lib/prisma";
 import type { ExtractedLEDSpec } from "./unified/types";
 import { ProductMatcher } from "@/services/catalog/productMatcher";
 
+const MERCURY_API_KEY = process.env.MERCURY_API_KEY || "";
+const MERCURY_API_BASE = process.env.MERCURY_API_BASE || "https://api.inceptionlabs.ai/v1";
+const MERCURY_MODEL = process.env.MERCURY_MODEL || "mercury-2";
 const MIMO_API_KEY = process.env.MIMO_API_KEY || "";
 const MIMO_API_BASE = process.env.MIMO_API_BASE || "https://api.xiaomimimo.com/v1";
 const MIMO_MODEL = process.env.MIMO_MODEL || "mimo-v2-pro";
@@ -243,6 +246,111 @@ Every display must have an entry. If no product fits, set productId to null.`;
   }
 }
 
+async function matchViaMercury(
+  displays: ExtractedLEDSpec[],
+  onProgress?: (msg: string) => void,
+): Promise<AIProductMatch[] | null> {
+  if (!MERCURY_API_KEY) return null;
+
+  try {
+    // Pre-query DB for indoor and outdoor products (single call each, instant)
+    const envs = [...new Set(displays.map(d => d.environment || "indoor"))];
+    const allProducts: any[] = [];
+    for (const env of envs) {
+      const products = await queryProductsFromDb({
+        environment: env,
+        excludePatterns: ["courtside", "stanchion", "scoring", "clock", "tv", "mesh"],
+      });
+      allProducts.push(...products);
+    }
+
+    if (allProducts.length === 0) return null;
+
+    const displayList = displays.map((d, i) => ({
+      index: i,
+      name: d.name,
+      environment: d.environment,
+      pixelPitchMm: d.pixelPitchMm,
+      brightnessNits: d.brightnessNits,
+      widthFt: d.widthFt,
+      heightFt: d.heightFt,
+    }));
+
+    const productList = allProducts.map(p => ({
+      id: p.id,
+      name: p.displayName,
+      model: p.modelNumber,
+      manufacturer: p.manufacturer,
+      pitch: p.pixelPitch,
+      brightness: p.brightness,
+      environment: p.environment,
+    }));
+
+    onProgress?.(`Matching ${displays.length} displays with Mercury 2...`);
+
+    const prompt = `Match each LED display to the best product from the catalog.
+
+DISPLAYS:
+${JSON.stringify(displayList, null, 2)}
+
+AVAILABLE PRODUCTS:
+${JSON.stringify(productList, null, 2)}
+
+Rules:
+- Match indoor displays to indoor products, outdoor to outdoor
+- Pitch ±2mm tolerance
+- Prefer same manufacturer for consistency
+- Every display must have an entry
+
+Return ONLY a JSON array:
+[{"displayIndex": 0, "productId": "id", "productModelNumber": "model", "productName": "name", "matchReason": "why"}]`;
+
+    const res = await fetch(`${MERCURY_API_BASE}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${MERCURY_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: MERCURY_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0,
+        max_tokens: 8192,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!res.ok) {
+      console.error(`[AIProductMatcher] Mercury failed (${res.status})`);
+      return null;
+    }
+
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content || "";
+    const start = content.indexOf("[");
+    const end = content.lastIndexOf("]") + 1;
+    if (start >= 0 && end > start) {
+      const matches = JSON.parse(content.substring(start, end));
+      console.log(`[AIProductMatcher] Mercury matched ${matches.filter((m: any) => m.productId).length}/${displays.length}`);
+      return displays.map((d, i) => {
+        const m = matches.find((x: any) => x.displayIndex === i) || matches.find((x: any) => x.displayName === d.name);
+        return {
+          displayName: d.name,
+          productId: m?.productId || null,
+          productModelNumber: m?.productModelNumber || null,
+          productName: m?.productName || null,
+          matchReason: m?.matchReason || "No match",
+        };
+      });
+    }
+
+    return null;
+  } catch (err: any) {
+    console.error(`[AIProductMatcher] Mercury error:`, err.message);
+    return null;
+  }
+}
+
 export async function matchProductsWithAI(
   displays: ExtractedLEDSpec[],
   onProgress?: (msg: string) => void,
@@ -251,12 +359,16 @@ export async function matchProductsWithAI(
 
   onProgress?.(`Matching ${displays.length} displays to products...`);
 
-  // Try MiMo first (AI-powered matching with DB function calling)
+  // Try Mercury first (fastest — single call, no tool calling)
+  const mercuryMatches = await matchViaMercury(displays, onProgress);
+  if (mercuryMatches) return mercuryMatches;
+
+  // Try MiMo (AI-powered matching with DB function calling)
   const mimoMatches = await matchViaMiMo(displays, onProgress);
   if (mimoMatches) return mimoMatches;
 
   // Fallback: deterministic DB matcher (always works, no AI needed)
-  console.log("[AIProductMatcher] MiMo unavailable — using deterministic DB matcher");
+  console.log("[AIProductMatcher] AI matchers unavailable — using deterministic DB matcher");
   onProgress?.("Matching products from database...");
   return Promise.all(displays.map(d => matchViaDb(d)));
 }

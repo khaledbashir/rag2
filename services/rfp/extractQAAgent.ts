@@ -8,6 +8,9 @@
 
 import type { ExtractedLEDSpec } from "./unified/types";
 
+const MERCURY_API_KEY = process.env.MERCURY_API_KEY || "";
+const MERCURY_API_BASE = process.env.MERCURY_API_BASE || "https://api.inceptionlabs.ai/v1";
+const MERCURY_MODEL = process.env.MERCURY_MODEL || "mercury-2";
 const OPENCLAW_BRIDGE_URL = process.env.OPENCLAW_BRIDGE_URL || "http://172.17.0.1:18790";
 const OPENCLAW_TOKEN = process.env.OPENCLAW_TOKEN || "";
 const Z_AI_API_KEY = process.env.Z_AI_API_KEY || "";
@@ -201,6 +204,23 @@ function parseQAResponse(text: string, displays: ExtractedLEDSpec[]): QAResult |
   }
 }
 
+async function callMercuryQA(prompt: string): Promise<string | null> {
+  if (!MERCURY_API_KEY) return null;
+  try {
+    const res = await fetch(`${MERCURY_API_BASE}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${MERCURY_API_KEY}` },
+      body: JSON.stringify({ model: MERCURY_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: 16384 }),
+      signal: AbortSignal.timeout(QA_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || null;
+  } catch {
+    return null;
+  }
+}
+
 async function callOpenClawQA(prompt: string): Promise<string | null> {
   try {
     const res = await fetch(`${OPENCLAW_BRIDGE_URL}/qa`, {
@@ -265,7 +285,17 @@ export async function runExtractQA(
 
   const prompt = buildQAPrompt(displays, sourceText, filename);
 
-  // Try OpenClaw → MiMo → Z.AI
+  // Try Mercury → OpenClaw → MiMo → Z.AI
+  const mercuryResult = await callMercuryQA(prompt);
+  if (mercuryResult) {
+    console.log("[ExtractQA] Mercury QA responded");
+    const parsed = parseQAResponse(mercuryResult, displays);
+    if (parsed) {
+      onProgress?.(`QA: ${parsed.message}`);
+      return parsed;
+    }
+  }
+
   const openclawResult = await callOpenClawQA(prompt);
   if (openclawResult) {
     console.log("[ExtractQA] OpenClaw QA responded");
