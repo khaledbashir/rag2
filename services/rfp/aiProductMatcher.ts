@@ -14,7 +14,7 @@ import { ProductMatcher } from "@/services/catalog/productMatcher";
 
 const MIMO_API_KEY = process.env.MIMO_API_KEY || "";
 const MIMO_API_BASE = process.env.MIMO_API_BASE || "https://api.xiaomimimo.com/v1";
-const MIMO_MODEL = process.env.MIMO_MODEL || "mimo-v2-omni";
+const MIMO_MODEL = process.env.MIMO_MODEL || "mimo-v2-pro";
 
 export interface AIProductMatch {
   displayName: string;

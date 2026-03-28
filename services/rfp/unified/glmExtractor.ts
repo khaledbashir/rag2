@@ -30,7 +30,7 @@ const Z_AI_MODEL = process.env.Z_AI_MODEL_NAME || process.env.Z_AI_EXTRACTION_MO
 // MiMo-V2-Omni via Xiaomi API (primary text AI fallback — OpenAI-compatible)
 const MIMO_API_KEY = process.env.MIMO_API_KEY || "";
 const MIMO_API_BASE = process.env.MIMO_API_BASE || "https://api.xiaomimimo.com/v1";
-const MIMO_MODEL = process.env.MIMO_MODEL || "mimo-v2-omni";
+const MIMO_MODEL = process.env.MIMO_MODEL || "mimo-v2-pro";
 // Fallback 1: Gemini via OpenRouter-compatible API (native PDF vision)
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const OPENROUTER_BASE_URL = process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";

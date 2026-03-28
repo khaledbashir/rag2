@@ -14,7 +14,7 @@ const Z_AI_API_KEY = process.env.Z_AI_API_KEY || "";
 const Z_AI_MODEL = process.env.QA_MODEL || "glm-5-turbo";
 const Z_AI_BASE_URL = process.env.Z_AI_BASE_URL || "https://api.z.ai/api/coding/paas/v4";
 const MIMO_API_KEY = process.env.MIMO_API_KEY || "";
-const MIMO_MODEL = process.env.MIMO_MODEL || "mimo-v2-omni";
+const MIMO_MODEL = process.env.MIMO_MODEL || "mimo-v2-pro";
 const MIMO_BASE_URL = process.env.MIMO_API_BASE || "https://api.xiaomimimo.com/v1";
 
 const QA_TIMEOUT_MS = 30_000;
