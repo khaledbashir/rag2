@@ -893,6 +893,65 @@ export default function RfpAnalyzerClient() {
   }, [editableSpecs, result?.screens, result?.id, autoSaveSpecs]);
 
   // ========================================================================
+  // Row repair handler — triggers AI agent to fix a specific row
+  // ========================================================================
+
+  const handleRepairRow = useCallback(async (displayName: string, rowIndex: number) => {
+    if (!result?.id) return;
+
+    const spec = (editableSpecs.length > 0 ? editableSpecs : result.screens)[rowIndex];
+    if (!spec) return;
+
+    try {
+      const res = await fetch("/api/rfp/repair-row", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          analysisId: result.id,
+          rowIndex,
+          displayName,
+          issue: "Values may be incorrect — user requested AI repair",
+          currentValues: {
+            name: spec.name,
+            widthFt: spec.widthFt,
+            heightFt: spec.heightFt,
+            pixelPitchMm: spec.pixelPitchMm,
+            brightnessNits: spec.brightnessNits,
+            environment: spec.environment,
+          },
+          sourceText: result.sourceText || "",
+        }),
+      });
+
+      const data = await res.json();
+      if (data.fixed && data.display) {
+        // Apply the fix to editableSpecs
+        const base = editableSpecs.length > 0 ? editableSpecs : result.screens;
+        const updated = base.map((s: any, i: number) => {
+          if (i !== rowIndex) return s;
+          return {
+            ...s,
+            ...(data.display.name != null ? { name: data.display.name } : {}),
+            ...(data.display.widthFt != null ? { widthFt: data.display.widthFt } : {}),
+            ...(data.display.heightFt != null ? { heightFt: data.display.heightFt } : {}),
+            ...(data.display.pixelPitchMm != null ? { pixelPitchMm: data.display.pixelPitchMm } : {}),
+            ...(data.display.brightnessNits != null ? { brightnessNits: data.display.brightnessNits } : {}),
+            ...(data.display.environment != null ? { environment: data.display.environment } : {}),
+            notes: `${s.notes || ""} | Repaired: ${data.reason}`.trim(),
+          };
+        });
+        setEditableSpecs(updated);
+        if (result.id) autoSaveSpecs(updated, result.id);
+        console.log(`[Repair] Fixed "${displayName}": ${data.reason}`);
+      } else {
+        console.warn(`[Repair] Could not fix "${displayName}": ${data.error || data.reason}`);
+      }
+    } catch (err: any) {
+      console.error(`[Repair] Failed for "${displayName}":`, err.message);
+    }
+  }, [editableSpecs, result?.id, result?.screens, result?.sourceText, autoSaveSpecs]);
+
+  // ========================================================================
   // Workbook data — computed from state for WorkbookShell rendering
   // ========================================================================
 
@@ -914,12 +973,13 @@ export default function RfpAnalyzerClient() {
       onAddScreen: handleAddScreen,
       onRemoveScreen: handleRemoveScreen,
       onQtyChange: handleQtyChange,
+      onRepairRow: handleRepairRow,
       onSourcePageClick: (pg) => {
         setPdfViewerPage(pg);
         setShowPdfPanel(true);
       },
     });
-  }, [result, editableSpecs, pricingPreview, requirements, bidFormResult, specMismatches, availableProducts, handleProductSelect, handleAddLineItem, handleAddScreen, handleRemoveScreen, handleQtyChange]);
+  }, [result, editableSpecs, pricingPreview, requirements, bidFormResult, specMismatches, availableProducts, handleProductSelect, handleAddLineItem, handleAddScreen, handleRemoveScreen, handleQtyChange, handleRepairRow]);
 
   // ========================================================================
   // Auto-run pricing when extraction completes (no manual step needed)

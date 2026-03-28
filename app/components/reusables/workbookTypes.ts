@@ -23,6 +23,8 @@ export interface SheetCell {
   onDropdownChange?: (value: string) => void;
   /** Remove row callback — renders a small × button */
   onRemove?: () => void;
+  /** Repair row callback — renders a wrench icon button */
+  onRepair?: () => void;
 }
 
 export interface SheetRow {

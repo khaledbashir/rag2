@@ -403,17 +403,29 @@ function CellView({ cell, editable, isEditing, onClick, onChange, onBlur }: Cell
       )}
       title={cell.formula || undefined}
     >
-      {cell.onRemove ? (
+      {(cell.onRemove || cell.onRepair) ? (
         <span className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); cell.onRemove!(); }}
-            className="opacity-0 group-hover/cell:opacity-100 text-red-400 hover:text-red-600 transition-opacity shrink-0"
-            title="Remove row"
-          >
-            ×
-          </button>
+          {cell.onRemove && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); cell.onRemove!(); }}
+              className="opacity-0 group-hover/cell:opacity-100 text-red-400 hover:text-red-600 transition-opacity shrink-0"
+              title="Remove row"
+            >
+              ×
+            </button>
+          )}
           <span>{formatCellValue(cell)}</span>
+          {cell.onRepair && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); cell.onRepair!(); }}
+              className="opacity-0 group-hover/cell:opacity-100 text-[#0A52EF] hover:text-[#0A52EF]/80 transition-opacity shrink-0 ml-1 text-[10px]"
+              title="AI repair — fix this row"
+            >
+              fix
+            </button>
+          )}
         </span>
       ) : (
         formatCellValue(cell)

@@ -144,7 +144,12 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       let streamClosed = false;
+      const pipelineLog: Array<{ timestamp: string; message: string }> = [];
       const send = (type: string, data: any) => {
+        // Collect progress messages for persistence
+        if (type === "progress" && data.message) {
+          pipelineLog.push({ timestamp: new Date().toISOString(), message: data.message });
+        }
         if (streamClosed) return;
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type, ...data })}\n\n`));
@@ -260,7 +265,7 @@ export async function POST(request: NextRequest) {
                     project: finalProject as any,
                     screens: screens as any,
                     requirements: glmRequirements as any,
-                    triage: [],
+                    triage: pipelineLog as any,
                     aiWorkspaceSlug: workspaceSlug,
                     createdBy: session?.user?.name || session?.user?.email || null,
                   },
@@ -283,6 +288,7 @@ export async function POST(request: NextRequest) {
                   screens,
                   requirements: glmRequirements,
                   warnings: extractionWarnings,
+                  pipelineLog,
                   stats: { totalPages, extractionSource: "glm5", durationMs: Date.now() - startTime },
                   aiWorkspaceSlug: workspaceSlug,
                 },

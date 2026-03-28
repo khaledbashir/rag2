@@ -103,6 +103,8 @@ export interface RfpWorkbookInput {
   onRemoveScreen?: (screenName: string) => void;
   /** Callback when user changes quantity for a display */
   onQtyChange?: (displayName: string, qty: number) => void;
+  /** Callback when user clicks "Fix" on a row — triggers AI repair agent */
+  onRepairRow?: (displayName: string, rowIndex: number) => void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -244,6 +246,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
           bold: true,
           onClick: firstPage && input.onSourcePageClick ? () => input.onSourcePageClick!(firstPage) : undefined,
           onRemove: input.onRemoveScreen ? () => input.onRemoveScreen!(spec.name) : undefined,
+          onRepair: input.onRepairRow ? () => input.onRepairRow!(spec.name, input.screens.indexOf(spec)) : undefined,
         }),
         num(bidH > 0 ? Math.round(bidH * 100) / 100 : null),               // RFP H (ft)
         num(bidW > 0 ? Math.round(bidW * 100) / 100 : null),               // RFP W (ft)
