@@ -15,7 +15,9 @@ import dynamic from "next/dynamic";
 
 const PdfSplitPanel = dynamic(() => import("./_components/PdfSplitPanel"), { ssr: false });
 const UniverSpreadsheet = dynamic(() => import("./_components/UniverSpreadsheet"), { ssr: false });
+const LuxWidget = dynamic(() => import("./_components/LuxWidget"), { ssr: false });
 import type { ExtractedLEDSpec, ExtractedRequirement } from "@/services/rfp/unified/types";
+import { isPlatformOwner } from "@/lib/platformOwner";
 import {
   RefreshCcw,
   Monitor,
@@ -2921,6 +2923,14 @@ export default function RfpAnalyzerClient() {
         })()}
 
       </main>
+
+      {/* Lux AI Widget — platform owner only */}
+      {isPlatformOwner(session?.user?.email) && result?.screens && result.screens.length > 0 && (
+        <LuxWidget
+          displays={result.screens}
+          sourceText={result.sourceText}
+        />
+      )}
     </div>
   );
 }
