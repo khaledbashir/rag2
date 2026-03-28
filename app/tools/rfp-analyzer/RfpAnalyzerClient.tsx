@@ -2233,7 +2233,7 @@ export default function RfpAnalyzerClient() {
               </div>
             )}
 
-            {/* Warnings banner — partial failures or degraded results */}
+            {/* Count mismatch warning — yellow banner */}
             {!result.extractionFailed && result.warnings && result.warnings.length > 0 && (
               <div className="p-4 border border-amber-500/30 bg-amber-500/10 rounded-xl flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
@@ -2243,6 +2243,20 @@ export default function RfpAnalyzerClient() {
                     <p key={i} className="text-sm text-amber-600/80 dark:text-amber-400/80 mt-1">{w}</p>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Count verified — green banner */}
+            {!result.extractionFailed && (!result.warnings || result.warnings.length === 0) && result.screens.length > 0 && (
+              <div className="p-3 border border-emerald-500/30 bg-emerald-500/10 rounded-xl flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <p className="text-sm text-emerald-700 dark:text-emerald-300">
+                  Count verified: {(() => {
+                    const screens = editableSpecs.length > 0 ? editableSpecs : result.screens;
+                    return screens.reduce((sum: number, s: any) => sum + (s.quantity || 1), 0);
+                  })()} displays extracted
+                  {result.stats?.extractionSource && ` via ${result.stats.extractionSource === "glm5" ? "Gemini Flash" : result.stats.extractionSource}`}
+                </p>
               </div>
             )}
 

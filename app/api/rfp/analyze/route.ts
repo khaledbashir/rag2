@@ -181,37 +181,18 @@ export async function POST(request: NextRequest) {
             message: `Analyzing PDF with AI (${sizeMb}MB)...`,
           });
 
-          const thinkingSteps = [
-            "Uploading PDF to AI...",
-            "Identifying document structure...",
-            "Locating display schedule tables...",
-            "Extracting indoor LED specifications...",
-            "Extracting outdoor LED specifications...",
-            "Extracting project requirements...",
-            "Organizing results...",
-          ];
-          let stepIdx = 0;
-          const thinkingInterval = setInterval(() => {
-            if (stepIdx < thinkingSteps.length) {
-              send("progress", {
-                stage: "extracting",
-                current: stepIdx,
-                total: thinkingSteps.length,
-                message: thinkingSteps[stepIdx],
-              });
-              stepIdx++;
-            }
-          }, 8_000);
+          // Real progress — every step in the pipeline sends its own message.
+          // No fake thinking steps. The user sees exactly what's happening.
+          let progressStep = 0;
 
           try {
             const glmResult = await extractWithGLM5(filePath, {
               timeout: 300,
               onProgress: (msg) => {
-                send("progress", { stage: "extracting", current: stepIdx, total: thinkingSteps.length, message: msg });
+                progressStep++;
+                send("progress", { stage: "extracting", current: progressStep, total: 10, message: msg });
               },
             });
-
-            clearInterval(thinkingInterval);
 
             if (glmResult.screens.length > 0) {
               log.info(`[Pipeline] GLM5 extracted ${glmResult.screens.length} displays — skipping Mistral`);
@@ -283,12 +264,19 @@ export async function POST(request: NextRequest) {
                 log.error("[Pipeline] GLM5 DB save failed (non-fatal):", dbErr.message?.slice(0, 200));
               }
 
+              // Surface count mismatch warnings from Gemini validation
+              const extractionWarnings = glmResult.warnings || [];
+              if (extractionWarnings.length > 0) {
+                send("warning", { warnings: extractionWarnings });
+              }
+
               send("complete", {
                 result: {
                   id: analysisId,
                   project: finalProject,
                   screens,
                   requirements: glmRequirements,
+                  warnings: extractionWarnings,
                   stats: { totalPages, extractionSource: "glm5", durationMs: Date.now() - startTime },
                   aiWorkspaceSlug: workspaceSlug,
                 },
@@ -301,7 +289,6 @@ export async function POST(request: NextRequest) {
               log.warn("[Pipeline] GLM5 returned 0 displays — trying AnythingLLM fallback");
             }
           } catch (glmErr: any) {
-            clearInterval(thinkingInterval);
             // Credit/billing errors — stop immediately, don't fallback
             if (glmErr.message?.includes("credits exhausted") || glmErr.message?.includes("top up")) {
               send("error", {
