@@ -10,9 +10,11 @@
 
 import type { ExtractedLEDSpec } from "./unified/types";
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
-const GEMINI_MODEL = "gemini-3.1-pro-preview"; // Pro for QA — accuracy over speed
-const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+// QA uses a DIFFERENT model than extraction — different architecture catches different errors
+// GLM-5 Turbo via Z.AI: fast (53s), free, completely different from Gemini
+const QA_API_KEY = process.env.Z_AI_API_KEY || "";
+const QA_MODEL = process.env.QA_MODEL || "glm-5-turbo";
+const QA_BASE_URL = process.env.Z_AI_BASE_URL || "https://api.z.ai/api/coding/paas/v4";
 
 export interface QAResult {
   correctedDisplays: ExtractedLEDSpec[];
@@ -27,7 +29,7 @@ export async function runExtractQA(
   filename: string,
   onProgress?: (msg: string) => void,
 ): Promise<QAResult> {
-  if (!GEMINI_API_KEY || displays.length === 0 || sourceText.length < 100) {
+  if (!QA_API_KEY || displays.length === 0 || sourceText.length < 100) {
     return {
       correctedDisplays: displays,
       changes: [],
@@ -79,23 +81,28 @@ If everything is correct, return:
 {"corrections": [], "missing": [], "duplicates": [], "verified": true, "totalExpected": 47, "message": "All 47 displays verified against source. Ready for Natalia."}`;
 
   try {
-    const res = await fetch(`${BASE_URL}/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
+    const res = await fetch(`${QA_BASE_URL}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${QA_API_KEY}`,
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 8192 },
+        model: QA_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0,
+        max_tokens: 8192,
       }),
     });
 
     if (!res.ok) {
       const err = await res.text();
-      console.error(`[ExtractQA] API error ${res.status}:`, err.substring(0, 200));
+      console.error(`[ExtractQA] ${QA_MODEL} error ${res.status}:`, err.substring(0, 200));
       return { correctedDisplays: displays, changes: [], verified: false, message: `QA API error: ${res.status}` };
     }
 
     const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const text = data.choices?.[0]?.message?.content || "";
     const cleaned = text.replace(/```json/gi, "").replace(/```/g, "").trim();
     const si = cleaned.indexOf("{");
     const ei = cleaned.lastIndexOf("}") + 1;
