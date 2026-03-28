@@ -747,9 +747,36 @@ export default function AnalysisDetailPage() {
               <div className="bg-card border border-border rounded-xl p-5">
                 <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
                   <FileText className="w-4 h-4 text-muted-foreground" />
-                  Page Triage ({triage.length} pages)
+                  {triage[0]?.timestamp ? `Pipeline Log (${triage.length} steps)` : `Page Triage (${triage.length} pages)`}
                 </h3>
-                <TriageMinimap triage={triage} />
+                {triage[0]?.timestamp ? (
+                  <div className="max-h-64 overflow-y-auto bg-[#1a1b26] rounded-lg px-3 py-2 font-mono text-[11px] leading-5 space-y-0.5">
+                    {triage.map((entry: any, i: number) => {
+                      const msg = entry.message || entry.category || "";
+                      const isAI = msg.startsWith("AI: ");
+                      const isCount = /\d+ displays|\d+ pages|matched|verified|validation/i.test(msg);
+                      const isBlock = /BLOCK|FAIL/i.test(msg);
+                      return (
+                        <div key={i} className="flex gap-2">
+                          <span className="text-gray-600 select-none shrink-0">{String(i + 1).padStart(2, "0")}</span>
+                          <span className={
+                            isBlock ? "text-red-400" :
+                            isAI ? "text-[#7aa2f7] italic" :
+                            isCount ? "text-[#9ece6a]" :
+                            "text-gray-400"
+                          }>
+                            {isAI ? msg.substring(4) : msg}
+                          </span>
+                          <span className="text-gray-700 ml-auto shrink-0 text-[9px]">
+                            {new Date(entry.timestamp).toLocaleTimeString()}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <TriageMinimap triage={triage} />
+                )}
               </div>
             )}
           </div>
