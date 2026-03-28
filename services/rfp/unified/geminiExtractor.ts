@@ -255,15 +255,21 @@ export async function extractWithGemini(
   project: ExtractedProjectInfo;
   requirements: any[];
   warnings: string[];
+  sourceText: string;
+  extractionMethod: string;
+  documentTotal: number | null;
   source: "gemini";
 }> {
   // =========================================================================
-  // LEVEL 1: Classify each page — text or drawing
-  // pdftotext per page. If < 50 chars → drawing (vector graphics). Else → text.
+  // TEXT-FIRST EXTRACTION (Interim Safety Upgrade)
+  //
+  // Always try pdftotext first. The text layer is the source of truth.
+  // Only fall to vision if there is truly no extractable text.
+  // This is NOT the final parser architecture — it's a safety net.
   // =========================================================================
   const { execFile: execFileCb } = await import("child_process");
   const { promisify } = await import("util");
-  const { readFile: readImg, readdir, mkdir, rm, writeFile } = await import("fs/promises");
+  const { readFile: readImg, readdir, mkdir, rm } = await import("fs/promises");
   const execFileAsync = promisify(execFileCb);
 
   let pageCount = 0;
@@ -274,99 +280,98 @@ export async function extractWithGemini(
   } catch { pageCount = 0; }
 
   console.log(`[GeminiExtractor] Key present: ${GEMINI_API_KEY.length > 0}, model: ${GEMINI_MODEL}, ${pageCount} pages`);
-  options?.onProgress?.(`Classifying ${pageCount} pages...`);
 
-  // Short documents (5 pages or fewer) — always convert to PNG.
-  // AV schedule drawings, single-page specs, and small documents all render
-  // better as high-res images. Gemini Vision reads them more reliably than PDF.
-  // Long documents (6+ pages) — classify each page individually.
-  const SHORT_DOC_THRESHOLD = 5;
-  const TEXT_THRESHOLD = 50; // chars — below this, page is a drawing
-  const textPages: number[] = [];   // 1-indexed
-  const drawingPages: number[] = []; // 1-indexed
+  // Step 1: Extract full text via pdftotext -layout
+  options?.onProgress?.("Extracting text from PDF...");
+  let sourceText = "";
+  try {
+    const { stdout } = await execFileAsync("pdftotext", ["-layout", pdfPath, "-"], { timeout: 30_000 });
+    sourceText = stdout;
+  } catch (err: any) {
+    console.error(`[GeminiExtractor] pdftotext failed:`, err.message);
+  }
 
-  if (pageCount <= SHORT_DOC_THRESHOLD) {
-    // Short doc — ALL pages go as PNG (covers AV drawings, schedules, small specs)
-    for (let p = 1; p <= pageCount; p++) drawingPages.push(p);
-    console.log(`[GeminiExtractor] Short document (${pageCount} pages) — all pages as PNG`);
-  } else {
-    // Long doc — classify per page
-    for (let p = 1; p <= pageCount; p++) {
-      try {
-        const { stdout } = await execFileAsync("pdftotext", ["-f", String(p), "-l", String(p), "-layout", pdfPath, "-"], { timeout: 10_000 });
-        if (stdout.trim().length >= TEXT_THRESHOLD) {
-          textPages.push(p);
-        } else {
-          drawingPages.push(p);
-        }
-      } catch {
-        drawingPages.push(p);
+  console.log(`[GeminiExtractor] pdftotext: ${sourceText.length} chars extracted`);
+
+  // Step 2: Decide path based on text quality
+  const hasUsableText = sourceText.trim().length > 200;
+  let contentParts: any[];
+  let extractionMethod: string;
+
+  if (hasUsableText) {
+    // TEXT PATH — extract only display-relevant sections, not the full document
+    extractionMethod = "text";
+
+    // Split text by table headers and keep only LED/display schedule sections
+    const SCHEDULE_PATTERNS = [
+      /A\/V\s+(?:INTERIOR\s+)?LED\s+BOARD\s+SCHEDULE/i,
+      /A\/V\s+SCOREBOARD\s+&\s+RIBBON/i,
+      /A\/V\s+(?:EAST|WEST|NORTH|SOUTH)\s+(?:ENTRY|EXTERIOR)\s+LED/i,
+      /A\/V\s+(?:NORTH|SOUTH)\s+(?:EAST|WEST)\s+EXTERIOR/i,
+      /A\/V\s+(?:NORTH|SOUTH)\s+ENTRY\s+LED/i,
+      /LED\s+(?:DISPLAY|BOARD|VIDEOBOARD)\s+SCHEDULE/i,
+      /DISPLAY\s+(?:MATRIX|SCHEDULE)/i,
+      /SECTION\s+11\s*(?:06\s*60|68\s*43|63\s*10)/i,
+    ];
+
+    // Find where each schedule section starts in the text
+    const sections: { header: string; start: number }[] = [];
+    for (const pattern of SCHEDULE_PATTERNS) {
+      let match;
+      const global = new RegExp(pattern.source, "gi");
+      while ((match = global.exec(sourceText)) !== null) {
+        sections.push({ header: match[0], start: match.index });
       }
     }
-  }
 
-  console.log(`[GeminiExtractor] Level 1: ${textPages.length} text pages, ${drawingPages.length} drawing pages`);
-  if (drawingPages.length > 0) {
-    options?.onProgress?.(`${pageCount} pages scanned: ${textPages.length} text, ${drawingPages.length} drawings (pages ${drawingPages.join(", ")})`);
+    let relevantText: string;
+    if (sections.length > 0) {
+      // Sort by position, extract text from each section header to the next (or end)
+      sections.sort((a, b) => a.start - b.start);
+      const chunks: string[] = [];
+      for (let i = 0; i < sections.length; i++) {
+        const start = sections[i].start;
+        const end = i + 1 < sections.length ? sections[i + 1].start : Math.min(start + 5000, sourceText.length);
+        chunks.push(sourceText.substring(start, end));
+      }
+      relevantText = chunks.join("\n\n--- TABLE BOUNDARY ---\n\n");
+      console.log(`[GeminiExtractor] Text path: ${sections.length} schedule sections found, ${relevantText.length} chars (from ${sourceText.length} total)`);
+      options?.onProgress?.(`Found ${sections.length} schedule tables — extracting relevant sections`);
+    } else {
+      // No known headers found — send full text (spec docs without schedule headers)
+      relevantText = sourceText;
+      console.log(`[GeminiExtractor] Text path: no schedule headers found, sending full text (${sourceText.length} chars)`);
+      options?.onProgress?.(`${sourceText.length} chars of text extracted — no schedule headers detected, sending full document`);
+    }
+
+    contentParts = [{ text: `Extracted text from display schedule sections of the PDF (pdftotext -layout). Each section between TABLE BOUNDARY markers is a separate table. Columns are aligned by whitespace.\n\n${relevantText}` }];
   } else {
-    options?.onProgress?.(`${pageCount} pages scanned: all text`);
-  }
+    // VISION PATH — no usable text, convert to PNG
+    // Only for truly raster/image PDFs where pdftotext returns nothing
+    extractionMethod = "vision";
+    options?.onProgress?.("No extractable text — converting to images for vision...");
+    console.log(`[GeminiExtractor] Vision path: ${sourceText.length} chars (below threshold), converting to PNG`);
 
-  // =========================================================================
-  // LEVEL 2: Build content parts — right format per page
-  // Text pages → PDF inline. Drawing pages → 300 DPI PNG images.
-  // Everything goes in one Gemini request.
-  // =========================================================================
-  const contentParts: any[] = [];
-
-  // Drawing pages → convert to PNG
-  if (drawingPages.length > 0) {
-    options?.onProgress?.(`Converting ${drawingPages.length} drawing pages to images...`);
     const tmpDir = `/tmp/gemini-vision-${Date.now()}`;
     await mkdir(tmpDir, { recursive: true });
+    await execFileAsync("pdftoppm", ["-png", "-r", "300", pdfPath, `${tmpDir}/page`], { timeout: 120_000 });
+    const pngFiles = (await readdir(tmpDir)).filter(f => f.endsWith(".png")).sort();
 
-    for (const p of drawingPages) {
-      try {
-        await execFileAsync("pdftoppm", [
-          "-png", "-r", "300",
-          "-f", String(p), "-l", String(p),
-          pdfPath, `${tmpDir}/page-${String(p).padStart(4, "0")}`,
-        ], { timeout: 30_000 });
-      } catch (err: any) {
-        console.error(`[GeminiExtractor] Failed to convert page ${p} to PNG:`, err.message);
-      }
+    if (pngFiles.length === 0) {
+      await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+      throw new Error("PDF has no extractable text and image conversion failed");
     }
 
-    const pngFiles = (await readdir(tmpDir)).filter(f => f.endsWith(".png")).sort();
-    for (const png of pngFiles) {
+    contentParts = [];
+    for (const png of pngFiles.slice(0, 20)) {
       const imgBuf = await readImg(`${tmpDir}/${png}`);
       contentParts.push({ inlineData: { mimeType: "image/png", data: imgBuf.toString("base64") } });
     }
-    console.log(`[GeminiExtractor] Added ${pngFiles.length} drawing images`);
+    console.log(`[GeminiExtractor] Added ${pngFiles.length} page images`);
     rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }
 
-  // Text pages → send as PDF
-  if (textPages.length > 0) {
-    const pdfBuffer = await readFile(pdfPath);
-    const sizeMb = pdfBuffer.length / 1024 / 1024;
-
-    if (sizeMb < 15) {
-      const b64 = pdfBuffer.toString("base64");
-      contentParts.push({ inlineData: { mimeType: "application/pdf", data: b64 } });
-      console.log(`[GeminiExtractor] Added PDF inline (${sizeMb.toFixed(1)}MB, ${textPages.length} text pages)`);
-    } else {
-      const fileUri = await uploadToGemini(pdfPath);
-      contentParts.push({ fileData: { mimeType: "application/pdf", fileUri } });
-      console.log(`[GeminiExtractor] Added PDF via File API (${sizeMb.toFixed(1)}MB, ${textPages.length} text pages)`);
-    }
-  }
-
-  if (contentParts.length === 0) {
-    throw new Error("No content to send to Gemini — PDF has 0 classifiable pages");
-  }
-
-  options?.onProgress?.(`Sending ${textPages.length} text + ${drawingPages.length} drawing pages to Gemini Flash...`);
+  options?.onProgress?.(`Sending to Gemini Flash (${extractionMethod} path)...`);
 
   // Streaming endpoint — read chunks incrementally, forward thinking tokens in real time
   const streamUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
@@ -518,6 +523,9 @@ export async function extractWithGemini(
         rawText: r.description || "",
       })),
       warnings,
+      sourceText,
+      extractionMethod,
+      documentTotal: elog?.total_displays_counted_in_text ?? null,
       source: "gemini",
     };
   } catch (err: any) {

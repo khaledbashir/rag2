@@ -16,6 +16,7 @@ import type { ExtractedLEDSpec, ExtractedProjectInfo } from "./types";
 import { extractWithMistral } from "./mistralOcrClient";
 import { extractWithGemini, isGeminiAvailable } from "./geminiExtractor";
 import { matchProductsWithAI } from "../aiProductMatcher";
+import { validateExtraction, detectTableHeaders } from "../extractionValidator";
 import { execFile } from "child_process";
 import { promisify } from "util";
 
@@ -1256,6 +1257,7 @@ export async function extractWithGLM5(
   project: ExtractedProjectInfo;
   requirements: any[];
   warnings?: string[];
+  validation?: import("../extractionValidator").ValidationResult;
   source: "glm5";
 }> {
   // =====================================================================
@@ -1279,8 +1281,33 @@ export async function extractWithGLM5(
       console.log(`[RFP v2] Gemini: removed ${equipmentRemoved} equipment items`);
     }
 
-    console.log(`[RFP v2] Gemini Flash: ${filtered.length} LED displays`);
+    console.log(`[RFP v2] Gemini Flash: ${filtered.length} LED displays (${geminiResult.extractionMethod} path)`);
     options?.onProgress?.(`Found ${filtered.length} LED displays`);
+
+    // ── VALIDATION ENGINE — hard gates that block export on failure ──
+    options?.onProgress?.("Validating extraction...");
+    const tableHeaders = detectTableHeaders(geminiResult.sourceText);
+    const validation = validateExtraction(
+      filtered,
+      geminiResult.sourceText,
+      geminiResult.documentTotal,
+      tableHeaders,
+    );
+
+    // Log every check result
+    for (const check of validation.checks) {
+      const icon = check.passed ? "PASS" : check.severity === "block" ? "BLOCK" : "REVIEW";
+      console.log(`[RFP v2] Validation [${icon}] ${check.name}: ${check.message}`);
+    }
+    console.log(`[RFP v2] Validation result: ${validation.summary}`);
+    options?.onProgress?.(`Validation: ${validation.summary}`);
+
+    // Add validation warnings to the result
+    for (const check of validation.checks) {
+      if (!check.passed) {
+        (geminiResult.warnings ??= []).push(`[${check.severity.toUpperCase()}] ${check.name}: ${check.message}`);
+      }
+    }
 
     // AI product matching — Gemini queries the live DB and picks the best product per display
     try {
@@ -1309,6 +1336,7 @@ export async function extractWithGLM5(
       project: geminiResult.project,
       requirements: geminiResult.requirements,
       warnings: geminiResult.warnings,
+      validation,
       source: "glm5",
     };
   }
