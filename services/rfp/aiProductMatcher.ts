@@ -165,7 +165,7 @@ export async function matchProductsWithAI(
 For each display, call the query_products tool to find matching products. Use these rules:
 - Set environment to match the display (indoor/outdoor)
 - Set pitch range to ±2mm of the display's pixel pitch
-- Set minBrightness to the display's nits requirement
+- Set minBrightness to 50% of the display's nits requirement (allows close matches — e.g., 7500 nits product for 8000 nits spec is acceptable)
 - Always exclude: courtside, stanchion, scoring, clock, tv, mesh (unless the display is specifically a mesh application)
 
 Here are the displays to match:
@@ -258,11 +258,9 @@ Rules:
         }],
       },
     ],
-    tools: [QUERY_PRODUCTS_TOOL],
     generationConfig: {
       temperature: 0,
       maxOutputTokens: 16384,
-      responseMimeType: "application/json",
     },
   };
 
