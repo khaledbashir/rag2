@@ -1409,13 +1409,15 @@ export async function extractWithGLM5(
     try {
       const { readFile, mkdir, unlink, readdir } = await import("fs/promises");
 
-      // Get page count
-      let totalPages = 0;
-      try {
-        const { stdout: info } = await execFileAsync("pdfinfo", [pdfPath], { timeout: 30_000 });
-        const match = info.match(/Pages:\s+(\d+)/);
-        totalPages = match ? parseInt(match[1], 10) : 0;
-      } catch { totalPages = 0; }
+      // Step 1: Extract text from all pages (fast — Mistral OCR or pdftotext)
+      const { pages: allPages, fullText } = await extractFullText(pdfPath);
+      const totalPages = allPages.length;
+      options?.onProgress?.(`Extracted text from ${totalPages} pages...`);
+
+      // Step 2: Classify pages — keep only LED-relevant ones
+      const { filtered: ledText, keptPages: ledPageNums, stats: filterStats } = filterLedPages(allPages);
+      console.log(`[RFP v2] MiMo: page classifier ${filterStats}`);
+      options?.onProgress?.(`Page classifier: ${filterStats}`);
 
       const mimoPrompt = `Extract ALL LED displays and requirements from this RFP document.
 
@@ -1455,28 +1457,40 @@ Rules:
       let mimoRes: Response | null = null;
       let mimoUsedVision = false;
 
-      // Vision path: convert PDF pages to PNG images, send to MiMo
-      if (totalPages > 0 && totalPages <= 50) {
+      // Step 3: Vision path — convert ONLY relevant pages to PNG, send to MiMo
+      if (ledPageNums.length > 0 && ledPageNums.length <= 30 && totalPages > 0) {
         const tmpDir = `/tmp/mimo-vision-${Date.now()}`;
         await mkdir(tmpDir, { recursive: true });
 
         try {
-          options?.onProgress?.(`Converting ${totalPages} pages to images for MiMo vision...`);
-          console.log(`[RFP v2] MiMo vision: converting ${totalPages} pages to PNG...`);
+          options?.onProgress?.(`Converting ${ledPageNums.length} relevant pages to images...`);
+          console.log(`[RFP v2] MiMo vision: converting pages ${ledPageNums.join(",")} to PNG...`);
 
-          await execFileAsync("pdftoppm", ["-png", "-r", "200", "-l", String(totalPages), pdfPath, `${tmpDir}/page`], { timeout: 120_000 });
+          // Convert only the relevant pages (pdftoppm supports -f and -l for page range)
+          // Build ranges in chunks to handle non-contiguous page numbers
+          const pageRanges: string[] = [];
+          for (const pageNum of ledPageNums) {
+            pageRanges.push(String(pageNum));
+          }
+
+          await execFileAsync("pdftoppm", ["-png", "-r", "200", "-f", String(ledPageNums[0]), "-l", String(ledPageNums[ledPageNums.length - 1]), pdfPath, `${tmpDir}/page`], { timeout: 120_000 });
 
           const imgFiles = (await readdir(tmpDir)).filter(f => f.endsWith(".png")).sort();
-          console.log(`[RFP v2] MiMo vision: ${imgFiles.length} pages converted to PNG`);
 
-          if (imgFiles.length > 0) {
-            // Build vision content — text prompt + images
+          // Filter to only relevant page images
+          const relevantImgs = imgFiles.filter(f => {
+            const num = parseInt(f.replace(/\D/g, ""), 10);
+            return ledPageNums.includes(num);
+          });
+
+          console.log(`[RFP v2] MiMo vision: ${relevantImgs.length} relevant page images ready`);
+
+          if (relevantImgs.length > 0) {
             const visionContent: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
               { type: "text", text: mimoPrompt },
             ];
 
-            // Send up to 20 pages (context limit)
-            const pagesToSend = imgFiles.slice(0, 20);
+            const pagesToSend = relevantImgs.slice(0, 20);
             for (const imgFile of pagesToSend) {
               const imgBuffer = await readFile(`${tmpDir}/${imgFile}`);
               const imgB64 = imgBuffer.toString("base64");
@@ -1486,12 +1500,8 @@ Rules:
               });
             }
 
-            if (imgFiles.length > 20) {
-              visionContent.push({ type: "text", text: `Note: Only first 20 of ${imgFiles.length} pages shown. The remaining pages may contain additional displays.` });
-            }
-
-            console.log(`[RFP v2] MiMo vision: sending ${pagesToSend.length} page images (${(visionContent.length * 100).toFixed(0)}KB approx) to ${MIMO_MODEL}...`);
-            options?.onProgress?.(`MiMo analyzing ${pagesToSend.length} pages...`);
+            console.log(`[RFP v2] MiMo vision: sending ${pagesToSend.length} page images to ${MIMO_MODEL}...`);
+            options?.onProgress?.(`MiMo analyzing ${pagesToSend.length} relevant pages...`);
 
             mimoRes = await fetch(`${MIMO_API_BASE}/chat/completions`, {
               method: "POST",
@@ -1511,7 +1521,6 @@ Rules:
             mimoUsedVision = true;
           }
         } finally {
-          // Cleanup temp files
           try {
             const files = await readdir(tmpDir);
             for (const f of files) unlink(`${tmpDir}/${f}`).catch(() => {});
@@ -1520,14 +1529,10 @@ Rules:
         }
       }
 
-      // Text fallback — if vision didn't run (too many pages, no pdftoppm, etc.)
+      // Step 4: Text fallback — if no relevant pages for vision, send filtered text
       if (!mimoUsedVision) {
-        const pdfBuffer = await readFile(pdfPath);
-        const sizeMb = (pdfBuffer.length / 1024 / 1024).toFixed(1);
-        console.log(`[RFP v2] MiMo text: extracting text from ${sizeMb}MB PDF...`);
-        const { fullText: mimoText } = await extractFullText(pdfPath);
-        const textToSend = mimoText.length > 128000 ? mimoText.substring(0, 128000) : mimoText;
-        console.log(`[RFP v2] MiMo text: sending ${(textToSend.length / 1024).toFixed(0)}KB text to ${MIMO_MODEL}...`);
+        console.log(`[RFP v2] MiMo text: sending filtered text (${(ledText.length / 1024).toFixed(0)}KB)...`);
+        options?.onProgress?.("MiMo analyzing filtered text...");
         mimoRes = await fetch(`${MIMO_API_BASE}/chat/completions`, {
           method: "POST",
           headers: {
@@ -1536,7 +1541,7 @@ Rules:
           },
           body: JSON.stringify({
             model: MIMO_MODEL,
-            messages: [{ role: "user", content: mimoPrompt + "\n\n" + textToSend }],
+            messages: [{ role: "user", content: mimoPrompt + "\n\n" + ledText }],
             temperature: 0,
             max_tokens: 32768,
             response_format: { type: "json_object" },
