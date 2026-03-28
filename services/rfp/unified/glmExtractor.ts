@@ -45,24 +45,24 @@ const MISTRAL_MODEL = process.env.MISTRAL_CHAT_MODEL || "mistral-large-latest";
 const MISTRAL_OCR_MODEL = process.env.MISTRAL_OCR_MODEL || "mistral-ocr-latest";
 
 // LED-relevant keywords for page filtering (case-insensitive)
-const LED_KEYWORDS = [
-  // LED displays
-  "led", "videoboard", "pixel pitch", "nits", "brightness",
-  "display matrix", "display schedule", "ribbon board", "ribbon display",
-  "marquee", "fascia", "centerhung", "center hung", "digital signage",
-  "electronic display", "video display", "video board",
-  "indoor led", "outdoor led", "entry led",
-  // Scoreboards & clocks
-  "scoreboard", "game clock", "play clock", "shot clock", "locker room clock",
-  "digit clock", "fixed digit", "scoring system", "score controller",
-  "scorekeeping", "timing system", "delay of game", "24-second",
-  // Control systems
-  "display control", "content playback", "content management",
-  "control system", "ad control",
-  // Vendors
-  "oes", "daktronics",
-  // CSI section numbers
+// Strong signals: indicate actual display DATA on the page
+const LED_STRONG_KEYWORDS = [
+  "pixel pitch", "display schedule", "display matrix", "av schedule",
+  "ribbon board", "ribbon display", "fascia", "centerhung", "center hung",
+  "videoboard", "video board", "video display",
+  /\d{3,4}\s*nits/i, /\d+\.?\d*\s*mm\s*(pitch|pixel)/i,
+  /\d+\s*[x×]\s*\d+/i, // dimensions like "14' x 8'"
+  /\d+\.\d+\s*mm/, // decimal mm values
+  "entry led", "indoor led", "outdoor led",
   "116643", "116843", "110660", "116600", "116800",
+];
+// Weak signals: just mention LED-related topics, need 2+ to keep page
+const LED_WEAK_KEYWORDS = [
+  "led", "brightness", "digital signage", "electronic display",
+  "scoreboard", "game clock", "play clock", "shot clock",
+  "scoring system", "timing system", "control system",
+  "content management", "content playback",
+  "oes", "daktronics", "marquee",
 ];
 
 // ---------------------------------------------------------------------------
@@ -136,11 +136,42 @@ function filterLedPages(pages: string[]): { filtered: string; keptPages: number[
 
   for (let i = 0; i < pages.length; i++) {
     const lower = pages[i].toLowerCase();
-    const isRelevant = LED_KEYWORDS.some(kw => lower.includes(kw));
-    // Always keep page 1 (cover page) — it has project name, client, venue
-    if (isRelevant || i === 0) {
+    // Always keep page 1 (cover page) — project name, client, venue
+    if (i === 0) {
       kept.push(pages[i]);
-      keptPages.push(i + 1); // 1-indexed page numbers
+      keptPages.push(i + 1);
+      continue;
+    }
+
+    // Check for strong signals (any one is enough)
+    let hasStrong = false;
+    for (const kw of LED_STRONG_KEYWORDS) {
+      if (kw instanceof RegExp) {
+        if (kw.test(lower)) { hasStrong = true; break; }
+      } else if (lower.includes(kw)) {
+        hasStrong = true;
+        break;
+      }
+    }
+
+    if (hasStrong) {
+      kept.push(pages[i]);
+      keptPages.push(i + 1);
+      continue;
+    }
+
+    // Check for weak signals — need 2+ different keywords on same page
+    let weakCount = 0;
+    for (const kw of LED_WEAK_KEYWORDS) {
+      if (lower.includes(kw)) {
+        weakCount++;
+        if (weakCount >= 2) break;
+      }
+    }
+
+    if (weakCount >= 2) {
+      kept.push(pages[i]);
+      keptPages.push(i + 1);
     }
   }
 
