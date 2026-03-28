@@ -45,9 +45,11 @@ Return ONLY a JSON object matching the exact schema. You MUST complete the _extr
 
 const USER_PROMPT = `Extract ALL LED displays and requirements from this RFP document.
 
-CRITICAL — name field: Use the ACTUAL room/location name from the document for each display (e.g., "Panthers Den", "Elev Lobby", "North Cor", "Field Ribbon North"). Do NOT use generic names like "LED Display" or "Display 1". If the table has a Location/Room column, use that value verbatim.
+CRITICAL — name field: Use the ACTUAL room/location name from the document for each display. If there is a table with a Location/Room column, use that value verbatim. If the document is narrative/prose (no tables), use the descriptive name as written (e.g., "Main Field LED Display", "Scoreboard LED", "Community Field Video Board"). Do NOT omit a display just because it lacks a pixel pitch or exact dimensions.
 
-CRITICAL — pixel_pitch_mm: If a display's pixel pitch is not explicitly stated but every other display in the same table/section has the same pitch (e.g., all 3.9mm), use that same pitch value. Do NOT leave it null when the context makes it obvious.
+CRITICAL — pixel_pitch_mm: If a display's pixel pitch is not explicitly stated but every other display in the same table/section has the same pitch (e.g., all 3.9mm), use that same pitch value. Do NOT leave it null when the context makes it obvious. For narrative RFPs without specs, set null.
+
+CRITICAL — narrative documents: Some RFPs describe what they need in prose without tables or detailed specs. In these cases, STILL extract each LED display or videoboard mentioned, even if dimensions and pixel pitch are null. A display mentioned in prose is as valid as one in a table.
 
 Return ONLY a JSON object with this schema:
 
@@ -67,7 +69,7 @@ Return ONLY a JSON object with this schema:
   },
   "displays": [
     {
-      "name": "Actual location/room name from the table (e.g., Panthers Den, Elev Lobby, North Cor)",
+      "name": "Actual location/room name from the table or prose description",
       "location": "Same as name — the room/area name",
       "pixel_pitch_mm": 3.9,
       "brightness_nits": 8000,
@@ -90,7 +92,7 @@ Return ONLY a JSON object with this schema:
   ]
 }
 
-IMPORTANT: Only include actual LED video displays, ribbon boards, fascia boards, and videoboards in the displays array. Do NOT include game clocks, play clocks, scoring controllers, headend racks, spare parts, cable packages, audio systems, or other non-LED equipment. Those belong in requirements.`;
+IMPORTANT: Only include actual LED video displays, ribbon boards, fascia boards, and videoboards in the displays array. Do NOT include game clocks, play clocks, scoring controllers, headend racks, spare parts, cable packages, audio systems, or other non-LED equipment. Those belong in requirements. A "clock" mentioned alongside LED displays goes in requirements, not displays.`;
 
 // ---------------------------------------------------------------------------
 // Parse feet/inches strings to decimal

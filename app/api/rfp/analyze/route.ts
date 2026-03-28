@@ -207,99 +207,101 @@ export async function POST(request: NextRequest) {
 
             if (glmResult.screens.length > 0) {
               log.info(`[Pipeline] GLM5 extracted ${glmResult.screens.length} displays — skipping Mistral`);
+            } else {
+              log.warn("[Pipeline] GLM5 returned 0 displays — saving partial result");
+            }
 
-              // Get page count for stats
-              let totalPages = 0;
-              try {
-                const { stdout: info } = await execFileAsync("pdfinfo", [filePath], { timeout: 30_000 });
-                const match = info.match(/Pages:\s+(\d+)/);
-                totalPages = match ? parseInt(match[1], 10) : 0;
-              } catch { totalPages = 0; }
+            // Get page count for stats (needed for both success and partial paths)
+            let totalPages = 0;
+            try {
+              const { stdout: info } = await execFileAsync("pdfinfo", [filePath], { timeout: 30_000 });
+              const match = info.match(/Pages:\s+(\d+)/);
+              totalPages = match ? parseInt(match[1], 10) : 0;
+            } catch { totalPages = 0; }
 
-              send("stage", {
-                stage: "extracted",
-                message: `Found ${glmResult.screens.length} LED display(s)`,
-                specsFound: glmResult.screens.length,
-                requirementsFound: glmResult.requirements.length,
-                extractionSource: "glm5",
-              });
+            const finalProject = glmResult.project;
+            const screens = glmResult.screens;
+            const glmRequirements = glmResult.requirements || [];
 
-              const finalProject = glmResult.project;
-              // Single extractor (Mercury 2) — no dedup needed. Each table row
-              // is a separate physical display, even if names repeat (e.g. 6x "Panthers Den").
-              // Dedup was merging same-name screens incorrectly.
-              const screens = glmResult.screens;
-              const glmRequirements = glmResult.requirements || [];
+            send("stage", {
+              stage: "extracted",
+              message: screens.length > 0
+                ? `Found ${screens.length} LED display(s)`
+                : `No display specs found — saving project info and requirements`,
+              specsFound: screens.length,
+              requirementsFound: glmRequirements.length,
+              extractionSource: "glm5",
+            });
 
-              // Provision AnythingLLM workspace
-              let workspaceSlug: string | null = null;
-              try {
-                const ws = await provisionRfpWorkspace(
-                  filePath,
-                  body.filename || "RFP",
-                  body.sessionId,
-                  anythingLlmUserId,
-                );
-                workspaceSlug = ws?.slug || null;
-              } catch { /* workspace provisioning is optional */ }
+            // Provision AnythingLLM workspace
+            let workspaceSlug: string | null = null;
+            try {
+              const ws = await provisionRfpWorkspace(
+                filePath,
+                body.filename || "RFP",
+                body.sessionId,
+                anythingLlmUserId,
+              );
+              workspaceSlug = ws?.slug || null;
+            } catch { /* workspace provisioning is optional */ }
 
-              // Save to DB
-              let analysisId: string | null = null;
-              try {
-                const fileStat2 = await stat(filePath).catch(() => ({ size: 0 }));
-                const pdfBuffer = await readFile(filePath).catch(() => null);
-                const analysis = await prisma.rfpAnalysis.create({
-                  data: {
-                    filename: body.filename || "RFP",
-                    fileSize: fileStat2.size,
-                    pageCount: totalPages,
-                    pdfFilePath: filePath,
-                    pdfData: pdfBuffer,
-                    projectName: finalProject.projectName,
-                    clientName: finalProject.clientName,
-                    venue: finalProject.venue,
-                    location: finalProject.location,
-                    specsFound: screens.length,
-                    relevantPages: totalPages,
-                    processingTimeMs: Date.now() - startTime,
-                    project: finalProject as any,
-                    screens: screens as any,
-                    requirements: glmRequirements as any,
-                    triage: pipelineLog as any,
-                    aiWorkspaceSlug: workspaceSlug,
-                    createdBy: session?.user?.name || session?.user?.email || null,
-                  },
-                });
-                analysisId = analysis.id;
-              } catch (dbErr: any) {
-                log.error("[Pipeline] GLM5 DB save failed (non-fatal):", dbErr.message?.slice(0, 200));
-              }
-
-              // Surface count mismatch warnings from Gemini validation
-              const extractionWarnings = glmResult.warnings || [];
-              if (extractionWarnings.length > 0) {
-                send("warning", { warnings: extractionWarnings });
-              }
-
-              send("complete", {
-                result: {
-                  id: analysisId,
-                  project: finalProject,
-                  screens,
-                  requirements: glmRequirements,
-                  warnings: extractionWarnings,
-                  pipelineLog,
-                  stats: { totalPages, extractionSource: "glm5", durationMs: Date.now() - startTime },
+            // Save to DB (always — even for 0-screen results, project info is useful)
+            let analysisId: string | null = null;
+            try {
+              const fileStat2 = await stat(filePath).catch(() => ({ size: 0 }));
+              const pdfBuffer = await readFile(filePath).catch(() => null);
+              const analysis = await prisma.rfpAnalysis.create({
+                data: {
+                  filename: body.filename || "RFP",
+                  fileSize: fileStat2.size,
+                  pageCount: totalPages,
+                  pdfFilePath: filePath,
+                  pdfData: pdfBuffer,
+                  projectName: finalProject.projectName,
+                  clientName: finalProject.clientName,
+                  venue: finalProject.venue,
+                  location: finalProject.location,
+                  specsFound: screens.length,
+                  relevantPages: totalPages,
+                  processingTimeMs: Date.now() - startTime,
+                  project: finalProject as any,
+                  screens: screens as any,
+                  requirements: glmRequirements as any,
+                  triage: pipelineLog as any,
                   aiWorkspaceSlug: workspaceSlug,
+                  createdBy: session?.user?.name || session?.user?.email || null,
                 },
               });
-
-              clearInterval(globalHeartbeat);
-              try { controller.close() } catch { streamClosed = true };
-              return; // DONE
-            } else {
-              log.warn("[Pipeline] GLM5 returned 0 displays — trying AnythingLLM fallback");
+              analysisId = analysis.id;
+            } catch (dbErr: any) {
+              log.error("[Pipeline] GLM5 DB save failed (non-fatal):", dbErr.message?.slice(0, 200));
             }
+
+            // Surface count mismatch warnings from Gemini validation
+            const extractionWarnings = glmResult.warnings || [];
+            if (screens.length === 0) {
+              extractionWarnings.push("No LED display specifications with dimensions were found in this document. This may be a high-level RFP or scope document without a detailed display schedule. The requirements above capture what was found.");
+            }
+            if (extractionWarnings.length > 0) {
+              send("warning", { warnings: extractionWarnings });
+            }
+
+            send("complete", {
+              result: {
+                id: analysisId,
+                project: finalProject,
+                screens,
+                requirements: glmRequirements,
+                warnings: extractionWarnings,
+                pipelineLog,
+                stats: { totalPages, extractionSource: "glm5", durationMs: Date.now() - startTime },
+                aiWorkspaceSlug: workspaceSlug,
+              },
+            });
+
+            clearInterval(globalHeartbeat);
+            try { controller.close() } catch { streamClosed = true };
+            return; // DONE
           } catch (glmErr: any) {
             // Credit/billing errors — stop immediately, don't fallback
             if (glmErr.message?.includes("credits exhausted") || glmErr.message?.includes("top up")) {
@@ -314,10 +316,9 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // No fallback chain — single model for determinism.
-        // If extraction returned 0 screens, report it clearly. Don't switch models.
+        // GLM5 unavailable or threw a non-credit error — report clearly.
         send("error", {
-          message: "Extraction returned 0 displays. The AI could not find LED specifications in this document. Try re-uploading or check that the PDF contains display schedule tables.",
+          message: "Document analysis failed. The AI pipeline could not process this document. Please try re-uploading.",
         });
         clearInterval(globalHeartbeat);
         try { controller.close() } catch { streamClosed = true };
