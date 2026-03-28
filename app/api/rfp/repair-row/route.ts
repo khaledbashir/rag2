@@ -16,6 +16,10 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_K
 const GEMINI_MODEL = "gemini-3.1-pro-preview"; // Use Pro for repair — accuracy matters more than speed
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
+// OpenClaw agent — try this first, fall back to direct Gemini
+const OPENCLAW_BRIDGE_URL = process.env.OPENCLAW_BRIDGE_URL || "http://172.17.0.1:18790";
+const OPENCLAW_TOKEN = process.env.OPENCLAW_TOKEN || "d1cd954f0f49c7e03ed01693727d811bc9778e892d32c5812473e53a8673c144";
+
 export async function POST(request: NextRequest) {
   const session = await auth();
   if (!session?.user) {
@@ -56,22 +60,56 @@ If you cannot find this display in the source text, return:
 {"error": "Display not found in source text", "reason": "explanation"}`;
 
   try {
-    const res = await fetch(`${BASE_URL}/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 2048 },
-      }),
-    });
+    let text = "";
+    let repairSource = "gemini";
 
-    if (!res.ok) {
-      const err = await res.text();
-      return NextResponse.json({ error: `AI repair failed: ${res.status}` }, { status: 502 });
+    // Try OpenClaw agent first
+    try {
+      const clawRes = await fetch(`${OPENCLAW_BRIDGE_URL}/extract`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${OPENCLAW_TOKEN}`,
+        },
+        body: JSON.stringify({
+          agent: "rfp-extractor",
+          message: prompt,
+        }),
+        signal: AbortSignal.timeout(60_000),
+      });
+
+      if (clawRes.ok) {
+        const clawData = await clawRes.json();
+        text = clawData.text || clawData.content || clawData.message || "";
+        if (text) {
+          repairSource = "openclaw";
+          console.log(`[RepairRow] OpenClaw agent responded (${text.length} chars)`);
+        }
+      }
+    } catch (clawErr: any) {
+      console.log(`[RepairRow] OpenClaw not available (${clawErr.message}) — using Gemini directly`);
     }
 
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    // Fall back to Gemini direct if OpenClaw didn't respond
+    if (!text) {
+      const res = await fetch(`${BASE_URL}/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0, maxOutputTokens: 2048 },
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        return NextResponse.json({ error: `AI repair failed: ${res.status}` }, { status: 502 });
+      }
+
+      const data = await res.json();
+      text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      repairSource = "gemini-pro";
+    }
     const cleaned = text.replace(/```json/gi, "").replace(/```/g, "").trim();
     const si = cleaned.indexOf("{");
     const ei = cleaned.lastIndexOf("}") + 1;
@@ -119,6 +157,7 @@ If you cannot find this display in the source text, return:
       reason: repair.reason,
       repairedBy: session.user.name || session.user.email,
       repairedAt: new Date().toISOString(),
+      repairSource,
     });
   } catch (err: any) {
     console.error("[RepairRow] Failed:", err.message);

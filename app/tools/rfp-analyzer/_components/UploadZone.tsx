@@ -696,7 +696,9 @@ function buildStages(events: PipelineEvent[]): StageState[] {
       const mappedKey = keyMap[stageKey] || stageKey;
       const st = stages.find((x) => x.key === mappedKey);
       if (st) {
-        if (event.current != null && event.total != null) {
+        if (event.step != null) {
+          st.count = `step ${event.step}`;
+        } else if (event.current != null && event.total != null) {
           st.count = `${event.current}/${event.total}`;
         }
         st.detail = event.message;

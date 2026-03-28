@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
               timeout: 300,
               onProgress: (msg) => {
                 progressStep++;
-                send("progress", { stage: "extracting", current: progressStep, total: 10, message: msg });
+                send("progress", { stage: "extracting", step: progressStep, message: msg });
               },
             });
 
