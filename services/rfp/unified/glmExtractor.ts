@@ -1442,10 +1442,21 @@ export async function extractWithGLM5(
       return { filtered, geminiResult: result, validation, warnings };
     }
 
-    // Step 1: Try Flash
+    // Step 1: Try Flash — wrapped in try/catch so a dead API key falls through to Mistral
     options?.onProgress?.("Analyzing document with Gemini Flash...");
-    const flash = await tryModel(FLASH_MODEL);
+    let flash: Awaited<ReturnType<typeof tryModel>> | null = null;
+    try {
+      flash = await tryModel(FLASH_MODEL);
+    } catch (flashErr: any) {
+      // 403 leaked key, network error, etc. — fall through to Mistral fallback
+      console.error(`[RFP v2] Gemini Flash failed: ${flashErr.message}`);
+      options?.onProgress?.(`Gemini unavailable (${flashErr.message.includes("403") ? "API key issue" : flashErr.message.slice(0, 60)}) — trying Mistral...`);
+    }
 
+    // If Gemini failed entirely, skip to Mistral fallback below
+    if (!flash) {
+      // Fall through — do NOT return here, let Mistral section below handle it
+    } else {
     let finalResult = flash;
 
     // Step 2: If Flash validation has blockers, escalate to Pro
@@ -1528,7 +1539,8 @@ export async function extractWithGLM5(
       validation: finalResult.validation,
       source: "glm5",
     };
-  }
+    } // end else (flash succeeded)
+  } // end if (isGeminiAvailable())
 
   // =====================================================================
   // FALLBACK 1: Mistral OCR + Document Annotation — one call, PDF → JSON
