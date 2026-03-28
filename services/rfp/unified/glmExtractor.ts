@@ -1462,58 +1462,21 @@ export async function extractWithGLM5(
 
       options?.onProgress?.("Mercury 2 extracting...");
 
-      const mercuryPrompt = `Extract ALL LED displays and requirements from this RFP document.
-
-CRITICAL — name field: Use the ACTUAL room/location name from the document for each display. If there is a table with a Location/Room column, use that value verbatim. If the document is narrative/prose (no tables), use the descriptive name as written. Do NOT omit a display just because it lacks a pixel pitch or exact dimensions.
-
-CRITICAL — pixel_pitch_mm: If a display's pixel pitch is not explicitly stated but every other display in the same table/section has the same pitch (e.g., all 3.9mm), use that same pitch value. Do NOT leave it null when the context makes it obvious.
-
-CRITICAL — narrative documents: Some RFPs describe what they need in prose without tables or detailed specs. In these cases, STILL extract each LED display or videoboard mentioned, even if dimensions and pixel pitch are null. A display mentioned in prose is as valid as one in a table.
-
-Return ONLY a JSON object with this schema:
+      // SHORT focused prompt — this exact structure got 25/25 in testing.
+      // Mercury has forced temp 0.75, so shorter prompt = less drift.
+      const mercuryPrompt = `Extract ALL LED displays from this RFP document. Return ONLY a JSON object with:
 
 {
-  "_extraction_log": {
-    "sections_found": ["List all specific section names/numbers found"],
-    "anomalies_detected": ["List formatting errors you ignored"],
-    "total_displays_counted_in_text": 0,
-    "reached_end_of_document": true,
-    "step_by_step_verification": "How you ensured you scanned the entire document"
-  },
-  "project": {
-    "name": "Actual project name from document",
-    "client": "Actual client/owner name",
-    "venue": "Actual venue name",
-    "address": "City, State"
-  },
-  "displays": [
-    {
-      "name": "Actual location/room name from the table or prose description",
-      "location": "Same as name — the room/area name",
-      "pixel_pitch_mm": 3.9,
-      "brightness_nits": 8000,
-      "width_ft": "14'",
-      "height_ft": "8'",
-      "width_ft_decimal": 14.0,
-      "height_ft_decimal": 8.0,
-      "environment": "indoor",
-      "category": "led_display",
-      "quantity": 1,
-      "notes": null
-    }
-  ],
-  "requirements": [
-    {
-      "description": "Requirement text",
-      "category": "compliance",
-      "status": "critical"
-    }
-  ]
+  "project": {"name": "", "client": "", "venue": "", "address": ""},
+  "displays": [{"name": "location name", "pixel_pitch_mm": 3.9, "brightness_nits": 8000, "width_ft": "14'", "height_ft": "8'", "width_ft_decimal": 14.0, "height_ft_decimal": 8.0, "environment": "indoor", "category": "led_display", "quantity": 1}],
+  "requirements": [{"description": "", "category": "compliance", "status": "critical"}]
 }
 
-IMPORTANT: Only include actual LED video displays, ribbon boards, fascia boards, and videoboards in the displays array. Do NOT include game clocks, play clocks, scoring controllers, headend racks, spare parts, cable packages, audio systems, or other non-LED equipment. Those belong in requirements.
-
-CRITICAL — DO NOT DEDUPLICATE. Output EVERY row from the source table exactly as listed. If "Panthers Den" appears 7 times, output 7 rows. If "Elev Lobby" appears 4 times with identical dimensions, output 4 rows. If "S.E Corridor" appears twice, output 2 rows. Always set quantity: 1. The source table is the truth — one source row = one output row, no exceptions, no merging, no collapsing.`;
+Rules:
+- Use the ACTUAL room/location name from the document for each display
+- If pixel pitch is not stated but others in the same table have it (e.g. all 3.9mm), use that value
+- Every row in the source table = one row in output. DO NOT DEDUPLICATE. If "Panthers Den" appears 7 times, output 7 rows. If "Elev Lobby" appears 4 times, output 4 rows. quantity is always 1.
+- Only LED displays/videoboards/ribbons in displays. Game clocks, racks, spare parts go in requirements.`;
 
       const mercuryRes = await fetch(`${MERCURY_API_BASE}/chat/completions`, {
         method: "POST",
@@ -1569,14 +1532,9 @@ CRITICAL — DO NOT DEDUPLICATE. Output EVERY row from the source table exactly 
           // The dedup step was for MiMo's cross-page duplicate problem. Mercury gets
           // the full text in one shot and follows the "1 row per table row" instruction.
 
-          // Validation
+          // Validation — reuse the pdftotext we already have (no second call)
           options?.onProgress?.("Validating extraction...");
-          let validationText = "";
-          try {
-            const { stdout: txt } = await execFileAsync("pdftotext", ["-layout", pdfPath, "-"], { timeout: 30_000 });
-            validationText = txt;
-          } catch { validationText = ""; }
-          const sourceText = validationText.substring(0, 50000);
+          const sourceText = fullText.substring(0, 50000);
           const valHeaders = detectTableHeaders(sourceText);
           const validation = validateExtraction(mercuryScreens, sourceText, null, valHeaders);
           options?.onProgress?.(`Validation: ${validation.summary}`);
