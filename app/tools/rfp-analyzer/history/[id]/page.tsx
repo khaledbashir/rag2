@@ -299,8 +299,9 @@ export default function AnalysisDetailPage() {
           ? {
               ...s,
               ...(isLedPanel ? {
-                widthFt: Math.round(activeWidthFt * 100) / 100,
-                heightFt: Math.round(activeHeightFt * 100) / 100,
+                // Original widthFt/heightFt stay LOCKED as RFP values — never overwrite
+                activeWidthFt: Math.round(activeWidthFt * 100) / 100,
+                activeHeightFt: Math.round(activeHeightFt * 100) / 100,
                 widthPx: newPitch > 0 ? Math.round(activeWidthMm / newPitch) : s.widthPx,
                 heightPx: newPitch > 0 ? Math.round(activeHeightMm / newPitch) : s.heightPx,
                 pixelPitchMm: newPitch,
