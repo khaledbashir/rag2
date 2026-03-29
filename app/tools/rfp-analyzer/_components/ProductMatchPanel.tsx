@@ -23,7 +23,21 @@ interface ProductMatchPanelProps {
 
 export default function ProductMatchPanel({ matches, isMatching, total }: ProductMatchPanelProps) {
   const [expanded, setExpanded] = useState(true);
+  const [visibleCount, setVisibleCount] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Frontend stagger: reveal matches one at a time, 250ms apart
+  useEffect(() => {
+    if (matches.length > visibleCount) {
+      timerRef.current = setTimeout(() => {
+        setVisibleCount((prev) => Math.min(prev + 1, matches.length));
+      }, 250);
+    }
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [matches.length, visibleCount]);
+
+  const visibleMatches = matches.slice(0, visibleCount);
 
   useEffect(() => {
     if (expanded && scrollRef.current) {
@@ -33,8 +47,9 @@ export default function ProductMatchPanel({ matches, isMatching, total }: Produc
 
   if (matches.length === 0 && !isMatching) return null;
 
-  const matched = matches.filter(m => m.productName);
-  const progress = total > 0 ? (matches.length / total) * 100 : 0;
+  const matched = visibleMatches.filter(m => m.productName);
+  const progress = total > 0 ? (visibleCount / total) * 100 : 0;
+  const stillRevealing = visibleCount < matches.length;
 
   return (
     <div className="mb-4 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1b26] shadow-sm">
@@ -51,7 +66,7 @@ export default function ProductMatchPanel({ matches, isMatching, total }: Produc
           <span className="text-[10px] text-gray-400 font-mono">
             {matched.length}/{total} matched
           </span>
-          {isMatching && <Loader2 className="w-3 h-3 text-[#0A52EF] animate-spin" />}
+          {(isMatching || stillRevealing) && <Loader2 className="w-3 h-3 text-[#0A52EF] animate-spin" />}
         </div>
         <div className="flex items-center gap-2">
           {/* Mini progress bar */}
@@ -71,7 +86,7 @@ export default function ProductMatchPanel({ matches, isMatching, total }: Produc
           ref={scrollRef}
           className="max-h-64 overflow-y-auto px-3 py-2 space-y-1.5"
         >
-          {matches.map((m, i) => (
+          {visibleMatches.map((m, i) => (
             <div
               key={i}
               className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${
@@ -125,11 +140,11 @@ export default function ProductMatchPanel({ matches, isMatching, total }: Produc
           ))}
 
           {/* Matching indicator for remaining */}
-          {isMatching && matches.length < total && (
+          {(isMatching || stillRevealing) && visibleCount < total && (
             <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-[#0A52EF]/5 border border-[#0A52EF]/10">
               <Loader2 className="w-4 h-4 text-[#0A52EF] animate-spin shrink-0" />
               <span className="text-[10px] text-[#0A52EF] font-medium">
-                Matching {matches.length + 1} of {total}...
+                Matching {visibleCount + 1} of {total}...
               </span>
             </div>
           )}

@@ -391,10 +391,7 @@ export async function matchProductsWithAI(
           fitPercent: fitMatch ? parseInt(fitMatch[1]) : null,
           total: displays.length,
         });
-        // Stagger so the UI can render each card appearing
-        if (i < mercuryMatches.length - 1) {
-          await new Promise(r => setTimeout(r, 120));
-        }
+        // Frontend handles stagger — no delay needed here
       }
     }
     return mercuryMatches;
