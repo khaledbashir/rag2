@@ -1507,7 +1507,11 @@ export async function extractWithGLM5(
         const icon = check.passed ? "PASS" : check.severity === "block" ? "BLOCK" : "REVIEW";
         console.log(`[RFP v2] Validation [${icon}] ${check.name}: ${check.message}`);
       }
-      options?.onProgress?.(`Validation: ${validation.summary}`);
+      // Only show validation in log if everything passed — otherwise QA handles it silently
+      const hasIssues = validation.checks.some(c => !c.passed);
+      if (!hasIssues) {
+        options?.onProgress?.(`Validation passed — ${filtered.length} displays clean`);
+      }
 
       const warnings: string[] = [];
       for (const check of validation.checks) {
@@ -1794,11 +1798,14 @@ Rules:
           // the full text in one shot and follows the "1 row per table row" instruction.
 
           // Validation — reuse the pdftotext we already have (no second call)
-          options?.onProgress?.("Validating extraction...");
           const sourceText = fullText.substring(0, 50000);
           const valHeaders = detectTableHeaders(sourceText);
           const validation = validateExtraction(mercuryScreens, sourceText, null, valHeaders);
-          options?.onProgress?.(`Validation: ${validation.summary}`);
+          // Only show validation if clean — otherwise QA handles it silently
+          const hasIssuesGpt = validation.checks.some(c => !c.passed);
+          if (!hasIssuesGpt) {
+            options?.onProgress?.(`Validation passed — ${mercuryScreens.length} displays clean`);
+          }
 
           const warnings: string[] = [];
           for (const check of validation.checks) {
