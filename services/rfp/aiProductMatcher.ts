@@ -103,7 +103,7 @@ async function matchViaMiMo(
       heightFt: d.heightFt,
     }));
 
-    onProgress?.(`Matching ${displays.length} displays with MiMo...`);
+    onProgress?.(`Product matching: ${displays.length} displays (fallback)...`);
 
     const prompt = `You are an LED product matcher. For each display below, find the best product from the database.
 
@@ -286,7 +286,7 @@ async function matchViaMercury(
       environment: p.environment,
     }));
 
-    onProgress?.(`Matching ${displays.length} displays with Mercury 2...`);
+    onProgress?.(`Product matching: ${displays.length} displays...`);
 
     const prompt = `Match each LED display to the best product from the catalog.
 
@@ -357,7 +357,7 @@ export async function matchProductsWithAI(
 ): Promise<AIProductMatch[]> {
   if (displays.length === 0) return [];
 
-  onProgress?.(`Matching ${displays.length} displays to products...`);
+  onProgress?.(`Selecting products for ${displays.length} displays...`);
 
   // Try Mercury first (fastest — single call, no tool calling)
   const mercuryMatches = await matchViaMercury(displays, onProgress);

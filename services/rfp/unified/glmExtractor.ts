@@ -1743,7 +1743,7 @@ Rules:
           // and independently confirms the count. If they agree → gold.
           // If they disagree → flag for human review.
           const hasValidationIssues = validation.checks.some(c => !c.passed);
-          options?.onProgress?.(`QA cross-check: GPT found ${mercuryScreens.length} displays. Verifying with MiMo...`);
+          options?.onProgress?.(`Verifying ${mercuryScreens.length} displays against source...`);
           try {
             const qa = await runExtractQA(mercuryScreens, sourceText, pdfPath.split("/").pop() || "document.pdf", options?.onProgress);
             if (qa.changes.length > 0) {
@@ -1752,10 +1752,10 @@ Rules:
             }
             const qaCount = mercuryScreens.length;
             if (qa.verified) {
-              options?.onProgress?.(`QA cross-check: confirmed ${qaCount} displays ✓`);
+              options?.onProgress?.(`Verified: ${qaCount} displays confirmed ✓`);
             } else {
               warnings.push(`[QA] Cross-check inconclusive — verify manually`);
-              options?.onProgress?.(`QA cross-check: ${qaCount} displays (needs manual review)`);
+              options?.onProgress?.(`Review needed: ${qaCount} displays extracted, verification inconclusive`);
             }
           } catch (qaErr: any) {
             console.error(`[RFP v2] QA cross-check failed:`, qaErr.message);

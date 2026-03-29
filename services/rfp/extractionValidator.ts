@@ -222,10 +222,10 @@ export function validateExtraction(
   }
 
   const summary = blockers.length > 0
-    ? `BLOCKED: ${blockers.length} critical issue(s) — ${blockers.map(b => b.name).join(", ")}`
+    ? `${blockers.length} issue(s) found (${blockers.map(b => b.name).join(", ")}) — running QA...`
     : reviews.length > 0
-      ? `REVIEW REQUIRED: ${reviews.length} issue(s) need manual verification before export`
-      : `PASSED: All ${checks.length} validation checks passed`;
+      ? `${reviews.length} item(s) need review`
+      : `All ${checks.length} checks passed`;
 
   return { passed: blockers.length === 0 && reviews.length === 0, confidence, exportAllowed, checks, summary };
 }
