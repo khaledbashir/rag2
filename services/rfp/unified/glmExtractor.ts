@@ -1501,17 +1501,13 @@ export async function extractWithGLM5(
         } catch { return ""; }
       })();
       const tableHeaders = detectTableHeaders(sourceText);
-      const validation = validateExtraction(filtered, sourceText, null, tableHeaders);
+      const validation = validateExtraction(filtered, sourceText, null, tableHeaders, "pdfplumber");
 
       for (const check of validation.checks) {
         const icon = check.passed ? "PASS" : check.severity === "block" ? "BLOCK" : "REVIEW";
         console.log(`[RFP v2] Validation [${icon}] ${check.name}: ${check.message}`);
       }
-      // Only show validation in log if everything passed — otherwise QA handles it silently
-      const hasIssues = validation.checks.some(c => !c.passed);
-      if (!hasIssues) {
-        options?.onProgress?.(`Validation passed — ${filtered.length} displays clean`);
-      }
+      options?.onProgress?.(`Validation: ${validation.summary}`);
 
       const warnings: string[] = [];
       for (const check of validation.checks) {
@@ -1800,12 +1796,8 @@ Rules:
           // Validation — reuse the pdftotext we already have (no second call)
           const sourceText = fullText.substring(0, 50000);
           const valHeaders = detectTableHeaders(sourceText);
-          const validation = validateExtraction(mercuryScreens, sourceText, null, valHeaders);
-          // Only show validation if clean — otherwise QA handles it silently
-          const hasIssuesGpt = validation.checks.some(c => !c.passed);
-          if (!hasIssuesGpt) {
-            options?.onProgress?.(`Validation passed — ${mercuryScreens.length} displays clean`);
-          }
+          const validation = validateExtraction(mercuryScreens, sourceText, null, valHeaders, "ai");
+          options?.onProgress?.(`Validation: ${validation.summary}`);
 
           const warnings: string[] = [];
           for (const check of validation.checks) {

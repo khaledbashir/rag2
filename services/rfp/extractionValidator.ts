@@ -40,6 +40,7 @@ export function validateExtraction(
   sourceText: string,
   documentTotal: number | null,
   tableHeaders: string[],
+  extractionSource: "pdfplumber" | "ai" = "ai",
 ): ValidationResult {
   const checks: ValidationCheck[] = [];
   const sourceTextLower = sourceText.toLowerCase();
@@ -169,12 +170,17 @@ export function validateExtraction(
   }
 
   // ── Check 6: Missing table detection ──
-  // Only check for display-relevant schedule tables (LED, scoreboard, ribbon, entry, exterior).
-  // Ignore unrelated tables (cost schedules, equipment lists, etc.)
+  // For pdfplumber extractions, the table itself IS the source of truth.
+  // Table traceability is only meaningful for AI extractions where the model
+  // might have missed a table entirely.
+  if (extractionSource === "pdfplumber") {
+    checks.push({ name: "tables", passed: true, severity: "info", message: `Table traceability skipped — deterministic table extraction` });
+  }
+
   const DISPLAY_TABLE_KEYWORDS = /led|display|videoboard|scoreboard|ribbon|entry|exterior/i;
   const relevantHeaders = tableHeaders.filter(h => DISPLAY_TABLE_KEYWORDS.test(h));
 
-  if (relevantHeaders.length > 0) {
+  if (extractionSource !== "pdfplumber" && relevantHeaders.length > 0) {
     const extractedTables = new Set<string>();
     for (const header of relevantHeaders) {
       const headerLower = header.toLowerCase();
