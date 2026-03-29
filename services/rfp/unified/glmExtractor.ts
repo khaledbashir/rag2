@@ -136,29 +136,67 @@ async function extractFullText(pdfPath: string): Promise<{ pages: string[]; full
 }
 
 // ---------------------------------------------------------------------------
-// OCR fallback: when pdftotext finds no LED content (drawing sheets, scanned)
-// Calls the self-hosted OCR service: Kreuzberg → Marker → Mistral OCR
+// Step 1.5: Classify PDF — is it text-based or a drawing/scanned PDF?
+// Returns "text" or "drawing". Used to route to the right OCR backend.
+// ---------------------------------------------------------------------------
+
+type PdfType = "text" | "drawing";
+
+function classifyPdf(pdftoTextOutput: string): PdfType {
+  const trimmed = pdftoTextOutput.trim();
+
+  // Drawing/scanned: pdftotext gets almost nothing
+  if (trimmed.length < 500) return "drawing";
+
+  // Check if there's meaningful LED table content in the text
+  const lower = trimmed.toLowerCase();
+  const strongHits = LED_STRONG_KEYWORDS.filter(kw => {
+    if (kw instanceof RegExp) return kw.test(lower);
+    return lower.includes(kw);
+  }).length;
+
+  // Text PDFs with LED content have multiple strong keyword hits
+  if (strongHits >= 2) return "text";
+
+  // Low text + no strong keywords = likely a drawing with minimal OCR text
+  if (trimmed.length < 5000 && strongHits === 0) return "drawing";
+
+  // Default: treat as text (Kreuzberg handles these well)
+  return "text";
+}
+
+// ---------------------------------------------------------------------------
+// OCR Service: route to the right backend based on PDF type
+// Kreuzberg = text PDFs (spec docs, 23-page Panthers Indoor/Outdoor)
+// Marker = drawing PDFs (AV schedule sheets with image-based tables)
+// Falls through providers if first choice fails.
 // ---------------------------------------------------------------------------
 
 async function extractViaOcrService(
   pdfPath: string,
+  pdfType: PdfType,
   onProgress?: (msg: string) => void,
 ): Promise<string | null> {
   const { readFile } = await import("fs/promises");
 
-  // Try Kreuzberg first (free, best for text PDFs with complex layout)
-  // Then Marker (handles image-based tables in drawing sheets)
-  const providers = ["kreuzberg", "marker", "mistral"];
+  // Route based on classification
+  // Text → Kreuzberg first (best for text layouts), then Marker, then Mistral
+  // Drawing → Marker first (reads image tables), then Kreuzberg, then Mistral
+  const providers = pdfType === "text"
+    ? ["kreuzberg", "marker", "mistral"]
+    : ["marker", "kreuzberg", "mistral"];
+
+  const pdfBuffer = await readFile(pdfPath);
+  const filename = pdfPath.split("/").pop() || "document.pdf";
 
   for (const provider of providers) {
     try {
-      onProgress?.(`OCR: trying ${provider}...`);
-      console.log(`[RFP v2] OCR fallback: trying ${provider} via ${OCR_SERVICE_URL}`);
+      onProgress?.(`OCR: ${provider} (${pdfType} PDF)...`);
+      console.log(`[RFP v2] OCR: trying ${provider} for ${pdfType} PDF via ${OCR_SERVICE_URL}`);
 
-      const pdfBuffer = await readFile(pdfPath);
       const blob = new Blob([pdfBuffer], { type: "application/pdf" });
       const formData = new FormData();
-      formData.append("file", blob, pdfPath.split("/").pop() || "document.pdf");
+      formData.append("file", blob, filename);
       formData.append("provider", provider);
 
       const res = await fetch(`${OCR_SERVICE_URL}/api/extract`, {
@@ -176,11 +214,11 @@ async function extractViaOcrService(
       const markdown = data.content || data.markdown || data.text || "";
 
       if (!markdown || markdown.length < 200) {
-        console.log(`[RFP v2] OCR ${provider}: empty or too short (${markdown.length} chars)`);
+        console.log(`[RFP v2] OCR ${provider}: too short (${markdown.length} chars)`);
         continue;
       }
 
-      // Check if the OCR output actually contains LED content
+      // Verify LED content exists in the output
       const lower = markdown.toLowerCase();
       const hasLedContent = LED_STRONG_KEYWORDS.some(kw => {
         if (kw instanceof RegExp) return kw.test(lower);
@@ -188,12 +226,12 @@ async function extractViaOcrService(
       });
 
       if (!hasLedContent) {
-        console.log(`[RFP v2] OCR ${provider}: no LED content found in output`);
+        console.log(`[RFP v2] OCR ${provider}: no LED content in output`);
         continue;
       }
 
-      console.log(`[RFP v2] OCR ${provider}: success, ${(markdown.length / 1024).toFixed(0)}KB with LED content`);
-      onProgress?.(`OCR: ${provider} extracted ${(markdown.length / 1024).toFixed(0)}KB`);
+      console.log(`[RFP v2] OCR ${provider}: success, ${(markdown.length / 1024).toFixed(0)}KB`);
+      onProgress?.(`OCR: ${provider} → ${(markdown.length / 1024).toFixed(0)}KB extracted`);
       return markdown;
     } catch (err: any) {
       console.error(`[RFP v2] OCR ${provider} error:`, err.message);
@@ -201,7 +239,7 @@ async function extractViaOcrService(
     }
   }
 
-  console.log(`[RFP v2] OCR: all providers failed`);
+  console.log(`[RFP v2] OCR: all providers failed for ${pdfType} PDF`);
   return null;
 }
 
@@ -1536,34 +1574,28 @@ export async function extractWithGLM5(
       const totalPages = pages.length;
       console.log(`[RFP v2] GPT-5.4-mini: pdftotext ${totalPages} pages, ${(fullText.length / 1024).toFixed(1)}KB`);
 
-      // Check if pdftotext found ANY LED content at all.
-      // If not, this is likely a drawing sheet or scanned PDF → route to OCR service.
-      const hasAnyLedContent = pages.some(p => {
-        const lower = p.toLowerCase();
-        return LED_STRONG_KEYWORDS.some(kw => {
-          if (kw instanceof RegExp) return kw.test(lower);
-          return lower.includes(kw);
-        });
-      });
+      // ── QA-FIRST: Classify the PDF and route to the right OCR backend ──
+      // Step 1: Classify — is this a text PDF or a drawing/scanned PDF?
+      const pdfType = classifyPdf(fullText);
+      console.log(`[RFP v2] PDF classified as: ${pdfType} (pdftotext: ${fullText.length} chars)`);
+      options?.onProgress?.(`Document classified as ${pdfType} PDF`);
 
-      if (!hasAnyLedContent && fullText.length < 500) {
-        // pdftotext got nothing useful — this is a drawing/scanned PDF
-        options?.onProgress?.("No text content found — routing to OCR service...");
-        console.log(`[RFP v2] pdftotext has no LED content (${fullText.length} chars). Trying OCR service...`);
-
-        const ocrMarkdown = await extractViaOcrService(pdfPath, options?.onProgress);
-        if (ocrMarkdown) {
-          fullText = ocrMarkdown;
-          // Re-split pages from OCR markdown (may use different separators)
-          const ocrPages = ocrMarkdown.split(/\n---\s*PAGE\s*BREAK\s*---\n|\f/).filter(p => p.trim().length > 0);
-          pages.length = 0;
-          pages.push(...ocrPages);
-          console.log(`[RFP v2] OCR service returned ${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB`);
-          options?.onProgress?.(`OCR extracted ${pages.length} pages (${(fullText.length / 1024).toFixed(0)}KB)`);
-        } else {
-          console.log(`[RFP v2] OCR service failed — continuing with pdftotext output`);
-          options?.onProgress?.("OCR service unavailable — using raw text...");
-        }
+      // Step 2: Route to OCR service for structured markdown extraction
+      // Text PDF → Kreuzberg (preserves all pages, inline tables)
+      // Drawing PDF → Marker (reads image-based tables)
+      // Always use OCR for the cleanest possible input to GPT-5.4-mini
+      const ocrMarkdown = await extractViaOcrService(pdfPath, pdfType, options?.onProgress);
+      if (ocrMarkdown) {
+        fullText = ocrMarkdown;
+        const ocrPages = ocrMarkdown.split(/\n---\s*PAGE\s*BREAK\s*---\n|\f/).filter(p => p.trim().length > 0);
+        pages.length = 0;
+        pages.push(...ocrPages);
+        console.log(`[RFP v2] OCR → ${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB`);
+        options?.onProgress?.(`OCR: ${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB`);
+      } else {
+        // OCR service unavailable — fall back to raw pdftotext
+        console.log(`[RFP v2] OCR unavailable — using raw pdftotext`);
+        options?.onProgress?.("OCR unavailable — using raw text extraction...");
       }
 
       // Triage: for large docs (50+ pages), use strict table-signal scoring.
@@ -1683,26 +1715,32 @@ Rules:
             if (!check.passed) warnings.push(`[${check.severity.toUpperCase()}] ${check.name}: ${check.message}`);
           }
 
-          // Extract QA — only run if validation flagged issues.
-          // Clean extraction (all checks pass) skips QA entirely (~0s vs ~30s).
-          // QA uses a DIFFERENT model (MiMo Pro) to catch Mercury's blind spots.
+          // ── QA CROSS-CHECK: Second AI independently verifies the count ──
+          // ALWAYS runs — not just on validation failure.
+          // GPT-5.4-mini extracted N displays. MiMo Pro reads the same source
+          // and independently confirms the count. If they agree → gold.
+          // If they disagree → flag for human review.
           const hasValidationIssues = validation.checks.some(c => !c.passed);
-          if (hasValidationIssues) {
-            options?.onProgress?.("Validation flagged issues — running deep QA with MiMo...");
-            try {
-              const qa = await runExtractQA(mercuryScreens, sourceText, pdfPath.split("/").pop() || "document.pdf", options?.onProgress);
-              if (qa.changes.length > 0) {
-                mercuryScreens = qa.correctedDisplays as ExtractedLEDSpec[];
-                for (const change of qa.changes) warnings.push(`[QA] ${change}`);
-              }
-              if (qa.verified) options?.onProgress?.(`Extract QA: ${qa.message}`);
-            } catch (qaErr: any) {
-              console.error(`[RFP v2] Mercury QA failed:`, qaErr.message);
-              warnings.push(`Extract QA failed: ${qaErr.message}`);
+          options?.onProgress?.(`QA cross-check: GPT found ${mercuryScreens.length} displays. Verifying with MiMo...`);
+          try {
+            const qa = await runExtractQA(mercuryScreens, sourceText, pdfPath.split("/").pop() || "document.pdf", options?.onProgress);
+            if (qa.changes.length > 0) {
+              mercuryScreens = qa.correctedDisplays as ExtractedLEDSpec[];
+              for (const change of qa.changes) warnings.push(`[QA] ${change}`);
             }
-          } else {
-            console.log(`[RFP v2] Mercury extraction passed all validation checks — skipping QA`);
-            options?.onProgress?.(`Validation passed — QA skipped (${mercuryScreens.length} displays clean)`);
+            const qaCount = mercuryScreens.length;
+            if (qa.verified) {
+              options?.onProgress?.(`QA cross-check: confirmed ${qaCount} displays ✓`);
+            } else {
+              warnings.push(`[QA] Cross-check inconclusive — verify manually`);
+              options?.onProgress?.(`QA cross-check: ${qaCount} displays (needs manual review)`);
+            }
+          } catch (qaErr: any) {
+            console.error(`[RFP v2] QA cross-check failed:`, qaErr.message);
+            warnings.push(`QA cross-check failed: ${qaErr.message}`);
+            if (!hasValidationIssues) {
+              options?.onProgress?.(`QA unavailable — validation passed with ${mercuryScreens.length} displays`);
+            }
           }
 
           // AI product matching
