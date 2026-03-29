@@ -1597,21 +1597,133 @@ export async function extractWithGLM5(
       const totalPages = pages.length;
       console.log(`[RFP v2] GPT-5.4-mini: pdftotext ${totalPages} pages, ${(fullText.length / 1024).toFixed(1)}KB`);
 
-      // ── QA-FIRST: Classify the PDF and route to the right OCR backend ──
-      // Step 1: Classify — is this a text PDF or a drawing/scanned PDF?
+      // ═══════════════════════════════════════════════════════════════
+      // SCOUT → CHOP → TARGET architecture
+      //
+      // pdftotext is the universal backbone. It ALWAYS runs first.
+      // It gives us page-delimited text with preserved columns.
+      // From that, we score pages, find LED sections, and decide
+      // what to send to OCR or GPT. Nothing bypasses the scout.
+      //
+      // For small docs: scout → classify → target OCR on full PDF
+      // For large docs: scout → score → chop to LED pages → target OCR on mini PDF
+      // ═══════════════════════════════════════════════════════════════
+
       const pdfType = classifyPdf(fullText);
-      console.log(`[RFP v2] PDF classified as: ${pdfType} (pdftotext: ${fullText.length} chars)`);
-      options?.onProgress?.(`Document classified as ${pdfType} PDF`);
-
-      // Step 2: Route to OCR based on document size
-      // Small docs (≤50 pages): send full PDF to Kreuzberg/Marker for clean markdown
-      // Large docs (>50 pages): triage with pdftotext first, then send ONLY LED pages to OCR
       const isLargeDoc = pages.length > 50 || fullText.length > 200_000;
+      console.log(`[RFP v2] Scout: ${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB, type=${pdfType}, large=${isLargeDoc}`);
+      options?.onProgress?.(`${pages.length} pages scanned — ${pdfType} PDF${isLargeDoc ? " (large)" : ""}`);
 
-      if (!isLargeDoc) {
-        // Small doc — send full PDF to OCR for structured markdown
+      // ── TABLE SIGNALS for page scoring ──
+      const TABLE_SIGNALS = [
+        "pixel pitch", "display schedule", "display matrix", "av schedule",
+        "led board schedule", "a/v interior led", "a/v scoreboard",
+        "a/v east entry", "a/v north", "a/v south", "a/v west",
+        "entry led", "exterior led", "videoboard schedule",
+        "location", "width", "height", "nits",
+      ];
+      if (options?.customKeywords) {
+        const userKw = options.customKeywords.split(",").map(k => k.trim().toLowerCase()).filter(k => k.length > 0);
+        if (userKw.length > 0) {
+          TABLE_SIGNALS.push(...userKw);
+          options?.onProgress?.(`Custom keywords: ${userKw.join(", ")}`);
+        }
+      }
+
+      if (isLargeDoc) {
+        // ── LARGE DOC: Scout → Score → Chop → Target ──
+        options?.onProgress?.(`Scanning ${pages.length} pages for LED sections...`);
+
+        // Score every page
+        const pageScores: Array<{ index: number; score: number }> = [];
+        for (let i = 0; i < pages.length; i++) {
+          const lower = pages[i].toLowerCase();
+          let score = 0;
+          for (const sig of TABLE_SIGNALS) {
+            if (lower.includes(sig)) score++;
+          }
+          if (score >= 4) pageScores.push({ index: i, score });
+        }
+
+        if (pageScores.length > 0) {
+          const ledPageNumbers = pageScores.map(p => p.index + 1); // 1-indexed for pdfseparate
+          console.log(`[RFP v2] Scout found ${pageScores.length} LED pages: ${ledPageNumbers.join(", ")}`);
+          options?.onProgress?.(`Found ${pageScores.length} LED pages out of ${pages.length}`);
+
+          // CHOP: physically slice the PDF to just the LED pages
+          let miniPdfPath: string | null = null;
+          try {
+            const { mkdir, unlink: unlinkFile } = await import("fs/promises");
+            const chopDir = `/tmp/rfp-chop-${Date.now()}`;
+            await mkdir(chopDir, { recursive: true });
+
+            // pdfseparate extracts individual pages, then pdfunite merges them
+            const separatedPages: string[] = [];
+            for (const pageNum of ledPageNumbers) {
+              const outPath = `${chopDir}/page-${String(pageNum).padStart(4, "0")}.pdf`;
+              await execFileAsync("pdfseparate", ["-f", String(pageNum), "-l", String(pageNum), pdfPath, outPath], { timeout: 10_000 });
+              separatedPages.push(outPath);
+            }
+
+            miniPdfPath = `${chopDir}/led-pages.pdf`;
+            if (separatedPages.length === 1) {
+              // Single page — just rename
+              const { rename } = await import("fs/promises");
+              await rename(separatedPages[0], miniPdfPath);
+            } else {
+              // Multiple pages — merge
+              await execFileAsync("pdfunite", [...separatedPages, miniPdfPath], { timeout: 30_000 });
+            }
+
+            console.log(`[RFP v2] Chop: ${separatedPages.length} LED pages extracted to mini PDF`);
+            options?.onProgress?.(`Extracted ${separatedPages.length} LED pages`);
+          } catch (chopErr: any) {
+            console.error(`[RFP v2] Chop failed:`, chopErr.message);
+            miniPdfPath = null;
+          }
+
+          // TARGET: send the mini PDF to OCR for clean markdown
+          if (miniPdfPath) {
+            const ocrMarkdown = await extractViaOcrService(miniPdfPath, pdfType, options?.onProgress);
+            if (ocrMarkdown && ocrMarkdown.length > 200) {
+              fullText = ocrMarkdown;
+              const ocrPages = ocrMarkdown.split(/\n---\s*PAGE\s*BREAK\s*---\n|\f/).filter(p => p.trim().length > 0);
+              pages.length = 0;
+              pages.push(...ocrPages);
+              console.log(`[RFP v2] Target OCR on mini PDF: ${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB`);
+              options?.onProgress?.(`OCR: ${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB`);
+            } else {
+              // OCR failed on mini PDF — fall back to pdftotext of the LED pages
+              console.log(`[RFP v2] OCR failed on mini PDF — using triaged pdftotext`);
+              const triaged = pageScores.map(p => pages[p.index]).join("\n\n--- PAGE BREAK ---\n\n");
+              fullText = triaged;
+              pages.length = 0;
+              pages.push(...pageScores.map(p => pages[p.index] || "").filter(Boolean));
+              options?.onProgress?.(`Using ${pages.length} triaged pages (${(fullText.length / 1024).toFixed(0)}KB)`);
+            }
+            // Cleanup
+            const { rm } = await import("fs/promises");
+            rm(miniPdfPath.replace(/\/[^/]+$/, ""), { recursive: true, force: true }).catch(() => {});
+          } else {
+            // Chop failed — fall back to pdftotext of the LED pages
+            const triaged = pageScores.map(p => pages[p.index]).join("\n\n--- PAGE BREAK ---\n\n");
+            fullText = triaged;
+            pages.length = 0;
+            pages.push(...pageScores.map(p => pages[p.index] || "").filter(Boolean));
+            options?.onProgress?.(`Using ${pages.length} triaged pages (${(fullText.length / 1024).toFixed(0)}KB)`);
+          }
+        } else {
+          // No pages scored 4+ — fall back to keyword filter
+          const { filtered, stats } = filterLedPages(pages);
+          options?.onProgress?.(`Keyword triage: ${stats}`);
+          fullText = filtered;
+          pages.length = 0;
+          pages.push(...filtered.split(/\n\n--- PAGE BREAK ---\n\n/).filter(p => p.trim()));
+        }
+      } else {
+        // ── SMALL DOC: Scout → Classify → Target OCR on full PDF ──
         const ocrMarkdown = await extractViaOcrService(pdfPath, pdfType, options?.onProgress);
-        if (ocrMarkdown) {
+        if (ocrMarkdown && ocrMarkdown.length > 200) {
           fullText = ocrMarkdown;
           const ocrPages = ocrMarkdown.split(/\n---\s*PAGE\s*BREAK\s*---\n|\f/).filter(p => p.trim().length > 0);
           pages.length = 0;
@@ -1619,58 +1731,7 @@ export async function extractWithGLM5(
           console.log(`[RFP v2] OCR → ${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB`);
           options?.onProgress?.(`OCR: ${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB`);
         }
-      } else {
-        // Large doc — triage first, then OCR only the LED pages
-        console.log(`[RFP v2] Large doc (${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB) — triaging before OCR`);
-        options?.onProgress?.(`Large document (${pages.length} pages) — finding LED sections...`);
-
-        // Find LED pages using pdftotext (instant, free)
-        const TABLE_SIGNALS = [
-          "pixel pitch", "display schedule", "display matrix", "av schedule",
-          "led board schedule", "a/v interior led", "a/v scoreboard",
-          "a/v east entry", "a/v north", "a/v south", "a/v west",
-          "entry led", "exterior led", "videoboard schedule",
-          "location", "width", "height", "nits",
-        ];
-
-        // Add user-provided custom keywords to the triage signals
-        if (options?.customKeywords) {
-          const userKw = options.customKeywords.split(",").map(k => k.trim().toLowerCase()).filter(k => k.length > 0);
-          TABLE_SIGNALS.push(...userKw);
-          console.log(`[RFP v2] Custom keywords added to triage: ${userKw.join(", ")}`);
-          options?.onProgress?.(`Custom keywords: ${userKw.join(", ")}`);
-        }
-
-        const ledPageIndices: number[] = [];
-        for (let i = 0; i < pages.length; i++) {
-          const lower = pages[i].toLowerCase();
-          let score = 0;
-          for (const sig of TABLE_SIGNALS) {
-            if (lower.includes(sig)) score++;
-          }
-          if (score >= 4) ledPageIndices.push(i);
-        }
-
-        if (ledPageIndices.length > 0) {
-          options?.onProgress?.(`Found ${ledPageIndices.length} LED sections out of ${pages.length} pages`);
-          console.log(`[RFP v2] Triage: ${ledPageIndices.length}/${pages.length} LED pages: ${ledPageIndices.map(i => i + 1).join(", ")}`);
-
-          // Use the triaged pdftotext pages directly — already have clean per-page text
-          const triaged = ledPageIndices.map(i => pages[i]).join("\n\n--- PAGE BREAK ---\n\n");
-          fullText = triaged;
-          const keptPages = ledPageIndices.map(i => pages[i]);
-          pages.length = 0;
-          pages.push(...keptPages);
-          console.log(`[RFP v2] Triaged: ${keptPages.length} LED pages, ${(fullText.length / 1024).toFixed(0)}KB`);
-          options?.onProgress?.(`Triaged: ${keptPages.length} LED pages, ${(fullText.length / 1024).toFixed(0)}KB`);
-        } else {
-          // Strict triage found nothing — fall back to keyword filter
-          const { filtered, stats } = filterLedPages(pages);
-          options?.onProgress?.(`Keyword triage: ${stats}`);
-          fullText = filtered;
-          pages.length = 0;
-          pages.push(...filtered.split(/\n\n--- PAGE BREAK ---\n\n/).filter(p => p.trim()));
-        }
+        // If OCR fails or returns nothing useful, pdftotext text stays as-is
       }
 
       // By this point, fullText contains either:
