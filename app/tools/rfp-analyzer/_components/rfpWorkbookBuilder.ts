@@ -141,7 +141,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     "Vendor", "Product", "Pitch",
     "H (ft)", "W (ft)", "H (px)", "W (px)",
     "SqFt/Screen", "Qty", "Total SqFt",
-    "NITs", "Service",
+    "NITs", "Spec Match", "Service",
     "Modules", "Weight (lbs)", "W/Cab", "Total Power (W)",
     "BTU/hr", "Cab/Circuit", "Circuits (208V)",
     "$/SqFt", "Display Cost", "Processor", "Shipping", "Total Cost",
@@ -270,6 +270,18 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
           : num(qty, { align: "center" }),
         num(Math.round(totalSqFt * 100) / 100 || null),
         num(nits),
+        // Spec Match — compare product NITs vs RFP NITs
+        (() => {
+          if (!rfpNits || !nits) return c("—", { align: "center" });
+          const ratio = nits / rfpNits;
+          if (ratio >= 1) return c("✓ MEETS", { align: "center", className: "text-emerald-600 font-semibold" });
+          if (ratio >= 0.9) {
+            const delta = Math.round((1 - ratio) * 100 * 10) / 10;
+            return c(`⚠ -${delta}%`, { align: "center", className: "text-amber-600 font-semibold" });
+          }
+          const delta = Math.round((1 - ratio) * 100 * 10) / 10;
+          return c(`✗ -${delta}%`, { align: "center", className: "text-red-600 font-semibold" });
+        })(),
         c(serviceType || "—", { align: "center" }),
         num(totalModules),
         num(totalWeightLbs),
@@ -354,7 +366,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
       c(""),                                                              // SqFt/Screen
       c(""),                                                              // Qty
       num(Math.round(totalSqFtAll * 100) / 100, { bold: true }),         // Total SqFt
-      c(""), c(""),                                                       // NITs, Service
+      c(""), c(""), c(""),                                                 // NITs, Spec Match, Service
       num(totalModulesAll > 0 ? totalModulesAll : null, { bold: true }),
       num(totalWeightLbsAll > 0 ? totalWeightLbsAll : null, { bold: true }),
       c(""),
