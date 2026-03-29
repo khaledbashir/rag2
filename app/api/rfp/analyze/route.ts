@@ -199,6 +199,7 @@ export async function POST(request: NextRequest) {
           try {
             const glmResult = await extractWithGLM5(filePath, {
               timeout: 300,
+              customKeywords: body.customKeywords || undefined,
               onProgress: (msg) => {
                 progressStep++;
                 send("progress", { stage: "extracting", step: progressStep, message: msg });

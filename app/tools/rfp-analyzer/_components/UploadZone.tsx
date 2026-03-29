@@ -160,7 +160,7 @@ function AIThinkingPanel({ events, isComplete }: { events: PipelineEvent[]; isCo
 }
 
 interface UploadZoneProps {
-  onUpload: (files: File[], bidFormFile?: File) => void;
+  onUpload: (files: File[], bidFormFile?: File, customKeywords?: string) => void;
   onExcelUpload?: (file: File) => void;
   isLoading: boolean;
   events: PipelineEvent[];
@@ -233,6 +233,8 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const [bidFormFile, setBidFormFile] = useState<File | null>(null);
   const bidFormInputRef = useRef<HTMLInputElement>(null);
+  const [customKeywords, setCustomKeywords] = useState("");
+  const [showKeywords, setShowKeywords] = useState(false);
 
   useEffect(() => {
     if (isLoading) {
@@ -269,7 +271,7 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
     if (pdfFiles.some((f) => f.size > 2000 * 1024 * 1024)) { setError("Files must be under 2GB."); return; }
     setFileName(pdfFiles.length === 1 ? pdfFiles[0].name : `${pdfFiles.length} files`);
     const attachedBidForm = excelFiles[0] || bidFormFile || undefined;
-    onUpload(pdfFiles, attachedBidForm);
+    onUpload(pdfFiles, attachedBidForm, customKeywords.trim() || undefined);
   };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -353,6 +355,27 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
                     <item.icon className="w-3 h-3" /> {item.label}
                   </span>
                 ))}
+              </div>
+
+              {/* Optional keyword filter */}
+              <div className="mt-3 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setShowKeywords(!showKeywords); }}
+                  className="text-[10px] text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  {showKeywords ? "Hide keywords" : "+ Custom keywords (optional)"}
+                </button>
+                {showKeywords && (
+                  <input
+                    type="text"
+                    value={customKeywords}
+                    onChange={(e) => setCustomKeywords(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    placeholder="e.g. concourse, ribbon, centerhung, club level"
+                    className="mt-1 w-full px-3 py-1.5 text-xs text-gray-700 bg-white border border-gray-200 rounded-lg outline-none focus:ring-1 focus:ring-[#0A52EF] placeholder-gray-400"
+                  />
+                )}
               </div>
             </div>
           </div>

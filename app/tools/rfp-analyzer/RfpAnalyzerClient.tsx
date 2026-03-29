@@ -1073,7 +1073,7 @@ export default function RfpAnalyzerClient() {
   // Bid form state for dual upload
   const [bidFormFile, setBidFormFile] = useState<File | null>(null);
 
-  const handleUpload = useCallback(async (files: File[], attachedBidForm?: File) => {
+  const handleUpload = useCallback(async (files: File[], attachedBidForm?: File, customKeywords?: string) => {
     if (!files.length) return;
 
     lastUploadedFiles.current = files;
@@ -1181,6 +1181,7 @@ export default function RfpAnalyzerClient() {
         sessionId: uploaded[0].sessionId,
         filename: uploaded[0].filename,
         ...(uploaded.length > 1 ? { mergeSessionIds: uploaded.map((u) => u.sessionId) } : {}),
+        ...(customKeywords ? { customKeywords } : {}),
       };
       lastSessionData.current = sessionPayload;
 

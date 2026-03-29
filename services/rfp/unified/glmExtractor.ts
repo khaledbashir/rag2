@@ -1425,6 +1425,7 @@ export async function extractWithGLM5(
   pdfPath: string,
   options?: {
     timeout?: number;
+    customKeywords?: string;
     onProgress?: (message: string) => void;
   },
 ): Promise<{
@@ -1632,6 +1633,14 @@ export async function extractWithGLM5(
           "location", "width", "height", "nits",
         ];
 
+        // Add user-provided custom keywords to the triage signals
+        if (options?.customKeywords) {
+          const userKw = options.customKeywords.split(",").map(k => k.trim().toLowerCase()).filter(k => k.length > 0);
+          TABLE_SIGNALS.push(...userKw);
+          console.log(`[RFP v2] Custom keywords added to triage: ${userKw.join(", ")}`);
+          options?.onProgress?.(`Custom keywords: ${userKw.join(", ")}`);
+        }
+
         const ledPageIndices: number[] = [];
         for (let i = 0; i < pages.length; i++) {
           const lower = pages[i].toLowerCase();
@@ -1687,7 +1696,7 @@ Rules:
 - Use the ACTUAL room/location name from the document for each display
 - If pixel pitch is not stated but others in the same table have it (e.g. all 3.9mm), use that value
 - Every row in the source table = one row in output. DO NOT DEDUPLICATE. If "Panthers Den" appears 7 times, output 7 rows. If "Elev Lobby" appears 4 times, output 4 rows. quantity is always 1.
-- Only LED displays/videoboards/ribbons in displays. Game clocks, racks, spare parts go in requirements.`;
+- Only LED displays/videoboards/ribbons in displays. Game clocks, racks, spare parts go in requirements.${options?.customKeywords ? `\n- ALSO look for displays matching these keywords: ${options.customKeywords}` : ""}`;
 
       const gptRes = await fetch(`${OPENAI_API_BASE}/chat/completions`, {
         method: "POST",
