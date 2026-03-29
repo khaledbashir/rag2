@@ -15,6 +15,8 @@ import type { ExtractedLEDSpec } from "./unified/types";
 export interface ValidationResult {
   passed: boolean;
   confidence: "high" | "medium" | "low";
+  /** Three operational states: verified (ship it), partial_review (some rows need human check), untrusted_input (source representation failed) */
+  status: "verified" | "partial_review" | "untrusted_input";
   exportAllowed: boolean;
   checks: ValidationCheck[];
   summary: string;
@@ -216,24 +218,36 @@ export function validateExtraction(
   let confidence: ValidationResult["confidence"];
   let exportAllowed: boolean;
 
+  let status: ValidationResult["status"];
+
   if (blockers.length > 0) {
     confidence = "low";
     exportAllowed = false;
+    // Distinguish: input failure vs extraction issues
+    const inputFailures = blockers.filter(b => b.name === "tables" || b.name === "count");
+    const extractionIssues = blockers.filter(b => b.name !== "tables" && b.name !== "count");
+    status = inputFailures.length > 0 && extractionIssues.length === 0 && displays.length > 0
+      ? "partial_review"   // Got some displays but source might be incomplete
+      : displays.length === 0
+        ? "untrusted_input" // Got nothing — source representation likely failed
+        : "partial_review";
   } else if (reviews.length > 0) {
     confidence = "medium";
-    exportAllowed = false; // Medium requires manual review before export
+    exportAllowed = false;
+    status = "partial_review";
   } else {
     confidence = "high";
     exportAllowed = true;
+    status = "verified";
   }
 
-  const summary = blockers.length > 0
-    ? `${blockers.length} issue(s) found (${blockers.map(b => b.name).join(", ")}) — running QA...`
-    : reviews.length > 0
-      ? `${reviews.length} item(s) need review`
-      : `All ${checks.length} checks passed`;
+  const summary = status === "verified"
+    ? `All ${checks.length} checks passed`
+    : status === "untrusted_input"
+      ? `Input quality issue — ${blockers.length} check(s) failed`
+      : `${blockers.length + reviews.length} item(s) need review — running QA...`;
 
-  return { passed: blockers.length === 0 && reviews.length === 0, confidence, exportAllowed, checks, summary };
+  return { passed: blockers.length === 0 && reviews.length === 0, confidence, status, exportAllowed, checks, summary };
 }
 
 /**

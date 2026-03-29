@@ -1646,9 +1646,15 @@ export async function extractWithGLM5(
         }
 
         if (pageScores.length > 0) {
-          const ledPageNumbers = pageScores.map(p => p.index + 1); // 1-indexed for pdfseparate
-          console.log(`[RFP v2] Scout found ${pageScores.length} LED pages: ${ledPageNumbers.join(", ")}`);
-          options?.onProgress?.(`Found ${pageScores.length} LED pages out of ${pages.length}`);
+          // Add neighbor pages (±1) — tables spill across page breaks
+          const hitIndices = new Set(pageScores.map(p => p.index));
+          for (const p of pageScores) {
+            if (p.index > 0) hitIndices.add(p.index - 1);
+            if (p.index < pages.length - 1) hitIndices.add(p.index + 1);
+          }
+          const ledPageNumbers = [...hitIndices].sort((a, b) => a - b).map(i => i + 1); // 1-indexed
+          console.log(`[RFP v2] Scout: ${pageScores.length} LED pages + ${ledPageNumbers.length - pageScores.length} neighbors = ${ledPageNumbers.length} total`);
+          options?.onProgress?.(`Found ${pageScores.length} LED pages (+${ledPageNumbers.length - pageScores.length} neighbors) out of ${pages.length}`);
 
           // CHOP: physically slice the PDF to just the LED pages
           let miniPdfPath: string | null = null;
