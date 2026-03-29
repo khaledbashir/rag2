@@ -105,6 +105,8 @@ export interface RfpWorkbookInput {
   onQtyChange?: (displayName: string, qty: number) => void;
   /** Callback when user clicks "Fix" on a row — triggers AI repair agent */
   onRepairRow?: (displayName: string, rowIndex: number) => void;
+  /** Show Spec Match column (product nits vs RFP nits comparison) — default false */
+  showSpecMatch?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -141,7 +143,9 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     "Vendor", "Product", "Pitch",
     "H (ft)", "W (ft)", "H (px)", "W (px)",
     "SqFt/Screen", "Qty", "Total SqFt",
-    "NITs", "Spec Match", "Service",
+    "NITs",
+    ...(input.showSpecMatch ? ["Spec Match"] : []),
+    "Service",
     "Modules", "Weight (lbs)", "W/Cab", "Total Power (W)",
     "BTU/hr", "Cab/Circuit", "Circuits (208V)",
     "$/SqFt", "Display Cost", "Processor", "Shipping", "Total Cost",
@@ -270,8 +274,8 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
           : num(qty, { align: "center" }),
         num(Math.round(totalSqFt * 100) / 100 || null),
         num(nits),
-        // Spec Match — compare product NITs vs RFP NITs
-        (() => {
+        // Spec Match — compare product NITs vs RFP NITs (optional column)
+        ...(input.showSpecMatch ? [(() => {
           if (!rfpNits || !nits) return c("—", { align: "center" });
           const ratio = nits / rfpNits;
           if (ratio >= 1) return c("✓ MEETS", { align: "center", className: "text-emerald-600 font-semibold" });
@@ -281,7 +285,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
           }
           const delta = Math.round((1 - ratio) * 100 * 10) / 10;
           return c(`✗ -${delta}%`, { align: "center", className: "text-red-600 font-semibold" });
-        })(),
+        })()] : []),
         c(serviceType || "—", { align: "center" }),
         num(totalModules),
         num(totalWeightLbs),
@@ -366,7 +370,9 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
       c(""),                                                              // SqFt/Screen
       c(""),                                                              // Qty
       num(Math.round(totalSqFtAll * 100) / 100, { bold: true }),         // Total SqFt
-      c(""), c(""), c(""),                                                 // NITs, Spec Match, Service
+      c(""),                                                                // NITs
+      ...(input.showSpecMatch ? [c("")] : []),                               // Spec Match (if shown)
+      c(""),                                                                  // Service
       num(totalModulesAll > 0 ? totalModulesAll : null, { bold: true }),
       num(totalWeightLbsAll > 0 ? totalWeightLbsAll : null, { bold: true }),
       c(""),
