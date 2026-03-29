@@ -49,9 +49,9 @@ const MISTRAL_API_BASE = process.env.MISTRAL_API_BASE_URL || process.env.MISTRAL
 const MISTRAL_MODEL = process.env.MISTRAL_CHAT_MODEL || "mistral-large-latest";
 // Mistral OCR — text extraction step
 const MISTRAL_OCR_MODEL = process.env.MISTRAL_OCR_MODEL || "mistral-ocr-latest";
-// OCR Service — Kreuzberg (free, self-hosted) → Marker → Mistral OCR fallback chain
-// Used when pdftotext finds no LED content (drawing sheets, scanned PDFs)
-const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || "http://abc_ocr:80";
+// Direct OCR backends (no middleware — connect straight to each service)
+const KREUZBERG_URL = process.env.KREUZBERG_URL || "http://abc_kreuz:8000";
+const MARKER_URL = process.env.MARKER_URL || "http://marker-api:8080";
 
 // LED-relevant keywords for page filtering (case-insensitive)
 // Strong signals: indicate actual display DATA on the page
@@ -166,11 +166,57 @@ function classifyPdf(pdftoTextOutput: string): PdfType {
 }
 
 // ---------------------------------------------------------------------------
-// OCR Service: route to the right backend based on PDF type
-// Kreuzberg = text PDFs (spec docs, 23-page Panthers Indoor/Outdoor)
-// Marker = drawing PDFs (AV schedule sheets with image-based tables)
-// Falls through providers if first choice fails.
+// Direct OCR: connect straight to Kreuzberg / Marker (no middleware)
+// Kreuzberg = text PDFs (spec docs) — returns markdown in ~100ms
+// Marker = drawing PDFs (AV schedule sheets) — reads image-based tables
 // ---------------------------------------------------------------------------
+
+function buildMultipartBody(pdfBuffer: Buffer, filename: string, fieldName: string): { body: Buffer; boundary: string } {
+  const boundary = `----fb-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const crlf = "\r\n";
+  const parts: Buffer[] = [];
+  parts.push(Buffer.from(`--${boundary}${crlf}Content-Disposition: form-data; name="${fieldName}"; filename="${filename}"${crlf}Content-Type: application/pdf${crlf}${crlf}`));
+  parts.push(pdfBuffer);
+  parts.push(Buffer.from(`${crlf}--${boundary}--${crlf}`));
+  return { body: Buffer.concat(parts), boundary };
+}
+
+async function callKreuzberg(pdfBuffer: Buffer, filename: string): Promise<string | null> {
+  try {
+    const { body, boundary } = buildMultipartBody(pdfBuffer, filename, "files");
+    const res = await fetch(`${KREUZBERG_URL}/extract`, {
+      method: "POST",
+      headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
+      body,
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    // Kreuzberg returns: { "0": { content: "markdown...", mime_type, metadata, quality_score } }
+    const firstKey = Object.keys(data)[0];
+    return data[firstKey]?.content || null;
+  } catch {
+    return null;
+  }
+}
+
+async function callMarker(pdfBuffer: Buffer, filename: string): Promise<string | null> {
+  try {
+    const { body, boundary } = buildMultipartBody(pdfBuffer, filename, "file");
+    const res = await fetch(`${MARKER_URL}/convert`, {
+      method: "POST",
+      headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
+      body,
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    // Marker returns: { status: "Success", result: { markdown: "...", metadata: {...} } }
+    return data.result?.markdown || data.markdown || null;
+  } catch {
+    return null;
+  }
+}
 
 async function extractViaOcrService(
   pdfPath: string,
@@ -178,107 +224,44 @@ async function extractViaOcrService(
   onProgress?: (msg: string) => void,
 ): Promise<string | null> {
   const { readFile } = await import("fs/promises");
-
-  // Route based on classification
-  // Text → Kreuzberg first (best for text layouts), then Marker, then Mistral
-  // Drawing → Marker first (reads image tables), then Kreuzberg, then Mistral
-  const providers = pdfType === "text"
-    ? ["kreuzberg", "marker", "mistral"]
-    : ["marker", "kreuzberg", "mistral"];
-
   const pdfBuffer = await readFile(pdfPath);
   const filename = pdfPath.split("/").pop() || "document.pdf";
 
-  for (const provider of providers) {
-    try {
-      onProgress?.(`OCR: ${provider} (${pdfType} PDF)...`);
-      console.log(`[RFP v2] OCR: trying ${provider} for ${pdfType} PDF via ${OCR_SERVICE_URL}`);
+  // Route based on classification:
+  // Text PDF → Kreuzberg first (100ms, inline tables), then Marker
+  // Drawing PDF → Marker first (reads image tables), then Kreuzberg
+  const pipeline = pdfType === "text"
+    ? [{ name: "Kreuzberg", fn: callKreuzberg }, { name: "Marker", fn: callMarker }]
+    : [{ name: "Marker", fn: callMarker }, { name: "Kreuzberg", fn: callKreuzberg }];
 
-      // Build multipart form data manually — Node's native FormData + Blob
-      // doesn't always set Content-Type boundary correctly in server environments.
-      const boundary = `----formdata-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const crlf = "\r\n";
-      const parts: Buffer[] = [];
+  for (const { name, fn } of pipeline) {
+    onProgress?.(`OCR: ${name} (${pdfType} PDF)...`);
+    console.log(`[RFP v2] OCR: trying ${name} for ${pdfType} PDF`);
 
-      // File part
-      parts.push(Buffer.from(
-        `--${boundary}${crlf}Content-Disposition: form-data; name="file"; filename="${filename}"${crlf}Content-Type: application/pdf${crlf}${crlf}`
-      ));
-      parts.push(pdfBuffer);
-      parts.push(Buffer.from(crlf));
+    const markdown = await fn(pdfBuffer, filename);
 
-      // Provider part
-      parts.push(Buffer.from(
-        `--${boundary}${crlf}Content-Disposition: form-data; name="provider"${crlf}${crlf}${provider}${crlf}`
-      ));
-
-      // End boundary
-      parts.push(Buffer.from(`--${boundary}--${crlf}`));
-
-      const body = Buffer.concat(parts);
-
-      const res = await fetch(`${OCR_SERVICE_URL}/api/extract`, {
-        method: "POST",
-        headers: {
-          "Content-Type": `multipart/form-data; boundary=${boundary}`,
-          "Content-Length": String(body.length),
-        },
-        body,
-        signal: AbortSignal.timeout(120_000),
-      });
-
-      if (!res.ok) {
-        console.error(`[RFP v2] OCR ${provider} failed: ${res.status}`);
-        continue;
-      }
-
-      const data = await res.json();
-
-      // The OCR app returns: { extraction: { content: '{"0":{"content":"..."},...}' }, data: {...} }
-      // Parse the nested structure to get the full markdown
-      let markdown = "";
-      try {
-        const rawContent = data.extraction?.content || data.content || "";
-        if (rawContent.startsWith("{")) {
-          const pages = JSON.parse(rawContent);
-          // Pages are keyed by index: {"0": {"content": "..."}, "1": {"content": "..."}}
-          const pageKeys = Object.keys(pages).sort((a, b) => Number(a) - Number(b));
-          markdown = pageKeys.map(k => pages[k]?.content || "").join("\n\n--- PAGE BREAK ---\n\n");
-        } else {
-          markdown = rawContent;
-        }
-      } catch {
-        // If parsing fails, try flat content fields
-        markdown = data.extraction?.content || data.content || data.markdown || data.text || "";
-      }
-
-      if (!markdown || markdown.length < 200) {
-        console.log(`[RFP v2] OCR ${provider}: too short (${markdown.length} chars)`);
-        continue;
-      }
-
-      // Verify LED content exists in the output
-      const lower = markdown.toLowerCase();
-      const hasLedContent = LED_STRONG_KEYWORDS.some(kw => {
-        if (kw instanceof RegExp) return kw.test(lower);
-        return lower.includes(kw);
-      });
-
-      if (!hasLedContent) {
-        console.log(`[RFP v2] OCR ${provider}: no LED content in output`);
-        continue;
-      }
-
-      console.log(`[RFP v2] OCR ${provider}: success, ${(markdown.length / 1024).toFixed(0)}KB`);
-      onProgress?.(`OCR: ${provider} → ${(markdown.length / 1024).toFixed(0)}KB extracted`);
-      return markdown;
-    } catch (err: any) {
-      console.error(`[RFP v2] OCR ${provider} error:`, err.message);
+    if (!markdown || markdown.length < 200) {
+      console.log(`[RFP v2] OCR ${name}: empty or too short`);
       continue;
     }
+
+    // Verify LED content
+    const lower = markdown.toLowerCase();
+    const hasLed = LED_STRONG_KEYWORDS.some(kw =>
+      kw instanceof RegExp ? kw.test(lower) : lower.includes(kw)
+    );
+
+    if (!hasLed) {
+      console.log(`[RFP v2] OCR ${name}: no LED content`);
+      continue;
+    }
+
+    console.log(`[RFP v2] OCR ${name}: ${(markdown.length / 1024).toFixed(0)}KB extracted`);
+    onProgress?.(`OCR: ${name} → ${(markdown.length / 1024).toFixed(0)}KB`);
+    return markdown;
   }
 
-  console.log(`[RFP v2] OCR: all providers failed for ${pdfType} PDF`);
+  console.log(`[RFP v2] OCR: all backends failed`);
   return null;
 }
 
