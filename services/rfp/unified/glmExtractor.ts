@@ -1602,39 +1602,28 @@ export async function extractWithGLM5(
       console.log(`[RFP v2] PDF classified as: ${pdfType} (pdftotext: ${fullText.length} chars)`);
       options?.onProgress?.(`Document classified as ${pdfType} PDF`);
 
-      // Step 2: Route to OCR service for structured markdown extraction
-      // Text PDF → Kreuzberg (preserves all pages, inline tables)
-      // Drawing PDF → Marker (reads image-based tables)
-      // Always use OCR for the cleanest possible input to GPT-5.4-mini
-      const ocrMarkdown = await extractViaOcrService(pdfPath, pdfType, options?.onProgress);
-      if (ocrMarkdown) {
-        fullText = ocrMarkdown;
-        const ocrPages = ocrMarkdown.split(/\n---\s*PAGE\s*BREAK\s*---\n|\f/).filter(p => p.trim().length > 0);
-        pages.length = 0;
-        pages.push(...ocrPages);
-        console.log(`[RFP v2] OCR → ${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB`);
-        options?.onProgress?.(`OCR: ${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB`);
-      } else {
-        // OCR service unavailable — fall back to raw pdftotext
-        console.log(`[RFP v2] OCR unavailable — using raw pdftotext`);
-        options?.onProgress?.("OCR unavailable — using raw text extraction...");
-      }
+      // Step 2: Route to OCR based on document size
+      // Small docs (≤50 pages): send full PDF to Kreuzberg/Marker for clean markdown
+      // Large docs (>50 pages): triage with pdftotext first, then send ONLY LED pages to OCR
+      const isLargeDoc = pages.length > 50 || fullText.length > 200_000;
 
-      // Triage: for large docs, use strict table-signal scoring.
-      // Trigger on 50+ pages OR 200KB+ text (Kreuzberg sometimes merges pages into one blob).
-      // A 500-page project manual has ~3-5 pages with actual LED schedule tables.
-      // The rest is legal, structural, MEP boilerplate. Sending it all drowns the signal.
-      let textToSend: string;
-      const needsTriage = pages.length > 50 || fullText.length > 200_000;
-      if (needsTriage) {
-        // For large single-blob docs (like Kreuzberg output), split by double newlines
-        // to create artificial "sections" for scoring
-        let triagePages = pages;
-        if (pages.length <= 1 && fullText.length > 200_000) {
-          triagePages = fullText.split(/\n{3,}/).filter(p => p.trim().length > 200);
-          console.log(`[RFP v2] Large blob split into ${triagePages.length} sections for triage`);
+      if (!isLargeDoc) {
+        // Small doc — send full PDF to OCR for structured markdown
+        const ocrMarkdown = await extractViaOcrService(pdfPath, pdfType, options?.onProgress);
+        if (ocrMarkdown) {
+          fullText = ocrMarkdown;
+          const ocrPages = ocrMarkdown.split(/\n---\s*PAGE\s*BREAK\s*---\n|\f/).filter(p => p.trim().length > 0);
+          pages.length = 0;
+          pages.push(...ocrPages);
+          console.log(`[RFP v2] OCR → ${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB`);
+          options?.onProgress?.(`OCR: ${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB`);
         }
-        // Strict triage: score each page by table-specific signals (not just "LED" mentions)
+      } else {
+        // Large doc — triage first, then OCR only the LED pages
+        console.log(`[RFP v2] Large doc (${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB) — triaging before OCR`);
+        options?.onProgress?.(`Large document (${pages.length} pages) — finding LED sections...`);
+
+        // Find LED pages using pdftotext (instant, free)
         const TABLE_SIGNALS = [
           "pixel pitch", "display schedule", "display matrix", "av schedule",
           "led board schedule", "a/v interior led", "a/v scoreboard",
@@ -1643,34 +1632,44 @@ export async function extractWithGLM5(
           "location", "width", "height", "nits",
         ];
 
-        const keptIndices: number[] = [0]; // Always keep cover/first section
-        for (let i = 1; i < triagePages.length; i++) {
-          const lower = triagePages[i].toLowerCase();
+        const ledPageIndices: number[] = [];
+        for (let i = 0; i < pages.length; i++) {
+          const lower = pages[i].toLowerCase();
           let score = 0;
           for (const sig of TABLE_SIGNALS) {
             if (lower.includes(sig)) score++;
           }
-          // Need 4+ signals — actual schedule tables have location+width+height+nits+pitch
-          if (score >= 4) keptIndices.push(i);
+          if (score >= 4) ledPageIndices.push(i);
         }
 
-        // If strict triage found nothing, fall back to the normal keyword filter
-        if (keptIndices.length <= 1) {
-          const { filtered, stats } = filterLedPages(triagePages);
-          options?.onProgress?.(`Page triage (keyword): ${stats}`);
-          console.log(`[RFP v2] Large doc triage (keyword fallback): ${stats}`);
-          textToSend = filtered.length > 128000 ? filtered.substring(0, 128000) : filtered;
+        if (ledPageIndices.length > 0) {
+          options?.onProgress?.(`Found ${ledPageIndices.length} LED sections out of ${pages.length} pages`);
+          console.log(`[RFP v2] Triage: ${ledPageIndices.length}/${pages.length} LED pages: ${ledPageIndices.map(i => i + 1).join(", ")}`);
+
+          // Use the triaged pdftotext pages directly — already have clean per-page text
+          const triaged = ledPageIndices.map(i => pages[i]).join("\n\n--- PAGE BREAK ---\n\n");
+          fullText = triaged;
+          const keptPages = ledPageIndices.map(i => pages[i]);
+          pages.length = 0;
+          pages.push(...keptPages);
+          console.log(`[RFP v2] Triaged: ${keptPages.length} LED pages, ${(fullText.length / 1024).toFixed(0)}KB`);
+          options?.onProgress?.(`Triaged: ${keptPages.length} LED pages, ${(fullText.length / 1024).toFixed(0)}KB`);
         } else {
-          const filtered = keptIndices.map(i => triagePages[i]).join("\n\n--- PAGE BREAK ---\n\n");
-          const stats = `${keptIndices.length}/${triagePages.length} sections (strict table scoring)`;
-          options?.onProgress?.(`Page triage: ${stats}`);
-          console.log(`[RFP v2] Large doc triage (strict): ${stats}, ${(filtered.length / 1024).toFixed(0)}KB`);
-          textToSend = filtered.length > 128000 ? filtered.substring(0, 128000) : filtered;
+          // Strict triage found nothing — fall back to keyword filter
+          const { filtered, stats } = filterLedPages(pages);
+          options?.onProgress?.(`Keyword triage: ${stats}`);
+          fullText = filtered;
+          pages.length = 0;
+          pages.push(...filtered.split(/\n\n--- PAGE BREAK ---\n\n/).filter(p => p.trim()));
         }
-      } else {
-        // Small docs (≤50 pages) — send everything, no risk of truncation
-        textToSend = fullText.length > 128000 ? fullText.substring(0, 128000) : fullText;
       }
+
+      // By this point, fullText contains either:
+      // - OCR markdown (small docs via Kreuzberg/Marker)
+      // - Triaged LED pages (large docs, already filtered)
+      // - Raw pdftotext (fallback)
+      // Cap at 128KB for GPT context
+      const textToSend = fullText.length > 128000 ? fullText.substring(0, 128000) : fullText;
       options?.onProgress?.(`Sending ${(textToSend.length / 1024).toFixed(0)}KB to GPT-5.4-mini...`);
 
       options?.onProgress?.("GPT-5.4-mini extracting...");
