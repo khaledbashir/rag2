@@ -51,7 +51,7 @@ const MISTRAL_MODEL = process.env.MISTRAL_CHAT_MODEL || "mistral-large-latest";
 const MISTRAL_OCR_MODEL = process.env.MISTRAL_OCR_MODEL || "mistral-ocr-latest";
 // OCR Service — Kreuzberg (free, self-hosted) → Marker → Mistral OCR fallback chain
 // Used when pdftotext finds no LED content (drawing sheets, scanned PDFs)
-const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || "http://abc_ocr:3000";
+const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || "http://abc_ocr:80";
 
 // LED-relevant keywords for page filtering (case-insensitive)
 // Strong signals: indicate actual display DATA on the page
