@@ -969,6 +969,7 @@ export default function RfpAnalyzerClient() {
       pricingSummary: pricingPreview?.summary || null,
       bidFormResult: bidFormResult || null,
       specMismatches: specMismatches.length > 0 ? specMismatches : undefined,
+      showSpecMatch: true,
       availableProducts,
       onProductSelect: handleProductSelect,
       onAddLineItem: handleAddLineItem,

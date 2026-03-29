@@ -446,6 +446,7 @@ export default function AnalysisDetailPage() {
       pricingDisplays: pricingPreview?.displays || [],
       pricingSummary: pricingPreview?.summary || null,
       bidFormResult: null,
+      showSpecMatch: true,
       availableProducts,
       onProductSelect: handleProductSelect,
       onAddScreen: handleAddScreen,
