@@ -1735,7 +1735,7 @@ Rules:
                 const delta = chunk.choices?.[0]?.delta;
                 if (!delta) continue;
 
-                // Reasoning tokens (GPT-5.x / o-series style)
+                // Reasoning tokens (o-series models: o4-mini, o3, o1)
                 const reasoning = delta.reasoning_content || delta.reasoning || delta.thinking;
                 if (reasoning) {
                   reasoningBuffer += reasoning;
@@ -1744,9 +1744,19 @@ Rules:
                   }
                 }
 
-                // Content tokens (the actual JSON output)
+                // Content tokens — track display extraction progress
                 if (delta.content) {
                   content += delta.content;
+                  // Report progress as displays appear in the JSON stream
+                  const nameMatches = content.match(/"name"\s*:\s*"[^"]+"/g);
+                  if (nameMatches) {
+                    const count = nameMatches.length;
+                    const latest = nameMatches[nameMatches.length - 1].match(/"name"\s*:\s*"([^"]+)"/)?.[1] || "";
+                    if (count > 0 && count % 5 === 0 && lastThought !== `${count}`) {
+                      lastThought = `${count}`;
+                      options?.onProgress?.(`Extracting: ${count} displays found (${latest}...)`);
+                    }
+                  }
                 }
               } catch { /* skip malformed SSE */ }
             }
