@@ -281,7 +281,7 @@ export async function runExtractQA(
     return { correctedDisplays: displays, changes: [], verified: false, message: "QA skipped — no displays or no source text" };
   }
 
-  onProgress?.(`Reviewing ${displays.length} displays against source...`);
+  onProgress?.(`Verifying ${displays.length} displays against source...`);
 
   const prompt = buildQAPrompt(displays, sourceText, filename);
 
