@@ -1692,13 +1692,71 @@ Rules:
           messages: [{ role: "user", content: gptPrompt + "\n\n" + textToSend }],
           temperature: 0,
           max_completion_tokens: 32768,
+          stream: true,
         }),
-        signal: AbortSignal.timeout(60_000),
+        signal: AbortSignal.timeout(90_000),
       });
 
       if (gptRes.ok) {
-        const gptData = await gptRes.json();
-        const content = gptData.choices?.[0]?.message?.content || "";
+        // Stream response — capture reasoning tokens and forward as progress
+        let content = "";
+        let reasoningBuffer = "";
+        let lastThought = "";
+        const reader = gptRes.body?.getReader();
+        const decoder = new TextDecoder();
+        let sseBuffer = "";
+
+        const flushReasoning = () => {
+          if (!reasoningBuffer.trim()) return;
+          const sentences = reasoningBuffer.split(/(?<=[.!?:])[\s\n]+|(?:\n)/);
+          for (const sentence of sentences) {
+            const cleaned = sentence.replace(/^\*+|\*+$/g, "").replace(/^[-–—]\s*/, "").trim();
+            if (cleaned && cleaned !== lastThought && cleaned.length > 20) {
+              lastThought = cleaned;
+              options?.onProgress?.(cleaned);
+            }
+          }
+          reasoningBuffer = "";
+        };
+
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            sseBuffer += decoder.decode(value, { stream: true });
+            const lines = sseBuffer.split("\n");
+            sseBuffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
+              try {
+                const chunk = JSON.parse(line.substring(6));
+                const delta = chunk.choices?.[0]?.delta;
+                if (!delta) continue;
+
+                // Reasoning tokens (GPT-5.x / o-series style)
+                const reasoning = delta.reasoning_content || delta.reasoning || delta.thinking;
+                if (reasoning) {
+                  reasoningBuffer += reasoning;
+                  if (/[.!?:]\s*$/.test(reasoningBuffer) || reasoningBuffer.length > 150) {
+                    flushReasoning();
+                  }
+                }
+
+                // Content tokens (the actual JSON output)
+                if (delta.content) {
+                  content += delta.content;
+                }
+              } catch { /* skip malformed SSE */ }
+            }
+          }
+          flushReasoning();
+        } else {
+          // Fallback: non-streaming
+          const gptData = await gptRes.json();
+          content = gptData.choices?.[0]?.message?.content || "";
+        }
         const start = content.indexOf("{");
         const end = content.lastIndexOf("}");
         if (start >= 0 && end > start) {
