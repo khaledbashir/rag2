@@ -194,14 +194,36 @@ async function extractViaOcrService(
       onProgress?.(`OCR: ${provider} (${pdfType} PDF)...`);
       console.log(`[RFP v2] OCR: trying ${provider} for ${pdfType} PDF via ${OCR_SERVICE_URL}`);
 
-      const blob = new Blob([pdfBuffer], { type: "application/pdf" });
-      const formData = new FormData();
-      formData.append("file", blob, filename);
-      formData.append("provider", provider);
+      // Build multipart form data manually — Node's native FormData + Blob
+      // doesn't always set Content-Type boundary correctly in server environments.
+      const boundary = `----formdata-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const crlf = "\r\n";
+      const parts: Buffer[] = [];
+
+      // File part
+      parts.push(Buffer.from(
+        `--${boundary}${crlf}Content-Disposition: form-data; name="file"; filename="${filename}"${crlf}Content-Type: application/pdf${crlf}${crlf}`
+      ));
+      parts.push(pdfBuffer);
+      parts.push(Buffer.from(crlf));
+
+      // Provider part
+      parts.push(Buffer.from(
+        `--${boundary}${crlf}Content-Disposition: form-data; name="provider"${crlf}${crlf}${provider}${crlf}`
+      ));
+
+      // End boundary
+      parts.push(Buffer.from(`--${boundary}--${crlf}`));
+
+      const body = Buffer.concat(parts);
 
       const res = await fetch(`${OCR_SERVICE_URL}/api/extract`, {
         method: "POST",
-        body: formData,
+        headers: {
+          "Content-Type": `multipart/form-data; boundary=${boundary}`,
+          "Content-Length": String(body.length),
+        },
+        body,
         signal: AbortSignal.timeout(120_000),
       });
 
