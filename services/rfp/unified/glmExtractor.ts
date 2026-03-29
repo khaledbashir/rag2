@@ -15,7 +15,7 @@
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "./types";
 import { extractWithMistral } from "./mistralOcrClient";
 import { extractWithGemini, isGeminiAvailable } from "./geminiExtractor";
-import { matchProductsWithAI } from "../aiProductMatcher";
+import { matchProductsWithAI, type ProductMatchEvent } from "../aiProductMatcher";
 import { validateExtraction, detectTableHeaders } from "../extractionValidator";
 import { runExtractQA } from "../extractQAAgent";
 import { execFile } from "child_process";
@@ -1427,6 +1427,7 @@ export async function extractWithGLM5(
     timeout?: number;
     customKeywords?: string;
     onProgress?: (message: string) => void;
+    onProductMatch?: (event: ProductMatchEvent) => void;
   },
 ): Promise<{
   screens: ExtractedLEDSpec[];
@@ -1537,7 +1538,7 @@ export async function extractWithGLM5(
 
       // AI product matching
       try {
-        const aiMatches = await matchProductsWithAI(qaDisplays, options?.onProgress);
+        const aiMatches = await matchProductsWithAI(qaDisplays, options?.onProgress, options?.onProductMatch);
         for (const match of aiMatches) {
           const spec = qaDisplays.find(s => s.name === match.displayName);
           if (spec && match.productId) {
@@ -1918,7 +1919,7 @@ Rules:
 
           // AI product matching
           try {
-            const aiMatches = await matchProductsWithAI(mercuryScreens, options?.onProgress);
+            const aiMatches = await matchProductsWithAI(mercuryScreens, options?.onProgress, options?.onProductMatch);
             for (const match of aiMatches) {
               const spec = mercuryScreens.find(s => s.name === match.displayName);
               if (spec && match.productId) {
@@ -2007,7 +2008,7 @@ Rules:
           let screens = aiToSpecs(ledDisplays);
           // Skip to product matching (Mercury path is fast, minimal processing)
           try {
-            const aiMatches = await matchProductsWithAI(screens, options?.onProgress);
+            const aiMatches = await matchProductsWithAI(screens, options?.onProgress, options?.onProductMatch);
             for (const match of aiMatches) {
               const spec = screens.find(sp => sp.name === match.displayName);
               if (spec && match.productId) {
@@ -2309,7 +2310,7 @@ CRITICAL — DO NOT DEDUPLICATE. Output EVERY row from the source table exactly 
 
             // AI product matching
             try {
-              const aiMatches = await matchProductsWithAI(mimoScreens, options?.onProgress);
+              const aiMatches = await matchProductsWithAI(mimoScreens, options?.onProgress, options?.onProductMatch);
               for (const match of aiMatches) {
                 const spec = mimoScreens.find(s => s.name === match.displayName);
                 if (spec && match.productId) {
@@ -2475,7 +2476,7 @@ CRITICAL — DO NOT DEDUPLICATE. Output EVERY row from the source table exactly 
 
     // AI product matching
     try {
-      const aiMatches = await matchProductsWithAI(finalResult.filtered, options?.onProgress);
+      const aiMatches = await matchProductsWithAI(finalResult.filtered, options?.onProgress, options?.onProductMatch);
       for (const match of aiMatches) {
         const spec = finalResult.filtered.find(s => s.name === match.displayName);
         if (spec && match.productId) {

@@ -351,9 +351,22 @@ Return ONLY a JSON array:
   }
 }
 
+export interface ProductMatchEvent {
+  displayIndex: number;
+  displayName: string;
+  productName: string | null;
+  productModel: string | null;
+  manufacturer: string | null;
+  pitch: string | null;
+  matchReason: string;
+  fitPercent: number | null;
+  total: number;
+}
+
 export async function matchProductsWithAI(
   displays: ExtractedLEDSpec[],
   onProgress?: (msg: string) => void,
+  onProductMatch?: (event: ProductMatchEvent) => void,
 ): Promise<AIProductMatch[]> {
   if (displays.length === 0) return [];
 
@@ -361,14 +374,71 @@ export async function matchProductsWithAI(
 
   // Try Mercury first (fastest — single call, no tool calling)
   const mercuryMatches = await matchViaMercury(displays, onProgress);
-  if (mercuryMatches) return mercuryMatches;
+  if (mercuryMatches) {
+    // Emit individual match events for the UI
+    if (onProductMatch) {
+      for (let i = 0; i < mercuryMatches.length; i++) {
+        const m = mercuryMatches[i];
+        const fitMatch = m.matchReason?.match(/fit=(\d+)%/);
+        onProductMatch({
+          displayIndex: i,
+          displayName: m.displayName,
+          productName: m.productName,
+          productModel: m.productModelNumber,
+          manufacturer: m.productName?.split(" ")[0] || null,
+          pitch: m.productName?.match(/(\d+\.?\d*mm)/)?.[1] || null,
+          matchReason: m.matchReason,
+          fitPercent: fitMatch ? parseInt(fitMatch[1]) : null,
+          total: displays.length,
+        });
+      }
+    }
+    return mercuryMatches;
+  }
 
   // Try MiMo (AI-powered matching with DB function calling)
   const mimoMatches = await matchViaMiMo(displays, onProgress);
-  if (mimoMatches) return mimoMatches;
+  if (mimoMatches) {
+    if (onProductMatch) {
+      for (let i = 0; i < mimoMatches.length; i++) {
+        const m = mimoMatches[i];
+        const fitMatch = m.matchReason?.match(/fit=(\d+)%/);
+        onProductMatch({
+          displayIndex: i,
+          displayName: m.displayName,
+          productName: m.productName,
+          productModel: m.productModelNumber,
+          manufacturer: m.productName?.split(" ")[0] || null,
+          pitch: m.productName?.match(/(\d+\.?\d*mm)/)?.[1] || null,
+          matchReason: m.matchReason,
+          fitPercent: fitMatch ? parseInt(fitMatch[1]) : null,
+          total: displays.length,
+        });
+      }
+    }
+    return mimoMatches;
+  }
 
   // Fallback: deterministic DB matcher (always works, no AI needed)
   console.log("[AIProductMatcher] AI matchers unavailable — using deterministic DB matcher");
   onProgress?.("Matching products from database...");
-  return Promise.all(displays.map(d => matchViaDb(d)));
+  const dbMatches = await Promise.all(displays.map(d => matchViaDb(d)));
+  if (onProductMatch) {
+    for (let i = 0; i < dbMatches.length; i++) {
+      const m = dbMatches[i];
+      const fitMatch = m.matchReason?.match(/fit=(\d+)%/);
+      onProductMatch({
+        displayIndex: i,
+        displayName: m.displayName,
+        productName: m.productName,
+        productModel: m.productModelNumber,
+        manufacturer: m.productName?.split(" ")[0] || null,
+        pitch: m.productName?.match(/(\d+\.?\d*mm)/)?.[1] || null,
+        matchReason: m.matchReason,
+        fitPercent: fitMatch ? parseInt(fitMatch[1]) : null,
+        total: displays.length,
+      });
+    }
+  }
+  return dbMatches;
 }

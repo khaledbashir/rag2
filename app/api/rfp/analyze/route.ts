@@ -204,6 +204,9 @@ export async function POST(request: NextRequest) {
                 progressStep++;
                 send("progress", { stage: "extracting", step: progressStep, message: msg });
               },
+              onProductMatch: (event) => {
+                send("product_match", event);
+              },
             });
 
             if (glmResult.screens.length > 0) {

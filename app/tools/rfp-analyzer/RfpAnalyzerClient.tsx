@@ -16,6 +16,7 @@ import dynamic from "next/dynamic";
 const PdfSplitPanel = dynamic(() => import("./_components/PdfSplitPanel"), { ssr: false });
 const UniverSpreadsheet = dynamic(() => import("./_components/UniverSpreadsheet"), { ssr: false });
 const LuxWidget = dynamic(() => import("./_components/LuxWidget"), { ssr: false });
+const ProductMatchPanel = dynamic(() => import("./_components/ProductMatchPanel"), { ssr: false });
 import type { ExtractedLEDSpec, ExtractedRequirement } from "@/services/rfp/unified/types";
 import { isPlatformOwner } from "@/lib/platformOwner";
 import {
@@ -2197,6 +2198,20 @@ export default function RfpAnalyzerClient() {
                 isLoading={phase === "processing"}
                 events={events}
               />
+              {/* Product matching mini catalog — shows during matching phase */}
+              {(() => {
+                const matchEvents = events.filter((e: any) => e.type === "product_match");
+                const total = matchEvents.length > 0 ? (matchEvents[0] as any).total || 0 : 0;
+                const isMatching = phase === "processing" && events.some((e: any) => e.message?.includes?.("Selecting products"));
+                if (matchEvents.length === 0 && !isMatching) return null;
+                return (
+                  <ProductMatchPanel
+                    matches={matchEvents as any}
+                    isMatching={isMatching}
+                    total={total}
+                  />
+                );
+              })()}
               {/* Recent analyses — shown on upload page so users see past work */}
               {phase === "upload" && recentAnalyses.length > 0 && (
                 <div className="mt-8 max-w-3xl mx-auto">
