@@ -1620,11 +1620,20 @@ export async function extractWithGLM5(
         options?.onProgress?.("OCR unavailable — using raw text extraction...");
       }
 
-      // Triage: for large docs (50+ pages), use strict table-signal scoring.
+      // Triage: for large docs, use strict table-signal scoring.
+      // Trigger on 50+ pages OR 200KB+ text (Kreuzberg sometimes merges pages into one blob).
       // A 500-page project manual has ~3-5 pages with actual LED schedule tables.
       // The rest is legal, structural, MEP boilerplate. Sending it all drowns the signal.
       let textToSend: string;
-      if (totalPages > 50) {
+      const needsTriage = pages.length > 50 || fullText.length > 200_000;
+      if (needsTriage) {
+        // For large single-blob docs (like Kreuzberg output), split by double newlines
+        // to create artificial "sections" for scoring
+        let triagePages = pages;
+        if (pages.length <= 1 && fullText.length > 200_000) {
+          triagePages = fullText.split(/\n{3,}/).filter(p => p.trim().length > 200);
+          console.log(`[RFP v2] Large blob split into ${triagePages.length} sections for triage`);
+        }
         // Strict triage: score each page by table-specific signals (not just "LED" mentions)
         const TABLE_SIGNALS = [
           "pixel pitch", "display schedule", "display matrix", "av schedule",
@@ -1634,9 +1643,9 @@ export async function extractWithGLM5(
           "location", "width", "height", "nits",
         ];
 
-        const keptIndices: number[] = [0]; // Always keep cover page
-        for (let i = 1; i < pages.length; i++) {
-          const lower = pages[i].toLowerCase();
+        const keptIndices: number[] = [0]; // Always keep cover/first section
+        for (let i = 1; i < triagePages.length; i++) {
+          const lower = triagePages[i].toLowerCase();
           let score = 0;
           for (const sig of TABLE_SIGNALS) {
             if (lower.includes(sig)) score++;
@@ -1647,13 +1656,13 @@ export async function extractWithGLM5(
 
         // If strict triage found nothing, fall back to the normal keyword filter
         if (keptIndices.length <= 1) {
-          const { filtered, stats } = filterLedPages(pages);
+          const { filtered, stats } = filterLedPages(triagePages);
           options?.onProgress?.(`Page triage (keyword): ${stats}`);
           console.log(`[RFP v2] Large doc triage (keyword fallback): ${stats}`);
           textToSend = filtered.length > 128000 ? filtered.substring(0, 128000) : filtered;
         } else {
-          const filtered = keptIndices.map(i => pages[i]).join("\n\n--- PAGE BREAK ---\n\n");
-          const stats = `${keptIndices.length}/${pages.length} pages (strict table scoring)`;
+          const filtered = keptIndices.map(i => triagePages[i]).join("\n\n--- PAGE BREAK ---\n\n");
+          const stats = `${keptIndices.length}/${triagePages.length} sections (strict table scoring)`;
           options?.onProgress?.(`Page triage: ${stats}`);
           console.log(`[RFP v2] Large doc triage (strict): ${stats}, ${(filtered.length / 1024).toFixed(0)}KB`);
           textToSend = filtered.length > 128000 ? filtered.substring(0, 128000) : filtered;
