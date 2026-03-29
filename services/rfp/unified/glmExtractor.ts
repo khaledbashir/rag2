@@ -49,6 +49,9 @@ const MISTRAL_API_BASE = process.env.MISTRAL_API_BASE_URL || process.env.MISTRAL
 const MISTRAL_MODEL = process.env.MISTRAL_CHAT_MODEL || "mistral-large-latest";
 // Mistral OCR — text extraction step
 const MISTRAL_OCR_MODEL = process.env.MISTRAL_OCR_MODEL || "mistral-ocr-latest";
+// OCR Service — Kreuzberg (free, self-hosted) → Marker → Mistral OCR fallback chain
+// Used when pdftotext finds no LED content (drawing sheets, scanned PDFs)
+const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || "http://abc_ocr:3000";
 
 // LED-relevant keywords for page filtering (case-insensitive)
 // Strong signals: indicate actual display DATA on the page
@@ -130,6 +133,76 @@ async function extractFullText(pdfPath: string): Promise<{ pages: string[]; full
   const pages = fullText.split("\f").filter(p => p.trim().length > 0);
   console.log(`[RFP v2] pdftotext fallback: ${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB total`);
   return { pages, fullText };
+}
+
+// ---------------------------------------------------------------------------
+// OCR fallback: when pdftotext finds no LED content (drawing sheets, scanned)
+// Calls the self-hosted OCR service: Kreuzberg → Marker → Mistral OCR
+// ---------------------------------------------------------------------------
+
+async function extractViaOcrService(
+  pdfPath: string,
+  onProgress?: (msg: string) => void,
+): Promise<string | null> {
+  const { readFile } = await import("fs/promises");
+
+  // Try Kreuzberg first (free, best for text PDFs with complex layout)
+  // Then Marker (handles image-based tables in drawing sheets)
+  const providers = ["kreuzberg", "marker", "mistral"];
+
+  for (const provider of providers) {
+    try {
+      onProgress?.(`OCR: trying ${provider}...`);
+      console.log(`[RFP v2] OCR fallback: trying ${provider} via ${OCR_SERVICE_URL}`);
+
+      const pdfBuffer = await readFile(pdfPath);
+      const blob = new Blob([pdfBuffer], { type: "application/pdf" });
+      const formData = new FormData();
+      formData.append("file", blob, pdfPath.split("/").pop() || "document.pdf");
+      formData.append("provider", provider);
+
+      const res = await fetch(`${OCR_SERVICE_URL}/api/extract`, {
+        method: "POST",
+        body: formData,
+        signal: AbortSignal.timeout(120_000),
+      });
+
+      if (!res.ok) {
+        console.error(`[RFP v2] OCR ${provider} failed: ${res.status}`);
+        continue;
+      }
+
+      const data = await res.json();
+      const markdown = data.content || data.markdown || data.text || "";
+
+      if (!markdown || markdown.length < 200) {
+        console.log(`[RFP v2] OCR ${provider}: empty or too short (${markdown.length} chars)`);
+        continue;
+      }
+
+      // Check if the OCR output actually contains LED content
+      const lower = markdown.toLowerCase();
+      const hasLedContent = LED_STRONG_KEYWORDS.some(kw => {
+        if (kw instanceof RegExp) return kw.test(lower);
+        return lower.includes(kw);
+      });
+
+      if (!hasLedContent) {
+        console.log(`[RFP v2] OCR ${provider}: no LED content found in output`);
+        continue;
+      }
+
+      console.log(`[RFP v2] OCR ${provider}: success, ${(markdown.length / 1024).toFixed(0)}KB with LED content`);
+      onProgress?.(`OCR: ${provider} extracted ${(markdown.length / 1024).toFixed(0)}KB`);
+      return markdown;
+    } catch (err: any) {
+      console.error(`[RFP v2] OCR ${provider} error:`, err.message);
+      continue;
+    }
+  }
+
+  console.log(`[RFP v2] OCR: all providers failed`);
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1462,6 +1535,36 @@ export async function extractWithGLM5(
       const pages = fullText.split("\f").filter(p => p.trim().length > 0);
       const totalPages = pages.length;
       console.log(`[RFP v2] GPT-5.4-mini: pdftotext ${totalPages} pages, ${(fullText.length / 1024).toFixed(1)}KB`);
+
+      // Check if pdftotext found ANY LED content at all.
+      // If not, this is likely a drawing sheet or scanned PDF → route to OCR service.
+      const hasAnyLedContent = pages.some(p => {
+        const lower = p.toLowerCase();
+        return LED_STRONG_KEYWORDS.some(kw => {
+          if (kw instanceof RegExp) return kw.test(lower);
+          return lower.includes(kw);
+        });
+      });
+
+      if (!hasAnyLedContent && fullText.length < 500) {
+        // pdftotext got nothing useful — this is a drawing/scanned PDF
+        options?.onProgress?.("No text content found — routing to OCR service...");
+        console.log(`[RFP v2] pdftotext has no LED content (${fullText.length} chars). Trying OCR service...`);
+
+        const ocrMarkdown = await extractViaOcrService(pdfPath, options?.onProgress);
+        if (ocrMarkdown) {
+          fullText = ocrMarkdown;
+          // Re-split pages from OCR markdown (may use different separators)
+          const ocrPages = ocrMarkdown.split(/\n---\s*PAGE\s*BREAK\s*---\n|\f/).filter(p => p.trim().length > 0);
+          pages.length = 0;
+          pages.push(...ocrPages);
+          console.log(`[RFP v2] OCR service returned ${pages.length} pages, ${(fullText.length / 1024).toFixed(0)}KB`);
+          options?.onProgress?.(`OCR extracted ${pages.length} pages (${(fullText.length / 1024).toFixed(0)}KB)`);
+        } else {
+          console.log(`[RFP v2] OCR service failed — continuing with pdftotext output`);
+          options?.onProgress?.("OCR service unavailable — using raw text...");
+        }
+      }
 
       // Triage: for large docs (50+ pages), use strict table-signal scoring.
       // A 500-page project manual has ~3-5 pages with actual LED schedule tables.
