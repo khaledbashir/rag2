@@ -233,7 +233,24 @@ async function extractViaOcrService(
       }
 
       const data = await res.json();
-      const markdown = data.content || data.markdown || data.text || "";
+
+      // The OCR app returns: { extraction: { content: '{"0":{"content":"..."},...}' }, data: {...} }
+      // Parse the nested structure to get the full markdown
+      let markdown = "";
+      try {
+        const rawContent = data.extraction?.content || data.content || "";
+        if (rawContent.startsWith("{")) {
+          const pages = JSON.parse(rawContent);
+          // Pages are keyed by index: {"0": {"content": "..."}, "1": {"content": "..."}}
+          const pageKeys = Object.keys(pages).sort((a, b) => Number(a) - Number(b));
+          markdown = pageKeys.map(k => pages[k]?.content || "").join("\n\n--- PAGE BREAK ---\n\n");
+        } else {
+          markdown = rawContent;
+        }
+      } catch {
+        // If parsing fails, try flat content fields
+        markdown = data.extraction?.content || data.content || data.markdown || data.text || "";
+      }
 
       if (!markdown || markdown.length < 200) {
         console.log(`[RFP v2] OCR ${provider}: too short (${markdown.length} chars)`);
