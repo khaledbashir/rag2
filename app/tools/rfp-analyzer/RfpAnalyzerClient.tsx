@@ -2910,6 +2910,7 @@ export default function RfpAnalyzerClient() {
                     hasResult={!!result}
                     hasPricing={!!pricingPreview}
                     specsFound={result?.screens?.length || result?.stats.specsFound || 0}
+                    confidence={(result as any)?.confidence || "verified"}
                     onTabSwitch={setResultsTab}
                   />
                 </div>
@@ -3091,6 +3092,7 @@ function PipelineStepper({
   hasResult,
   hasPricing,
   specsFound,
+  confidence,
   onTabSwitch,
 }: {
   phase: Phase;
@@ -3098,6 +3100,7 @@ function PipelineStepper({
   hasResult: boolean;
   hasPricing: boolean;
   specsFound: number;
+  confidence: "verified" | "partial_review" | "untrusted_input";
   onTabSwitch: (tab: string) => void;
 }) {
   // Determine which stage is active
@@ -3172,7 +3175,11 @@ function PipelineStepper({
                   <div className="text-[11px] font-semibold leading-tight">{stage.label}</div>
                   <div className="text-[9px] opacity-70 leading-tight">
                     {status === "done" && idx === 0 ? "Uploaded"
-                      : status === "done" && idx === 1 ? `Found ${specsFound} displays`
+                      : status === "done" && idx === 1 ? (
+                        confidence === "verified" ? `${specsFound} displays verified`
+                        : confidence === "partial_review" ? `${specsFound} displays — review needed`
+                        : `Input issue — ${specsFound} found`
+                      )
                       : status === "done" && idx === 2 ? "Reviewed"
                       : stage.sub}
                   </div>

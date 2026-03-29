@@ -297,6 +297,7 @@ export async function POST(request: NextRequest) {
                 pipelineLog,
                 stats: { totalPages, extractionSource: "glm5", durationMs: Date.now() - startTime },
                 aiWorkspaceSlug: workspaceSlug,
+                confidence: glmResult.validation?.status || (screens.length > 0 ? "verified" : "untrusted_input"),
               },
             });
 
