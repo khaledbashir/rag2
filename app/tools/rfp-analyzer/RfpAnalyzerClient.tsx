@@ -275,6 +275,9 @@ export default function RfpAnalyzerClient() {
   const abortRef = useRef<AbortController | null>(null);
   const loadedFromDbRef = useRef(false);
 
+  // Feature toggles
+  const [showSpecMatch, setShowSpecMatch] = useState(true);
+
   // Pipeline step states
   const [downloading, setDownloading] = useState<string | null>(null);
   const [quoteImportResult, setQuoteImportResult] = useState<any>(null);
@@ -969,7 +972,7 @@ export default function RfpAnalyzerClient() {
       pricingSummary: pricingPreview?.summary || null,
       bidFormResult: bidFormResult || null,
       specMismatches: specMismatches.length > 0 ? specMismatches : undefined,
-      showSpecMatch: true,
+      showSpecMatch,
       availableProducts,
       onProductSelect: handleProductSelect,
       onAddLineItem: handleAddLineItem,
@@ -2500,6 +2503,18 @@ export default function RfpAnalyzerClient() {
                     <span className="text-xs font-semibold tracking-wide truncate">{workbookData.fileName || "RFP Analysis"}</span>
                   </div>
                   <div className="flex items-center gap-1">
+                    {/* Spec Match toggle */}
+                    <button
+                      onClick={() => setShowSpecMatch(!showSpecMatch)}
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-[9px] font-semibold transition-colors ${
+                        showSpecMatch
+                          ? "bg-white/20 text-white"
+                          : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/80"
+                      }`}
+                      title={showSpecMatch ? "Hide NITs spec match column" : "Show NITs spec match column"}
+                    >
+                      {showSpecMatch ? "✓ NITs" : "NITs"}
+                    </button>
                     {/* Primary action - always visible */}
                     <button
                       onClick={handleCreateProposal}
