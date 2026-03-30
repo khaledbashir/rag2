@@ -43,6 +43,8 @@ interface Product {
     serviceType: string;
     supportsHalfModule: boolean;
     isCurved: boolean;
+    moduleWidthMm: number | null;
+    moduleHeightMm: number | null;
     costPerSqFt: number | null;
     msrpPerSqFt: number | null;
     extendedSpecs: Record<string, any> | null;
@@ -491,6 +493,7 @@ export default function ProductCatalogAdmin() {
                             <th className={thClass} onClick={() => toggleSort("modelNumber")}>Model<SortIcon field="modelNumber" /></th>
                             <th className={thClass} onClick={() => toggleSort("pixelPitch")}>Pitch<SortIcon field="pixelPitch" /></th>
                             <th className={thClass} onClick={() => toggleSort("cabinetWidthMm")}>W×H (mm)<SortIcon field="cabinetWidthMm" /></th>
+                            <th className={thClass} onClick={() => toggleSort("moduleWidthMm")}>Module<SortIcon field="moduleWidthMm" /></th>
                             <th className={thClass} onClick={() => toggleSort("maxNits")}>Nits<SortIcon field="maxNits" /></th>
                             <th className={thClass} onClick={() => toggleSort("maxPowerWattsPerCab")}>Power<SortIcon field="maxPowerWattsPerCab" /></th>
                             <th className={thClass} onClick={() => toggleSort("environment")}>Env<SortIcon field="environment" /></th>
@@ -501,14 +504,14 @@ export default function ProductCatalogAdmin() {
                     <tbody className="divide-y divide-border">
                         {loading ? (
                             <tr>
-                                <td colSpan={11} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                                <td colSpan={12} className="px-3 py-8 text-center text-sm text-muted-foreground">
                                     <RefreshCw className="w-4 h-4 animate-spin inline mr-2" />
                                     Loading products...
                                 </td>
                             </tr>
                         ) : sorted.length === 0 ? (
                             <tr>
-                                <td colSpan={11} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                                <td colSpan={12} className="px-3 py-8 text-center text-sm text-muted-foreground">
                                     No products found. Import a spreadsheet or add one manually.
                                 </td>
                             </tr>
@@ -537,6 +540,12 @@ export default function ProductCatalogAdmin() {
                                             <div className="flex gap-1">
                                                 <input type="number" value={editData.cabinetWidthMm || ""} onChange={(e) => setEditData({ ...editData, cabinetWidthMm: parseFloat(e.target.value) })} className="w-14 px-1 py-0.5 text-xs bg-background border border-border rounded" />
                                                 <input type="number" value={editData.cabinetHeightMm || ""} onChange={(e) => setEditData({ ...editData, cabinetHeightMm: parseFloat(e.target.value) })} className="w-14 px-1 py-0.5 text-xs bg-background border border-border rounded" />
+                                            </div>
+                                        </td>
+                                        <td className={tdClass}>
+                                            <div className="flex gap-1">
+                                                <input type="number" placeholder="W" value={editData.moduleWidthMm ?? ""} onChange={(e) => setEditData({ ...editData, moduleWidthMm: e.target.value ? parseFloat(e.target.value) : null })} className="w-14 px-1 py-0.5 text-xs bg-background border border-border rounded" />
+                                                <input type="number" placeholder="H" value={editData.moduleHeightMm ?? ""} onChange={(e) => setEditData({ ...editData, moduleHeightMm: e.target.value ? parseFloat(e.target.value) : null })} className="w-14 px-1 py-0.5 text-xs bg-background border border-border rounded" />
                                             </div>
                                         </td>
                                         <td className={tdClass}>
@@ -582,6 +591,7 @@ export default function ProductCatalogAdmin() {
                                         <td className={`${tdClass} font-mono text-[11px]`}>{p.modelNumber}</td>
                                         <td className={tdClass}>{p.pixelPitch}mm</td>
                                         <td className={tdClass}>{p.cabinetWidthMm}×{p.cabinetHeightMm}</td>
+                                        <td className={`${tdClass} font-mono text-[10px]`}>{p.moduleWidthMm && p.moduleHeightMm ? `${p.moduleWidthMm}×${p.moduleHeightMm}` : <span className="text-muted-foreground">—</span>}</td>
                                         <td className={tdClass}>{p.maxNits.toLocaleString()}</td>
                                         <td className={tdClass}>{p.maxPowerWattsPerCab}W</td>
                                         <td className={tdClass}>
