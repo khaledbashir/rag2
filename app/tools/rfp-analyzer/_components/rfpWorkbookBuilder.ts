@@ -143,7 +143,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     "Vendor", "Product", "Pitch",
     "H (ft)", "W (ft)", "H (px)", "W (px)",
     "SqFt/Screen", "Qty", "Total SqFt",
-    "NITs",
+    "Product NITs",
     ...(input.showSpecMatch ? ["Spec Match"] : []),
     "Service",
     "Modules", "Weight (lbs)", "W/Cab", "Total Power (W)",
@@ -152,8 +152,13 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     "Margin %", "Selling Price",
   ];
 
+  const rfpColIndices = new Set([1, 2, 3]); // RFP H (ft), RFP W (ft), RFP NITs
   const headerRow: SheetRow = {
-    cells: cols.map((h) => c(h, { bold: true, header: true })),
+    cells: cols.map((h, i) => c(h, {
+      bold: true,
+      header: true,
+      ...(rfpColIndices.has(i) ? { className: "bg-blue-50/40 dark:bg-blue-900/15" } : {}),
+    })),
     isHeader: true,
   };
 
@@ -252,9 +257,9 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
           onRemove: input.onRemoveScreen ? () => input.onRemoveScreen!(spec.name) : undefined,
           onRepair: input.onRepairRow ? () => input.onRepairRow!(spec.name, input.screens.indexOf(spec)) : undefined,
         }),
-        num(bidH > 0 ? Math.round(bidH * 100) / 100 : null),               // RFP H (ft)
-        num(bidW > 0 ? Math.round(bidW * 100) / 100 : null),               // RFP W (ft)
-        num(rfpNits),                                                        // RFP NITs
+        num(bidH > 0 ? Math.round(bidH * 100) / 100 : null, { className: "bg-blue-50/40 dark:bg-blue-900/15" }),  // RFP H (ft)
+        num(bidW > 0 ? Math.round(bidW * 100) / 100 : null, { className: "bg-blue-50/40 dark:bg-blue-900/15" }),  // RFP W (ft)
+        num(rfpNits, { className: "bg-blue-50/40 dark:bg-blue-900/15" }),    // RFP NITs
         c(vendor),
         productCell,
         c(activePitch > 0 ? `${activePitch}mm` : "", { align: "center" }),
@@ -273,7 +278,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
             }
           : num(qty, { align: "center" }),
         num(Math.round(totalSqFt * 100) / 100 || null),
-        num(nits),
+        nits ? num(nits) : c("N/A", { align: "center", className: "text-muted-foreground italic text-[10px]" }),
         // Spec Match — compare product NITs vs RFP NITs (optional column)
         ...(input.showSpecMatch ? [(() => {
           if (!rfpNits || !nits) return c("—", { align: "center" });
