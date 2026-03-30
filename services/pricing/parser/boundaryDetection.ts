@@ -196,23 +196,30 @@ export function findTableBoundaries(rows: RawRow[], headerRowLabel?: string): Ta
 
   const isViableSectionStart = (headerIdx: number): boolean => {
     const headerRow = rows[headerIdx];
-    // If we've seen real section headers with column headers (typical ANC Excel format),
-    // reject header rows that lack column headers — they're likely line items with
-    // missing prices (e.g. "Control System", "Warranty"), not section boundaries.
-    if (anyPriorHeaderHasColumnHeaders && headerRow && !headerRow.hasColumnHeaders) {
-      return false;
-    }
     const scanLimit = Math.min(rows.length - 1, headerIdx + 40);
+
+    // Count data rows with prices following this header
+    let dataRowCount = 0;
     for (let j = headerIdx + 1; j <= scanLimit; j++) {
       const candidate = rows[j];
       if (!candidate || candidate.isEmpty) continue;
-      if (candidate.isHeader && !candidate.isAlternateHeader) return false;
-      if (candidate.isGrandTotal) return false;
+      if (candidate.isHeader && !candidate.isAlternateHeader) break;
+      if (candidate.isGrandTotal) break;
       if (candidate.isTax || candidate.isBond || candidate.isTariff || candidate.isSubtotal || candidate.isAlternateLine || candidate.isAlternateHeader) continue;
       const hasLineValue = Number.isFinite(candidate.sell) || Number.isFinite(candidate.cost);
-      if (candidate.label && hasLineValue) return true;
+      if (candidate.label && hasLineValue) dataRowCount++;
     }
-    return false;
+
+    if (dataRowCount === 0) return false;
+
+    // If prior headers had column headers but this one doesn't, require 2+
+    // data rows to distinguish real section headers (e.g. "ADDITIONAL COST CENTERS")
+    // from orphan line items (e.g. "Control System" with no price).
+    if (anyPriorHeaderHasColumnHeaders && headerRow && !headerRow.hasColumnHeaders) {
+      return dataRowCount >= 2;
+    }
+
+    return true;
   };
 
   let currentTable: Partial<TableBoundary> | null = null;
@@ -281,7 +288,24 @@ export function findTableBoundaries(rows: RawRow[], headerRowLabel?: string): Ta
 
     // Grand total marks end of main section
     if (row.isGrandTotal && currentTable && !inAlternates) {
-      currentTable.endRow = i;
+      // Document-level grand totals ("BASE BID GRAND TOTAL", "PROJECT TOTAL")
+      // should NOT be absorbed into the current section — close the section
+      // at the last data row before this grand total instead.
+      const isDocumentTotal = /base\s*bid|project\s*total|document\s*total/i.test(row.label);
+      if (isDocumentTotal) {
+        // Close section at last non-empty row before this document total
+        if (currentTable.endRow === -1) {
+          let closeRow = (currentTable.startRow || 0);
+          for (let j = i - 1; j >= (currentTable.startRow || 0); j--) {
+            if (!rows[j].isEmpty) { closeRow = j; break; }
+          }
+          currentTable.endRow = closeRow;
+        }
+        boundaries.push(currentTable as TableBoundary);
+        currentTable = null;
+      } else {
+        currentTable.endRow = i;
+      }
     }
 
     // When in alternates mode, close the alt boundary if we hit something
