@@ -1885,6 +1885,8 @@ export default function RfpAnalyzerClient() {
           installCost: d.installCost,
           pmCost: d.pmCost ?? 0,
           totalCost: d.totalCost,
+          hardwareSellingPrice: d.hardwareSellingPrice,
+          servicesSellingPrice: d.servicesSellingPrice,
           totalSellingPrice: d.totalSellingPrice,
           matchedProduct: d.matchedProduct ? {
             manufacturer: d.matchedProduct.manufacturer,

@@ -104,6 +104,9 @@ export interface PricingData {
   installCost?: number;
   pmCost?: number;           // Project management / general conditions
   totalCost: number;
+  // Selling prices (with margin applied) — these are what the client sees
+  hardwareSellingPrice: number;
+  servicesSellingPrice: number;
   totalSellingPrice: number;
   /** Matched ANC product specs — actual dimensions/resolution from catalog */
   matchedProduct?: {
@@ -117,6 +120,33 @@ export interface PricingData {
     resolutionX?: number;
     resolutionY?: number;
   } | null;
+}
+
+/**
+ * Compute selling prices for individual service line items.
+ * Distributes the services margin proportionally across processing, shipping,
+ * install, and PM costs so individual bid form cells include margin.
+ */
+function computeSellingPrices(pricing: PricingData) {
+  const serviceCostTotal =
+    (pricing.processingCost || 0) +
+    (pricing.shippingCost || 0) +
+    (pricing.installCost || 0) +
+    (pricing.pmCost || 0);
+
+  // Markup factor for services (selling / cost). Falls back to 1.0 if no cost.
+  const serviceMarkup = serviceCostTotal > 0
+    ? (pricing.servicesSellingPrice || 0) / serviceCostTotal
+    : 1;
+
+  return {
+    displayPrice: Math.round(pricing.hardwareSellingPrice || pricing.hardwareCost),
+    processingPrice: Math.round((pricing.processingCost || 0) * serviceMarkup),
+    shippingPrice: Math.round((pricing.shippingCost || 0) * serviceMarkup),
+    installPrice: Math.round((pricing.installCost || 0) * serviceMarkup),
+    gcPrice: Math.round((pricing.pmCost || 0) * serviceMarkup),
+    totalPrice: Math.round(pricing.totalSellingPrice),
+  };
 }
 
 export async function fillBidForm(
@@ -726,18 +756,21 @@ function fillHeaderFields(
     }
   }
 
-  // Aggregate pricing for summary rows
+  // Aggregate pricing for summary rows — use SELLING PRICES (with margin)
   if (pricing && pricing.length > 0) {
-    // LED Price → sum of hardware selling prices (what client pays for displays)
-    const totalHardware = pricing.reduce((s, p) => s + (p.hardwareCost || 0), 0);
-    setHeaderCell(header.ledPrice, totalHardware);
+    // Compute selling prices for each display, then aggregate
+    const allSP = pricing.map((p) => computeSellingPrices(p));
 
-    // Installation Price → sum of install costs
-    const totalInstall = pricing.reduce((s, p) => s + (p.installCost || 0), 0);
+    // LED Price → sum of hardware selling prices
+    const totalDisplay = allSP.reduce((s, sp) => s + sp.displayPrice, 0);
+    setHeaderCell(header.ledPrice, totalDisplay);
+
+    // Installation Price → sum of install selling prices
+    const totalInstall = allSP.reduce((s, sp) => s + sp.installPrice, 0);
     setHeaderCell(header.installationPrice, totalInstall);
 
-    // General Conditions → sum of PM/GC costs
-    const totalGC = pricing.reduce((s, p) => s + (p.pmCost || 0), 0);
+    // General Conditions → sum of PM/GC selling prices
+    const totalGC = allSP.reduce((s, sp) => s + sp.gcPrice, 0);
     setHeaderCell(header.generalConditions, totalGC);
   }
 }
@@ -871,22 +904,23 @@ function fillBlockCells(
     setCell(block.cells.viewAngleV, C, viewV, "Viewing Angle V");
   }
 
-  // Pricing fields — only fill if pricing data is available
+  // Pricing fields — use SELLING PRICES (with margin), not internal costs
   if (pricing) {
+    const sp = computeSellingPrices(pricing);
     if (block.cells.totalDisplayPrice) {
-      setCell(block.cells.totalDisplayPrice, C, pricing.hardwareCost, "Total Display Price");
+      setCell(block.cells.totalDisplayPrice, C, sp.displayPrice, "Total Display Price");
     }
-    if (block.cells.processingController && pricing.processingCost) {
-      setCell(block.cells.processingController, C, pricing.processingCost, "Processing/Controller");
+    if (block.cells.processingController && sp.processingPrice) {
+      setCell(block.cells.processingController, C, sp.processingPrice, "Processing/Controller");
     }
-    if (block.cells.shippingHandling && pricing.shippingCost) {
-      setCell(block.cells.shippingHandling, C, pricing.shippingCost, "Shipping & Handling");
+    if (block.cells.shippingHandling && sp.shippingPrice) {
+      setCell(block.cells.shippingHandling, C, sp.shippingPrice, "Shipping & Handling");
     }
     if (block.cells.totalSystemPrice) {
-      setCell(block.cells.totalSystemPrice, C, pricing.totalSellingPrice, "Total System Price");
+      setCell(block.cells.totalSystemPrice, C, sp.totalPrice, "Total System Price");
     }
-    if (block.cells.installationSubtotal && pricing.installCost) {
-      setCell(block.cells.installationSubtotal, C, pricing.installCost, "Installation Sub-Total");
+    if (block.cells.installationSubtotal && sp.installPrice) {
+      setCell(block.cells.installationSubtotal, C, sp.installPrice, "Installation Sub-Total");
     }
   }
 
