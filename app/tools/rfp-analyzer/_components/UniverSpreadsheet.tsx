@@ -2439,13 +2439,13 @@ function handleValueChanged(params: any, propsRef: React.MutableRefObject<Univer
       const specFieldMap: Record<number, string> = {
         0: "displayName",
         6: "pixelPitch",
-        7: "heightFt",
-        8: "widthFt",
+        7: "activeHeightFt",  // H(ft) column edits product-snapped height, not RFP extraction
+        8: "activeWidthFt",   // W(ft) column edits product-snapped width, not RFP extraction
         12: "quantity",
         15: "serviceType",
       };
       const pricingFieldMap: Record<number, string> = { 17: "hardwareCost", 18: "processorCost", 19: "shippingCost" };
-      const numericSpecFields = new Set(["heightFt", "widthFt", "quantity", "pixelPitch"]);
+      const numericSpecFields = new Set(["activeHeightFt", "activeWidthFt", "quantity", "pixelPitch"]);
 
       if (specFieldMap[column]) {
         const field = specFieldMap[column];

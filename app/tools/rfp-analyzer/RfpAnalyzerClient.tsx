@@ -2508,6 +2508,23 @@ export default function RfpAnalyzerClient() {
                       {downloading === "creating" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
                       Create Proposal
                     </button>
+                    {filledBidFormBlob && (
+                      <button
+                        onClick={() => {
+                          const url = URL.createObjectURL(filledBidFormBlob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = filledBidFormName;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        className="flex items-center gap-1 px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-semibold transition-colors"
+                        title={`Download filled bid form: ${filledBidFormName}`}
+                      >
+                        <Download className="w-3 h-3" />
+                        Bid Form
+                      </button>
+                    )}
                     {pdfBlobUrl && (
                       <button
                         onClick={() => setShowPdfPanel(!showPdfPanel)}

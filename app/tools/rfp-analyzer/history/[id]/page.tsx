@@ -146,7 +146,8 @@ export default function AnalysisDetailPage() {
   const handleCellEdit = useCallback((sheetIdx: number, rowIdx: number, colIdx: number, value: string) => {
     if (sheetIdx !== 0) return;
     // Column indices: 0=Display, 7=H(ft), 8=W(ft), 12=Qty
-    const fieldMap: Record<number, string> = { 0: "name", 7: "heightFt", 8: "widthFt", 12: "quantity" };
+    // H(ft)/W(ft) edit the product-snapped dimensions, not the RFP extraction
+    const fieldMap: Record<number, string> = { 0: "name", 7: "activeHeightFt", 8: "activeWidthFt", 12: "quantity" };
     const field = fieldMap[colIdx];
     if (!field) return;
     setAnalysis(prev => {
