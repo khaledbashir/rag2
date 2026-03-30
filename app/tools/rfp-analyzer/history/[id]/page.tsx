@@ -120,6 +120,8 @@ export default function AnalysisDetailPage() {
   const [loadingPricing, setLoadingPricing] = useState(false);
   const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string; widthMm?: number; heightMm?: number; moduleWidthMm?: number; moduleHeightMm?: number; manufacturer?: string; nits?: number; weightKg?: number; maxPowerWatts?: number; environment?: string }>>([]);
   const [pdfAvailable, setPdfAvailable] = useState<boolean | null>(null);
+  const [filledBidFormBlob, setFilledBidFormBlob] = useState<Blob | null>(null);
+  const [filledBidFormName, setFilledBidFormName] = useState<string>("");
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -511,6 +513,31 @@ export default function AnalysisDetailPage() {
     }
   };
 
+  const handleBidFormUpload = useCallback(async (file: File) => {
+    if (!analysis?.id) return;
+    setDownloading("bidform");
+    setFilledBidFormBlob(null);
+    try {
+      const formData = new FormData();
+      formData.append("bidForm", file);
+      formData.append("analysisId", analysis.id);
+      formData.append("specs", JSON.stringify(analysis.screens || []));
+      const res = await fetch("/api/rfp/pipeline/fill-bid-form", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error(`Bid form fill failed (${res.status})`);
+      const blob = await res.blob();
+      setFilledBidFormBlob(blob);
+      const name = res.headers.get("Content-Disposition")?.split("filename=")[1]?.replace(/"/g, "") || "BidForm_Filled.xlsx";
+      setFilledBidFormName(name);
+    } catch (err: any) {
+      console.error("Bid form fill failed:", err);
+    } finally {
+      setDownloading(null);
+    }
+  }, [analysis]);
+
   const handleRateCard = async () => {
     if (!analysis) return;
     setDownloading("ratecard");
@@ -823,7 +850,44 @@ export default function AnalysisDetailPage() {
                 </button>
               </div>
             )}
-            <div className="h-[calc(100vh-120px)]">
+            {/* Bid Form button bar */}
+            <div className="flex items-center gap-2 mb-2">
+              {filledBidFormBlob ? (
+                <button
+                  onClick={() => {
+                    const url = URL.createObjectURL(filledBidFormBlob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = filledBidFormName;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-md text-xs font-semibold hover:bg-emerald-700 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download Filled Bid Form
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    const input = document.createElement("input");
+                    input.type = "file";
+                    input.accept = ".xlsx,.xls";
+                    input.onchange = (e) => {
+                      const file = (e.target as HTMLInputElement).files?.[0];
+                      if (file) handleBidFormUpload(file);
+                    };
+                    input.click();
+                  }}
+                  disabled={downloading === "bidform"}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  {downloading === "bidform" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  Upload Bid Form
+                </button>
+              )}
+            </div>
+            <div className="h-[calc(100vh-160px)]">
             <WorkbookShell
               data={workbookData}
               editable
