@@ -358,19 +358,18 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     const weight = audit?.estimatedWeightLbs ?? mp?.totalWeightLbs ?? 0;
     const power = audit?.totalMaxPowerW ?? mp?.totalMaxPowerW ?? 0;
     
-    // Back-calculate margin from known selling price so formula =Cost/(1-Margin) is accurate
-    const sellingPrice = docPricing?.sellingPrice ?? pd?.totalSellingPrice ?? 0;
-    const totalCostKnown = (pd?.hardwareCost ?? 0) + (pd?.processorCost ?? 0) + (pd?.shippingCost ?? 0);
-    const marginPct = (sellingPrice > 0 && totalCostKnown > 0)
-      ? 1 - totalCostKnown / sellingPrice
-      : (pd?.blendedMarginPct ?? 0.15);
+    // Use blended margin from pricing engine (matches Excel's two-tier calculation)
+    // Previously back-calculated from LED costs only, which inflated the margin %.
+    const marginPct = pd?.blendedMarginPct ?? 0.15;
     
     const sqFtPerScreen = h > 0 && w > 0 ? Math.round(h * w * 100) / 100 : 0;
     const totalSqFt = sqFtPerScreen > 0 ? Math.round(sqFtPerScreen * qty * 100) / 100 : 0;
     const displayCost = ratePerSqFt > 0 && totalSqFt > 0 ? Math.round(ratePerSqFt * totalSqFt * 100) / 100 : 0;
     const processorCost = pd?.processorCost ?? 0;
     const shippingCost = pd?.shippingCost ?? 0;
-    const totalLedCost = Math.round((displayCost + processorCost + shippingCost) * 100) / 100;
+    const ledCostOnly = Math.round((displayCost + processorCost + shippingCost) * 100) / 100;
+    // Total Cost column must include ALL costs (install, PM, eng) so Selling = Cost/(1-Margin) is correct
+    const totalLedCost = pd?.totalCost ?? ledCostOnly;
     const resolvedNits = Number(
       mp?.nits
       ?? (mp as any)?.brightnessNits
@@ -573,6 +572,8 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       const taxIdx = maRow;
       maCellData[taxIdx] = {
         0: { v: table.tax?.label || "TAX" },
+        // Tax is pass-through: cost = selling (0% margin). Without cost, grand total margin inflates.
+        1: hasCostData ? { f: `=C${taxIdx + 1}`, s: "currency" } : undefined,
         2: { f: `=C${sr}*F${taxIdx + 1}`, s: "currency" },
         5: { v: taxRate }, // Tax rate (editable in hidden col F)
       };
@@ -589,17 +590,19 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       const bondIdx = maRow;
       maCellData[bondIdx] = {
         0: { v: "BOND" },
+        // Bond is pass-through: cost = selling (0% margin)
+        1: hasCostData ? { f: `=C${bondIdx + 1}`, s: "currency" } : undefined,
         2: { f: `=C${sr}*F${bondIdx + 1}`, s: "currency" },
         5: { v: bondRate }, // Bond rate (editable in hidden col F)
       };
       maRow++;
 
-      // Grand Total row = SUBTOTAL + TAX + BOND
+      // Grand Total row = SUBTOTAL + TAX + BOND (both cost and selling)
       const grandTotalIdx = maRow;
       const gr = grandTotalIdx + 1; // 1-based row
       maCellData[grandTotalIdx] = {
         0: { v: "SUB TOTAL (BID FORM)", s: "bold" },
-        1: hasCostData ? { f: `=B${sr}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
+        1: hasCostData ? { f: `=B${sr}+B${taxIdx + 1}+B${bondIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
         2: { f: `=C${sr}+C${taxIdx + 1}+C${bondIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
         3: hasCostData ? { f: `=C${gr}-B${gr}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } } : undefined,
         4: hasCostData ? { f: guardedDivisionFormula(`D${gr}`, `C${gr}`, 4), s: { ...BOLD_STYLE, ...PERCENT_FMT } } : undefined,
@@ -729,11 +732,12 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     };
     maRow++;
 
-    // Tax, Bond — static 0 values (editable by user), rate stored in hidden col F
+    // Tax, Bond — pass-through: cost = selling (0% margin)
     const fbTotalsIdx = maRow - 1; // 0-indexed totals row (SUM row)
     const fbTaxIdx = maRow;
     maCellData[maRow] = {
       0: { v: "TAX" },
+      1: { f: `=C${fbTaxIdx + 1}`, s: "currency" }, // Cost = selling (pass-through)
       2: { f: `=C${fbTotalsIdx + 1}*F${fbTaxIdx + 1}`, s: "currency" },
       5: { v: 0 }, // Tax rate (editable)
     };
@@ -741,6 +745,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     const fbBondIdx = maRow;
     maCellData[maRow] = {
       0: { v: "BOND" },
+      1: { f: `=C${fbBondIdx + 1}`, s: "currency" }, // Cost = selling (pass-through)
       2: { f: `=C${fbTotalsIdx + 1}*F${fbBondIdx + 1}`, s: "currency" },
       5: { v: 0 }, // Bond rate (editable)
     };
@@ -749,7 +754,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     marginDocTotalRow = maRow;
     maCellData[maRow] = {
       0: { v: "SUB TOTAL (BID FORM)", s: "bold" },
-      1: { f: `=B${fbTotalsIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
+      1: { f: `=B${fbTotalsIdx + 1}+B${fbTaxIdx + 1}+B${fbBondIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
       2: { f: `=C${fbTotalsIdx + 1}+C${fbTaxIdx + 1}+C${fbBondIdx + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
       3: { f: `=C${maRow + 1}-B${maRow + 1}`, s: { ...BOLD_STYLE, ...CURRENCY_FMT } },
       4: { f: guardedDivisionFormula(`D${maRow + 1}`, `C${maRow + 1}`, 4), s: { ...BOLD_STYLE, ...PERCENT_FMT } },
