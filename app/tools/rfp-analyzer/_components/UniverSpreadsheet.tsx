@@ -677,8 +677,20 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     };
     maRow++;
 
+    // Build alternate lookup from screens
+    const altNameSet = new Set(
+      screens.filter(s => s.isAlternate).map(s => s.name.toLowerCase())
+    );
+    const isAlt = (name: string) =>
+      altNameSet.has(name.toLowerCase()) || /\balternate\b|\balt\s*\d/i.test(name);
+
+    // Separate base and alternate displays
+    const baseDisplays = pricingDisplays.filter(d => !isAlt(d.name));
+    const altDisplays = pricingDisplays.filter(d => isAlt(d.name));
+
+    // Base displays
     const displayStartRow = maRow;
-    for (const d of pricingDisplays) {
+    for (const d of baseDisplays) {
       const cost = d.hardwareCost + (d.installCost ?? 0) + (d.pmCost ?? 0) + (d.engCost ?? 0);
       const r = maRow + 1; // 1-based row for formulas
 
@@ -722,15 +734,45 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       maRow++;
     }
 
-    const lastDataRow = maRow - 1;
+    // Base bid total — excludes alternates
+    const lastBaseRow = maRow - 1;
     maCellData[maRow] = {
-      0: { v: "", s: "total" },
-      1: { f: `=SUM(B${displayStartRow + 1}:B${lastDataRow + 1})`, s: "totalCurrency" },
-      2: { f: `=SUM(C${displayStartRow + 1}:C${lastDataRow + 1})`, s: "totalCurrency" },
-      3: { f: `=SUM(D${displayStartRow + 1}:D${lastDataRow + 1})`, s: "totalCurrency" },
+      0: { v: "BASE BID TOTAL", s: "total" },
+      1: { f: `=SUM(B${displayStartRow + 1}:B${lastBaseRow + 1})`, s: "totalCurrency" },
+      2: { f: `=SUM(C${displayStartRow + 1}:C${lastBaseRow + 1})`, s: "totalCurrency" },
+      3: { f: `=SUM(D${displayStartRow + 1}:D${lastBaseRow + 1})`, s: "totalCurrency" },
       4: { f: guardedDivisionFormula(`D${maRow + 1}`, `C${maRow + 1}`, 4), s: "totalPercent" },
     };
     maRow++;
+
+    // Alternate displays — listed below base total, not included in base bid
+    if (altDisplays.length > 0) {
+      maRow++; // blank separator
+      maCellData[maRow] = {
+        0: { v: "ALTERNATES", s: "header" },
+        1: { v: "Cost", s: "header" },
+        2: { v: "Selling Price", s: "header" },
+        3: { v: "Margin $", s: "header" },
+        4: { v: "Margin %", s: "header" },
+      };
+      maRow++;
+      for (const d of altDisplays) {
+        const cost = d.hardwareCost + (d.installCost ?? 0) + (d.pmCost ?? 0) + (d.engCost ?? 0);
+        const r = maRow + 1;
+        const installGtRow = installZoneGtRows[d.name];
+        const costCell: any = installGtRow
+          ? { f: `='Install (Base)'!G${installGtRow}`, s: "currency" }
+          : { v: cost, s: "currency" };
+        maCellData[maRow] = {
+          0: { v: d.name },
+          1: costCell,
+          2: { f: guardedSellingFormula(`B${r}`, `E${r}`), s: "currency" },
+          3: { f: `=C${r}-B${r}`, s: "currency" },
+          4: { f: guardedDivisionFormula(`D${r}`, `C${r}`, 4), s: "percent" },
+        };
+        maRow++;
+      }
+    }
 
     // Tax, Bond — pass-through: cost = selling (0% margin)
     const fbTotalsIdx = maRow - 1; // 0-indexed totals row (SUM row)
