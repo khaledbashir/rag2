@@ -437,7 +437,7 @@ function computeDisplays(
     //   5. rate card pitch lookup
     //   6. catalog constant pitch lookup
     let ledHardwareCost = priced?.hardwareCost ?? 0;
-    const selectedProduct = spec.selectedProductId ? getProduct(spec.selectedProductId) : null;
+    const selectedProduct = spec.selectedProductId ? resolveProduct(spec.selectedProductId) : null;
     if (!ledHardwareCost && isTV) {
       const tvCost = TV_UNIT_COST[tvSize!];
       if (tvCost) {
@@ -650,6 +650,44 @@ export async function generateScopingWorkbook(
   FMT_USD = excelCurrencyFmt(currency);
 
   await preloadRateCard();
+
+  // Pre-load DB products for user-selected product IDs (cuid keys)
+  // getProduct() only searches the hardcoded catalog — DB products need a separate lookup
+  const selectedProductIds = allSpecs
+    .map((s) => s.selectedProductId)
+    .filter((id): id is string => !!id && !getProduct(id)); // only IDs not in hardcoded catalog
+  let dbProductMap = new Map<string, { manufacturer: string; name: string; pitch: number; nits: number; weightDensityLbm2: number; powerDensityWm2: number }>();
+  if (selectedProductIds.length > 0) {
+    try {
+      const { prisma } = await import("@/lib/prisma");
+      const dbProducts = await prisma.manufacturerProduct.findMany({
+        where: { id: { in: selectedProductIds } },
+      });
+      for (const p of dbProducts) {
+        dbProductMap.set(p.id, {
+          manufacturer: p.manufacturer,
+          name: p.displayName,
+          pitch: p.pixelPitch,
+          nits: p.maxNits,
+          weightDensityLbm2: (p.weightKgPerCabinet * 2.205) / ((p.cabinetWidthMm * p.cabinetHeightMm) / 1e6),
+          powerDensityWm2: p.maxPowerWattsPerCab / ((p.cabinetWidthMm * p.cabinetHeightMm) / 1e6),
+        });
+      }
+      console.log(`[ScopingWorkbook] Loaded ${dbProductMap.size} user-selected DB products`);
+    } catch (err) {
+      console.warn("[ScopingWorkbook] DB product lookup failed:", err);
+    }
+  }
+
+  // Helper: resolve product by ID from hardcoded catalog OR DB
+  const resolveProduct = (id: string | undefined | null) => {
+    if (!id) return null;
+    const catalogProduct = getProduct(id);
+    if (catalogProduct) return catalogProduct;
+    const dbP = dbProductMap.get(id);
+    if (dbP) return dbP;
+    return null;
+  };
 
   const wb = new ExcelJS.Workbook();
   wb.creator = "ANC Proposal Engine";
@@ -1758,7 +1796,7 @@ function buildLedCostSheet(
     dr.getCell(3).value = rfpW > 0 ? rfpW : ""; dr.getCell(3).numFmt = "0.00";
     dr.getCell(4).value = rfpNits > 0 ? rfpNits : "";
     // E: Vendor — manufacturer name only
-    const selectedProduct = d.spec.selectedProductId ? getProduct(d.spec.selectedProductId) : null;
+    const selectedProduct = d.spec.selectedProductId ? resolveProduct(d.spec.selectedProductId) : null;
     dr.getCell(5).value = selectedProduct?.manufacturer
       || d.match?.module?.manufacturer
       || (d.spec.environment === "outdoor" ? "Yaham" : "LG/Yaham");
@@ -3383,7 +3421,7 @@ function buildTechSpecsSheet(
 
     // Weight & Power & BTU — cross-sheet refs to LED Cost Sheet (cols U, V, W)
     const areaM2 = d.areaSqFt * 0.092903;
-    const selectedProduct = d.spec.selectedProductId ? getProduct(d.spec.selectedProductId) : null;
+    const selectedProduct = d.spec.selectedProductId ? resolveProduct(d.spec.selectedProductId) : null;
     const pitch = d.spec.pixelPitchMm ?? 0;
     const catalogMatch = selectedProduct
       ?? (pitch > 0 ? getAllProducts().find((p) => Math.abs(p.pitchMm - pitch) < 0.5) : null);
