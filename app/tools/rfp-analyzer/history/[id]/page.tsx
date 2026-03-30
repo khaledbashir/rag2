@@ -538,6 +538,27 @@ export default function AnalysisDetailPage() {
     }
   }, [analysis]);
 
+  // Auto-fill bid form if one was saved during initial upload
+  const bidFormAutoFilled = useRef(false);
+  useEffect(() => {
+    if (!analysis?.id || !pricingPreview || bidFormAutoFilled.current || filledBidFormBlob) return;
+    bidFormAutoFilled.current = true;
+    (async () => {
+      try {
+        const check = await fetch(`/api/rfp/bid-form?analysisId=${analysis.id}`);
+        const { exists } = await check.json();
+        if (!exists) return;
+        // Fetch the saved bid form file and fill it
+        setDownloading("bidform");
+        const fileRes = await fetch(`/api/rfp/bid-form/file?analysisId=${analysis.id}`);
+        if (!fileRes.ok) return;
+        const fileBlob = await fileRes.blob();
+        const file = new File([fileBlob], "bid-form.xlsx", { type: fileBlob.type });
+        await handleBidFormUpload(file);
+      } catch { /* ignore */ }
+    })();
+  }, [analysis?.id, pricingPreview, filledBidFormBlob, handleBidFormUpload]);
+
   const handleRateCard = async () => {
     if (!analysis) return;
     setDownloading("ratecard");

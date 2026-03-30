@@ -1211,6 +1211,13 @@ export default function RfpAnalyzerClient() {
             if (event.type === "complete" && event.result) {
               setResult(event.result);
               setPhase("results");
+              // Save bid form to server before redirecting (so history page can use it)
+              if (event.result.id && bidFormFile) {
+                const fd = new FormData();
+                fd.append("analysisId", event.result.id);
+                fd.append("bidForm", bidFormFile);
+                fetch("/api/rfp/bid-form", { method: "POST", body: fd }).catch(() => {});
+              }
               // Persist analysis ID in URL for reload survival
               if (event.result.id) {
                 router.push(`/tools/rfp-analyzer/history/${event.result.id}`);
@@ -1284,6 +1291,13 @@ export default function RfpAnalyzerClient() {
 
       setResult(analysisResult);
       setPhase("results");
+      // Save bid form to server before redirecting
+      if (analysisResult.id && bidFormFile) {
+        const fd = new FormData();
+        fd.append("analysisId", analysisResult.id);
+        fd.append("bidForm", bidFormFile);
+        fetch("/api/rfp/bid-form", { method: "POST", body: fd }).catch(() => {});
+      }
       // Persist analysis ID in URL for reload survival
       if (analysisResult.id) {
         router.push(`/tools/rfp-analyzer/history/${analysisResult.id}`);
@@ -1424,6 +1438,13 @@ export default function RfpAnalyzerClient() {
             if (event.type === "complete" && event.result) {
               setResult(event.result);
               setPhase("results");
+              // Save bid form to server before redirecting (so history page can use it)
+              if (event.result.id && bidFormFile) {
+                const fd = new FormData();
+                fd.append("analysisId", event.result.id);
+                fd.append("bidForm", bidFormFile);
+                fetch("/api/rfp/bid-form", { method: "POST", body: fd }).catch(() => {});
+              }
               // Persist analysis ID in URL for reload survival
               if (event.result.id) {
                 router.push(`/tools/rfp-analyzer/history/${event.result.id}`);
