@@ -145,7 +145,8 @@ export default function AnalysisDetailPage() {
   // Cell edit handler for LED Cost Sheet
   const handleCellEdit = useCallback((sheetIdx: number, rowIdx: number, colIdx: number, value: string) => {
     if (sheetIdx !== 0) return;
-    const fieldMap: Record<number, string> = { 0: "name", 4: "heightFt", 5: "widthFt", 9: "quantity" };
+    // Column indices: 0=Display, 7=H(ft), 8=W(ft), 12=Qty
+    const fieldMap: Record<number, string> = { 0: "name", 7: "heightFt", 8: "widthFt", 12: "quantity" };
     const field = fieldMap[colIdx];
     if (!field) return;
     setAnalysis(prev => {
@@ -438,6 +439,17 @@ export default function AnalysisDetailPage() {
     });
   }, [autoSaveSpecs]);
 
+  const handleQtyChange = useCallback((displayName: string, qty: number) => {
+    setAnalysis((prev) => {
+      if (!prev) return prev;
+      const screens = (prev.screens as any[]).map((s: any) =>
+        s.name === displayName ? { ...s, quantity: qty } : s
+      );
+      autoSaveSpecs(screens, prev.id);
+      return { ...prev, screens };
+    });
+  }, [autoSaveSpecs]);
+
   const workbookData = useMemo(() => {
     if (!analysis) return { fileName: "RFP Analysis", sheets: [] };
     return buildRfpWorkbook({
@@ -451,10 +463,11 @@ export default function AnalysisDetailPage() {
       showSpecMatch: true,
       availableProducts,
       onProductSelect: handleProductSelect,
+      onQtyChange: handleQtyChange,
       onAddScreen: handleAddScreen,
       onRemoveScreen: handleRemoveScreen,
     });
-  }, [analysis, pricingPreview, availableProducts, handleProductSelect, handleAddScreen, handleRemoveScreen]);
+  }, [analysis, pricingPreview, availableProducts, handleProductSelect, handleQtyChange, handleAddScreen, handleRemoveScreen]);
 
   // Download helper
   const downloadBlob = async (url: string, body: object, fallbackName: string) => {

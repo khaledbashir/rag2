@@ -414,8 +414,11 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     color: "#0A52EF",
     columns: cols,
     rows: [headerRow, ...dataRows, { cells: [], isSeparator: true }, totalRow, ...(addScreenRow ? [addScreenRow] : [])],
-    // Editable: Name=0, H(ft)=4, W(ft)=5, Qty=9, Display Cost=21, Processor=22, Shipping=23, Margin%=25
-    editableColumns: [0, 4, 5, 9, 21, 22, 23, 25],
+    // Editable: Name=0, H(ft)=7, W(ft)=8, Qty=12, then cost columns shift +1 when Spec Match shown
+    editableColumns: (() => {
+      const sm = input.showSpecMatch ? 1 : 0; // Spec Match adds 1 column after index 14
+      return [0, 7, 8, 12, 24 + sm, 25 + sm, 26 + sm, 28 + sm];
+    })(),
   };
 }
 
