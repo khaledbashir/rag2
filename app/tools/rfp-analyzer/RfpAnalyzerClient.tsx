@@ -684,8 +684,8 @@ export default function RfpAnalyzerClient() {
         const cabHeightMm = product.heightMm!;
         const requestedWidthMm = (currentSpec?.widthFt || 0) * 304.8;
         const requestedHeightMm = (currentSpec?.heightFt || 0) * 304.8;
-        const cols = requestedWidthMm > 0 ? Math.max(1, Math.floor(requestedWidthMm / cabWidthMm)) : 1;
-        const rows = requestedHeightMm > 0 ? Math.max(1, Math.floor(requestedHeightMm / cabHeightMm)) : 1;
+        const cols = requestedWidthMm > 0 ? Math.max(1, Math.ceil(requestedWidthMm / cabWidthMm)) : 1;
+        const rows = requestedHeightMm > 0 ? Math.max(1, Math.ceil(requestedHeightMm / cabHeightMm)) : 1;
         activeWidthMm = cols * cabWidthMm;
         activeHeightMm = rows * cabHeightMm;
         activeWidthFt = activeWidthMm / 304.8;

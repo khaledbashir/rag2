@@ -39,33 +39,32 @@ export function matchModules(
     let countW: number;
     let countH: number;
 
-    // REQ-121: "Slightly Smaller" Rule (Eric Gruner mandate)
-    // FLOOR the module count to ensure we never exceed the requested dimensions
-    // This prevents over-promising on physical space
-    
+    // CEIL the module count to meet or exceed the requested dimensions.
+    // RFP dimensions are minimum requirements — the display must be at least as large.
+
     if (module.supportsHalfModule) {
-        // Half-module support: floor to nearest 0.5
-        // Example: 4.7 modules → 4.5 modules (slightly smaller)
-        countW = Math.floor(targetWidthIn.div(module.widthInches).mul(2).toNumber()) / 2;
-        countH = Math.floor(targetHeightIn.div(module.heightInches).mul(2).toNumber()) / 2;
+        // Half-module support: ceil to nearest 0.5
+        // Example: 4.2 modules → 4.5 modules (meets or exceeds)
+        countW = Math.ceil(targetWidthIn.div(module.widthInches).mul(2).toNumber()) / 2;
+        countH = Math.ceil(targetHeightIn.div(module.heightInches).mul(2).toNumber()) / 2;
     } else {
-        // Whole modules only: floor to nearest whole number
-        // Example: 4.7 modules → 4 modules (slightly smaller)
-        countW = Math.floor(targetWidthIn.div(module.widthInches).toNumber());
-        countH = Math.floor(targetHeightIn.div(module.heightInches).toNumber());
+        // Whole modules only: ceil to nearest whole number
+        // Example: 4.2 modules → 5 modules (meets or exceeds)
+        countW = Math.ceil(targetWidthIn.div(module.widthInches).toNumber());
+        countH = Math.ceil(targetHeightIn.div(module.heightInches).toNumber());
     }
 
     // Ensure at least 1 module in each dimension
     countW = Math.max(countW, module.supportsHalfModule ? 0.5 : 1);
     countH = Math.max(countH, module.supportsHalfModule ? 0.5 : 1);
 
-    // Calculate actual dimensions in feet (will be <= target)
+    // Calculate actual dimensions in feet (will be >= target)
     const actualWidthFt = new Decimal(countW).mul(module.widthInches).div(12).toNumber();
     const actualHeightFt = new Decimal(countH).mul(module.heightInches).div(12).toNumber();
 
     const areaSqFt = new Decimal(actualWidthFt).mul(actualHeightFt).toNumber();
 
-    // Diff should be negative or zero (actual <= target)
+    // Diff should be positive or zero (actual >= target)
     const diffWidthFt = actualWidthFt - targetWidthFt;
     const diffHeightFt = actualHeightFt - targetHeightFt;
 
@@ -76,25 +75,25 @@ export function matchModules(
         actualWidthFt: roundToDecimals(actualWidthFt, 2),
         actualHeightFt: roundToDecimals(actualHeightFt, 2),
         areaSqFt: roundToDecimals(areaSqFt, 2),
-        diffWidthFt: roundToDecimals(diffWidthFt, 2),  // Should be <= 0
-        diffHeightFt: roundToDecimals(diffHeightFt, 2), // Should be <= 0
+        diffWidthFt: roundToDecimals(diffWidthFt, 2),  // Should be >= 0
+        diffHeightFt: roundToDecimals(diffHeightFt, 2), // Should be >= 0
     };
 }
 
 /**
- * REQ-121: Find the best module from catalog that fits "slightly smaller"
- * 
+ * Find the best module from catalog that meets or exceeds the target dimensions.
+ *
  * Given a target size and pitch, find the module that:
  * 1. Matches the pitch requirement
- * 2. Results in actual dimensions <= target dimensions
- * 3. Maximizes the actual area (closest to target without exceeding)
+ * 2. Results in actual dimensions >= target dimensions
+ * 3. Minimizes overshoot (closest to target while still meeting it)
  */
 export function findBestFitModule(
     targetWidthFt: number,
     targetHeightFt: number,
     targetPitch: number
 ): { moduleKey: string; result: MatchingResult } | null {
-    const candidates: { key: string; result: MatchingResult; efficiency: number }[] = [];
+    const candidates: { key: string; result: MatchingResult; overshoot: number }[] = [];
 
     for (const [key, module] of Object.entries(LED_MODULES)) {
         // Filter by pitch (allow ±1mm tolerance)
@@ -102,22 +101,17 @@ export function findBestFitModule(
 
         const result = matchModules(targetWidthFt, targetHeightFt, key);
 
-        // REQ-121: Only accept if actual <= target (slightly smaller)
-        if (result.actualWidthFt > targetWidthFt || result.actualHeightFt > targetHeightFt) {
-            continue;
-        }
-
-        // Calculate efficiency (how close to target without exceeding)
+        // Calculate overshoot — lower is better (closest to target while meeting it)
         const targetArea = targetWidthFt * targetHeightFt;
-        const efficiency = result.areaSqFt / targetArea;
+        const overshoot = targetArea > 0 ? (result.areaSqFt / targetArea) - 1 : 0;
 
-        candidates.push({ key, result, efficiency });
+        candidates.push({ key, result, overshoot });
     }
 
     if (candidates.length === 0) return null;
 
-    // Sort by efficiency (highest first = closest to target)
-    candidates.sort((a, b) => b.efficiency - a.efficiency);
+    // Sort by overshoot (lowest first = closest to target while meeting it)
+    candidates.sort((a, b) => a.overshoot - b.overshoot);
 
     return { moduleKey: candidates[0].key, result: candidates[0].result };
 }
