@@ -2508,7 +2508,7 @@ export default function RfpAnalyzerClient() {
                       {downloading === "creating" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
                       Create Proposal
                     </button>
-                    {filledBidFormBlob && (
+                    {filledBidFormBlob ? (
                       <button
                         onClick={() => {
                           const url = URL.createObjectURL(filledBidFormBlob);
@@ -2522,6 +2522,28 @@ export default function RfpAnalyzerClient() {
                         title={`Download filled bid form: ${filledBidFormName}`}
                       >
                         <Download className="w-3 h-3" />
+                        Bid Form
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          const input = document.createElement("input");
+                          input.type = "file";
+                          input.accept = ".xlsx,.xls";
+                          input.onchange = (e) => {
+                            const file = (e.target as HTMLInputElement).files?.[0];
+                            if (file) {
+                              setBidFormFile(file);
+                              executeBidFormFill(file);
+                            }
+                          };
+                          input.click();
+                        }}
+                        disabled={downloading === "bidform"}
+                        className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 text-white/80 hover:text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                        title="Upload bid form Excel to auto-fill with product selections"
+                      >
+                        {downloading === "bidform" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
                         Bid Form
                       </button>
                     )}
