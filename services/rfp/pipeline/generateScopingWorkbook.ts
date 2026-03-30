@@ -385,10 +385,13 @@ function resolveRateByPitch(pitchMm: number, areaSqFt: number, spec: ExtractedLE
 
 // ─── Compute Display Data ───────────────────────────────────────────────────
 
+type ProductResolver = (id: string | undefined | null) => { manufacturer: string; name: string; pitch: number; nits: number; weightDensityLbm2: number; powerDensityWm2: number } | ReturnType<typeof getProduct> | null;
+
 function computeDisplays(
   specs: ExtractedLEDSpec[],
   pricedDisplays: PricedDisplay[] | undefined,
   installComplexity: InstallComplexity,
+  resolveProduct: ProductResolver,
   ov?: FinancialOverrides,
 ): ComputedDisplay[] {
   return specs.map((spec, idx) => {
@@ -456,7 +459,7 @@ function computeDisplays(
           ledHardwareCost = round2(productCost);
         } else {
           // Product not in static catalog — fall through to environment-aware pitch lookup
-          const effectivePitchFromProduct = selectedProduct?.pitchMm ?? spec.pixelPitchMm;
+          const effectivePitchFromProduct = (selectedProduct && 'pitchMm' in selectedProduct ? selectedProduct.pitchMm : selectedProduct?.pitch) ?? spec.pixelPitchMm;
           if (effectivePitchFromProduct) {
             ledHardwareCost = resolveRateByPitch(effectivePitchFromProduct, areaSqFt, spec);
           }
@@ -712,14 +715,14 @@ export async function generateScopingWorkbook(
     : undefined;
 
   // Compute base bid display data (used by all budget sheets)
-  const displays = computeDisplays(baseSpecs, basePricedDisplays, installComplexity, ov);
+  const displays = computeDisplays(baseSpecs, basePricedDisplays, installComplexity, resolveProduct, ov);
 
   // Compute alternate display data (for reference sheet only)
   const altPricedDisplays = allPricedDisplays
     ? (includeAlternatesInBase ? [] : allPricedDisplays.filter((pd) => pd.spec.isAlternate))
     : undefined;
   const altDisplays = altSpecs.length > 0
-    ? computeDisplays(altSpecs, altPricedDisplays, installComplexity)
+    ? computeDisplays(altSpecs, altPricedDisplays, installComplexity, resolveProduct)
     : [];
 
   // Grand totals
@@ -766,10 +769,10 @@ export async function generateScopingWorkbook(
   // ═══════════════════════════════════════════════════════════════════════════
 
   // 4. LED Cost Sheet
-  buildLedCostSheet(wb, projectName, displays, ov, getBundleEquipmentSubtotalRows(displays));
+  buildLedCostSheet(wb, projectName, displays, resolveProduct, ov, getBundleEquipmentSubtotalRows(displays));
 
   // 5. Tech Specs (no pricing — for installers/subs)
-  buildTechSpecsSheet(wb, projectName, displays);
+  buildTechSpecsSheet(wb, projectName, displays, resolveProduct);
 
   // 6. Install sheets (one per screen) — uses per-display complexity
   //    Deduplicate tab names: ExcelJS throws on duplicate worksheet names
@@ -932,11 +935,11 @@ export async function generateScopingWorkbook(
   let orderNo = 0;
   for (const name of desiredOrder) {
     const ws = wb.getWorksheet(name);
-    if (ws) ws.orderNo = orderNo++;
+    if (ws) (ws as any).orderNo = orderNo++;
   }
   // Any remaining sheets not in our list go at the end
   for (const ws of wb.worksheets) {
-    if (!desiredOrder.includes(ws.name)) ws.orderNo = orderNo++;
+    if (!desiredOrder.includes(ws.name)) (ws as any).orderNo = orderNo++;
   }
 
   const buffer = await wb.xlsx.writeBuffer();
@@ -1720,6 +1723,7 @@ function buildLedCostSheet(
   wb: ExcelJS.Workbook,
   projectName: string,
   displays: ComputedDisplay[],
+  resolveProduct: ProductResolver,
   ov?: FinancialOverrides,
   bundleSubtotalRows: number[] = [],
 ): void {
@@ -1964,11 +1968,13 @@ function buildLedCostSheet(
   gtR.getCell(23).numFmt = FMT_USD;
   // X-Z: Weight, Power, BTU
   const baseWeightTotal = baseDisplays.reduce((s, d) => {
-    const w = d.spec.weightLbs || (d.priced?.matchedProduct?.totalWeightLbs) || 0;
+    const matchWeight = d.match ? Math.round(d.match.module.weightKg * 2.205 * d.match.totalModules) : 0;
+    const w = d.spec.weightLbs || matchWeight || 0;
     return s + (Number(w) || 0);
   }, 0);
   const basePowerTotal = baseDisplays.reduce((s, d) => {
-    const p = d.spec.maxPowerW || (d.priced?.matchedProduct?.totalMaxPowerW) || 0;
+    const matchPower = d.match ? Math.round(d.match.module.maxPowerWatts * d.match.totalModules) : 0;
+    const p = d.spec.maxPowerW || matchPower || 0;
     return s + (Number(p) || 0);
   }, 0);
   const baseBtuTotal = basePowerTotal > 0 ? Math.round(basePowerTotal * 3.412) : 0;
@@ -3364,6 +3370,7 @@ function buildTechSpecsSheet(
   wb: ExcelJS.Workbook,
   projectName: string,
   displays: ComputedDisplay[],
+  resolveProduct: ProductResolver,
 ): void {
   const ws = wb.addWorksheet("Tech Specs (Installers)", {
     properties: { tabColor: { argb: C.MEDIUM_GRAY } },

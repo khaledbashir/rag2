@@ -149,42 +149,55 @@ export class ProductMatcher {
                 });
                 if (suitable.length === 0) suitable = dbProducts;
 
-                // Score by pitch closeness + type + nits + mesh penalty
+                // Score by spec compliance first, manufacturer preference is tiebreaker only.
+                // Priority order:
+                //   1. Disqualify specialty/mesh products (huge penalty)
+                //   2. Nits compliance (meets spec or not — binary gate, then deficit %)
+                //   3. Pitch closeness (normalized to 0-100 scale)
+                //   4. Manufacturer preference (tiny tiebreaker: 0-1 range)
                 const SPECIALTY_PATTERNS = /courtside|stanchion|clock|table|counter|desk/i;
                 const MESH_PATTERNS = /mesh|transparent|see.?through/i;
                 const targetNits = spec.brightnessNits || 0;
 
                 suitable.sort((a, b) => {
-                    const pitchA = Math.abs(a.pixelPitch - targetPitch);
-                    const pitchB = Math.abs(b.pixelPitch - targetPitch);
+                    // --- Layer 0: Hard disqualifiers (specialty, mesh) ---
+                    const isSpecialtyA = SPECIALTY_PATTERNS.test(a.displayName) ? 10000 : 0;
+                    const isSpecialtyB = SPECIALTY_PATTERNS.test(b.displayName) ? 10000 : 0;
+                    const isMeshA = (MESH_PATTERNS.test(a.displayName) || MESH_PATTERNS.test(a.modelNumber)) ? 5000 : 0;
+                    const isMeshB = (MESH_PATTERNS.test(b.displayName) || MESH_PATTERNS.test(b.modelNumber)) ? 5000 : 0;
 
-                    // Specialty products (courtside tables, stanchions) NEVER match regular displays
-                    const isSpecialtyA = SPECIALTY_PATTERNS.test(a.displayName);
-                    const isSpecialtyB = SPECIALTY_PATTERNS.test(b.displayName);
-                    const penaltyA = isSpecialtyA ? 200 : 0;
-                    const penaltyB = isSpecialtyB ? 200 : 0;
-
-                    // Mesh products should not match solid-panel applications
-                    const isMeshA = MESH_PATTERNS.test(a.displayName) || MESH_PATTERNS.test(a.modelNumber);
-                    const isMeshB = MESH_PATTERNS.test(b.displayName) || MESH_PATTERNS.test(b.modelNumber);
-                    const meshPenaltyA = isMeshA ? 50 : 0;
-                    const meshPenaltyB = isMeshB ? 50 : 0;
-
-                    // Nits penalty scales with how far under spec the product is
-                    // 1500 nits vs 8000 required = 81% deficit = penalty of 81
+                    // --- Layer 1: Nits compliance (most important spec criterion) ---
+                    // Products that MEET the nits requirement get 0 penalty.
+                    // Products that DON'T meet it get 1000 + deficit percentage (1000-1100).
+                    // This ensures ANY product that meets nits always beats one that doesn't,
+                    // regardless of manufacturer or pitch.
                     let nitsPenaltyA = 0;
                     let nitsPenaltyB = 0;
                     if (targetNits > 0) {
-                        if (a.maxNits < targetNits) nitsPenaltyA = Math.round(((targetNits - a.maxNits) / targetNits) * 100);
-                        if (b.maxNits < targetNits) nitsPenaltyB = Math.round(((targetNits - b.maxNits) / targetNits) * 100);
+                        if (a.maxNits < targetNits) {
+                            const deficit = Math.round(((targetNits - a.maxNits) / targetNits) * 100);
+                            nitsPenaltyA = 1000 + deficit; // 1000 = "does not meet spec" gate
+                        }
+                        if (b.maxNits < targetNits) {
+                            const deficit = Math.round(((targetNits - b.maxNits) / targetNits) * 100);
+                            nitsPenaltyB = 1000 + deficit;
+                        }
                     }
 
-                    // Manufacturer preference: Yaham > LG > others
-                    const mfgPriority = (m: string) => /yaham/i.test(m) ? 0 : /\blg\b/i.test(m) ? 5 : 10;
+                    // --- Layer 2: Pitch closeness (0-100 scale) ---
+                    // Normalize pitch delta: 0mm diff = 0, 10mm diff = 100
+                    const pitchA = Math.min(Math.abs(a.pixelPitch - targetPitch) * 10, 100);
+                    const pitchB = Math.min(Math.abs(b.pixelPitch - targetPitch) * 10, 100);
+
+                    // --- Layer 3: Manufacturer preference (tiebreaker only, 0-1 range) ---
+                    // Only matters when two products have identical spec compliance.
+                    const mfgPriority = (m: string) => /yaham/i.test(m) ? 0 : /\blg\b/i.test(m) ? 0.5 : 1;
                     const mfgA = mfgPriority(a.manufacturer);
                     const mfgB = mfgPriority(b.manufacturer);
 
-                    return (pitchA + penaltyA + meshPenaltyA + nitsPenaltyA + mfgA) - (pitchB + penaltyB + meshPenaltyB + nitsPenaltyB + mfgB);
+                    const scoreA = isSpecialtyA + isMeshA + nitsPenaltyA + pitchA + mfgA;
+                    const scoreB = isSpecialtyB + isMeshB + nitsPenaltyB + pitchB + mfgB;
+                    return scoreA - scoreB;
                 });
 
                 const best = suitable[0];
