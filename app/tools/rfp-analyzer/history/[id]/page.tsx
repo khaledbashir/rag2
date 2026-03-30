@@ -850,44 +850,7 @@ export default function AnalysisDetailPage() {
                 </button>
               </div>
             )}
-            {/* Bid Form button bar */}
-            <div className="flex items-center gap-2 mb-2">
-              {filledBidFormBlob ? (
-                <button
-                  onClick={() => {
-                    const url = URL.createObjectURL(filledBidFormBlob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = filledBidFormName;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-md text-xs font-semibold hover:bg-emerald-700 transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Download Filled Bid Form
-                </button>
-              ) : (
-                <button
-                  onClick={() => {
-                    const input = document.createElement("input");
-                    input.type = "file";
-                    input.accept = ".xlsx,.xls";
-                    input.onchange = (e) => {
-                      const file = (e.target as HTMLInputElement).files?.[0];
-                      if (file) handleBidFormUpload(file);
-                    };
-                    input.click();
-                  }}
-                  disabled={downloading === "bidform"}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                  {downloading === "bidform" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                  Upload Bid Form
-                </button>
-              )}
-            </div>
-            <div className="h-[calc(100vh-160px)]">
+            <div className="h-[calc(100vh-120px)]">
             <WorkbookShell
               data={workbookData}
               editable
