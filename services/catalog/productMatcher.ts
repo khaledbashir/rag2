@@ -179,7 +179,12 @@ export class ProductMatcher {
                         if (b.maxNits < targetNits) nitsPenaltyB = Math.round(((targetNits - b.maxNits) / targetNits) * 100);
                     }
 
-                    return (pitchA + penaltyA + meshPenaltyA + nitsPenaltyA) - (pitchB + penaltyB + meshPenaltyB + nitsPenaltyB);
+                    // Manufacturer preference: Yaham > LG > others
+                    const mfgPriority = (m: string) => /yaham/i.test(m) ? 0 : /\blg\b/i.test(m) ? 5 : 10;
+                    const mfgA = mfgPriority(a.manufacturer);
+                    const mfgB = mfgPriority(b.manufacturer);
+
+                    return (pitchA + penaltyA + meshPenaltyA + nitsPenaltyA + mfgA) - (pitchB + penaltyB + meshPenaltyB + nitsPenaltyB + mfgB);
                 });
 
                 const best = suitable[0];

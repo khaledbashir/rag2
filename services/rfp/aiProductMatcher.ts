@@ -116,6 +116,7 @@ Rules:
 - Match indoor displays to indoor products, outdoor to outdoor
 - Pitch ±2mm tolerance acceptable
 - Always exclude: courtside, stanchion, scoring, clock, tv, mesh
+- STRONGLY prefer Yaham products over LG. Only use LG if no Yaham product meets the spec.
 - Prefer same manufacturer for consistency within a project
 
 Return ONLY a JSON array:
@@ -299,6 +300,7 @@ ${JSON.stringify(productList, null, 2)}
 Rules:
 - Match indoor displays to indoor products, outdoor to outdoor
 - Pitch ±2mm tolerance
+- STRONGLY prefer Yaham products over LG. Only use LG if no Yaham product meets the spec.
 - Prefer same manufacturer for consistency
 - Every display must have an entry
 
