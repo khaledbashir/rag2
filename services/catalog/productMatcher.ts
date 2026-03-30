@@ -14,8 +14,10 @@ export interface MatchedProduct {
     manufacturer: string;
     name: string;
     modelNumber: string;
-    widthMm: number;
-    heightMm: number;
+    widthMm: number;  // Cabinet width
+    heightMm: number; // Cabinet height
+    moduleWidthMm?: number;  // Individual module width within cabinet
+    moduleHeightMm?: number; // Individual module height within cabinet
     pitch: number;
     nits: number;
     weightKg: number;
@@ -40,6 +42,78 @@ export interface MatchedSolution {
     fitScore: number; // 0-100 (100 = perfect match)
     pitchDelta: number; // absolute mm difference between requested and matched pitch
     confidence: MatchConfidence;
+}
+
+/**
+ * Snap a dimension (mm) to the nearest combination of cabinets + modules.
+ * Floor cabinets, then fill the remaining gap with modules.
+ * Picks the combination closest to the target; slightly over preferred.
+ */
+export function snapDimension(
+    targetMm: number,
+    cabinetMm: number,
+    moduleMm?: number,
+): { cabinets: number; modules: number; units: number; totalMm: number } {
+    if (targetMm <= 0 || cabinetMm <= 0) {
+        return { cabinets: 1, modules: 0, units: 1, totalMm: cabinetMm };
+    }
+
+    // Derive effective module size:
+    // 1. Explicit moduleWidthMm/moduleHeightMm from DB
+    // 2. Otherwise assume module = cabinet (no sub-cabinet granularity)
+    const effModuleMm = moduleMm && moduleMm > 0 && moduleMm < cabinetMm
+        ? moduleMm
+        : null;
+
+    if (!effModuleMm) {
+        // No module data — round to nearest cabinet count, prefer ceil for meet-or-exceed
+        const exact = targetMm / cabinetMm;
+        const floor = Math.floor(exact);
+        const ceil = Math.ceil(exact);
+        // Pick whichever is closer; tie goes to ceil (slightly over preferred)
+        const cabs = (exact - floor <= ceil - exact) && floor > 0 ? floor : Math.max(1, ceil);
+        return { cabinets: cabs, modules: 0, units: cabs, totalMm: cabs * cabinetMm };
+    }
+
+    // How many modules fit in one cabinet
+    const modulesPerCab = Math.round(cabinetMm / effModuleMm);
+
+    // Full cabinets that fit within the target
+    const fullCabs = Math.floor(targetMm / cabinetMm);
+    const remainderMm = targetMm - (fullCabs * cabinetMm);
+
+    // Fill remainder with individual modules
+    // Try both floor and ceil module counts to find closest to target
+    const modFloor = Math.floor(remainderMm / effModuleMm);
+    const modCeil = Math.ceil(remainderMm / effModuleMm);
+
+    const totalFloor = (fullCabs * cabinetMm) + (modFloor * effModuleMm);
+    const totalCeil = (fullCabs * cabinetMm) + (modCeil * effModuleMm);
+
+    const gapFloor = targetMm - totalFloor; // positive = under target
+    const gapCeil = totalCeil - targetMm;   // positive = over target
+
+    // Pick closer; if equal, prefer ceil (slightly over)
+    const useFloor = gapFloor < gapCeil && (fullCabs > 0 || modFloor > 0);
+    const fillModules = useFloor ? modFloor : modCeil;
+
+    // Convert fill modules to cabinet equivalents if they add up
+    const totalModulesInUnits = fullCabs * modulesPerCab + fillModules;
+    const finalCabs = Math.floor(totalModulesInUnits / modulesPerCab);
+    const finalMods = totalModulesInUnits % modulesPerCab;
+    const totalMm = (fullCabs * cabinetMm) + (fillModules * effModuleMm);
+
+    // Ensure at least 1 unit
+    if (finalCabs === 0 && finalMods === 0) {
+        return { cabinets: 0, modules: 1, units: 1, totalMm: effModuleMm };
+    }
+
+    return {
+        cabinets: finalCabs,
+        modules: finalMods,
+        units: totalModulesInUnits,
+        totalMm,
+    };
 }
 
 /**
@@ -116,6 +190,8 @@ export class ProductMatcher {
                     modelNumber: best.modelNumber,
                     widthMm: best.cabinetWidthMm,
                     heightMm: best.cabinetHeightMm,
+                    moduleWidthMm: best.moduleWidthMm ?? undefined,
+                    moduleHeightMm: best.moduleHeightMm ?? undefined,
                     pitch: best.pixelPitch,
                     nits: best.maxNits,
                     weightKg: best.weightKgPerCabinet,
@@ -136,16 +212,19 @@ export class ProductMatcher {
 
     /**
      * Calculate the matrix solution for a given module and spec.
+     * Uses cabinet + module snapping to get as close as possible to target.
      */
     private static calculateSolution(spec: ScreenSpec, module: MatchedProduct): MatchedSolution {
         const targetWidthMm = spec.widthFt * 304.8;
         const targetHeightMm = spec.heightFt * 304.8;
 
-        const cols = Math.max(1, Math.round(targetWidthMm / module.widthMm));
-        const rows = Math.max(1, Math.round(targetHeightMm / module.heightMm));
+        const snapW = snapDimension(targetWidthMm, module.widthMm, module.moduleWidthMm);
+        const snapH = snapDimension(targetHeightMm, module.heightMm, module.moduleHeightMm);
+        const cols = snapW.units;
+        const rows = snapH.units;
 
-        const activeWidthMm = cols * module.widthMm;
-        const activeHeightMm = rows * module.heightMm;
+        const activeWidthMm = snapW.totalMm;
+        const activeHeightMm = snapH.totalMm;
 
         const widthRatio = Math.min(activeWidthMm, targetWidthMm) / Math.max(activeWidthMm, targetWidthMm);
         const heightRatio = Math.min(activeHeightMm, targetHeightMm) / Math.max(activeHeightMm, targetHeightMm);
@@ -204,6 +283,8 @@ export class ProductMatcher {
                     modelNumber: p.modelNumber,
                     widthMm: p.cabinetWidthMm,
                     heightMm: p.cabinetHeightMm,
+                    moduleWidthMm: p.moduleWidthMm ?? undefined,
+                    moduleHeightMm: p.moduleHeightMm ?? undefined,
                     pitch: p.pixelPitch,
                     nits: p.maxNits,
                     weightKg: p.weightKgPerCabinet,

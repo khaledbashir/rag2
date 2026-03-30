@@ -24,6 +24,8 @@ export async function GET(request: NextRequest) {
         nits: p.nits,
         widthMm: p.widthMm,
         heightMm: p.heightMm,
+        moduleWidthMm: p.moduleWidthMm,
+        moduleHeightMm: p.moduleHeightMm,
         weightKg: p.weightKg,
         maxPowerWatts: p.maxPowerWatts,
         environment: p.environment,

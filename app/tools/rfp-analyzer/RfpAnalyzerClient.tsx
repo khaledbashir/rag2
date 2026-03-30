@@ -8,7 +8,7 @@ import UploadZone, { type PipelineEvent } from "./_components/UploadZone";
 import PipelineCheckpoint from "./_components/PipelineCheckpoint";
 import { buildRfpWorkbook } from "./_components/rfpWorkbookBuilder";
 import { LED_COST_PER_SQFT_BY_PITCH } from "@/services/rfp/productCatalog";
-import { packCabinetsAndModules } from "@/services/module-matching";
+import { snapDimension } from "@/services/catalog/productMatcher";
 import { LED_MODULES } from "@/data/catalogs/led-products";
 import type { PricingDocument } from "@/types/pricing";
 import dynamic from "next/dynamic";
@@ -283,7 +283,7 @@ export default function RfpAnalyzerClient() {
   const [quoteImportResult, setQuoteImportResult] = useState<any>(null);
   const [pricingPreview, setPricingPreview] = useState<PricingPreview | null>(null);
   const [loadingPricing, setLoadingPricing] = useState(false);
-  const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string; widthMm?: number; heightMm?: number; manufacturer?: string; nits?: number; weightKg?: number; maxPowerWatts?: number; environment?: string }>>([]);
+  const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string; widthMm?: number; heightMm?: number; moduleWidthMm?: number; moduleHeightMm?: number; manufacturer?: string; nits?: number; weightKg?: number; maxPowerWatts?: number; environment?: string }>>([]);
   const [resultsTab, setResultsTab] = useState<string>("displays");
   const [customTabs, setCustomTabs] = useState<Array<{ id: string; name: string; content: string }>>([]);
   const [drawingUpload, setDrawingUpload] = useState<{ uploading: boolean; results: Array<{ filename: string; pages: number }> }>({ uploading: false, results: [] });
@@ -661,37 +661,21 @@ export default function RfpAnalyzerClient() {
     let blendedPriceSqFt: number | null = null;
 
     if (isLedPanel) {
-      // Try cabinet-first packing from LED_MODULES catalog (80/20 pricing)
-      const moduleKey = findModuleKeyForProduct(product.name, newPitch);
-      const packResult = moduleKey
-        ? packCabinetsAndModules(currentSpec?.widthFt || 0, currentSpec?.heightFt || 0, moduleKey)
-        : null;
-
-      if (packResult) {
-        // Cabinet-first packing succeeded — use its dimensions and pricing
-        activeWidthFt = packResult.actualWidthFt;
-        activeHeightFt = packResult.actualHeightFt;
-        activeWidthMm = activeWidthFt * 304.8;
-        activeHeightMm = activeHeightFt * 304.8;
-        totalCabs = packResult.totalCabinets;
-        cabinetCount = packResult.totalCabinets;
-        moduleCount = packResult.totalFillModules;
-        blendedPriceSqFt = packResult.blendedPricePerSqft;
-        console.log(`[ProductSelect] ${displayName} → ${product.name}: cabinet packing: ${packResult.cabinetsW}×${packResult.cabinetsH} cabs + ${packResult.totalFillModules} modules, ${packResult.fitPercentage}% fit, $${packResult.blendedPricePerSqft}/sqft`);
-      } else {
-        // No cabinet data — fall back to simple cabinet-grid snapping
-        const cabWidthMm = product.widthMm!;
-        const cabHeightMm = product.heightMm!;
-        const requestedWidthMm = (currentSpec?.widthFt || 0) * 304.8;
-        const requestedHeightMm = (currentSpec?.heightFt || 0) * 304.8;
-        const cols = requestedWidthMm > 0 ? Math.max(1, Math.ceil(requestedWidthMm / cabWidthMm)) : 1;
-        const rows = requestedHeightMm > 0 ? Math.max(1, Math.ceil(requestedHeightMm / cabHeightMm)) : 1;
-        activeWidthMm = cols * cabWidthMm;
-        activeHeightMm = rows * cabHeightMm;
-        activeWidthFt = activeWidthMm / 304.8;
-        activeHeightFt = activeHeightMm / 304.8;
-        totalCabs = cols * rows;
-      }
+      // Cabinet + module snapping: floor cabinets, fill remainder with modules
+      const cabWidthMm = product.widthMm!;
+      const cabHeightMm = product.heightMm!;
+      const requestedWidthMm = (currentSpec?.widthFt || 0) * 304.8;
+      const requestedHeightMm = (currentSpec?.heightFt || 0) * 304.8;
+      const snapW = snapDimension(requestedWidthMm, cabWidthMm, product.moduleWidthMm);
+      const snapH = snapDimension(requestedHeightMm, cabHeightMm, product.moduleHeightMm);
+      activeWidthMm = snapW.totalMm;
+      activeHeightMm = snapH.totalMm;
+      activeWidthFt = activeWidthMm / 304.8;
+      activeHeightFt = activeHeightMm / 304.8;
+      totalCabs = snapW.cabinets * snapH.cabinets;
+      cabinetCount = totalCabs;
+      moduleCount = snapW.modules + snapH.modules;
+      console.log(`[ProductSelect] ${displayName} → ${product.name}: ${snapW.cabinets}×${snapH.cabinets} cabs + ${moduleCount} fill modules, W=${Math.round(activeWidthFt*100)/100}ft H=${Math.round(activeHeightFt*100)/100}ft`);
     } else {
       // Non-LED product (OES, scoring, CMS, TV) — keep original dimensions
       activeWidthFt = currentSpec?.widthFt || 0;

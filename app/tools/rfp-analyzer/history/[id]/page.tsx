@@ -30,6 +30,7 @@ import {
 import SpecsTable from "../../_components/SpecsTable";
 import RequirementsTable from "../../_components/RequirementsTable";
 import { buildRfpWorkbook } from "../../_components/rfpWorkbookBuilder";
+import { snapDimension } from "@/services/catalog/productMatcher";
 import WorkbookShell from "@/app/components/reusables/WorkbookShell";
 import type { ExtractedLEDSpec, ExtractedRequirement } from "@/services/rfp/unified/types";
 
@@ -117,7 +118,7 @@ export default function AnalysisDetailPage() {
   const [downloading, setDownloading] = useState<string | null>(null);
   const [pricingPreview, setPricingPreview] = useState<any>(null);
   const [loadingPricing, setLoadingPricing] = useState(false);
-  const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string; widthMm?: number; heightMm?: number; manufacturer?: string; nits?: number; weightKg?: number; maxPowerWatts?: number; environment?: string }>>([]);
+  const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string; widthMm?: number; heightMm?: number; moduleWidthMm?: number; moduleHeightMm?: number; manufacturer?: string; nits?: number; weightKg?: number; maxPowerWatts?: number; environment?: string }>>([]);
   const [pdfAvailable, setPdfAvailable] = useState<boolean | null>(null);
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -271,13 +272,13 @@ export default function AnalysisDetailPage() {
       const cabHeightMm = product.heightMm!;
       const requestedWidthMm = (currentSpec?.widthFt || 0) * 304.8;
       const requestedHeightMm = (currentSpec?.heightFt || 0) * 304.8;
-      const cols = requestedWidthMm > 0 ? Math.max(1, Math.ceil(requestedWidthMm / cabWidthMm)) : 1;
-      const rows = requestedHeightMm > 0 ? Math.max(1, Math.ceil(requestedHeightMm / cabHeightMm)) : 1;
-      activeWidthMm = cols * cabWidthMm;
-      activeHeightMm = rows * cabHeightMm;
+      const snapW = snapDimension(requestedWidthMm, cabWidthMm, product.moduleWidthMm);
+      const snapH = snapDimension(requestedHeightMm, cabHeightMm, product.moduleHeightMm);
+      activeWidthMm = snapW.totalMm;
+      activeHeightMm = snapH.totalMm;
       activeWidthFt = activeWidthMm / 304.8;
       activeHeightFt = activeHeightMm / 304.8;
-      totalCabs = cols * rows;
+      totalCabs = snapW.cabinets * snapH.cabinets;
     } else {
       activeWidthFt = currentSpec?.widthFt || 0;
       activeHeightFt = currentSpec?.heightFt || 0;

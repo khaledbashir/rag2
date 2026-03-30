@@ -172,18 +172,15 @@ export class ProductEngine {
         // 5. Find best module by pitch
         const bestModule = ProductCatalog.findByPitch(modules, targetPitch);
 
-        // 6. Calculate "Slightly Smaller" dimensions
-        // Convert ft to mm: 1 ft = 304.8 mm
+        // 6. Snap to nearest cabinet/module grid (closest to target, slightly over preferred)
         const targetWidthMm = spec.targetWidthFt * 304.8;
         const targetHeightMm = spec.targetHeightFt * 304.8;
 
-        // P0: Math.floor() ensures we never exceed the target size
-        const modulesWide = Math.floor(targetWidthMm / bestModule.widthMm);
-        const modulesHigh = Math.floor(targetHeightMm / bestModule.heightMm);
-
-        // At least 1 module in each dimension
-        const effectiveModulesWide = Math.max(1, modulesWide);
-        const effectiveModulesHigh = Math.max(1, modulesHigh);
+        // Round to nearest cabinet count, prefer ceil for slight overshoot
+        const exactW = targetWidthMm / bestModule.widthMm;
+        const exactH = targetHeightMm / bestModule.heightMm;
+        const effectiveModulesWide = Math.max(1, Math.round(exactW) || Math.ceil(exactW));
+        const effectiveModulesHigh = Math.max(1, Math.round(exactH) || Math.ceil(exactH));
 
         // Calculate actual dimensions
         const actualWidthMm = effectiveModulesWide * bestModule.widthMm;
@@ -248,12 +245,14 @@ export class ProductEngine {
         modules.sort((a, b) => Math.abs(a.pitch - targetPitch) - Math.abs(b.pitch - targetPitch));
         const bestModule = modules[0];
 
-        // Calculate "Slightly Smaller" dimensions
+        // Snap to nearest cabinet grid (closest to target, slightly over preferred)
         const targetWidthMm = spec.targetWidthFt * 304.8;
         const targetHeightMm = spec.targetHeightFt * 304.8;
 
-        const modulesWide = Math.max(1, Math.floor(targetWidthMm / bestModule.widthMm));
-        const modulesHigh = Math.max(1, Math.floor(targetHeightMm / bestModule.heightMm));
+        const exactW = targetWidthMm / bestModule.widthMm;
+        const exactH = targetHeightMm / bestModule.heightMm;
+        const modulesWide = Math.max(1, Math.round(exactW) || Math.ceil(exactW));
+        const modulesHigh = Math.max(1, Math.round(exactH) || Math.ceil(exactH));
 
         const actualWidthMm = modulesWide * bestModule.widthMm;
         const actualHeightMm = modulesHigh * bestModule.heightMm;

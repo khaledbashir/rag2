@@ -1,6 +1,7 @@
 import Decimal from 'decimal.js';
 import { roundToDecimals } from '../lib/math';
-import { LED_MODULES, ModuleSize } from '../data/catalogs/led-products';
+import { LED_MODULES } from '../data/catalogs/led-products';
+import { snapDimension } from './catalog/productMatcher';
 
 export interface MatchingResult {
     moduleCountW: number;
@@ -14,14 +15,10 @@ export interface MatchingResult {
 }
 
 /**
- * ModuleMatchingService (REQ-121: Eric Gruner's "Slightly Smaller" Rule)
- * 
- * Calculates the number of modules required to match target dimensions.
- * 
- * CRITICAL RULE: Always match to "slightly smaller" than requested to avoid
- * over-promising on physical space. This prevents installation failures where
- * the display doesn't fit the structural opening.
- * 
+ * ModuleMatchingService
+ *
+ * Calculates the number of cabinets + modules required to match target dimensions.
+ * Uses cabinet-first snapping with module fill for the remainder.
  * Supports half-module (0.5) increments as per REQ-9.
  */
 export function matchModules(
@@ -29,71 +26,47 @@ export function matchModules(
     targetHeightFt: number,
     moduleKey: string = 'DEFAULT'
 ): MatchingResult {
-    const module = LED_MODULES[moduleKey] || LED_MODULES['DEFAULT'];
+    const mod = LED_MODULES[moduleKey] || LED_MODULES['DEFAULT'];
 
-    // Convert target feet to inches
-    const targetWidthIn = new Decimal(targetWidthFt).mul(12);
-    const targetHeightIn = new Decimal(targetHeightFt).mul(12);
+    const targetWidthMm = targetWidthFt * 304.8;
+    const targetHeightMm = targetHeightFt * 304.8;
 
-    // Calculate module counts
-    let countW: number;
-    let countH: number;
+    // Derive module size: if supportsHalfModule, module = cabinet/2
+    const moduleWidthMm = mod.supportsHalfModule ? mod.widthMm / 2 : undefined;
+    const moduleHeightMm = mod.supportsHalfModule ? mod.heightMm / 2 : undefined;
 
-    // CEIL the module count to meet or exceed the requested dimensions.
-    // RFP dimensions are minimum requirements — the display must be at least as large.
+    const snapW = snapDimension(targetWidthMm, mod.widthMm, moduleWidthMm);
+    const snapH = snapDimension(targetHeightMm, mod.heightMm, moduleHeightMm);
 
-    if (module.supportsHalfModule) {
-        // Half-module support: ceil to nearest 0.5
-        // Example: 4.2 modules → 4.5 modules (meets or exceeds)
-        countW = Math.ceil(targetWidthIn.div(module.widthInches).mul(2).toNumber()) / 2;
-        countH = Math.ceil(targetHeightIn.div(module.heightInches).mul(2).toNumber()) / 2;
-    } else {
-        // Whole modules only: ceil to nearest whole number
-        // Example: 4.2 modules → 5 modules (meets or exceeds)
-        countW = Math.ceil(targetWidthIn.div(module.widthInches).toNumber());
-        countH = Math.ceil(targetHeightIn.div(module.heightInches).toNumber());
-    }
+    const actualWidthFt = snapW.totalMm / 304.8;
+    const actualHeightFt = snapH.totalMm / 304.8;
+    const areaSqFt = actualWidthFt * actualHeightFt;
 
-    // Ensure at least 1 module in each dimension
-    countW = Math.max(countW, module.supportsHalfModule ? 0.5 : 1);
-    countH = Math.max(countH, module.supportsHalfModule ? 0.5 : 1);
-
-    // Calculate actual dimensions in feet (will be >= target)
-    const actualWidthFt = new Decimal(countW).mul(module.widthInches).div(12).toNumber();
-    const actualHeightFt = new Decimal(countH).mul(module.heightInches).div(12).toNumber();
-
-    const areaSqFt = new Decimal(actualWidthFt).mul(actualHeightFt).toNumber();
-
-    // Diff should be positive or zero (actual >= target)
     const diffWidthFt = actualWidthFt - targetWidthFt;
     const diffHeightFt = actualHeightFt - targetHeightFt;
 
     return {
-        moduleCountW: countW,
-        moduleCountH: countH,
-        totalModules: countW * countH,
+        moduleCountW: snapW.units,
+        moduleCountH: snapH.units,
+        totalModules: snapW.units * snapH.units,
         actualWidthFt: roundToDecimals(actualWidthFt, 2),
         actualHeightFt: roundToDecimals(actualHeightFt, 2),
         areaSqFt: roundToDecimals(areaSqFt, 2),
-        diffWidthFt: roundToDecimals(diffWidthFt, 2),  // Should be >= 0
-        diffHeightFt: roundToDecimals(diffHeightFt, 2), // Should be >= 0
+        diffWidthFt: roundToDecimals(diffWidthFt, 2),
+        diffHeightFt: roundToDecimals(diffHeightFt, 2),
     };
 }
 
 /**
- * Find the best module from catalog that meets or exceeds the target dimensions.
- *
- * Given a target size and pitch, find the module that:
- * 1. Matches the pitch requirement
- * 2. Results in actual dimensions >= target dimensions
- * 3. Minimizes overshoot (closest to target while still meeting it)
+ * Find the best module from catalog that gets closest to target dimensions.
+ * Slightly over is preferred over significantly under.
  */
 export function findBestFitModule(
     targetWidthFt: number,
     targetHeightFt: number,
     targetPitch: number
 ): { moduleKey: string; result: MatchingResult } | null {
-    const candidates: { key: string; result: MatchingResult; overshoot: number }[] = [];
+    const candidates: { key: string; result: MatchingResult; gap: number }[] = [];
 
     for (const [key, module] of Object.entries(LED_MODULES)) {
         // Filter by pitch (allow ±1mm tolerance)
@@ -101,17 +74,17 @@ export function findBestFitModule(
 
         const result = matchModules(targetWidthFt, targetHeightFt, key);
 
-        // Calculate overshoot — lower is better (closest to target while meeting it)
+        // Absolute gap from target area — lower is better
         const targetArea = targetWidthFt * targetHeightFt;
-        const overshoot = targetArea > 0 ? (result.areaSqFt / targetArea) - 1 : 0;
+        const gap = targetArea > 0 ? Math.abs(result.areaSqFt - targetArea) / targetArea : 0;
 
-        candidates.push({ key, result, overshoot });
+        candidates.push({ key, result, gap });
     }
 
     if (candidates.length === 0) return null;
 
-    // Sort by overshoot (lowest first = closest to target while meeting it)
-    candidates.sort((a, b) => a.overshoot - b.overshoot);
+    // Sort by gap (lowest first = closest to target)
+    candidates.sort((a, b) => a.gap - b.gap);
 
     return { moduleKey: candidates[0].key, result: candidates[0].result };
 }
