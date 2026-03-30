@@ -72,6 +72,27 @@ export async function POST(request: NextRequest) {
       includeBond,
     });
 
+    // Honor user product selections: if spec has selectedProductId, use that
+    // product instead of the auto-matched one. This preserves manual picks across
+    // page refreshes and pricing recalculations.
+    const selectedIds = specs
+      .map((s) => s.selectedProductId)
+      .filter((id): id is string => !!id);
+    const selectedProductMap = new Map<string, any>();
+    if (selectedIds.length > 0) {
+      try {
+        const dbProducts = await prisma.manufacturerProduct.findMany({
+          where: { id: { in: selectedIds } },
+        });
+        for (const p of dbProducts) {
+          selectedProductMap.set(p.id, p);
+        }
+        log.info(`[pricing-preview] Loaded ${selectedProductMap.size} user-selected products`);
+      } catch (err) {
+        log.warn("[pricing-preview] Failed to load user-selected products:", err);
+      }
+    }
+
     // Return JSON for UI rendering (strip the buffer)
     const totalCost = pricedDisplays.reduce((s, d) => s + d.totalCost, 0);
     const totalSell = pricedDisplays.reduce((s, d) => s + d.totalSellingPrice, 0);
@@ -84,7 +105,47 @@ export async function POST(request: NextRequest) {
         venue: project.venue,
         location: project.location,
       },
-      displays: pricedDisplays.map((pd) => ({
+      displays: pricedDisplays.map((pd) => {
+        // If user manually selected a product, override the auto-match
+        const userProduct = pd.spec.selectedProductId
+          ? selectedProductMap.get(pd.spec.selectedProductId)
+          : null;
+
+        const matchedProduct = userProduct ? {
+          manufacturer: userProduct.manufacturer,
+          model: userProduct.displayName,
+          pitch: userProduct.pixelPitch,
+          totalModules: pd.match?.totalModules ?? 0,
+          fitScore: 100,
+          activeWidthFt: pd.spec.activeWidthFt ?? pd.match?.activeWidthFt,
+          activeHeightFt: pd.spec.activeHeightFt ?? pd.match?.activeHeightFt,
+          resolutionX: pd.match?.resolutionX ?? 0,
+          resolutionY: pd.match?.resolutionY ?? 0,
+          weightKgPerCab: userProduct.weightKgPerCabinet,
+          maxPowerWPerCab: userProduct.maxPowerWattsPerCab,
+          totalWeightKg: pd.match ? Math.round(userProduct.weightKgPerCabinet * pd.match.totalModules * 10) / 10 : 0,
+          totalWeightLbs: pd.match ? Math.round(userProduct.weightKgPerCabinet * pd.match.totalModules * 2.205) : 0,
+          totalMaxPowerW: pd.match ? userProduct.maxPowerWattsPerCab * pd.match.totalModules : 0,
+          nits: userProduct.maxNits,
+        } : pd.match ? {
+          manufacturer: pd.match.module.manufacturer,
+          model: pd.match.module.name,
+          pitch: pd.match.module.pitch,
+          totalModules: pd.match.totalModules,
+          fitScore: pd.match.fitScore,
+          activeWidthFt: pd.match.activeWidthFt,
+          activeHeightFt: pd.match.activeHeightFt,
+          resolutionX: pd.match.resolutionX,
+          resolutionY: pd.match.resolutionY,
+          weightKgPerCab: pd.match.module.weightKg,
+          maxPowerWPerCab: pd.match.module.maxPowerWatts,
+          totalWeightKg: Math.round(pd.match.module.weightKg * pd.match.totalModules * 10) / 10,
+          totalWeightLbs: Math.round(pd.match.module.weightKg * pd.match.totalModules * 2.205),
+          totalMaxPowerW: pd.match.module.maxPowerWatts * pd.match.totalModules,
+          nits: pd.match.module.nits,
+        } : null;
+
+        return {
         name: pd.spec.name,
         location: pd.spec.location,
         pixelPitch: pd.spec.pixelPitchMm,
@@ -105,25 +166,9 @@ export async function POST(request: NextRequest) {
         costSource: pd.costSource,
         rateCardEstimate: pd.rateCardEstimate,
         leadTimeWeeks: pd.leadTimeWeeks,
-        matchedProduct: pd.match ? {
-          manufacturer: pd.match.module.manufacturer,
-          model: pd.match.module.name,
-          pitch: pd.match.module.pitch,
-          totalModules: pd.match.totalModules,
-          fitScore: pd.match.fitScore,
-          activeWidthFt: pd.match.activeWidthFt,
-          activeHeightFt: pd.match.activeHeightFt,
-          resolutionX: pd.match.resolutionX,
-          resolutionY: pd.match.resolutionY,
-          // Power & weight per cabinet + totals
-          weightKgPerCab: pd.match.module.weightKg,
-          maxPowerWPerCab: pd.match.module.maxPowerWatts,
-          totalWeightKg: Math.round(pd.match.module.weightKg * pd.match.totalModules * 10) / 10,
-          totalWeightLbs: Math.round(pd.match.module.weightKg * pd.match.totalModules * 2.205),
-          totalMaxPowerW: pd.match.module.maxPowerWatts * pd.match.totalModules,
-          nits: pd.match.module.nits,
-        } : null,
-      })),
+        matchedProduct,
+        };
+      }),
       summary: {
         totalCost,
         totalSellingPrice: totalSell,
