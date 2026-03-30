@@ -306,7 +306,7 @@ export default function AnalysisDetailPage() {
                 heightPx: newPitch > 0 ? Math.round(activeHeightMm / newPitch) : s.heightPx,
                 pixelPitchMm: newPitch,
               } : {}),
-              brightnessNits: productNits || s.brightnessNits,
+              // brightnessNits stays LOCKED as RFP value — product nits flow via matchedProduct.nits
               weightLbs: totalWeightLbs || s.weightLbs,
               maxPowerW: totalPowerW || s.maxPowerW,
               selectedProductId: productId,
