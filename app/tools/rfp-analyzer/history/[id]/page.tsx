@@ -522,6 +522,31 @@ export default function AnalysisDetailPage() {
       formData.append("bidForm", file);
       formData.append("analysisId", analysis.id);
       formData.append("specs", JSON.stringify(analysis.screens || []));
+      // Pass pricing data so bid form gets cost/price/manufacturer fields
+      if (pricingPreview?.displays) {
+        const pricingData = pricingPreview.displays.map((d: any) => ({
+          name: d.name,
+          hardwareCost: d.hardwareCost,
+          processingCost: d.processorCost ?? 0,
+          shippingCost: d.shippingCost ?? 0,
+          installCost: d.installCost,
+          pmCost: d.pmCost ?? 0,
+          totalCost: d.totalCost,
+          totalSellingPrice: d.totalSellingPrice,
+          matchedProduct: d.matchedProduct ? {
+            manufacturer: d.matchedProduct.manufacturer,
+            model: d.matchedProduct.model,
+            pitch: d.matchedProduct.pitch,
+            nits: d.matchedProduct.nits,
+            totalMaxPowerW: d.matchedProduct.totalMaxPowerW,
+            activeWidthFt: d.matchedProduct.activeWidthFt,
+            activeHeightFt: d.matchedProduct.activeHeightFt,
+            resolutionX: d.matchedProduct.resolutionX,
+            resolutionY: d.matchedProduct.resolutionY,
+          } : null,
+        }));
+        formData.append("pricing", JSON.stringify(pricingData));
+      }
       const res = await fetch("/api/rfp/pipeline/fill-bid-form", {
         method: "POST",
         body: formData,
@@ -536,7 +561,7 @@ export default function AnalysisDetailPage() {
     } finally {
       setDownloading(null);
     }
-  }, [analysis]);
+  }, [analysis, pricingPreview]);
 
   // Auto-fill bid form if one was saved during initial upload
   const bidFormAutoFilled = useRef(false);

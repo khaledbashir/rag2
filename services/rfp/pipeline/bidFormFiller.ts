@@ -53,9 +53,23 @@ interface SpecBlock {
     totalPixels: number | null;
     totalSqFt: number | null;
     pixelDensity: number | null;
+    // Manufacturer fields
+    ledManufacturer: number | null;
+    chipManufacturer: number | null;
   };
   /** Column B pitch value (for single-sheet matching) */
   colBPitch: number | null;
+}
+
+/** Header/summary fields detected above the spec blocks */
+interface HeaderFields {
+  sheetName: string;
+  vendorName: number | null;
+  ledPrice: number | null;           // "LED" + price-like label
+  installationPrice: number | null;  // "INSTALLATION" in summary section
+  generalConditions: number | null;  // "GENERAL CONDITIONS"
+  installSubcontractor: number | null; // "INSTALLATION SUBCONTRACTOR"
+  ledManufacturer: number | null;    // "LED MANUFACTURER" in header area
 }
 
 /** Result of matching a spec block to an extracted screen */
@@ -88,6 +102,7 @@ export interface PricingData {
   processingCost?: number;
   shippingCost?: number;
   installCost?: number;
+  pmCost?: number;           // Project management / general conditions
   totalCost: number;
   totalSellingPrice: number;
   /** Matched ANC product specs — actual dimensions/resolution from catalog */
@@ -95,6 +110,8 @@ export interface PricingData {
     manufacturer: string;
     model: string;
     pitch: number;
+    nits?: number;
+    totalMaxPowerW?: number;
     activeWidthFt?: number;
     activeHeightFt?: number;
     resolutionX?: number;
@@ -152,7 +169,15 @@ export async function fillBidForm(
     .filter((_, i) => !usedScreens.has(i))
     .map((s) => s.name);
 
-  // Step 3: Write the filled workbook
+  // Step 3: Fill header/summary fields (vendor name, aggregate pricing, manufacturer)
+  for (const sheetName of uniqueSheets) {
+    const headerFields = detectHeaderFields(workbook, sheetName, blocks);
+    if (headerFields) {
+      fillHeaderFields(workbook, headerFields, screens, pricing, matches);
+    }
+  }
+
+  // Step 4: Write the filled workbook
   const outputBuffer = Buffer.from(await workbook.xlsx.writeBuffer());
 
   return {
@@ -216,6 +241,8 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
           totalPixels: null as number | null,
           totalSqFt: null as number | null,
           pixelDensity: null as number | null,
+          ledManufacturer: null as number | null,
+          chipManufacturer: null as number | null,
         };
 
         // Read Column B pitch value for matching
@@ -289,6 +316,12 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
             cells.chainMotors = r;
           } else if (/secondary\s*steel/i.test(label) && !/primary/i.test(label)) {
             cells.secondarySteel = r;
+          }
+          // Manufacturer fields
+          else if (/led\s*chip\s*manufacturer/i.test(label) || /chip\s*manufacturer/i.test(label)) {
+            cells.chipManufacturer = r;
+          } else if (/led\s*manufacturer/i.test(label) && !/chip/i.test(label)) {
+            cells.ledManufacturer = r;
           }
         }
 
@@ -585,6 +618,131 @@ function fuzzyNameMatch(blockName: string, screenName: string): number {
 }
 
 // ============================================================================
+// HEADER / SUMMARY FIELD DETECTION
+// ============================================================================
+
+/**
+ * Detect header/summary fields above the first spec block on a sheet.
+ * These are aggregate-level fields like Vendor Name, LED Price, Installation,
+ * General Conditions, LED Manufacturer — not per-display spec fields.
+ */
+function detectHeaderFields(
+  workbook: ExcelJS.Workbook,
+  sheetName: string,
+  blocks: SpecBlock[]
+): HeaderFields | null {
+  const sheet = workbook.getWorksheet(sheetName);
+  if (!sheet) return null;
+
+  // Find the first spec block row on this sheet to bound our scan
+  const blocksOnSheet = blocks.filter((b) => b.sheetName === sheetName);
+  const firstBlockRow = blocksOnSheet.length > 0
+    ? Math.min(...blocksOnSheet.map((b) => b.headerRow))
+    : 200; // scan up to row 200 if no spec blocks
+
+  const header: HeaderFields = {
+    sheetName,
+    vendorName: null,
+    ledPrice: null,
+    installationPrice: null,
+    generalConditions: null,
+    installSubcontractor: null,
+    ledManufacturer: null,
+  };
+
+  // Scan rows above the first spec block
+  for (let r = 1; r < firstBlockRow; r++) {
+    const row = sheet.getRow(r);
+    if (!row) continue;
+    const label = getCellText(row.getCell(1));
+    if (!label.trim()) continue;
+
+    // Vendor Name
+    if (/vendor\s*name/i.test(label) && !/spec/i.test(label)) {
+      header.vendorName = r;
+    }
+    // LED price line (e.g. "LED Tunnel Display", "LED Display", "LED System")
+    else if (/^led\b/i.test(label.trim()) && /display|tunnel|system|price/i.test(label)) {
+      header.ledPrice = r;
+    }
+    // Installation price (summary line, not "installation subcontractor")
+    else if (/^installation$/i.test(label.trim()) || /^installation\s*price/i.test(label.trim())) {
+      header.installationPrice = r;
+    }
+    // General Conditions
+    else if (/general\s*conditions/i.test(label)) {
+      header.generalConditions = r;
+    }
+    // Installation Subcontractor
+    else if (/installation\s*subcontractor/i.test(label)) {
+      header.installSubcontractor = r;
+    }
+    // LED Manufacturer (in header, not in spec block)
+    else if (/led\s*manufacturer/i.test(label) && !/chip/i.test(label)) {
+      header.ledManufacturer = r;
+    }
+  }
+
+  // Only return if we found at least one header field
+  const hasAny = Object.entries(header).some(([k, v]) => k !== "sheetName" && v !== null);
+  return hasAny ? header : null;
+}
+
+/**
+ * Fill header/summary fields with aggregate pricing data and vendor info.
+ */
+function fillHeaderFields(
+  workbook: ExcelJS.Workbook,
+  header: HeaderFields,
+  screens: ExtractedLEDSpec[],
+  pricing?: PricingData[],
+  matches?: BidFormMatch[]
+): void {
+  const sheet = workbook.getWorksheet(header.sheetName);
+  if (!sheet) return;
+
+  const C = 3;
+
+  const setHeaderCell = (row: number | null, value: number | string | null) => {
+    if (row == null || value == null) return;
+    const cell = sheet.getRow(row).getCell(C);
+    // Don't overwrite formulas or existing values
+    if (cell.type === ExcelJS.ValueType.Formula) return;
+    if (cell.value != null && cell.value !== "" && cell.value !== 0) return;
+    cell.value = value;
+  };
+
+  // Vendor Name → always "ANC Sports Enterprises"
+  setHeaderCell(header.vendorName, "ANC Sports Enterprises");
+
+  // Installation Subcontractor → "ANC Sports Enterprises"
+  setHeaderCell(header.installSubcontractor, "ANC Sports Enterprises");
+
+  // LED Manufacturer → from the first matched product
+  if (header.ledManufacturer && pricing) {
+    const firstManuf = pricing.find((p) => p.matchedProduct?.manufacturer)?.matchedProduct?.manufacturer;
+    if (firstManuf) {
+      setHeaderCell(header.ledManufacturer, firstManuf);
+    }
+  }
+
+  // Aggregate pricing for summary rows
+  if (pricing && pricing.length > 0) {
+    // LED Price → sum of hardware selling prices (what client pays for displays)
+    const totalHardware = pricing.reduce((s, p) => s + (p.hardwareCost || 0), 0);
+    setHeaderCell(header.ledPrice, totalHardware);
+
+    // Installation Price → sum of install costs
+    const totalInstall = pricing.reduce((s, p) => s + (p.installCost || 0), 0);
+    setHeaderCell(header.installationPrice, totalInstall);
+
+    // General Conditions → sum of PM/GC costs
+    const totalGC = pricing.reduce((s, p) => s + (p.pmCost || 0), 0);
+    setHeaderCell(header.generalConditions, totalGC);
+  }
+}
+
+// ============================================================================
 // CELL FILLING
 // ============================================================================
 
@@ -672,13 +830,30 @@ function fillBlockCells(
     setCell(block.cells.pixelDensity, C, density, "Pixel Density Sq. Ft");
   }
 
-  // Extended spec fields — fill from RFP data or catalog defaults
-  if (screen.brightnessNits != null && block.cells.brightness) {
-    setCell(block.cells.brightness, C, screen.brightnessNits, "Brightness (nits)");
+  // Extended spec fields — prefer matched product data, fall back to RFP data
+  if (block.cells.brightness) {
+    const nits = mp?.nits ?? screen.brightnessNits;
+    if (nits != null) {
+      setCell(block.cells.brightness, C, nits, "Brightness (nits)");
+    }
   }
 
-  if (screen.maxPowerW != null && block.cells.powerDraw) {
-    setCell(block.cells.powerDraw, C, screen.maxPowerW, "Power Draw");
+  if (block.cells.powerDraw) {
+    const power = mp?.totalMaxPowerW ?? screen.maxPowerW;
+    if (power != null) {
+      setCell(block.cells.powerDraw, C, Math.round(power), "Power Draw");
+    }
+  }
+
+  // Manufacturer fields
+  if (block.cells.ledManufacturer && mp?.manufacturer) {
+    setCell(block.cells.ledManufacturer, C, mp.manufacturer, "LED Manufacturer");
+  }
+  if (block.cells.chipManufacturer) {
+    // Chip manufacturer is a sub-component detail — not in our catalog
+    // Common defaults: NationStar for most Chinese LED panels
+    // Only fill if we have a matched product (so we know it's real data)
+    // For now, leave blank — will fill when catalog has this field
   }
 
   // Viewing angles — from rate card (Natalia/Jeremy rules)

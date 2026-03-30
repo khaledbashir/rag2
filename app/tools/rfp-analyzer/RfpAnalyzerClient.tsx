@@ -1877,19 +1877,21 @@ export default function RfpAnalyzerClient() {
       }
       // Send pricing data + matched product specs if available
       if (pricingPreview?.displays) {
-        const pricingData = pricingPreview.displays.map((d) => ({
+        const pricingData = pricingPreview.displays.map((d: any) => ({
           name: d.name,
           hardwareCost: d.hardwareCost,
           processingCost: d.processorCost ?? 0,
           shippingCost: d.shippingCost ?? 0,
           installCost: d.installCost,
+          pmCost: d.pmCost ?? 0,
           totalCost: d.totalCost,
           totalSellingPrice: d.totalSellingPrice,
-          // Matched product specs for ANC column (actual product dimensions/specs)
           matchedProduct: d.matchedProduct ? {
             manufacturer: d.matchedProduct.manufacturer,
             model: d.matchedProduct.model,
             pitch: d.matchedProduct.pitch,
+            nits: d.matchedProduct.nits,
+            totalMaxPowerW: d.matchedProduct.totalMaxPowerW,
             activeWidthFt: d.matchedProduct.activeWidthFt,
             activeHeightFt: d.matchedProduct.activeHeightFt,
             resolutionX: d.matchedProduct.resolutionX,
