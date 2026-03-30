@@ -32,6 +32,7 @@ npx tsx prisma/seed-products.ts 2>/dev/null || echo "LED seed skipped"
 npx tsx prisma/seed-tv-products.ts 2>/dev/null || echo "TV seed skipped"
 npx tsx prisma/seed-oes-products.ts 2>/dev/null || echo "OES seed skipped"
 npx tsx prisma/seed-yaham-modules.ts 2>/dev/null || echo "Yaham module seed skipped"
+npx tsx prisma/seed-courtside-tables.ts 2>/dev/null || echo "Courtside seed skipped"
 
 # Create persistent upload directory for RFP PDFs (EasyPanel volume at /rfp-data)
 mkdir -p /rfp-data/rfp-uploads
