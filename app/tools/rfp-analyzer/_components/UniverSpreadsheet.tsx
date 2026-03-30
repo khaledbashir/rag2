@@ -2431,17 +2431,20 @@ function handleValueChanged(params: any, propsRef: React.MutableRefObject<Univer
       const screenIdx = row - 1; // row 0 is header
       if (screenIdx < 0 || screenIdx >= props.screens.length) continue;
 
-      // LED Cost Sheet editable columns: Name=0, Pitch=3, H(ft)=4, W(ft)=5, Qty=9, Service=12,
-      // DisplayCost=14, Processor=15, Shipping=16, Margin%=18
+      // LED Cost Sheet columns (with RFP H/W/NITs at 1-3):
+      // 0=Display, 1=RFP H, 2=RFP W, 3=RFP NITs, 4=Vendor, 5=Product, 6=Pitch,
+      // 7=H(ft), 8=W(ft), 9=H(px), 10=W(px), 11=SqFt, 12=Qty, 13=TotalSqFt,
+      // 14=NITs, 15=Service, 16=$/SqFt, 17=DisplayCost, 18=Processor, 19=Shipping,
+      // 20=TotalCost, 21=Margin%, 22=SellingPrice, 23=Weight, 24=Power, 25=BTU
       const specFieldMap: Record<number, string> = {
         0: "displayName",
-        3: "pixelPitch",
-        4: "heightFt",
-        5: "widthFt",
-        9: "quantity",
-        12: "serviceType",
+        6: "pixelPitch",
+        7: "heightFt",
+        8: "widthFt",
+        12: "quantity",
+        15: "serviceType",
       };
-      const pricingFieldMap: Record<number, string> = { 14: "hardwareCost", 15: "processorCost", 16: "shippingCost" };
+      const pricingFieldMap: Record<number, string> = { 17: "hardwareCost", 18: "processorCost", 19: "shippingCost" };
       const numericSpecFields = new Set(["heightFt", "widthFt", "quantity", "pixelPitch"]);
 
       if (specFieldMap[column]) {
@@ -2449,7 +2452,7 @@ function handleValueChanged(params: any, propsRef: React.MutableRefObject<Univer
         props.onSpecEdit?.(screenIdx, field, numericSpecFields.has(field) ? numValue : textValue);
       } else if (pricingFieldMap[column]) {
         props.onPricingEdit?.(screenIdx, pricingFieldMap[column], numValue);
-      } else if (column === 18) {
+      } else if (column === 21) {
         let margin = numValue;
         if (margin > 1) margin = margin / 100;
         props.onPricingEdit?.(screenIdx, "blendedMarginPct", margin);
