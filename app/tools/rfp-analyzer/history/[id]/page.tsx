@@ -932,6 +932,39 @@ export default function AnalysisDetailPage() {
                 onClick={handleExport}
                 loading={downloading === "extraction"}
               />
+              {filledBidFormBlob ? (
+                <ActionCard
+                  icon={CheckCircle2}
+                  title="Download Filled Bid Form"
+                  description="Bid form auto-filled with your current product selections, quantities, and specs"
+                  onClick={() => {
+                    const url = URL.createObjectURL(filledBidFormBlob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = filledBidFormName;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  accent="#059669"
+                />
+              ) : (
+                <ActionCard
+                  icon={Upload}
+                  title="Fill Bid Form"
+                  description="Upload client bid form Excel — auto-fills vendor, product, and specs from your LED Cost Sheet"
+                  onClick={() => {
+                    const input = document.createElement("input");
+                    input.type = "file";
+                    input.accept = ".xlsx,.xls";
+                    input.onchange = (e) => {
+                      const file = (e.target as HTMLInputElement).files?.[0];
+                      if (file) handleBidFormUpload(file);
+                    };
+                    input.click();
+                  }}
+                  loading={downloading === "bidform"}
+                />
+              )}
               <ActionCard
                 icon={Plus}
                 title="Create Proposal"
