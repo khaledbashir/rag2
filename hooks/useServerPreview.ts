@@ -35,6 +35,17 @@ export function useServerPreview(answers: EstimatorAnswers): {
       return;
     }
 
+    // Don't generate if no display has dimensions yet — avoids infinite spinner
+    const hasDims = answers.displays.some(
+      (d: any) => (Number(d.widthFt) || Number(d.activeWidthFt)) > 0 &&
+                   (Number(d.heightFt) || Number(d.activeHeightFt)) > 0,
+    );
+    if (!hasDims) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
+
     // Debounce
     if (timerRef.current) clearTimeout(timerRef.current);
 
@@ -48,12 +59,15 @@ export function useServerPreview(answers: EstimatorAnswers): {
       setError(null);
 
       try {
+        // 30s timeout — prevents infinite spinner if server hangs
+        const timeout = setTimeout(() => controller.abort(), 30_000);
         const res = await fetch("/api/estimator/preview-univer", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ answers }),
           signal: controller.signal,
         });
+        clearTimeout(timeout);
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: `${res.status}` }));
@@ -69,12 +83,17 @@ export function useServerPreview(answers: EstimatorAnswers): {
         }
         setData(workbookData);
       } catch (err: any) {
-        if (err.name === "AbortError") return; // Cancelled, ignore
+        if (err.name === "AbortError") {
+          // Timed out or cancelled — clear loading so it doesn't hang
+          setLoading(false);
+          if (controller.signal.reason === "timeout") {
+            setError("Workbook generation timed out — try again");
+          }
+          return;
+        }
         setError(err.message || "Preview generation failed");
       } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
+        setLoading(false);
       }
     }, DEBOUNCE_MS);
 
