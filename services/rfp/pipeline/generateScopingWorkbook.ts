@@ -1453,17 +1453,13 @@ function buildLedCostSheet(
       const unitCost = qty > 0 ? round2(ledWithSpares / qty) : 0;
       dr.getCell(16).value = unitCost;
       dr.getCell(16).numFmt = FMT_USD;
-      // Q: Display Cost = $/Unit × Qty
-      dr.getCell(17).value = { formula: `P${row}*L${row}`, result: ledWithSpares };
     } else {
       const costPerSqFt = d.areaSqFt > 0 ? round2(ledWithSpares / d.areaSqFt) : 0;
       dr.getCell(16).value = costPerSqFt;
       dr.getCell(16).numFmt = FMT_USD;
-      // Q: Display Cost = $/SqFt × Total SqFt
-      dr.getCell(17).value = ledWithSpares > 0
-        ? { formula: `P${row}*M${row}`, result: ledWithSpares }
-        : 0;
     }
+    // Q: Display Cost — hard value from computed ledWithSpares (no formula round-trip through $/SqFt)
+    dr.getCell(17).value = round2(ledWithSpares);
     dr.getCell(17).numFmt = FMT_USD;
     const bundleSubtotalRow = bundleSubtotalRows[idx];
     // R: Processor
