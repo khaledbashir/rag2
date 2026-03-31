@@ -370,7 +370,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     const totalLedCost = pd?.totalCost ?? 0;
     const displayCost = totalLedCost > 0
       ? Math.round((totalLedCost - processorCost - shippingCost) * 100) / 100
-      : (ratePerSqFt > 0 && totalSqFt > 0 ? Math.round(ratePerSqFt * totalSqFt * 100) / 100 : 0);
+      : 0;
     const resolvedNits = Number(
       mp?.nits
       ?? (mp as any)?.brightnessNits

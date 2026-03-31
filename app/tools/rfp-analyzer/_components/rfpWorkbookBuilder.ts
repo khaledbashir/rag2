@@ -203,7 +203,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const totalCost = pd?.totalCost ?? 0;
     const displayCost = totalCost > 0
       ? Math.round((totalCost - processorCost - shippingCost) * 100) / 100
-      : ratePerSqFt * totalSqFt;
+      : 0;
     const margin = pd?.blendedMarginPct ?? 0;
     const sellingPrice = margin > 0 ? totalCost / (1 - margin) : totalCost;
 

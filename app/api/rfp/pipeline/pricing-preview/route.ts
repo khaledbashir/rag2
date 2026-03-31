@@ -120,18 +120,12 @@ export async function POST(request: NextRequest) {
     // LED Margin Override = 15% (flat, from Excel's yellow cell V2)
     const LED_MARGIN = 0.15;
 
-    // Compute per-display LED Cost Sheet Total using Excel's formula chain:
-    // $/SqFt (rounded) × area = Display Cost → + Processor bundle + Shipping = Total Cost
+    // Compute per-display LED Cost Sheet Total:
+    // Display Cost = ledHardwareCost + sparePartsCost (no round-trip through $/SqFt)
+    // Total Cost = Display Cost + Processor bundle + Shipping
     const perDisplayTotals = computedDisplays.map(d => {
-      const ledWithSpares = d.ledHardwareCost + d.sparePartsCost;
+      const displayCost = Math.round((d.ledHardwareCost + d.sparePartsCost) * 100) / 100;
       const bundleEquip = d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost;
-      let displayCost: number;
-      if (d.isTV) {
-        displayCost = ledWithSpares;
-      } else {
-        const rateSqFt = d.areaSqFt > 0 ? Math.round(ledWithSpares / d.areaSqFt * 100) / 100 : 0;
-        displayCost = Math.round(rateSqFt * d.areaSqFt * 100) / 100;
-      }
       const tc = Math.round((displayCost + bundleEquip + d.shippingCost) * 100) / 100;
       const sell = Math.round(tc / (1 - LED_MARGIN) * 100) / 100;
       return { cost: tc, sell };
@@ -196,15 +190,8 @@ export async function POST(request: NextRequest) {
           environment: cd.spec.environment,
           quantity: cd.spec.quantity,
           areaSqFt: cd.areaSqFt,
-          // Cost fields — match Excel LED Cost Sheet formula chain exactly:
-          // Excel: $/SqFt (rounded) × area = Display Cost → + Processor + Shipping = Total Cost
-          hardwareCost: (() => {
-            const ledWithSpares = cd.ledHardwareCost + cd.sparePartsCost;
-            if (cd.isTV) return ledWithSpares; // TVs use $/Unit × Qty
-            // Match Excel round-trip: $/SqFt rounded to 2 decimals × area
-            const rateSqFt = cd.areaSqFt > 0 ? Math.round(ledWithSpares / cd.areaSqFt * 100) / 100 : 0;
-            return Math.round(rateSqFt * cd.areaSqFt * 100) / 100;
-          })(),
+          // Cost fields — use computed values directly, no round-trip through $/SqFt
+          hardwareCost: Math.round((cd.ledHardwareCost + cd.sparePartsCost) * 100) / 100,
           processorCost: cd.sendingCardCost + cd.signalCableCost + cd.upsCost + cd.backupProcessorCost + cd.weatherproofCost,
           shippingCost: cd.shippingCost,
           installCost: cd.structuralMaterialsCost + cd.structuralLaborCost + cd.electricalCost,
@@ -213,30 +200,16 @@ export async function POST(request: NextRequest) {
           travelCost: cd.travelCost,
           // LED Cost Sheet Total = Display Cost + Processor bundle + Shipping
           totalCost: (() => {
-            const ledWithSpares = cd.ledHardwareCost + cd.sparePartsCost;
+            const displayCost = Math.round((cd.ledHardwareCost + cd.sparePartsCost) * 100) / 100;
             const bundleEquip = cd.sendingCardCost + cd.signalCableCost + cd.upsCost + cd.backupProcessorCost + cd.weatherproofCost;
-            let displayCost: number;
-            if (cd.isTV) {
-              displayCost = ledWithSpares;
-            } else {
-              const rateSqFt = cd.areaSqFt > 0 ? Math.round(ledWithSpares / cd.areaSqFt * 100) / 100 : 0;
-              displayCost = Math.round(rateSqFt * cd.areaSqFt * 100) / 100;
-            }
             return Math.round((displayCost + bundleEquip + cd.shippingCost) * 100) / 100;
           })(),
           // Selling price = Total Cost / (1 - 15%)
           hardwareSellingPrice: 0,
           servicesSellingPrice: 0,
           totalSellingPrice: (() => {
-            const ledWithSpares = cd.ledHardwareCost + cd.sparePartsCost;
+            const displayCost = Math.round((cd.ledHardwareCost + cd.sparePartsCost) * 100) / 100;
             const bundleEquip = cd.sendingCardCost + cd.signalCableCost + cd.upsCost + cd.backupProcessorCost + cd.weatherproofCost;
-            let displayCost: number;
-            if (cd.isTV) {
-              displayCost = ledWithSpares;
-            } else {
-              const rateSqFt = cd.areaSqFt > 0 ? Math.round(ledWithSpares / cd.areaSqFt * 100) / 100 : 0;
-              displayCost = Math.round(rateSqFt * cd.areaSqFt * 100) / 100;
-            }
             const tc = Math.round((displayCost + bundleEquip + cd.shippingCost) * 100) / 100;
             return Math.round(tc / (1 - LED_MARGIN) * 100) / 100;
           })(),
