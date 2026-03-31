@@ -251,7 +251,7 @@ export interface ScreenCalc {
 /** Courtside tables and stanchions use per-unit pricing, not per-sqft */
 const ADDON_DISPLAY_TYPES = ["courtside-table", "stanchion"];
 const LED_MARGIN_DEFAULT = 15;
-const SERVICES_MARGIN_DEFAULT = 20;
+const SERVICES_MARGIN_DEFAULT = 15;
 const SMALL_PROCESSOR_PORTS = 8;
 const LARGE_PROCESSOR_PORTS = 16;
 const SMALL_PROCESSOR_COST = 450;
@@ -1550,17 +1550,19 @@ function buildMarginAnalysisPreview(answers: EstimatorAnswers, calcs: ScreenCalc
             isHeader: true,
         });
 
-        // Category sub-lines
+        // Category sub-lines — use uniform margin (ledMarginPct) for all categories
+        // Natalia confirmed: project margin is flat across all line items
+        const projectMargin = ledMarginPct;
         const categories: [string, number, number][] = [
-            ["LED Hardware", c.hardwareCost + c.spareParts, ledMarginPct],
-            ["Structural", c.structureCost, svcMarginPct],
-            ["Installation Labor", c.installCost, svcMarginPct],
-            ["Electrical & Data", c.electricalCost + c.dataCablingCost, svcMarginPct],
-            ["PM / Travel", c.pmCost + c.shippingCost, svcMarginPct],
-            ["Engineering", c.engineeringCost, svcMarginPct],
+            ["LED Hardware", c.hardwareCost + c.spareParts, projectMargin],
+            ["Structural", c.structureCost, projectMargin],
+            ["Installation Labor", c.installCost, projectMargin],
+            ["Electrical & Data", c.electricalCost + c.dataCablingCost, projectMargin],
+            ["PM / Travel", c.pmCost + c.shippingCost, projectMargin],
+            ["Engineering", c.engineeringCost, projectMargin],
         ];
         if (c.processorCost > 0 || c.equipmentCost > 0 || c.bundleCost > 0) {
-            categories.push(["Processor & Equipment", c.processorCost + c.equipmentCost + c.bundleCost, ledMarginPct]);
+            categories.push(["Processor & Equipment", c.processorCost + c.equipmentCost + c.bundleCost, projectMargin]);
         }
 
         let screenCost = 0;
@@ -1595,40 +1597,45 @@ function buildMarginAnalysisPreview(answers: EstimatorAnswers, calcs: ScreenCalc
             ],
         });
 
-        // Tax / Bond
+        // Tax / Bond — pass-through: same amount in both cost and sell columns (zero margin impact)
         const taxAmt = screenSell * taxRate;
         const bondAmt = screenSell * bondRate;
-        rows.push({ cells: [{ value: `    TAX (${(taxRate * 100).toFixed(1)}%)` }, { value: "" }, { value: taxAmt, currency: true, align: "right" }, { value: "" }, { value: "" }, { value: "" }] });
-        rows.push({ cells: [{ value: bondRate > 0 ? `    BOND (${(bondRate * 100).toFixed(1)}%)` : "    BOND (N/A)" }, { value: "" }, { value: bondAmt, currency: true, align: "right" }, { value: "" }, { value: "" }, { value: "" }] });
+        rows.push({ cells: [{ value: `    TAX (${(taxRate * 100).toFixed(1)}%)` }, { value: taxAmt, currency: true, align: "right" }, { value: taxAmt, currency: true, align: "right" }, { value: "" }, { value: "" }, { value: "" }] });
+        rows.push({ cells: [{ value: bondRate > 0 ? `    BOND (${(bondRate * 100).toFixed(1)}%)` : "    BOND (N/A)" }, { value: bondAmt, currency: true, align: "right" }, { value: bondAmt, currency: true, align: "right" }, { value: "" }, { value: "" }, { value: "" }] });
 
-        // Grand total
+        // Grand total — tax/bond in both columns so margin stays accurate
         const screenGrand = screenSell + taxAmt + bondAmt;
+        const screenGrandCost = screenCost + taxAmt + bondAmt;
         rows.push({
             cells: [
                 { value: "    GRAND TOTAL", bold: true },
-                { value: screenCost, currency: true, align: "right", bold: true },
+                { value: screenGrandCost, currency: true, align: "right", bold: true },
                 { value: screenGrand, currency: true, align: "right", bold: true },
-                { value: screenGrand - screenCost, currency: true, align: "right", bold: true },
-                { value: screenGrand > 0 ? 1 - (screenCost / screenGrand) : 0, percent: true, align: "center", bold: true },
+                { value: screenGrand - screenGrandCost, currency: true, align: "right", bold: true },
+                { value: screenGrand > 0 ? 1 - (screenGrandCost / screenGrand) : 0, percent: true, align: "center", bold: true },
                 { value: "" },
             ],
             isTotal: true,
         });
         rows.push({ cells: [{ value: "" }], isSeparator: true });
-        docCost += screenCost;
-        docSell += screenGrand;
+        // Only include non-alternate screens in base bid total
+        if (!c.isAlt) {
+            docCost += screenGrandCost;
+            docSell += screenGrand;
+        }
     }
 
-    // CMS / Scoring on MA
+    // CMS / Scoring on MA — use flat project margin (same as LED)
+    const projectMarginForExtras = ledMarginPct;
     if (answers.includeCms && answers.cmsAllocation > 0) {
-        const cmsSell = svcMarginPct < 1 ? answers.cmsAllocation / (1 - svcMarginPct) : answers.cmsAllocation;
-        rows.push({ cells: [{ value: "CMS (Content Management)", bold: true }, { value: answers.cmsAllocation, currency: true, align: "right" }, { value: cmsSell, currency: true, align: "right" }, { value: cmsSell - answers.cmsAllocation, currency: true, align: "right" }, { value: "" }, { value: "" }] });
+        const cmsSell = projectMarginForExtras < 1 ? answers.cmsAllocation / (1 - projectMarginForExtras) : answers.cmsAllocation;
+        rows.push({ cells: [{ value: "CMS (Content Management)", bold: true }, { value: answers.cmsAllocation, currency: true, align: "right" }, { value: cmsSell, currency: true, align: "right" }, { value: cmsSell - answers.cmsAllocation, currency: true, align: "right" }, { value: projectMarginForExtras, percent: true, align: "center" }, { value: "" }] });
         docCost += answers.cmsAllocation;
         docSell += cmsSell;
     }
     if (answers.includeScoring && answers.scoringAllocation > 0) {
-        const scoreSell = svcMarginPct < 1 ? answers.scoringAllocation / (1 - svcMarginPct) : answers.scoringAllocation;
-        rows.push({ cells: [{ value: "Scoring System", bold: true }, { value: answers.scoringAllocation, currency: true, align: "right" }, { value: scoreSell, currency: true, align: "right" }, { value: scoreSell - answers.scoringAllocation, currency: true, align: "right" }, { value: "" }, { value: "" }] });
+        const scoreSell = projectMarginForExtras < 1 ? answers.scoringAllocation / (1 - projectMarginForExtras) : answers.scoringAllocation;
+        rows.push({ cells: [{ value: "Scoring System", bold: true }, { value: answers.scoringAllocation, currency: true, align: "right" }, { value: scoreSell, currency: true, align: "right" }, { value: scoreSell - answers.scoringAllocation, currency: true, align: "right" }, { value: projectMarginForExtras, percent: true, align: "center" }, { value: "" }] });
         docCost += answers.scoringAllocation;
         docSell += scoreSell;
     }
