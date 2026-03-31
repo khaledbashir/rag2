@@ -1,4 +1,14 @@
 /**
+ * Parse pitch (in mm) from a product name string like "C2.5-MIP 2.5mm Indoor (Alt)"
+ * Returns null if no pitch pattern found.
+ */
+function parsePitchFromProductName(name: string | null | undefined): number | null {
+  if (!name) return null;
+  const m = name.match(/(\d+\.?\d*)\s*mm/i);
+  return m ? parseFloat(m[1]) : null;
+}
+
+/**
  * Full Scoping Workbook Generator
  *
  * Produces a multi-sheet Excel workbook matching the Toyota Center template format.
@@ -1422,8 +1432,9 @@ function buildLedCostSheet(
       || d.spec.selectedProductName
       || d.match?.module?.name
       || "—";
-    // G: Pitch — prefer matched product's pitch over extracted pitch (extractor often grabs mesh pitch)
-    const effectivePitch = d.match?.module?.pitch ?? d.spec.pixelPitchMm;
+    // G: Pitch — prefer product DB pitch, then product name parse, then matched module pitch, then extracted pitch
+    // AI extractor often grabs mesh pitch (3.9mm) instead of LED pixel pitch (2.5mm)
+    const effectivePitch = selectedProduct?.pixelPitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.match?.module?.pitch ?? d.spec.pixelPitchMm;
     dr.getCell(7).value = effectivePitch ? `${effectivePitch}mm` : "—";
     dr.getCell(7).alignment = { horizontal: "center" };
     // H-I: H(ft), W(ft) — product-snapped dimensions (must be numeric for formulas)
@@ -3017,8 +3028,8 @@ function buildTechSpecsSheet(
     // IMPORTANT: result values required — browser preview can't resolve cross-sheet formulas
     const qty = d.spec.quantity || 1;
     const displayName = d.spec.name + (d.spec.location ? ` — ${d.spec.location}` : "");
-    const pitchLabel = (d.match?.module?.pitch ?? d.spec.pixelPitchMm) ? `${d.match?.module?.pitch ?? d.spec.pixelPitchMm}mm` : "—";
-    const effPitch = d.match?.module?.pitch ?? d.spec.pixelPitchMm;
+    const pitchLabel = (selectedProduct?.pixelPitch ?? d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm) ? `${selectedProduct?.pixelPitch ?? d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm}mm` : "—";
+    const effPitch = selectedProduct?.pixelPitch ?? d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm;
     const hPx = d.spec.heightPx || (effPitch && d.heightFt ? Math.round(d.heightFt * 304.8 / effPitch) : 0);
     const wPx = d.spec.widthPx || (effPitch && d.widthFt ? Math.round(d.widthFt * 304.8 / effPitch) : 0);
 
@@ -3039,7 +3050,7 @@ function buildTechSpecsSheet(
     // Weight & Power & BTU — cross-sheet refs to LED Cost Sheet (cols U, V, W)
     const areaM2 = d.areaSqFt * 0.092903;
     const selectedProduct = d.spec.selectedProductId ? resolveProduct(d.spec.selectedProductId) : null;
-    const pitch = d.spec.pixelPitchMm ?? 0;
+    const pitch = effPitch ?? d.spec.pixelPitchMm ?? 0;
     const catalogMatch = selectedProduct
       ?? (pitch > 0 ? getAllProducts().find((p) => Math.abs(p.pitchMm - pitch) < 0.5) : null);
     const tsWeight = catalogMatch ? Math.round(areaM2 * catalogMatch.weightDensityLbm2) : Math.round(d.areaSqFt * 5);
@@ -3100,7 +3111,8 @@ function buildAlternatesSheet(
     r.getCell(4).alignment = { horizontal: "center" };
     r.getCell(5).value = d.heightFt > 0 ? d.heightFt : "TBD";
     r.getCell(5).alignment = { horizontal: "center" };
-    r.getCell(6).value = d.spec.pixelPitchMm != null ? `${d.spec.pixelPitchMm}mm` : "TBD";
+    const altPitch = (d.spec.selectedProductId ? resolveProduct(d.spec.selectedProductId)?.pixelPitch : null) ?? d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm;
+    r.getCell(6).value = altPitch != null ? `${altPitch}mm` : "TBD";
     r.getCell(6).alignment = { horizontal: "center" };
     r.getCell(7).value = d.spec.environment;
     r.getCell(7).alignment = { horizontal: "center" };

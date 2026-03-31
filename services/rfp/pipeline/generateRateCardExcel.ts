@@ -195,6 +195,13 @@ function computeProcessorAndShipping(spec: ExtractedLEDSpec, areaSqFt: number): 
   return { processorCost, shippingCost };
 }
 
+/** Parse pitch from product name like "C2.5-MIP 2.5mm Indoor (Alt)" → 2.5 */
+function parsePitchFromProductName(name: string | null | undefined): number | null {
+  if (!name) return null;
+  const m = name.match(/(\d+\.?\d*)\s*mm/i);
+  return m ? parseFloat(m[1]) : null;
+}
+
 // ─── Core: Price Each Display ───────────────────────────────────────────────
 
 async function priceDisplay(
@@ -298,8 +305,8 @@ async function priceDisplay(
   // Default: 2.5mm indoor (LG LSCB025, ANC's standard), 10mm outdoor
   // CRITICAL: Prefer the matched product's pitch over the extracted pitch.
   // The AI extractor often grabs mesh pitch (e.g. 3.9mm) instead of LED pixel pitch (e.g. 2.5mm).
-  // If a product was matched with a known pitch, that IS the correct pitch.
-  const pitchMm = (match?.module?.pitch) || spec.pixelPitchMm || (spec.environment === "outdoor" ? 10 : 2.5);
+  // Priority: matched module → product name parse → extracted pitch → default
+  const pitchMm = (match?.module?.pitch) || parsePitchFromProductName(spec.selectedProductName) || spec.pixelPitchMm || (spec.environment === "outdoor" ? 10 : 2.5);
   const product = getProductByPitch(pitchMm, spec.environment === "outdoor" ? "Outdoor" : "Indoor")
     || getProductByPitch(pitchMm);
 
@@ -467,7 +474,8 @@ export async function generateRateCardExcel(
       : pd.spec.name;
     r.getCell(1).value = displayLabel;
     r.getCell(1).font = { bold: true, name: "Calibri" };
-    r.getCell(2).value = pd.spec.pixelPitchMm != null ? `${pd.spec.pixelPitchMm}mm` : "—";
+    const pdPitch = pd.match?.module?.pitch ?? parsePitchFromProductName(pd.spec.selectedProductName) ?? pd.spec.pixelPitchMm;
+    r.getCell(2).value = pdPitch != null ? `${pdPitch}mm` : "—";
     r.getCell(2).alignment = { horizontal: "center" };
     const dimsMissing = pd.areaSqFt === 0;
     r.getCell(3).value = dimsMissing ? "TBD" : pd.areaSqFt;
