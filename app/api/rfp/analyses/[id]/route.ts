@@ -47,7 +47,16 @@ export async function GET(
       });
       return NextResponse.json(updated);
     } catch {
-      // Fall back to the saved row if healing fails.
+      // Mark as healed even on failure to stop the re-extraction loop
+      try {
+        const project = (typeof analysis.project === "object" && analysis.project) ? analysis.project as Record<string, unknown> : {};
+        await prisma.rfpAnalysis.update({
+          where: { id },
+          data: {
+            project: JSON.parse(JSON.stringify({ ...project, _healedAt: new Date().toISOString() })),
+          },
+        });
+      } catch {}
     }
   }
 

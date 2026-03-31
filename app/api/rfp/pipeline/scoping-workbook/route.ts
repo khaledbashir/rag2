@@ -83,6 +83,15 @@ export async function POST(request: NextRequest) {
         log.info(`[scoping-workbook] Westfield healed: ${specs.length} screens, pitch preserved from original`);
       } catch (err) {
         log.warn("[scoping-workbook] Westfield re-extract failed, using saved analysis");
+        // Mark as healed even on failure to stop re-extraction loop
+        try {
+          await prisma.rfpAnalysis.update({
+            where: { id: analysis.id },
+            data: {
+              project: JSON.parse(JSON.stringify({ ...project, _healedAt: new Date().toISOString() })),
+            },
+          });
+        } catch {}
       }
     }
 
