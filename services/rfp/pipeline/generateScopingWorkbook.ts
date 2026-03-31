@@ -1422,17 +1422,18 @@ function buildLedCostSheet(
       || d.spec.selectedProductName
       || d.match?.module?.name
       || "—";
-    // G: Pitch
-    dr.getCell(7).value = d.spec.pixelPitchMm ? `${d.spec.pixelPitchMm}mm` : "—";
+    // G: Pitch — prefer matched product's pitch over extracted pitch (extractor often grabs mesh pitch)
+    const effectivePitch = d.match?.module?.pitch ?? d.spec.pixelPitchMm;
+    dr.getCell(7).value = effectivePitch ? `${effectivePitch}mm` : "—";
     dr.getCell(7).alignment = { horizontal: "center" };
     // H-I: H(ft), W(ft) — product-snapped dimensions (must be numeric for formulas)
     const cellH = Number(d.heightFt) || 0;
     const cellW = Number(d.widthFt) || 0;
     dr.getCell(8).value = cellH; dr.getCell(8).numFmt = "0.00";
     dr.getCell(9).value = cellW; dr.getCell(9).numFmt = "0.00";
-    // J-K: H(px), W(px) — plain integers
-    const hPx = d.spec.heightPx || (d.spec.pixelPitchMm && d.heightFt ? Math.round(d.heightFt * 304.8 / d.spec.pixelPitchMm) : 0);
-    const wPx = d.spec.widthPx || (d.spec.pixelPitchMm && d.widthFt ? Math.round(d.widthFt * 304.8 / d.spec.pixelPitchMm) : 0);
+    // J-K: H(px), W(px) — use effectivePitch (product-matched) not raw extracted pitch
+    const hPx = d.spec.heightPx || (effectivePitch && d.heightFt ? Math.round(d.heightFt * 304.8 / effectivePitch) : 0);
+    const wPx = d.spec.widthPx || (effectivePitch && d.widthFt ? Math.round(d.widthFt * 304.8 / effectivePitch) : 0);
     dr.getCell(10).value = hPx;
     dr.getCell(11).value = wPx;
     // L: Qty
@@ -1489,7 +1490,7 @@ function buildLedCostSheet(
 
     // X-Z: Weight, Power, BTU
     const areaM2 = d.areaSqFt * 0.092903;
-    const pitch = d.spec.pixelPitchMm ?? 0;
+    const pitch = effectivePitch ?? d.spec.pixelPitchMm ?? 0;
     const catalogMatch = selectedProduct
       ?? (pitch > 0 ? getAllProducts().find((p) => Math.abs(p.pitchMm - pitch) < 0.5) : null);
     const weight = catalogMatch
@@ -3016,9 +3017,10 @@ function buildTechSpecsSheet(
     // IMPORTANT: result values required — browser preview can't resolve cross-sheet formulas
     const qty = d.spec.quantity || 1;
     const displayName = d.spec.name + (d.spec.location ? ` — ${d.spec.location}` : "");
-    const pitchLabel = d.spec.pixelPitchMm ? `${d.spec.pixelPitchMm}mm` : "—";
-    const hPx = d.spec.heightPx || (d.spec.pixelPitchMm && d.heightFt ? Math.round(d.heightFt * 304.8 / d.spec.pixelPitchMm) : 0);
-    const wPx = d.spec.widthPx || (d.spec.pixelPitchMm && d.widthFt ? Math.round(d.widthFt * 304.8 / d.spec.pixelPitchMm) : 0);
+    const pitchLabel = (d.match?.module?.pitch ?? d.spec.pixelPitchMm) ? `${d.match?.module?.pitch ?? d.spec.pixelPitchMm}mm` : "—";
+    const effPitch = d.match?.module?.pitch ?? d.spec.pixelPitchMm;
+    const hPx = d.spec.heightPx || (effPitch && d.heightFt ? Math.round(d.heightFt * 304.8 / effPitch) : 0);
+    const wPx = d.spec.widthPx || (effPitch && d.widthFt ? Math.round(d.widthFt * 304.8 / effPitch) : 0);
 
     r.getCell(1).value = { formula: `'LED Cost Sheet'!A${ledRow}`, result: displayName };
     r.getCell(2).value = { formula: `'LED Cost Sheet'!I${ledRow}`, result: qty };

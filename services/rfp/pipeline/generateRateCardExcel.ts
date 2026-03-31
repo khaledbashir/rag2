@@ -296,7 +296,10 @@ async function priceDisplay(
 
   // Calculate install/services costs using productCatalog's estimatePricing
   // Default: 2.5mm indoor (LG LSCB025, ANC's standard), 10mm outdoor
-  const pitchMm = spec.pixelPitchMm || (match?.module?.pitch) || (spec.environment === "outdoor" ? 10 : 2.5);
+  // CRITICAL: Prefer the matched product's pitch over the extracted pitch.
+  // The AI extractor often grabs mesh pitch (e.g. 3.9mm) instead of LED pixel pitch (e.g. 2.5mm).
+  // If a product was matched with a known pitch, that IS the correct pitch.
+  const pitchMm = (match?.module?.pitch) || spec.pixelPitchMm || (spec.environment === "outdoor" ? 10 : 2.5);
   const product = getProductByPitch(pitchMm, spec.environment === "outdoor" ? "Outdoor" : "Indoor")
     || getProductByPitch(pitchMm);
 
