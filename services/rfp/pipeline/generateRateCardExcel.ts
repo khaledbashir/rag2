@@ -56,6 +56,8 @@ export interface PricedDisplay {
   areaSqFt: number;
   /** Hardware cost (from quote or rate card) */
   hardwareCost: number;
+  /** Spare parts cost (5% of hardware) */
+  sparePartsCost: number;
   /** Processor / bundle equipment cost */
   processorCost: number;
   /** Shipping / logistics cost */
@@ -318,19 +320,23 @@ async function priceDisplay(
     engCost = round2(4706);
   }
 
+  // Spare parts: 5% of hardware cost (matches scoping workbook)
+  const sparePartsPct = 0.05;
+  const sparePartsCost = round2(hardwareCost * sparePartsPct);
+
   // Margins — flat 15% across all categories (Natalia confirmed March 2026)
   const ledMarginPct = MARGIN_PRESETS.ledHardware; // 15%
   const projectMargin = ledMarginPct; // uniform margin for all line items
 
   const { processorCost, shippingCost } = computeProcessorAndShipping(spec, areaSqFt);
   const servicesCost = installCost + pmCost + engCost;
-  const totalCost = hardwareCost + processorCost + shippingCost + servicesCost;
+  const totalCost = hardwareCost + sparePartsCost + processorCost + shippingCost + servicesCost;
 
   // Selling prices: uniform margin applied to ALL costs (hardware + processor + shipping + services)
   // This guarantees blendedMarginPct = projectMargin exactly
   const totalSellingPrice = totalCost > 0 ? round2(totalCost / (1 - projectMargin)) : 0;
-  const hardwareSellingPrice = (hardwareCost + processorCost + shippingCost) > 0
-    ? round2((hardwareCost + processorCost + shippingCost) / (1 - projectMargin)) : 0;
+  const hardwareSellingPrice = (hardwareCost + sparePartsCost + processorCost + shippingCost) > 0
+    ? round2((hardwareCost + sparePartsCost + processorCost + shippingCost) / (1 - projectMargin)) : 0;
   const servicesSellingPrice = servicesCost > 0 ? round2(servicesCost / (1 - projectMargin)) : 0;
 
   const marginDollars = round2(totalSellingPrice - totalCost);
@@ -342,6 +348,7 @@ async function priceDisplay(
     match,
     areaSqFt,
     hardwareCost,
+    sparePartsCost,
     processorCost,
     shippingCost,
     installCost,
@@ -472,7 +479,7 @@ export async function generateRateCardExcel(
         r.getCell(c).alignment = { horizontal: "center" };
       });
     } else {
-      r.getCell(5).value = pd.hardwareCost;
+      r.getCell(5).value = pd.hardwareCost + pd.sparePartsCost;
       r.getCell(5).numFmt = FMT;
       r.getCell(6).value = pd.installCost + pd.pmCost + pd.engCost;
       r.getCell(6).numFmt = FMT;
@@ -527,7 +534,7 @@ export async function generateRateCardExcel(
   basePriced.forEach((pd, idx) => {
     const hasDims = renderPricedRow(pd, idx, false);
     if (hasDims) {
-      baseTotals.hw += pd.hardwareCost;
+      baseTotals.hw += pd.hardwareCost + pd.sparePartsCost;
       baseTotals.inst += (pd.installCost + pd.pmCost + pd.engCost);
       baseTotals.cost += pd.totalCost;
       baseTotals.hwSell += pd.hardwareSellingPrice;
@@ -567,7 +574,7 @@ export async function generateRateCardExcel(
     altPriced.forEach((pd, idx) => {
       const hasDims = renderPricedRow(pd, idx, true);
       if (hasDims) {
-        altTotals.hw += pd.hardwareCost;
+        altTotals.hw += pd.hardwareCost + pd.sparePartsCost;
         altTotals.inst += (pd.installCost + pd.pmCost + pd.engCost);
         altTotals.cost += pd.totalCost;
         altTotals.hwSell += pd.hardwareSellingPrice;
@@ -654,7 +661,7 @@ export async function generateRateCardExcel(
       : pd.spec.name;
     r.getCell(1).value = label;
     r.getCell(1).font = { bold: true, name: "Calibri" };
-    r.getCell(2).value = pd.hardwareCost; r.getCell(2).numFmt = FMT;
+    r.getCell(2).value = pd.hardwareCost + pd.sparePartsCost; r.getCell(2).numFmt = FMT;
     r.getCell(3).value = pd.installCost; r.getCell(3).numFmt = FMT;
     r.getCell(4).value = pd.pmCost; r.getCell(4).numFmt = FMT;
     r.getCell(5).value = pd.engCost; r.getCell(5).numFmt = FMT;
