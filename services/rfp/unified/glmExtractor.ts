@@ -1273,10 +1273,10 @@ function reconcileDisplays(screens: ExtractedLEDSpec[]): ExtractedLEDSpec[] {
     const key = `${normName(s.name)}|${s.widthFt ?? "X"}|${s.heightFt ?? "X"}`;
     const existing = exactMap.get(key);
     if (existing) {
-      // Merge duplicates: keep the most complete spec, take the HIGHER quantity
-      // (don't sum — if one says qty 3 and another says qty 1 for the same display,
-      // the qty 3 is the grouped version and qty 1 is a leftover duplicate)
-      const mergedQty = Math.max(existing.quantity || 1, s.quantity || 1);
+      // Merge duplicates: keep the most complete spec, SUM quantities.
+      // LLM outputs qty 1 per table row. Same name + same dims = same display type.
+      // e.g. 4 rows of "Panthers Den 3'x22'" → 1 row with qty 4.
+      const mergedQty = (existing.quantity || 1) + (s.quantity || 1);
       if (specCompleteness(s) > specCompleteness(existing)) {
         exactMap.set(key, { ...s, quantity: mergedQty });
       } else {
@@ -1884,9 +1884,8 @@ Rules:
 - ONLY extract from TECHNICAL SPECIFICATION tables, DISPLAY SCHEDULE tables, or EXHIBIT tables that list LED display specs (dimensions, pixel pitch, brightness). These are the authoritative source.
 - IGNORE logistics tables, sequencing/scheduling tables, barricade requirement tables, and any other administrative tables — they repeat the same displays without specs.
 - Use the ACTUAL room/location name from the spec table for each display.
-- If pixel pitch is not stated but others in the same table have it (e.g. all 2.5mm GOB), use that value.
-- Use the ACTUAL quantity from the table. If the table says "Quantity: 4" for T4-B1, set quantity to 4. If a column lists sub-items with different dimensions (e.g. Screen 20: 16.5'x7.91', Screen 21: 11.83'x7.91'), output each as a SEPARATE row with quantity 1.
-- If the same display appears in multiple spec tables with different details, output it ONCE using the most complete specs.
+- If pixel pitch is not stated but others in the same table have it (e.g. all 3.9mm), use that value.
+- Every row in the source spec table = one row in output. DO NOT group or merge rows. If "Panthers Den" appears 7 times in the spec table, output 7 rows. If "Elev Lobby" appears 4 times, output 4 rows. quantity is always 1.
 - Only LED displays/videoboards/ribbons in displays. Game clocks, racks, spare parts, processors, cameras go in requirements.${options?.customKeywords ? `\n- ALSO look for displays matching these keywords: ${options.customKeywords}` : ""}`;
 
       const gptRes = await fetch(`${OPENAI_API_BASE}/chat/completions`, {
@@ -2138,7 +2137,7 @@ Rules:
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${MERCURY_API_KEY}` },
         body: JSON.stringify({
           model: MERCURY_MODEL,
-          messages: [{ role: "user", content: `Extract ALL LED displays from this RFP. Return JSON: {"project":{"name":"","client":"","venue":"","address":""},"displays":[{"name":"","pixel_pitch_mm":0,"brightness_nits":0,"width_ft":"","height_ft":"","environment":"indoor","quantity":1}],"requirements":[{"description":"","category":"","status":""}]}. ONLY extract from technical spec / display schedule / exhibit tables with dimensions. IGNORE logistics, sequencing, barricade tables. Use ACTUAL quantity from spec table. If sub-items have different dimensions, output each as separate row with quantity 1. Only LED displays, no clocks/racks/processors/cameras.\n\n${mercText}` }],
+          messages: [{ role: "user", content: `Extract ALL LED displays from this RFP. Return JSON: {"project":{"name":"","client":"","venue":"","address":""},"displays":[{"name":"","pixel_pitch_mm":0,"brightness_nits":0,"width_ft":"","height_ft":"","environment":"indoor","quantity":1}],"requirements":[{"description":"","category":"","status":""}]}. ONLY extract from technical spec / display schedule / exhibit tables with dimensions. IGNORE logistics, sequencing, barricade tables. Every row in the spec table = one output row. DO NOT group or merge. quantity always 1. Only LED displays, no clocks/racks/processors/cameras.\n\n${mercText}` }],
           temperature: 0,
           max_tokens: 32768,
         }),
@@ -2297,9 +2296,7 @@ IMPORTANT: Only include actual LED video displays, ribbon boards, fascia boards,
 
 CRITICAL — EXTRACT FROM SPEC TABLES ONLY. Only extract from technical specification tables, display schedule tables, or exhibit tables that contain LED display specs (dimensions, pixel pitch, brightness). IGNORE logistics tables, sequencing/scheduling tables, barricade requirement tables, and any administrative tables that merely reference displays by name without specs.
 
-CRITICAL — USE REAL QUANTITIES. If the spec table says "Quantity: 9" for T4-B2, set quantity to 9 and output ONE row. If a column lists sub-items with DIFFERENT dimensions (e.g. Screen 20: 16.5'x7.91', Screen 21: 11.83'x7.91'), output each as a SEPARATE row with quantity 1. Same display from multiple spec tables = output ONCE with the most complete specs.
-
-CRITICAL — DO NOT output the same display multiple times. Each unique physical display location should appear exactly once.`;
+CRITICAL — Every row in the source spec table = one row in output. DO NOT group, merge, or deduplicate rows. If "Panthers Den" appears 7 times, output 7 rows. If "Elev Lobby" appears 4 times with identical dimensions, output 4 rows. Always set quantity: 1. The source table is the truth — one source row = one output row, no exceptions.`;
 
       console.log(`[RFP v2] MiMo: sending text to ${MIMO_MODEL} (streaming)...`);
       options?.onProgress?.("Sending to MiMo...");
