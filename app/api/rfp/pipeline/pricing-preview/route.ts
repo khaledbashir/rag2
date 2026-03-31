@@ -4,9 +4,8 @@
  * Preview pricing for all specs without generating Excel.
  * Returns JSON with priced displays for the UI to render.
  *
- * Accepts specs from EITHER:
- *   1. analysisId → loads from DB (existing flow)
- *   2. specs[] + project → inline from client state (fallback when DB save failed)
+ * Uses the SAME cost computation as the Excel export (computeDisplays)
+ * so web and Excel numbers match exactly.
  *
  * Body: {
  *   analysisId?: string,
@@ -22,6 +21,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateRateCardExcel } from "@/services/rfp/pipeline/generateRateCardExcel";
+import { computeDisplays, type ProductResolver } from "@/services/rfp/pipeline/computeDisplayCosts";
+import { getProduct } from "@/services/rfp/productCatalog";
+import { preloadRateCard } from "@/services/rfp/rateCardLoader";
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "@/services/rfp/unified/types";
 import { log } from "@/lib/logger";
 
@@ -63,6 +65,8 @@ export async function POST(request: NextRequest) {
 
     log.info(`[pricing-preview] Pricing ${specs.length} specs (source: ${analysisId ? "db" : "inline"})`);
 
+    // Step 1: Run generateRateCardExcel for product matching metadata
+    // (matched products, cost source, lead times, fit scores)
     const { pricedDisplays } = await generateRateCardExcel({
       project,
       specs,
@@ -72,9 +76,7 @@ export async function POST(request: NextRequest) {
       includeBond,
     });
 
-    // Honor user product selections: if spec has selectedProductId, use that
-    // product instead of the auto-matched one. This preserves manual picks across
-    // page refreshes and pricing recalculations.
+    // Step 2: Load user-selected products from DB
     const selectedIds = specs
       .map((s) => s.selectedProductId)
       .filter((id): id is string => !!id);
@@ -93,10 +95,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Return JSON for UI rendering (strip the buffer)
-    const totalCost = pricedDisplays.reduce((s, d) => s + d.totalCost, 0);
-    const totalSell = pricedDisplays.reduce((s, d) => s + d.totalSellingPrice, 0);
-    const totalMargin = pricedDisplays.reduce((s, d) => s + d.marginDollars, 0);
+    // Step 3: Compute authoritative costs using the SAME logic as the Excel export
+    // This ensures web $/SqFt, Total Cost, and Selling Price match Excel exactly.
+    await preloadRateCard();
+    const resolveProduct: ProductResolver = (id) => {
+      if (!id) return null;
+      const catalogProduct = getProduct(id);
+      if (catalogProduct) return catalogProduct;
+      const dbP = selectedProductMap.get(id);
+      if (dbP) return dbP;
+      return null;
+    };
+
+    const computedDisplays = computeDisplays(
+      specs,
+      pricedDisplays,
+      installComplexity as any,
+      resolveProduct,
+    );
+
+    // Step 4: Build response — costs from computeDisplays, metadata from pricedDisplays
+    const totalCost = computedDisplays.reduce((s, d) => s + d.totalCost, 0);
+    const totalSell = computedDisplays.reduce((s, d) => s + d.sellingPrice, 0);
+    const totalMargin = computedDisplays.reduce((s, d) => s + d.marginDollars, 0);
 
     return NextResponse.json({
       project: {
@@ -105,29 +126,31 @@ export async function POST(request: NextRequest) {
         venue: project.venue,
         location: project.location,
       },
-      displays: pricedDisplays.map((pd) => {
-        // If user manually selected a product, override the auto-match
-        const userProduct = pd.spec.selectedProductId
-          ? selectedProductMap.get(pd.spec.selectedProductId)
+      displays: computedDisplays.map((cd, idx) => {
+        const pd = pricedDisplays[idx];
+
+        // Build matched product info from pricedDisplays (product matching metadata)
+        const userProduct = cd.spec.selectedProductId
+          ? selectedProductMap.get(cd.spec.selectedProductId)
           : null;
 
         const matchedProduct = userProduct ? {
           manufacturer: userProduct.manufacturer,
           model: userProduct.displayName,
           pitch: userProduct.pixelPitch,
-          totalModules: pd.match?.totalModules ?? 0,
+          totalModules: pd?.match?.totalModules ?? 0,
           fitScore: 100,
-          activeWidthFt: pd.spec.activeWidthFt ?? pd.match?.activeWidthFt,
-          activeHeightFt: pd.spec.activeHeightFt ?? pd.match?.activeHeightFt,
-          resolutionX: pd.match?.resolutionX ?? 0,
-          resolutionY: pd.match?.resolutionY ?? 0,
+          activeWidthFt: cd.spec.activeWidthFt ?? pd?.match?.activeWidthFt,
+          activeHeightFt: cd.spec.activeHeightFt ?? pd?.match?.activeHeightFt,
+          resolutionX: pd?.match?.resolutionX ?? 0,
+          resolutionY: pd?.match?.resolutionY ?? 0,
           weightKgPerCab: userProduct.weightKgPerCabinet,
           maxPowerWPerCab: userProduct.maxPowerWattsPerCab,
-          totalWeightKg: pd.match ? Math.round(userProduct.weightKgPerCabinet * pd.match.totalModules * 10) / 10 : 0,
-          totalWeightLbs: pd.match ? Math.round(userProduct.weightKgPerCabinet * pd.match.totalModules * 2.205) : 0,
-          totalMaxPowerW: pd.match ? userProduct.maxPowerWattsPerCab * pd.match.totalModules : 0,
+          totalWeightKg: pd?.match ? Math.round(userProduct.weightKgPerCabinet * pd.match.totalModules * 10) / 10 : 0,
+          totalWeightLbs: pd?.match ? Math.round(userProduct.weightKgPerCabinet * pd.match.totalModules * 2.205) : 0,
+          totalMaxPowerW: pd?.match ? userProduct.maxPowerWattsPerCab * pd.match.totalModules : 0,
           nits: userProduct.maxNits,
-        } : pd.match ? {
+        } : pd?.match ? {
           manufacturer: pd.match.module.manufacturer,
           model: pd.match.module.name,
           pitch: pd.match.module.pitch,
@@ -146,27 +169,31 @@ export async function POST(request: NextRequest) {
         } : null;
 
         return {
-        name: pd.spec.name,
-        location: pd.spec.location,
-        pixelPitch: pd.spec.pixelPitchMm,
-        environment: pd.spec.environment,
-        quantity: pd.spec.quantity,
-        areaSqFt: pd.areaSqFt,
-        hardwareCost: pd.hardwareCost + pd.sparePartsCost,  // Include 5% spares so web $/SqFt matches Excel
-        processorCost: pd.processorCost,
-        shippingCost: pd.shippingCost,
-        installCost: pd.installCost,
-        pmCost: pd.pmCost,
-        engCost: pd.engCost,
-        totalCost: pd.totalCost,
-        hardwareSellingPrice: pd.hardwareSellingPrice,
-        servicesSellingPrice: pd.servicesSellingPrice,
-        totalSellingPrice: pd.totalSellingPrice,
-        blendedMarginPct: pd.blendedMarginPct,
-        costSource: pd.costSource,
-        rateCardEstimate: pd.rateCardEstimate,
-        leadTimeWeeks: pd.leadTimeWeeks,
-        matchedProduct,
+          name: cd.spec.name,
+          location: cd.spec.location,
+          pixelPitch: cd.spec.pixelPitchMm,
+          environment: cd.spec.environment,
+          quantity: cd.spec.quantity,
+          areaSqFt: cd.areaSqFt,
+          // Cost fields from computeDisplays (matches Excel exactly)
+          hardwareCost: cd.ledHardwareCost + cd.sparePartsCost,
+          processorCost: cd.sendingCardCost + cd.signalCableCost + cd.upsCost + cd.backupProcessorCost + cd.weatherproofCost,
+          shippingCost: cd.shippingCost,
+          installCost: cd.structuralMaterialsCost + cd.structuralLaborCost + cd.electricalCost,
+          pmCost: cd.pmCost,
+          engCost: cd.engCost,
+          travelCost: cd.travelCost,
+          totalCost: cd.totalCost,
+          // Selling/margin from computeDisplays
+          hardwareSellingPrice: 0,  // Not broken out in computeDisplays — use totalSellingPrice
+          servicesSellingPrice: 0,
+          totalSellingPrice: cd.sellingPrice,
+          blendedMarginPct: cd.marginPct,
+          // Metadata from pricedDisplays
+          costSource: pd?.costSource ?? "rate_card",
+          rateCardEstimate: pd?.rateCardEstimate ?? null,
+          leadTimeWeeks: pd?.leadTimeWeeks ?? null,
+          matchedProduct,
         };
       }),
       summary: {
@@ -174,7 +201,7 @@ export async function POST(request: NextRequest) {
         totalSellingPrice: totalSell,
         totalMargin,
         blendedMarginPct: totalSell > 0 ? Math.round((totalMargin / totalSell) * 1000) / 10 : 0,
-        displayCount: pricedDisplays.length,
+        displayCount: computedDisplays.length,
         quotedCount: pricedDisplays.filter((d) => d.costSource === "subcontractor_quote").length,
         rateCardCount: pricedDisplays.filter((d) => d.costSource === "rate_card").length,
       },
