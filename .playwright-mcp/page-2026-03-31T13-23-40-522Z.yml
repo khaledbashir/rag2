@@ -1,0 +1,103 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - link "ANC" [ref=e5] [cursor=pointer]:
+          - /url: /projects
+          - img "ANC" [ref=e7]
+        - button [ref=e8] [cursor=pointer]:
+          - img [ref=e9]
+      - navigation [ref=e12]:
+        - generic [ref=e13]:
+          - heading "Main" [level=3] [ref=e14]
+          - generic [ref=e15]:
+            - link "Projects" [ref=e18] [cursor=pointer]:
+              - /url: /projects
+              - img [ref=e19]
+              - generic [ref=e24]: Projects
+            - link "Pipeline" [ref=e27] [cursor=pointer]:
+              - /url: /pipeline
+              - img [ref=e28]
+              - generic [ref=e29]: Pipeline
+        - generic [ref=e30]:
+          - heading "Tools" [level=3] [ref=e31]
+          - generic [ref=e32]:
+            - generic [ref=e34]:
+              - link "RFP Analyzer" [ref=e35] [cursor=pointer]:
+                - /url: /tools/rfp-analyzer
+                - img [ref=e36]
+                - generic [ref=e41]: RFP Analyzer
+              - button [ref=e42] [cursor=pointer]:
+                - img [ref=e43]
+            - generic [ref=e46]:
+              - link "SOW Builder" [ref=e47] [cursor=pointer]:
+                - /url: /tools/sow-generator
+                - img [ref=e48]
+                - generic [ref=e51]: SOW Builder
+              - button [ref=e52] [cursor=pointer]:
+                - img [ref=e53]
+            - link "Spec Sheets" [ref=e57] [cursor=pointer]:
+              - /url: /tools/spec-generator
+              - img [ref=e58]
+              - generic [ref=e61]: Spec Sheets
+            - generic [ref=e62]:
+              - generic [ref=e63]:
+                - link "Estimator" [ref=e64] [cursor=pointer]:
+                  - /url: /estimator
+                  - img [ref=e65]
+                  - generic [ref=e67]: Estimator
+                - button [ref=e68] [cursor=pointer]:
+                  - img [ref=e69]
+              - generic [ref=e1205]:
+                - link "New Estimate" [ref=e1206] [cursor=pointer]:
+                  - /url: /estimator/new
+                  - img [ref=e1207]
+                  - generic [ref=e1209]: New Estimate
+                - link "History" [ref=e1210] [cursor=pointer]:
+                  - /url: /estimator
+                  - img [ref=e1211]
+                  - generic [ref=e1215]: History
+      - generic [ref=e71]:
+        - button "Settings" [ref=e72] [cursor=pointer]:
+          - img [ref=e73]
+          - generic [ref=e76]: Settings
+        - generic [ref=e77]:
+          - paragraph [ref=e78]: Claude Agent
+          - paragraph [ref=e79]: Admin
+        - button "Sign Out" [ref=e80] [cursor=pointer]:
+          - img [ref=e81]
+          - generic [ref=e84]: Sign Out
+    - generic [ref=e1216]:
+      - navigation "Breadcrumb" [ref=e1218]:
+        - link "Estimates" [ref=e1219] [cursor=pointer]:
+          - /url: /estimator
+        - img [ref=e1220]
+        - generic [ref=e1222]: Rose Bowl South Endzone Club Renovations - 2026
+      - generic [ref=e1223]:
+        - banner [ref=e1224]:
+          - link "Projects" [ref=e1225] [cursor=pointer]:
+            - /url: /projects
+            - img [ref=e1226]
+            - text: Projects
+          - generic [ref=e1229]:
+            - img [ref=e1230]
+            - generic [ref=e1233]: Rose Bowl South Endzone Club Renovations - 2026
+            - generic [ref=e1234]: — Rose Bowl
+          - generic [ref=e1235]:
+            - generic [ref=e1236]: Saved
+            - generic [ref=e1241]:
+              - generic [ref=e1242]: CA
+              - generic [ref=e1259]: JM
+            - button "Activity timeline" [ref=e1243] [cursor=pointer]:
+              - img [ref=e1244]
+            - button "Tools" [ref=e1247] [cursor=pointer]:
+              - img [ref=e1248]
+              - text: Tools
+              - img [ref=e1250]
+        - main [ref=e1252]:
+          - generic [ref=e1255]:
+            - img [ref=e1256]
+            - paragraph [ref=e1258]: Waiting for display data...
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e192]

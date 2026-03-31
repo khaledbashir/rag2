@@ -261,7 +261,7 @@ async function priceDisplay(
         const matchForCost = await ProductMatcher.matchProduct({
           widthFt,
           heightFt,
-          pixelPitch: spec.pixelPitchMm ?? undefined,
+          pixelPitch: parsePitchFromProductName(spec.selectedProductName) ?? spec.pixelPitchMm ?? undefined,
           brightnessNits: spec.brightnessNits ?? undefined,
           isOutdoor: spec.environment === "outdoor",
         });
@@ -288,7 +288,7 @@ async function priceDisplay(
     match = await ProductMatcher.matchProduct({
       widthFt,
       heightFt,
-      pixelPitch: spec.pixelPitchMm ?? undefined,
+      pixelPitch: parsePitchFromProductName(spec.selectedProductName) ?? spec.pixelPitchMm ?? undefined,
       brightnessNits: spec.brightnessNits ?? undefined,
       isOutdoor: spec.environment === "outdoor",
     });

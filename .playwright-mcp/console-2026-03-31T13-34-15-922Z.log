@@ -1,0 +1,2 @@
+[   24733ms] [LOG] [Login] signIn result: {"error":"CredentialsSignin","code":"credentials","status":200,"ok":true,"url":null} @ https://static.userback.io/widget/v1.js:1
+[   75042ms] [LOG] [Login] signIn result: {"error":"CredentialsSignin","code":"credentials","status":200,"ok":true,"url":null} @ https://static.userback.io/widget/v1.js:1

@@ -1,0 +1,88 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - link "ANC" [ref=e5] [cursor=pointer]:
+          - /url: /projects
+          - img "ANC" [ref=e7]
+        - button [ref=e8] [cursor=pointer]:
+          - img [ref=e9]
+      - navigation [ref=e12]:
+        - generic [ref=e13]:
+          - heading "Main" [level=3] [ref=e14]
+          - generic [ref=e15]:
+            - link "Projects" [ref=e18] [cursor=pointer]:
+              - /url: /projects
+              - img [ref=e19]
+              - generic [ref=e24]: Projects
+            - link "Pipeline" [ref=e27] [cursor=pointer]:
+              - /url: /pipeline
+              - img [ref=e28]
+              - generic [ref=e29]: Pipeline
+        - generic [ref=e30]:
+          - heading "Tools" [level=3] [ref=e31]
+          - generic [ref=e32]:
+            - generic [ref=e34]:
+              - link "RFP Analyzer" [ref=e35] [cursor=pointer]:
+                - /url: /tools/rfp-analyzer
+                - img [ref=e36]
+                - generic [ref=e41]: RFP Analyzer
+              - button [ref=e42] [cursor=pointer]:
+                - img [ref=e43]
+            - generic [ref=e46]:
+              - link "SOW Builder" [ref=e47] [cursor=pointer]:
+                - /url: /tools/sow-generator
+                - img [ref=e48]
+                - generic [ref=e51]: SOW Builder
+              - button [ref=e52] [cursor=pointer]:
+                - img [ref=e53]
+            - link "Spec Sheets" [ref=e57] [cursor=pointer]:
+              - /url: /tools/spec-generator
+              - img [ref=e58]
+              - generic [ref=e61]: Spec Sheets
+            - generic [ref=e62]:
+              - generic [ref=e63]:
+                - link "Estimator" [ref=e64] [cursor=pointer]:
+                  - /url: /estimator
+                  - img [ref=e65]
+                  - generic [ref=e67]: Estimator
+                - button [ref=e68] [cursor=pointer]:
+                  - img [ref=e69]
+              - generic [ref=e71]:
+                - link "New Estimate" [ref=e72] [cursor=pointer]:
+                  - /url: /estimator/new
+                  - img [ref=e73]
+                  - generic [ref=e75]: New Estimate
+                - link "History" [ref=e76] [cursor=pointer]:
+                  - /url: /estimator
+                  - img [ref=e77]
+                  - generic [ref=e81]: History
+      - generic [ref=e82]:
+        - button "Settings" [ref=e83] [cursor=pointer]:
+          - img [ref=e84]
+          - generic [ref=e87]: Settings
+        - generic [ref=e88]:
+          - paragraph [ref=e89]: Claude Agent
+          - paragraph [ref=e90]: Admin
+        - button "Sign Out" [ref=e91] [cursor=pointer]:
+          - img [ref=e92]
+          - generic [ref=e95]: Sign Out
+    - generic [ref=e97]:
+      - banner [ref=e98]:
+        - generic [ref=e99]:
+          - generic [ref=e100]:
+            - img [ref=e101]
+            - heading "Estimates" [level=1] [ref=e103]
+          - generic [ref=e105]:
+            - img [ref=e106]
+            - textbox "Search estimates..." [ref=e109]
+        - button "New Estimate" [ref=e110] [cursor=pointer]:
+          - img [ref=e111]
+          - text: New Estimate
+      - main [ref=e112]:
+        - generic [ref=e114]:
+          - generic [ref=e115]: 0Estimates
+          - generic [ref=e116]: $0Total Value
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e122]

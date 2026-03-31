@@ -1,0 +1,649 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - link "ANC" [ref=e5] [cursor=pointer]:
+          - /url: /projects
+          - img "ANC" [ref=e7]
+        - button [ref=e8] [cursor=pointer]:
+          - img [ref=e9]
+      - navigation [ref=e12]:
+        - generic [ref=e13]:
+          - heading "Main" [level=3] [ref=e14]
+          - generic [ref=e15]:
+            - link "Projects" [ref=e18] [cursor=pointer]:
+              - /url: /projects
+              - img [ref=e19]
+              - generic [ref=e24]: Projects
+            - link "Pipeline" [ref=e27] [cursor=pointer]:
+              - /url: /pipeline
+              - img [ref=e28]
+              - generic [ref=e29]: Pipeline
+        - generic [ref=e30]:
+          - heading "Tools" [level=3] [ref=e31]
+          - generic [ref=e32]:
+            - generic [ref=e34]:
+              - link "RFP Analyzer" [ref=e35] [cursor=pointer]:
+                - /url: /tools/rfp-analyzer
+                - img [ref=e36]
+                - generic [ref=e41]: RFP Analyzer
+              - button [ref=e42] [cursor=pointer]:
+                - img [ref=e43]
+            - generic [ref=e46]:
+              - link "SOW Builder" [ref=e47] [cursor=pointer]:
+                - /url: /tools/sow-generator
+                - img [ref=e48]
+                - generic [ref=e51]: SOW Builder
+              - button [ref=e52] [cursor=pointer]:
+                - img [ref=e53]
+            - link "Spec Sheets" [ref=e57] [cursor=pointer]:
+              - /url: /tools/spec-generator
+              - img [ref=e58]
+              - generic [ref=e61]: Spec Sheets
+            - generic [ref=e63]:
+              - link "Estimator" [ref=e64] [cursor=pointer]:
+                - /url: /estimator
+                - img [ref=e65]
+                - generic [ref=e67]: Estimator
+              - button [ref=e68] [cursor=pointer]:
+                - img [ref=e69]
+      - generic [ref=e71]:
+        - button "Settings" [ref=e72] [cursor=pointer]:
+          - img [ref=e73]
+          - generic [ref=e76]: Settings
+        - generic [ref=e77]:
+          - paragraph [ref=e78]: Claude Agent
+          - paragraph [ref=e79]: Admin
+        - button "Sign Out" [ref=e80] [cursor=pointer]:
+          - img [ref=e81]
+          - generic [ref=e84]: Sign Out
+    - generic [ref=e85]:
+      - generic [ref=e193]:
+        - banner [ref=e194]:
+          - generic [ref=e195]:
+            - generic [ref=e196]:
+              - link "ANC Sports Enterprises Logo" [ref=e197] [cursor=pointer]:
+                - /url: /projects
+                - img "ANC Sports Enterprises Logo" [ref=e199]
+              - generic [ref=e201]:
+                - generic "Percentage of required proposal fields filled (from Excel or form)" [ref=e202]: 90% filled
+                - generic [ref=e204]:
+                  - img [ref=e205]
+                  - text: Excel Verified
+            - generic [ref=e208]:
+              - button "Toggle theme" [ref=e209] [cursor=pointer]:
+                - img [ref=e210]
+                - img
+                - generic [ref=e216]: Toggle theme
+              - generic [ref=e217]:
+                - generic [ref=e219]: Hybrid
+                - img [ref=e220]
+              - button "Budget" [ref=e222] [cursor=pointer]:
+                - img [ref=e223]
+                - generic [ref=e226]: Budget
+                - img [ref=e227]
+              - generic [ref=e230]:
+                - img [ref=e231]
+                - generic [ref=e233]: Vault
+              - button [ref=e234] [cursor=pointer]:
+                - img [ref=e235]
+              - button [ref=e239] [cursor=pointer]:
+                - img [ref=e240]
+        - generic [ref=e246]:
+          - generic [ref=e247]:
+            - button "Drafting" [ref=e249] [cursor=pointer]:
+              - img [ref=e250]
+              - text: Drafting
+            - button "Edit Proposal" [ref=e252] [cursor=pointer]:
+              - img [ref=e253]
+              - text: Edit Proposal
+          - main [ref=e258]:
+            - generic [ref=e260]:
+              - generic [ref=e261]:
+                - generic [ref=e264]:
+                  - generic [ref=e267]:
+                    - button "New" [ref=e268] [cursor=pointer]:
+                      - img [ref=e269]
+                      - generic [ref=e270]: New
+                    - button "Reset" [ref=e271] [cursor=pointer]:
+                      - img [ref=e272]
+                      - generic [ref=e275]: Reset
+                  - generic [ref=e277]:
+                    - generic [ref=e279]:
+                      - generic [ref=e280]:
+                        - heading "Import" [level=1] [ref=e282]: Import
+                        - generic [ref=e284]:
+                          - button "Project Details" [ref=e285] [cursor=pointer]:
+                            - img [ref=e286]
+                            - text: Project Details
+                          - button "Brief Me" [ref=e289] [cursor=pointer]:
+                            - img [ref=e290]
+                            - generic [ref=e292]: Brief Me
+                          - generic [ref=e293] [cursor=pointer]:
+                            - img [ref=e294]
+                            - generic [ref=e299]: Replace Excel
+                          - button "Switch to Build from Scratch" [ref=e300] [cursor=pointer]:
+                            - img [ref=e301]
+                            - text: Switch to Build from Scratch
+                      - generic [ref=e306]:
+                        - generic [ref=e308]:
+                          - generic [ref=e310]:
+                            - img [ref=e311]
+                            - generic [ref=e314]: Excel Validated
+                          - generic [ref=e315]: Restored from Database
+                        - generic [ref=e317]:
+                          - generic [ref=e318]:
+                            - generic [ref=e320]:
+                              - generic [ref=e321]: Workbook
+                              - generic [ref=e322]:
+                                - generic [ref=e323]: Restored from Database
+                                - textbox "Paste Google Sheet URL" [ref=e325]
+                            - tablist [ref=e326]:
+                              - tab "Excel" [selected] [ref=e327] [cursor=pointer]
+                              - tab "History" [ref=e328] [cursor=pointer]
+                          - tabpanel "Excel" [ref=e329]:
+                            - generic [ref=e331]:
+                              - button "Processed Data" [ref=e333] [cursor=pointer]
+                              - generic [ref=e336]:
+                                - grid [ref=e338]:
+                                  - rowgroup [ref=e339]:
+                                    - row [ref=e340]:
+                                      - columnheader [ref=e341]:
+                                        - text: 
+                                        - generic: 
+                                  - rowgroup [ref=e342]:
+                                    - row "C1 C2 C3" [ref=e343]:
+                                      - columnheader "C1" [ref=e344]:
+                                        - generic [ref=e346]: C1
+                                        - text: 
+                                        - generic: 
+                                      - columnheader "C2" [ref=e347]:
+                                        - generic [ref=e349]: C2
+                                        - text: 
+                                        - generic: 
+                                      - columnheader "C3" [ref=e350]:
+                                        - generic [ref=e352]: C3
+                                        - text: 
+                                        - generic: 
+                                  - rowgroup [ref=e353]:
+                                    - row "1" [ref=e354]:
+                                      - gridcell "1" [ref=e355]
+                                    - row "2" [ref=e356]:
+                                      - gridcell "2" [ref=e357]
+                                    - row "3" [ref=e358]:
+                                      - gridcell "3" [ref=e359]
+                                    - row "4" [ref=e360]:
+                                      - gridcell "4" [ref=e361]
+                                  - rowgroup [ref=e362]:
+                                    - row "Data Source Status Note" [ref=e363]:
+                                      - gridcell "Data Source" [ref=e364]
+                                      - gridcell "Status" [ref=e365]
+                                      - gridcell "Note" [ref=e366]
+                                    - row "Database Loaded Raw Excel file is not stored in database to save space." [ref=e367]:
+                                      - gridcell "Database" [ref=e368]
+                                      - gridcell "Loaded" [ref=e369]
+                                      - gridcell "Raw Excel file is not stored in database to save space." [ref=e370]
+                                    - row "Pricing Tables Available 4 tables restored." [ref=e371]:
+                                      - gridcell "Pricing Tables" [ref=e372]
+                                      - gridcell "Available" [ref=e373]
+                                      - gridcell "4 tables restored." [ref=e374]
+                                    - row "Screens Available 4 screens restored." [ref=e375]:
+                                      - gridcell "Screens" [ref=e376]
+                                      - gridcell "Available" [ref=e377]
+                                      - gridcell "4 screens restored." [ref=e378]
+                                  - rowgroup
+                                  - rowgroup
+                                  - rowgroup
+                                  - rowgroup
+                                - text:    
+                    - button "Next Step" [ref=e384] [cursor=pointer]:
+                      - text: Next Step
+                      - img [ref=e385]
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                            - generic:
+                              - heading "ANC Intelligence Engine" [level=3]
+                              - generic:
+                                - generic: 90% Match
+                          - generic:
+                            - generic: RAG-ACTIVE
+                            - generic:
+                              - img
+                              - text: 6 GAPS
+                        - generic:
+                          - generic:
+                            - img
+                            - generic: No RFP Uploaded
+                          - generic:
+                            - generic:
+                              - img
+                              - text: UPLOAD
+                          - generic:
+                            - generic "Analyze Drawing":
+                              - img
+                              - text: SCAN DRAWING
+                        - generic:
+                          - button "Chat":
+                            - img
+                            - text: Chat
+                          - button "Gap Fill 20":
+                            - img
+                            - text: Gap Fill
+                            - generic: "20"
+                        - generic:
+                          - generic:
+                            - generic:
+                              - img
+                            - generic:
+                              - paragraph: ANC Document Brain
+                              - paragraph: Upload an RFP document to begin context-aware analysis.
+                            - button "Upload RFP":
+                              - img
+                              - text: Upload RFP
+                        - generic:
+                          - generic:
+                            - paragraph:
+                              - img
+                              - text: Quick Gaps
+                            - generic:
+                              - button "Find Delivery Date"
+                              - button "Check Labor Rates"
+                              - button "Verify Warranties"
+                          - generic:
+                            - textbox "Ask ANC Intelligence..."
+                            - button [disabled]:
+                              - img
+                - generic:
+                  - generic:
+                    - generic:
+                      - img
+                      - heading "No Audit Data" [level=3]
+                      - paragraph: Finalize your technical specifications to activate the Financial Audit.
+              - button "Show Gaps Panel" [ref=e387] [cursor=pointer]:
+                - img [ref=e389]
+            - generic [ref=e392]:
+              - generic [ref=e393]:
+                - generic:
+                  - img
+                - generic [ref=e396]:
+                  - generic [ref=e398]:
+                    - generic [ref=e399]: Live Preview
+                    - generic [ref=e400]:
+                      - button "Show Tools" [ref=e401] [cursor=pointer]
+                      - generic [ref=e403]: Exact PDF
+                      - switch [ref=e404] [cursor=pointer]
+                  - generic [ref=e406]:
+                    - generic [ref=e407]: No baseline yet. Click 'Set Baseline' first, then compare.
+                    - generic [ref=e411]:
+                      - generic [ref=e412]:
+                        - generic:
+                          - img
+                      - generic [ref=e414]:
+                        - generic [ref=e415]:
+                          - img "ANC Sports Enterprises Logo" [ref=e417]
+                          - generic [ref=e418]:
+                            - generic [ref=e419]: BUDGET ESTIMATE
+                            - heading "Georgetown" [level=1] [ref=e420]
+                            - generic [ref=e421]: March 31, 2026
+                        - paragraph [ref=e424]:
+                          - text: ANC is pleased to present the following Display budget to
+                          - strong [ref=e425]: Georgetown
+                          - text: per the specifications below.
+                        - generic [ref=e426]:
+                          - generic [ref=e816]:
+                            - generic [ref=e817]:
+                              - generic [ref=e818]: MAIN VIDEO - FULL SIZE
+                              - generic [ref=e819]: PRICING
+                            - generic [ref=e820]:
+                              - generic [ref=e821]: LED Hardware
+                              - generic [ref=e822]: $114,070
+                            - generic [ref=e823]:
+                              - generic [ref=e824]: Structural Materials
+                              - generic [ref=e825]: $25,781
+                            - generic [ref=e826]:
+                              - generic [ref=e827]: Structural Labor & LED Installation
+                              - generic [ref=e828]: $100,419
+                            - generic [ref=e829]:
+                              - generic [ref=e830]: Electrical & Data
+                              - generic [ref=e831]: $75,314
+                            - generic [ref=e832]:
+                              - generic [ref=e833]: PM / General Conditions / Travel
+                              - generic [ref=e834]: $12,500
+                            - generic [ref=e835]:
+                              - generic [ref=e836]: Engineering & Permits
+                              - generic [ref=e837]: $5,882
+                            - generic [ref=e838]:
+                              - generic [ref=e839]: Channel Letters
+                              - generic [ref=e840]: $9,000
+                            - generic [ref=e841]:
+                              - generic [ref=e842]:
+                                - generic [ref=e843]: TAX
+                                - generic [ref=e844]: $20,578
+                              - generic [ref=e845]:
+                                - generic [ref=e846]: GRAND TOTAL
+                                - generic [ref=e847]: $342,966
+                          - generic [ref=e849]:
+                            - generic [ref=e850]:
+                              - generic [ref=e851]: MAIN VIDEO - ALT SIZE FOR OES
+                              - generic [ref=e852]: PRICING
+                            - generic [ref=e853]:
+                              - generic [ref=e854]: LED Hardware
+                              - generic [ref=e855]: $76,533
+                            - generic [ref=e856]:
+                              - generic [ref=e857]: Structural Materials
+                              - generic [ref=e858]: $18,906
+                            - generic [ref=e859]:
+                              - generic [ref=e860]: Structural Labor & LED Installation
+                              - generic [ref=e861]: $71,737
+                            - generic [ref=e862]:
+                              - generic [ref=e863]: Electrical & Data
+                              - generic [ref=e864]: $53,803
+                            - generic [ref=e865]:
+                              - generic [ref=e866]: PM / General Conditions / Travel
+                              - generic [ref=e867]: $12,500
+                            - generic [ref=e868]:
+                              - generic [ref=e869]: Engineering & Permits
+                              - generic [ref=e870]: $5,882
+                            - generic [ref=e871]:
+                              - generic [ref=e872]: Channel Letters
+                              - generic [ref=e873]: $9,000
+                            - generic [ref=e874]:
+                              - generic [ref=e875]:
+                                - generic [ref=e876]: SUBTOTAL
+                                - generic [ref=e877]: $248,361
+                              - generic [ref=e878]:
+                                - generic [ref=e879]: TAX
+                                - generic [ref=e880]: $14,902
+                              - generic [ref=e881]:
+                                - generic [ref=e882]: GRAND TOTAL
+                                - generic [ref=e883]: $239,361
+                          - generic [ref=e885]:
+                            - generic [ref=e886]:
+                              - generic [ref=e887]: PITCHSIDE DISPLAYS
+                              - generic [ref=e888]: PRICING
+                            - generic [ref=e889]:
+                              - generic [ref=e890]: LED Hardware
+                              - generic [ref=e891]: $45,486
+                            - generic [ref=e892]:
+                              - generic [ref=e893]: Structural Materials
+                              - generic [ref=e894]: $3,125
+                            - generic [ref=e895]:
+                              - generic [ref=e896]: Structural Labor & LED Installation
+                              - generic [ref=e897]: $20,672
+                            - generic [ref=e898]:
+                              - generic [ref=e899]: Electrical & Data
+                              - generic [ref=e900]: $51,680
+                            - generic [ref=e901]:
+                              - generic [ref=e902]: PM / General Conditions / Travel
+                              - generic [ref=e903]: $6,250
+                            - generic [ref=e904]:
+                              - generic [ref=e905]: Engineering & Permits
+                              - generic [ref=e906]: $3,750
+                            - generic [ref=e907]:
+                              - generic [ref=e908]:
+                                - generic [ref=e909]: TAX
+                                - generic [ref=e910]: $7,858
+                              - generic [ref=e911]:
+                                - generic [ref=e912]: GRAND TOTAL
+                                - generic [ref=e913]: $130,963
+                          - generic [ref=e915]:
+                            - generic [ref=e916]:
+                              - generic [ref=e917]: ADDITIONAL ITEMS
+                              - generic [ref=e918]: PRICING
+                            - generic [ref=e919]:
+                              - generic [ref=e920]: CMS (Content Management System)
+                              - generic [ref=e921]: $57,143
+                            - generic [ref=e922]:
+                              - generic [ref=e923]: OES Fixed Digit & Clocks
+                              - generic [ref=e924]: $56,255
+                            - generic [ref=e926]:
+                              - generic [ref=e927]: GRAND TOTAL
+                              - generic [ref=e928]: $531,072
+                        - generic [ref=e930]: Georgetown • Georgetown
+                        - generic [ref=e544]:
+                          - heading "TECHNICAL SPECIFICATIONS" [level=2] [ref=e548]
+                          - table [ref=e550]:
+                            - rowgroup [ref=e557]:
+                              - row "DISPLAY NAME DIMENSIONS PITCH RESOLUTION QTY" [ref=e558]:
+                                - columnheader "DISPLAY NAME" [ref=e559]
+                                - columnheader "DIMENSIONS" [ref=e560]
+                                - columnheader "PITCH" [ref=e561]
+                                - columnheader "RESOLUTION" [ref=e562]
+                                - columnheader "QTY" [ref=e563]
+                            - rowgroup [ref=e564]:
+                              - row "Main Video - Full Size 15.31' x 26.24' 10mm 467 x 800 1" [ref=e565]:
+                                - cell "Main Video - Full Size" [ref=e566]
+                                - cell "15.31' x 26.24'" [ref=e567]
+                                - cell "10mm" [ref=e568]
+                                - cell "467 x 800" [ref=e569]
+                                - cell "1" [ref=e570]
+                              - row "Main Video - Alt Size w/ OES 10.94' x 26.24' 10mm 333 x 800 1" [ref=e571]:
+                                - cell "Main Video - Alt Size w/ OES" [ref=e572]
+                                - cell "10.94' x 26.24'" [ref=e573]
+                                - cell "10mm" [ref=e574]
+                                - cell "333 x 800" [ref=e575]
+                                - cell "1" [ref=e576]
+                              - 'row "Pitchside Display #1 3.15'' x 26.25'' 10mm 96 x 800 1" [ref=e577]':
+                                - 'cell "Pitchside Display #1" [ref=e578]'
+                                - cell "3.15' x 26.25'" [ref=e579]
+                                - cell "10mm" [ref=e580]
+                                - cell "96 x 800" [ref=e581]
+                                - cell "1" [ref=e582]
+                        - generic [ref=e932]: Georgetown • Georgetown
+                        - generic [ref=e933]:
+                          - generic [ref=e936]: Exhibit B — Statement of Work
+                          - table [ref=e937]:
+                            - rowgroup [ref=e942]:
+                              - row "Administrative ANC PURCHASER" [ref=e943]:
+                                - cell "Administrative" [ref=e944]
+                                - cell "ANC" [ref=e945]
+                                - cell "PURCHASER" [ref=e946]
+                              - row "Provide accurate architectural, structural engineering, and AV drawings. X" [ref=e947]:
+                                - cell "Provide accurate architectural, structural engineering, and AV drawings." [ref=e948]
+                                - cell [ref=e949]
+                                - cell "X" [ref=e950]
+                              - row "Provide Payment and Performance Bond. X" [ref=e951]:
+                                - cell "Provide Payment and Performance Bond." [ref=e952]
+                                - cell "X" [ref=e953]
+                                - cell [ref=e954]
+                              - row "All required zoning, building, street or sidewalk permits." [ref=e955]:
+                                - cell "All required zoning, building, street or sidewalk permits." [ref=e956]
+                                - cell [ref=e957]
+                                - cell [ref=e958]
+                              - row "Shipping of all equipment to site. X" [ref=e959]:
+                                - cell "Shipping of all equipment to site." [ref=e960]
+                                - cell "X" [ref=e961]
+                                - cell [ref=e962]
+                              - row "Receive, unload, and inspect all new equipment upon arrival. X" [ref=e963]:
+                                - cell "Receive, unload, and inspect all new equipment upon arrival." [ref=e964]
+                                - cell "X" [ref=e965]
+                                - cell [ref=e966]
+                              - row "Provide safe storage of video equipment and control room. X" [ref=e967]:
+                                - cell "Provide safe storage of video equipment and control room." [ref=e968]
+                                - cell [ref=e969]
+                                - cell "X" [ref=e970]
+                              - row "Unobstructed access to equipment and control room. X" [ref=e971]:
+                                - cell "Unobstructed access to equipment and control room." [ref=e972]
+                                - cell [ref=e973]
+                                - cell "X" [ref=e974]
+                              - row "Engineering & Submittals ANC PURCHASER" [ref=e975]:
+                                - cell "Engineering & Submittals" [ref=e976]
+                                - cell "ANC" [ref=e977]
+                                - cell "PURCHASER" [ref=e978]
+                              - row "Customer responsible to ensure existing structure supports new equipment. X" [ref=e979]:
+                                - cell "Customer responsible to ensure existing structure supports new equipment." [ref=e980]
+                                - cell [ref=e981]
+                                - cell "X" [ref=e982]
+                              - row "Provide mechanical drawings, electrical drawings, and load calculations. X" [ref=e983]:
+                                - cell "Provide mechanical drawings, electrical drawings, and load calculations." [ref=e984]
+                                - cell "X" [ref=e985]
+                                - cell [ref=e986]
+                              - row "Engineering and certification for new equipment attachments. X" [ref=e987]:
+                                - cell "Engineering and certification for new equipment attachments." [ref=e988]
+                                - cell "X" [ref=e989]
+                                - cell [ref=e990]
+                              - row "Provide approval of all mechanical/electrical drawings. X" [ref=e991]:
+                                - cell "Provide approval of all mechanical/electrical drawings." [ref=e992]
+                                - cell [ref=e993]
+                                - cell "X" [ref=e994]
+                              - row "Responsible to ensure structural integrity of existing conditions. X" [ref=e995]:
+                                - cell "Responsible to ensure structural integrity of existing conditions." [ref=e996]
+                                - cell [ref=e997]
+                                - cell "X" [ref=e998]
+                              - row "Physical Installation ANC PURCHASER" [ref=e999]:
+                                - cell "Physical Installation" [ref=e1000]
+                                - cell "ANC" [ref=e1001]
+                                - cell "PURCHASER" [ref=e1002]
+                              - row "ANC assumes all base building structure is provided by others." [ref=e1003]:
+                                - cell "ANC assumes all base building structure is provided by others." [ref=e1004]
+                                - cell [ref=e1005]
+                                - cell [ref=e1006]
+                              - row "ANC has included removal and disposal of existing equipment. X" [ref=e1007]:
+                                - cell "ANC has included removal and disposal of existing equipment." [ref=e1008]
+                                - cell [ref=e1009]
+                                - cell "X" [ref=e1010]
+                              - row "ANC assumes reasonable access will be provided to the work area." [ref=e1011]:
+                                - cell "ANC assumes reasonable access will be provided to the work area." [ref=e1012]
+                                - cell [ref=e1013]
+                                - cell [ref=e1014]
+                              - row "Fabricate, deliver, and install support structure. X" [ref=e1015]:
+                                - cell "Fabricate, deliver, and install support structure." [ref=e1016]
+                                - cell "X" [ref=e1017]
+                                - cell [ref=e1018]
+                              - row "Provide & Install LED components. X" [ref=e1019]:
+                                - cell "Provide & Install LED components." [ref=e1020]
+                                - cell "X" [ref=e1021]
+                                - cell [ref=e1022]
+                              - row "Provide all required Floor/Site Protection. X" [ref=e1023]:
+                                - cell "Provide all required Floor/Site Protection." [ref=e1024]
+                                - cell [ref=e1025]
+                                - cell "X" [ref=e1026]
+                              - row "Electrical & Data Installation ANC PURCHASER" [ref=e1027]:
+                                - cell "Electrical & Data Installation" [ref=e1028]
+                                - cell "ANC" [ref=e1029]
+                                - cell "PURCHASER" [ref=e1030]
+                              - row "Submit electrical engineering drawings. X" [ref=e1031]:
+                                - cell "Submit electrical engineering drawings." [ref=e1032]
+                                - cell "X" [ref=e1033]
+                                - cell [ref=e1034]
+                              - row "Provide primary power feed to each display location. X" [ref=e1035]:
+                                - cell "Provide primary power feed to each display location." [ref=e1036]
+                                - cell [ref=e1037]
+                                - cell "X" [ref=e1038]
+                              - row "Provide secondary electrical panels and/or remote disconnects. X" [ref=e1039]:
+                                - cell "Provide secondary electrical panels and/or remote disconnects." [ref=e1040]
+                                - cell [ref=e1041]
+                                - cell "X" [ref=e1042]
+                              - row "Furnish signal cables as specified by ANC. X" [ref=e1043]:
+                                - cell "Furnish signal cables as specified by ANC." [ref=e1044]
+                                - cell "X" [ref=e1045]
+                                - cell [ref=e1046]
+                              - row "Provide and install signal cable conduit. X" [ref=e1047]:
+                                - cell "Provide and install signal cable conduit." [ref=e1048]
+                                - cell [ref=e1049]
+                                - cell "X" [ref=e1050]
+                              - row "Labor to pull signal cable. X" [ref=e1051]:
+                                - cell "Labor to pull signal cable." [ref=e1052]
+                                - cell "X" [ref=e1053]
+                                - cell [ref=e1054]
+                              - row "Terminate signal cable at control system equipment. X" [ref=e1055]:
+                                - cell "Terminate signal cable at control system equipment." [ref=e1056]
+                                - cell "X" [ref=e1057]
+                                - cell [ref=e1058]
+                              - row "Mount and install data patch panel. X" [ref=e1059]:
+                                - cell "Mount and install data patch panel." [ref=e1060]
+                                - cell "X" [ref=e1061]
+                                - cell [ref=e1062]
+                              - row "Provide high speed internet connection to control room. X" [ref=e1063]:
+                                - cell "Provide high speed internet connection to control room." [ref=e1064]
+                                - cell [ref=e1065]
+                                - cell "X" [ref=e1066]
+                              - row "Control System ANC PURCHASER" [ref=e1067]:
+                                - cell "Control System" [ref=e1068]
+                                - cell "ANC" [ref=e1069]
+                                - cell "PURCHASER" [ref=e1070]
+                              - row "ANC has provided display processors only." [ref=e1071]:
+                                - cell "ANC has provided display processors only." [ref=e1072]
+                                - cell [ref=e1073]
+                                - cell [ref=e1074]
+                              - row "Provide climate controlled control room. X" [ref=e1075]:
+                                - cell "Provide climate controlled control room." [ref=e1076]
+                                - cell [ref=e1077]
+                                - cell "X" [ref=e1078]
+                              - row "Supply static IP address five (5) days prior to installation. X" [ref=e1079]:
+                                - cell "Supply static IP address five (5) days prior to installation." [ref=e1080]
+                                - cell [ref=e1081]
+                                - cell "X" [ref=e1082]
+                              - row "Training ANC PURCHASER" [ref=e1083]:
+                                - cell "Training" [ref=e1084]
+                                - cell "ANC" [ref=e1085]
+                                - cell "PURCHASER" [ref=e1086]
+                              - row "Provide appropriate on-site operation and maintenance training. X" [ref=e1087]:
+                                - cell "Provide appropriate on-site operation and maintenance training." [ref=e1088]
+                                - cell "X" [ref=e1089]
+                                - cell [ref=e1090]
+                              - row "Provide sign off list for all training. X" [ref=e1091]:
+                                - cell "Provide sign off list for all training." [ref=e1092]
+                                - cell "X" [ref=e1093]
+                                - cell [ref=e1094]
+                              - row "Perform one (1) day of maintenance training. X" [ref=e1095]:
+                                - cell "Perform one (1) day of maintenance training." [ref=e1096]
+                                - cell "X" [ref=e1097]
+                                - cell [ref=e1098]
+                              - row "Perform final systems testing and commissioning. X" [ref=e1099]:
+                                - cell "Perform final systems testing and commissioning." [ref=e1100]
+                                - cell "X" [ref=e1101]
+                                - cell [ref=e1102]
+                              - row "General Conditions" [ref=e1103]:
+                                - cell "General Conditions" [ref=e1104]
+                              - row "ANC has provided a parts only warranty, excluding labor." [ref=e1105]:
+                                - cell "ANC has provided a parts only warranty, excluding labor." [ref=e1106]
+                              - row "ANC has not included any tax in the proposal." [ref=e1107]:
+                                - cell "ANC has not included any tax in the proposal." [ref=e1108]
+                              - row "Shipping included in quoted pricing." [ref=e1109]:
+                                - cell "Shipping included in quoted pricing." [ref=e1110]
+                        - generic [ref=e1111]:
+                          - generic [ref=e1114]: www.anc.com
+                          - generic [ref=e1115]: ANC Sports Enterprises, LLC
+              - generic [ref=e769]:
+                - generic [ref=e770]: Live Preview Engine
+                - generic [ref=e772]: ANC IDENTITY PROTECTION ACTIVE
+      - button "Lux" [ref=e773] [cursor=pointer]:
+        - img [ref=e774]
+        - generic [ref=e776]: Lux
+      - generic [ref=e777]:
+        - generic [ref=e779]:
+          - generic [ref=e780]:
+            - img [ref=e782]
+            - generic [ref=e784]:
+              - heading "Lux" [level=3] [ref=e785]
+              - paragraph [ref=e786]: ANC's AI copilot
+          - generic [ref=e787]:
+            - button "New chat" [ref=e788] [cursor=pointer]:
+              - img [ref=e789]
+            - button "Minimize" [ref=e790] [cursor=pointer]:
+              - img [ref=e791]
+            - button "Close" [ref=e792] [cursor=pointer]:
+              - img [ref=e793]
+        - generic [ref=e798]:
+          - generic [ref=e799]: ⚡ Hey — I'm Lux.
+          - generic [ref=e800]:
+            - paragraph [ref=e801]: I work with the ANC proposal team.
+            - paragraph [ref=e802]: Drop me an Excel, tell me about a project, or just ask me something.
+          - paragraph [ref=e803]: What are we working on?
+        - generic [ref=e805]:
+          - button "Voice input" [ref=e806] [cursor=pointer]:
+            - img [ref=e807]
+          - textbox "Ask me anything or tell me about the project..." [ref=e810]
+          - button [disabled] [ref=e811]:
+            - img [ref=e812]
+  - contentinfo [ref=e190]:
+    - paragraph [ref=e191]: © 2026 ANC Sports Proposal Engine. All rights reserved.
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e192]
