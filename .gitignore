@@ -127,3 +127,16 @@ run
 natexcel/
 playwright-mcp/
 image*.png
+
+# Playwright MCP sessions
+.playwright-mcp/
+
+# Test images
+tests/pdfs/*.png
+tests/pdfs/.herenow/
+docs/test-rfp-pdfs/
+docs/test-reference/
+docs/salesforce-export/
+
+# Stray images in root
+/image*.png
