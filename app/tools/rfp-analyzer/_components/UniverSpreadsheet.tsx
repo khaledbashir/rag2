@@ -364,12 +364,13 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     
     const sqFtPerScreen = h > 0 && w > 0 ? Math.round(h * w * 100) / 100 : 0;
     const totalSqFt = sqFtPerScreen > 0 ? Math.round(sqFtPerScreen * qty * 100) / 100 : 0;
-    const displayCost = ratePerSqFt > 0 && totalSqFt > 0 ? Math.round(ratePerSqFt * totalSqFt * 100) / 100 : 0;
     const processorCost = pd?.processorCost ?? 0;
     const shippingCost = pd?.shippingCost ?? 0;
-    const ledCostOnly = Math.round((displayCost + processorCost + shippingCost) * 100) / 100;
-    // Total Cost column must include ALL costs (install, PM, eng) so Selling = Cost/(1-Margin) is correct
-    const totalLedCost = pd?.totalCost ?? ledCostOnly;
+    // Use API totalCost directly — derive displayCost from it to ensure columns sum correctly
+    const totalLedCost = pd?.totalCost ?? 0;
+    const displayCost = totalLedCost > 0
+      ? Math.round((totalLedCost - processorCost - shippingCost) * 100) / 100
+      : (ratePerSqFt > 0 && totalSqFt > 0 ? Math.round(ratePerSqFt * totalSqFt * 100) / 100 : 0);
     const resolvedNits = Number(
       mp?.nits
       ?? (mp as any)?.brightnessNits
