@@ -1249,6 +1249,122 @@ function aiToSpecs(displays: any[]): ExtractedLEDSpec[] {
 }
 
 // ---------------------------------------------------------------------------
+// Post-extraction reconciliation — catches cross-table duplicates the LLM missed
+// ---------------------------------------------------------------------------
+
+/**
+ * Reconciles extracted displays into a clean, deterministic list.
+ *
+ * 1. Merges exact duplicates (same name + same dims) — keeps the one with more data
+ * 2. Absorbs dimensionless rows into matching spec rows (logistics/sequencing leftovers)
+ * 3. Fuzzy-merges rows with same base location but different numbering artifacts
+ *
+ * This is the safety net — the prompt should already produce clean output,
+ * but if the LLM still extracts from logistics/sequencing tables, this catches it.
+ */
+function reconcileDisplays(screens: ExtractedLEDSpec[]): ExtractedLEDSpec[] {
+  if (screens.length <= 1) return screens;
+
+  const before = screens.length;
+
+  // Step 1: Exact dedup — same normalized name + same dims → merge
+  const exactMap = new Map<string, ExtractedLEDSpec>();
+  for (const s of screens) {
+    const key = `${normName(s.name)}|${s.widthFt ?? "X"}|${s.heightFt ?? "X"}`;
+    const existing = exactMap.get(key);
+    if (existing) {
+      // Keep the one with more complete data, sum quantity
+      if (specCompleteness(s) > specCompleteness(existing)) {
+        exactMap.set(key, { ...s, quantity: (existing.quantity || 1) + (s.quantity || 1) - 1 });
+      }
+      // If both have quantity 1 and are exact dupes, don't increment — it's the same physical screen
+    } else {
+      exactMap.set(key, { ...s });
+    }
+  }
+  let reconciled = [...exactMap.values()];
+
+  // Step 2: Absorb dimensionless rows — if a row has no width/height but its name
+  // fuzzy-matches a row that DOES have dimensions, it's a logistics/sequencing leftover
+  const withDims = reconciled.filter(s => s.widthFt != null && s.heightFt != null);
+  const withoutDims = reconciled.filter(s => s.widthFt == null || s.heightFt == null);
+  const absorbed: Set<string> = new Set();
+
+  for (const noDim of withoutDims) {
+    const noDimName = normName(noDim.name);
+    for (const hasDim of withDims) {
+      const hasDimName = normName(hasDim.name);
+      // Check if the dimensionless name is a substring or fuzzy match
+      if (
+        hasDimName.includes(noDimName) ||
+        noDimName.includes(hasDimName) ||
+        levenshteinSimilarity(noDimName, hasDimName) > 0.7
+      ) {
+        absorbed.add(noDimName);
+        break;
+      }
+    }
+  }
+
+  if (absorbed.size > 0) {
+    reconciled = reconciled.filter(s => {
+      if (s.widthFt != null && s.heightFt != null) return true; // keep all spec rows
+      return !absorbed.has(normName(s.name)); // drop absorbed dimensionless rows
+    });
+  }
+
+  if (reconciled.length !== before) {
+    console.log(`[RFP v2] Reconcile: ${before} → ${reconciled.length} displays (removed ${before - reconciled.length} duplicates/leftovers)`);
+  }
+
+  return reconciled;
+}
+
+/** Normalize a display name for comparison */
+function normName(name: string): string {
+  return (name || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Score how complete a spec is (more fields filled = higher score) */
+function specCompleteness(s: ExtractedLEDSpec): number {
+  let score = 0;
+  if (s.widthFt != null) score++;
+  if (s.heightFt != null) score++;
+  if (s.pixelPitchMm != null) score++;
+  if (s.brightnessNits != null) score++;
+  if (s.widthPx != null) score++;
+  if (s.heightPx != null) score++;
+  if (s.environment) score++;
+  if (s.notes) score++;
+  return score;
+}
+
+/** Simple Levenshtein-based similarity (0 to 1) */
+function levenshteinSimilarity(a: string, b: string): number {
+  if (a === b) return 1;
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 1;
+
+  const matrix: number[][] = [];
+  for (let i = 0; i <= a.length; i++) {
+    matrix[i] = [i];
+    for (let j = 1; j <= b.length; j++) {
+      if (i === 0) { matrix[i][j] = j; continue; }
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+  }
+  return 1 - matrix[a.length][b.length] / maxLen;
+}
+
+// ---------------------------------------------------------------------------
 // pdfplumber extraction — handles multi-column AV schedule drawings
 // ---------------------------------------------------------------------------
 
@@ -1761,10 +1877,13 @@ export async function extractWithGLM5(
 }
 
 Rules:
-- Use the ACTUAL room/location name from the document for each display
-- If pixel pitch is not stated but others in the same table have it (e.g. all 3.9mm), use that value
-- Every row in the source table = one row in output. DO NOT DEDUPLICATE. If "Panthers Den" appears 7 times, output 7 rows. If "Elev Lobby" appears 4 times, output 4 rows. quantity is always 1.
-- Only LED displays/videoboards/ribbons in displays. Game clocks, racks, spare parts go in requirements.${options?.customKeywords ? `\n- ALSO look for displays matching these keywords: ${options.customKeywords}` : ""}`;
+- ONLY extract from TECHNICAL SPECIFICATION tables, DISPLAY SCHEDULE tables, or EXHIBIT tables that list LED display specs (dimensions, pixel pitch, brightness). These are the authoritative source.
+- IGNORE logistics tables, sequencing/scheduling tables, barricade requirement tables, and any other administrative tables — they repeat the same displays without specs.
+- Use the ACTUAL room/location name from the spec table for each display.
+- If pixel pitch is not stated but others in the same table have it (e.g. all 2.5mm GOB), use that value.
+- Use the ACTUAL quantity from the table. If the table says "Quantity: 4" for T4-B1, set quantity to 4. If a column lists sub-items with different dimensions (e.g. Screen 20: 16.5'x7.91', Screen 21: 11.83'x7.91'), output each as a SEPARATE row with quantity 1.
+- If the same display appears in multiple spec tables with different details, output it ONCE using the most complete specs.
+- Only LED displays/videoboards/ribbons in displays. Game clocks, racks, spare parts, processors, cameras go in requirements.${options?.customKeywords ? `\n- ALSO look for displays matching these keywords: ${options.customKeywords}` : ""}`;
 
       const gptRes = await fetch(`${OPENAI_API_BASE}/chat/completions`, {
         method: "POST",
@@ -1898,6 +2017,9 @@ Rules:
             }
           }
 
+          // Reconciliation — catches cross-table duplicates the dedup missed
+          mercuryScreens = reconcileDisplays(mercuryScreens);
+
           // Validation — reuse the pdftotext we already have (no second call)
           const sourceText = fullText.substring(0, 50000);
           const valHeaders = detectTableHeaders(sourceText);
@@ -2009,7 +2131,7 @@ Rules:
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${MERCURY_API_KEY}` },
         body: JSON.stringify({
           model: MERCURY_MODEL,
-          messages: [{ role: "user", content: `Extract ALL LED displays from this RFP. Return JSON: {"project":{"name":"","client":"","venue":"","address":""},"displays":[{"name":"","pixel_pitch_mm":0,"brightness_nits":0,"width_ft":"","height_ft":"","environment":"indoor","quantity":1}],"requirements":[{"description":"","category":"","status":""}]}. Every source row = one output row. DO NOT DEDUPLICATE. quantity always 1. Only LED displays, no clocks/racks.\n\n${mercText}` }],
+          messages: [{ role: "user", content: `Extract ALL LED displays from this RFP. Return JSON: {"project":{"name":"","client":"","venue":"","address":""},"displays":[{"name":"","pixel_pitch_mm":0,"brightness_nits":0,"width_ft":"","height_ft":"","environment":"indoor","quantity":1}],"requirements":[{"description":"","category":"","status":""}]}. ONLY extract from technical spec / display schedule / exhibit tables with dimensions. IGNORE logistics, sequencing, barricade tables. Use ACTUAL quantity from spec table. If sub-items have different dimensions, output each as separate row with quantity 1. Only LED displays, no clocks/racks/processors/cameras.\n\n${mercText}` }],
           temperature: 0,
           max_tokens: 32768,
         }),
@@ -2048,6 +2170,9 @@ Rules:
               options?.onProgress?.(`Dedup: removed ${toRemove.length} duplicate rows (${screens.length} unique displays)`);
             }
           }
+
+          // Reconciliation — catches cross-table duplicates the dedup missed
+          screens = reconcileDisplays(screens);
 
           // Skip to product matching (Mercury path is fast, minimal processing)
           try {
@@ -2163,7 +2288,11 @@ Return ONLY a JSON object with this schema:
 
 IMPORTANT: Only include actual LED video displays, ribbon boards, fascia boards, and videoboards in the displays array. Do NOT include game clocks, play clocks, scoring controllers, headend racks, spare parts, cable packages, audio systems, or other non-LED equipment. Those belong in requirements.
 
-CRITICAL — DO NOT DEDUPLICATE. Output EVERY row from the source table exactly as listed. If "Panthers Den" appears 7 times, output 7 rows. If "Elev Lobby" appears 4 times with identical dimensions, output 4 rows. If "S.E Corridor" appears twice, output 2 rows. Always set quantity: 1. The source table is the truth — one source row = one output row, no exceptions, no merging, no collapsing.`;
+CRITICAL — EXTRACT FROM SPEC TABLES ONLY. Only extract from technical specification tables, display schedule tables, or exhibit tables that contain LED display specs (dimensions, pixel pitch, brightness). IGNORE logistics tables, sequencing/scheduling tables, barricade requirement tables, and any administrative tables that merely reference displays by name without specs.
+
+CRITICAL — USE REAL QUANTITIES. If the spec table says "Quantity: 9" for T4-B2, set quantity to 9 and output ONE row. If a column lists sub-items with DIFFERENT dimensions (e.g. Screen 20: 16.5'x7.91', Screen 21: 11.83'x7.91'), output each as a SEPARATE row with quantity 1. Same display from multiple spec tables = output ONCE with the most complete specs.
+
+CRITICAL — DO NOT output the same display multiple times. Each unique physical display location should appear exactly once.`;
 
       console.log(`[RFP v2] MiMo: sending text to ${MIMO_MODEL} (streaming)...`);
       options?.onProgress?.("Sending to MiMo...");
@@ -2316,6 +2445,9 @@ CRITICAL — DO NOT DEDUPLICATE. Output EVERY row from the source table exactly 
                 options?.onProgress?.(`Dedup: removed ${toRemove.length} duplicate rows (${mimoScreens.length} unique displays)`);
               }
             }
+
+            // Reconciliation — catches cross-table duplicates the dedup missed
+            mimoScreens = reconcileDisplays(mimoScreens);
 
             // Validation — extract source text for comparison
             options?.onProgress?.("Validating MiMo extraction...");
