@@ -125,3 +125,5 @@ services/rfp/pipeline/*.xlsx
 contexts/
 run
 natexcel/
+playwright-mcp/
+image*.png

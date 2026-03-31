@@ -1,4 +1,0 @@
-[     223ms] [ERROR] J: Failed to fetch. Read more at https://errors.authjs.dev#autherror
-    at q (https://proposals.anc.com/_next/static/chunks/8347-ef57383fad79cea6.js:1:3069)
-    at async er (https://proposals.anc.com/_next/static/chunks/8347-ef57383fad79cea6.js:1:4719)
-    at async Y._getSession (https://proposals.anc.com/_next/static/chunks/8347-ef57383fad79cea6.js:1:7303) @ https://proposals.anc.com/_next/static/chunks/8347-ef57383fad79cea6.js:0
