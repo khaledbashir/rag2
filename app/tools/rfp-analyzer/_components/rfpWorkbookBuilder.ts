@@ -193,16 +193,17 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const sqFtPerScreen = displayH * displayW;
     const totalSqFt = sqFtPerScreen * qty;
 
-    // Derive stable $/sqft rate from pricing data
-    // NOTE: pd.hardwareCost already includes quantity, pd.areaSqFt does NOT.
-    // Use (areaSqFt × qty) to back-derive the true per-sqft rate.
+    // Use API totalCost directly, derive displayCost from it
+    // This ensures columns sum correctly and match the Excel export
     const pricingSqFt = pd?.areaSqFt ?? 0;
     const pricingTotalSqFt = pricingSqFt * qty;
     const ratePerSqFt = pricingTotalSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingTotalSqFt : 0;
-    const displayCost = ratePerSqFt * totalSqFt;
     const processorCost = pd?.processorCost ?? 0;
     const shippingCost = pd?.shippingCost ?? 0;
-    const totalCost = displayCost + processorCost + shippingCost;
+    const totalCost = pd?.totalCost ?? 0;
+    const displayCost = totalCost > 0
+      ? Math.round((totalCost - processorCost - shippingCost) * 100) / 100
+      : ratePerSqFt * totalSqFt;
     const margin = pd?.blendedMarginPct ?? 0;
     const sellingPrice = margin > 0 ? totalCost / (1 - margin) : totalCost;
 
