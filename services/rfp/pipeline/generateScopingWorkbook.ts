@@ -1044,12 +1044,14 @@ function buildMarginAnalysis(
     const ledCostResult = ledHardwareWithSpares + d.shippingCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost;
     const ledSellResult = hwMargin < 1 ? round2(ledCostResult / (1 - hwMargin)) : ledCostResult;
     const ledRow = row;
-    writeCategory("LED Hardware", ledCostResult, hwMargin, `'LED Cost Sheet'!Q${ledSheetRow}`);
-    ws.getCell(ledRow, 4).value = { formula: `SUM('LED Cost Sheet'!S${ledSheetRow}:S${ledSheetRow})`, result: ledSellResult };
+    // LED Hardware: hard values — previous formula refs were wrong (Q=LED+spares only, S=shipping)
+    // Correct source is T (Total Cost) and V (Selling Price), but hard values prevent any drift
+    writeCategory("LED Hardware", ledCostResult, hwMargin, `'LED Cost Sheet'!T${ledSheetRow}`);
+    ws.getCell(ledRow, 4).value = { formula: `'LED Cost Sheet'!V${ledSheetRow}`, result: ledSellResult };
     ws.getCell(ledRow, 4).numFmt = FMT_USD; ws.getCell(ledRow, 4).font = subFont;
     ws.getCell(ledRow, 5).value = { formula: marginDollarFormula(ledRow), result: round2(ledSellResult - ledCostResult) };
     ws.getCell(ledRow, 5).numFmt = FMT_USD; ws.getCell(ledRow, 5).font = subFont;
-    ws.getCell(ledRow, 6).value = { formula: `SUM('LED Cost Sheet'!R${ledSheetRow}:R${ledSheetRow})`, result: hwMargin };
+    ws.getCell(ledRow, 6).value = hwMargin;
     ws.getCell(ledRow, 6).numFmt = FMT_PCT; ws.getCell(ledRow, 6).font = subFont;
     writeCategory("Structural Materials", d.structuralMaterialsCost, svcMargin, instRef ? `${instRef}!I26` : undefined);
     writeCategory("Structural Labor & LED Installation", d.structuralLaborCost, svcMargin, instRef ? `${instRef}!I35-${instRef}!I34` : undefined);
@@ -1470,18 +1472,19 @@ function buildLedCostSheet(
     dr.getCell(18).numFmt = FMT_USD;
     // S: Shipping
     dr.getCell(19).value = d.shippingCost; dr.getCell(19).numFmt = FMT_USD;
-    // T: Total Cost = Display + Processor + Shipping
-    dr.getCell(20).value = { formula: `Q${row}+R${row}+S${row}`, result: ledWithSpares + bundleEquipmentCost + d.shippingCost };
+    // T: Total Cost — hard value (no formula round-trip through Q+R+S)
+    const totalLedCost = round2(ledWithSpares + bundleEquipmentCost + d.shippingCost);
+    dr.getCell(20).value = totalLedCost;
     dr.getCell(20).numFmt = FMT_USD;
     dr.getCell(20).font = { bold: true, name: "Calibri" };
     // U: Margin % — references master override cell V2
     dr.getCell(21).value = { formula: `V$${masterMarginRow}`, result: d.marginPct }; dr.getCell(21).numFmt = FMT_PCT;
-    // V: Selling Price = Total Cost / (1 - Margin%)
-    dr.getCell(22).value = { formula: `IF(U${row}>=1,T${row}/(1-U${row}/100),T${row}/(1-U${row}))`, result: d.sellingPrice };
+    // V: Selling Price — hard value (no formula round-trip through T/(1-U))
+    dr.getCell(22).value = round2(d.sellingPrice);
     dr.getCell(22).numFmt = FMT_USD;
     dr.getCell(22).font = { bold: true, name: "Calibri" };
-    // W: ANC Margin = Selling - Cost
-    dr.getCell(23).value = { formula: `V${row}-T${row}`, result: d.marginDollars };
+    // W: ANC Margin — hard value (no formula round-trip through V-T)
+    dr.getCell(23).value = round2(d.marginDollars);
     dr.getCell(23).numFmt = FMT_USD;
 
     // X-Z: Weight, Power, BTU

@@ -295,7 +295,8 @@ async function priceDisplay(
   }
 
   // Calculate install/services costs using productCatalog's estimatePricing
-  const pitchMm = spec.pixelPitchMm || (match?.module?.pitch) || (spec.environment === "outdoor" ? 10 : 3.9);
+  // Default: 2.5mm indoor (LG LSCB025, ANC's standard), 10mm outdoor
+  const pitchMm = spec.pixelPitchMm || (match?.module?.pitch) || (spec.environment === "outdoor" ? 10 : 2.5);
   const product = getProductByPitch(pitchMm, spec.environment === "outdoor" ? "Outdoor" : "Indoor")
     || getProductByPitch(pitchMm);
 

@@ -26,7 +26,7 @@ import { generateScopingWorkbook } from "@/services/rfp/pipeline/generateScoping
 import { generateRateCardExcel } from "@/services/rfp/pipeline/generateRateCardExcel";
 import type { ExtractedLEDSpec, ExtractedProjectInfo, ExtractedRequirement } from "@/services/rfp/unified/types";
 import { log } from "@/lib/logger";
-import { needsWestfieldReextract, reextractSavedPdfAnalysis } from "@/services/rfp/unified/healSavedAnalysis";
+import { needsWestfieldReextract, reextractSavedPdfAnalysis, preservePitchFromOriginal } from "@/services/rfp/unified/healSavedAnalysis";
 
 export const maxDuration = 60;
 
@@ -61,20 +61,26 @@ export async function POST(request: NextRequest) {
 
     if (needsWestfieldReextract(analysis)) {
       try {
+        const originalScreens = specs;
         const healed = await reextractSavedPdfAnalysis(analysis);
-        specs = healed.screens;
+        // Preserve known-good pitch values from original analysis —
+        // AI extraction sometimes confuses mesh pitch (3.9mm) with LED pitch (2.5mm)
+        specs = preservePitchFromOriginal(healed.screens, originalScreens);
         requirements = healed.requirements;
         project = { ...project, ...healed.project };
+        // Store healed flag in DB JSON (not in the typed project object)
+        const projectForDb = { ...project, _healedAt: new Date().toISOString() };
         await prisma.rfpAnalysis.update({
           where: { id: analysis.id },
           data: {
-            screens: JSON.parse(JSON.stringify(healed.screens)),
+            screens: JSON.parse(JSON.stringify(specs)),
             requirements: JSON.parse(JSON.stringify(healed.requirements)),
             incompleteSpecs: JSON.parse(JSON.stringify(healed.incompleteSpecs)),
-            project: JSON.parse(JSON.stringify(project)),
-            specsFound: healed.screens.length,
+            project: JSON.parse(JSON.stringify(projectForDb)),
+            specsFound: specs.length,
           },
         });
+        log.info(`[scoping-workbook] Westfield healed: ${specs.length} screens, pitch preserved from original`);
       } catch (err) {
         log.warn("[scoping-workbook] Westfield re-extract failed, using saved analysis");
       }
