@@ -206,6 +206,6 @@ export function mapEstimatorToScoping(answers: EstimatorAnswers): ScopingWorkboo
     currency: answers.currency || "USD",
     paymentTerms: "Net 30",
     overrides,
-    includeAlternatesInBase: true,
+    includeAlternatesInBase: false,
   };
 }

@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
       specs,
       requirements,
       pricedDisplays,
-      includeAlternatesInBase: true,
+      includeAlternatesInBase: false,
       zoneClass,
       installComplexity,
       includeBond,

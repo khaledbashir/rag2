@@ -1258,33 +1258,39 @@ function buildBudgetSummary(
   const taxRateVal = ov?.taxRate ?? 0;
   const budgetBondRateVal = ov?.servicesMarginPct === 0 ? 0 : (ov?.bondRate ?? 0);
 
+  // Tax — pass-through: same amount in cost AND sell columns (zero margin impact)
   const taxR = ws.getRow(row);
   taxR.getCell(2).value = "TAX";
-  taxR.getCell(3).value = 0;
+  taxR.getCell(3).value = taxRateVal > 0
+    ? { formula: `D${subtotalRow}*${taxRateVal}`, result: round2(grandSelling * taxRateVal) }
+    : 0;
   taxR.getCell(3).numFmt = FMT_USD;
   taxR.getCell(4).value = taxRateVal > 0
     ? { formula: `D${subtotalRow}*${taxRateVal}`, result: round2(grandSelling * taxRateVal) }
     : 0;
   taxR.getCell(4).numFmt = FMT_USD;
-  taxR.getCell(5).value = taxRateVal > 0 ? { formula: `D${row}-C${row}`, result: round2(grandSelling * taxRateVal) } : 0;
+  taxR.getCell(5).value = 0; // No margin on tax (pass-through)
   taxR.getCell(5).numFmt = FMT_USD;
-  taxR.getCell(6).value = taxRateVal;
+  taxR.getCell(6).value = 0; // 0% margin on tax
   taxR.getCell(6).numFmt = FMT_PCT;
   stripe(taxR, 7, row % 2 === 0);
   const taxRow = row;
   row++;
 
+  // Bond — pass-through: same amount in cost AND sell columns (zero margin impact)
   const bondR = ws.getRow(row);
   bondR.getCell(2).value = "BOND";
-  bondR.getCell(3).value = 0;
+  bondR.getCell(3).value = budgetBondRateVal > 0
+    ? { formula: `D${subtotalRow}*${budgetBondRateVal}`, result: round2(grandSelling * budgetBondRateVal) }
+    : 0;
   bondR.getCell(3).numFmt = FMT_USD;
   bondR.getCell(4).value = budgetBondRateVal > 0
     ? { formula: `D${subtotalRow}*${budgetBondRateVal}`, result: round2(grandSelling * budgetBondRateVal) }
     : 0;
   bondR.getCell(4).numFmt = FMT_USD;
-  bondR.getCell(5).value = budgetBondRateVal > 0 ? { formula: `D${row}-C${row}`, result: round2(grandSelling * budgetBondRateVal) } : 0;
+  bondR.getCell(5).value = 0; // No margin on bond (pass-through)
   bondR.getCell(5).numFmt = FMT_USD;
-  bondR.getCell(6).value = budgetBondRateVal;
+  bondR.getCell(6).value = 0; // 0% margin on bond
   bondR.getCell(6).numFmt = FMT_PCT;
   stripe(bondR, 7, row % 2 === 0);
   const bondRow = row;
@@ -1299,10 +1305,14 @@ function buildBudgetSummary(
   const documentTotal = round2(grandSelling + taxAmt + bondAmt);
   const documentMargin = round2(documentTotal - grandCost);
   const documentMarginPct = documentTotal > 0 ? round2(documentMargin / documentTotal) : 0;
-  gtR.getCell(3).value = { formula: `C${subtotalRow}`, result: grandCost }; gtR.getCell(3).numFmt = FMT_USD;
+  // Tax/bond pass-through: add to BOTH cost and sell so margin isn't inflated
+  const grandCostWithPassthrough = round2(grandCost + taxAmt + bondAmt);
+  const documentMarginFixed = round2(documentTotal - grandCostWithPassthrough);
+  const documentMarginPctFixed = documentTotal > 0 ? round2(documentMarginFixed / documentTotal) : 0;
+  gtR.getCell(3).value = { formula: `C${subtotalRow}+C${taxRow}+C${bondRow}`, result: grandCostWithPassthrough }; gtR.getCell(3).numFmt = FMT_USD;
   gtR.getCell(4).value = { formula: `D${subtotalRow}+D${taxRow}+D${bondRow}`, result: documentTotal }; gtR.getCell(4).numFmt = FMT_USD;
-  gtR.getCell(5).value = { formula: `IFERROR(D${row}-C${row},0)`, result: documentMargin }; gtR.getCell(5).numFmt = FMT_USD;
-  gtR.getCell(6).value = { formula: `IFERROR(1-C${row}/D${row},0)`, result: documentMarginPct }; gtR.getCell(6).numFmt = FMT_PCT;
+  gtR.getCell(5).value = { formula: `IFERROR(D${row}-C${row},0)`, result: documentMarginFixed }; gtR.getCell(5).numFmt = FMT_USD;
+  gtR.getCell(6).value = { formula: `IFERROR(1-C${row}/D${row},0)`, result: documentMarginPctFixed }; gtR.getCell(6).numFmt = FMT_PCT;
   gtR.getCell(7).value = totalDisplaySqFt > 0 ? { formula: `IFERROR(C${row}/${totalDisplaySqFt},0)`, result: round2(grandCost / totalDisplaySqFt) } : "";
   gtR.getCell(7).numFmt = FMT_USD;
   totalStyle(gtR, 7, C.ANC_BLUE);
@@ -1320,14 +1330,14 @@ function buildBudgetSummary(
 // When a display has marginPct from the pricing engine, that takes priority.
 const DEFAULT_MARGINS: Record<string, number> = {
   ledHardware: 0.15,
-  structural: 0.20,
-  install: 0.20,
-  electrical: 0.20,
-  pm: 0.20,
-  engineering: 0.20,
+  structural: 0.15,
+  install: 0.15,
+  electrical: 0.15,
+  pm: 0.15,
+  engineering: 0.15,
   equipment: 0.15,
-  cms: 0.35,
-  scoring: 0.10,
+  cms: 0.15,
+  scoring: 0.15,
 };
 
 function buildMarginAnalysis(
@@ -1472,32 +1482,37 @@ function buildMarginAnalysis(
 
     // ─── TAX — formula: =D{subtotal} * rate ───
     const taxRow = row;
+    // ─── TAX — pass-through: same amount in cost AND sell (zero margin impact) ───
     const txR = ws.getRow(row);
     txR.getCell(2).value = "    TAX"; txR.getCell(2).font = subFont;
-    txR.getCell(3).value = 0;
-    txR.getCell(3).numFmt = FMT_USD;
     const taxRateVal = ov?.taxRate ?? 0;
+    txR.getCell(3).value = taxRateVal > 0
+      ? { formula: `D${subtotalRow}*G${row}`, result: round2(d.sellingPrice * taxRateVal) }
+      : 0;
+    txR.getCell(3).numFmt = FMT_USD;
     txR.getCell(4).value = taxRateVal > 0
       ? { formula: `D${subtotalRow}*G${row}`, result: round2(d.sellingPrice * taxRateVal) }
       : 0;
     txR.getCell(4).numFmt = FMT_USD;
-    txR.getCell(5).value = 0;
+    txR.getCell(5).value = 0; // No margin on tax
     txR.getCell(5).numFmt = FMT_USD;
     txR.getCell(7).value = taxRateVal; txR.getCell(7).numFmt = FMT_PCT; inputCell(txR.getCell(7));
     row++;
 
-    // ─── BOND — formula: =D{subtotal} * rate ───
+    // ─── BOND — pass-through: same amount in cost AND sell (zero margin impact) ───
     const bondRow = row;
     const bdR = ws.getRow(row);
     bdR.getCell(2).value = "    BOND"; bdR.getCell(2).font = subFont;
-    bdR.getCell(3).value = 0;
-    bdR.getCell(3).numFmt = FMT_USD;
     const bondRateVal = ov?.servicesMarginPct === 0 ? 0 : (ov?.bondRate ?? (includeBond ? rc("bond_tax.bond_rate", BOND_RATE) : 0));
+    bdR.getCell(3).value = bondRateVal > 0
+      ? { formula: `D${subtotalRow}*G${row}`, result: round2(d.sellingPrice * bondRateVal) }
+      : 0;
+    bdR.getCell(3).numFmt = FMT_USD;
     bdR.getCell(4).value = bondRateVal > 0
       ? { formula: `D${subtotalRow}*G${row}`, result: round2(d.sellingPrice * bondRateVal) }
       : 0;
     bdR.getCell(4).numFmt = FMT_USD;
-    bdR.getCell(5).value = 0;
+    bdR.getCell(5).value = 0; // No margin on bond
     bdR.getCell(5).numFmt = FMT_USD;
     bdR.getCell(7).value = bondRateVal; bdR.getCell(7).numFmt = FMT_PCT; inputCell(bdR.getCell(7));
     row++;
@@ -1519,7 +1534,9 @@ function buildMarginAnalysis(
     const grandRow = row;
     const grR = ws.getRow(row);
     grR.getCell(2).value = "    GRAND TOTAL"; grR.getCell(2).font = { bold: true, name: "Calibri", size: 11 };
-    grR.getCell(3).value = { formula: `C${subtotalRow}`, result: d.totalCost };
+    // Cost includes tax/bond pass-through so margin isn't inflated
+    const grandCostPerScreen = d.totalCost + round2(d.sellingPrice * taxRateVal) + round2(d.sellingPrice * bondRateVal);
+    grR.getCell(3).value = { formula: `C${subtotalRow}+C${taxRow}+C${bondRow}+C${tariffRow}`, result: grandCostPerScreen };
     grR.getCell(3).numFmt = FMT_USD; grR.getCell(3).font = { bold: true, name: "Calibri" };
     const grandSell = d.sellingPrice + round2(d.sellingPrice * taxRateVal) + round2(d.sellingPrice * bondRateVal) + 0;
     grR.getCell(4).value = { formula: `D${subtotalRow}+D${taxRow}+D${bondRow}+D${tariffRow}`, result: grandSell };
