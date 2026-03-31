@@ -1273,11 +1273,15 @@ function reconcileDisplays(screens: ExtractedLEDSpec[]): ExtractedLEDSpec[] {
     const key = `${normName(s.name)}|${s.widthFt ?? "X"}|${s.heightFt ?? "X"}`;
     const existing = exactMap.get(key);
     if (existing) {
-      // Keep the one with more complete data, sum quantity
+      // Merge duplicates: keep the most complete spec, take the HIGHER quantity
+      // (don't sum — if one says qty 3 and another says qty 1 for the same display,
+      // the qty 3 is the grouped version and qty 1 is a leftover duplicate)
+      const mergedQty = Math.max(existing.quantity || 1, s.quantity || 1);
       if (specCompleteness(s) > specCompleteness(existing)) {
-        exactMap.set(key, { ...s, quantity: (existing.quantity || 1) + (s.quantity || 1) - 1 });
+        exactMap.set(key, { ...s, quantity: mergedQty });
+      } else {
+        exactMap.set(key, { ...existing, quantity: mergedQty });
       }
-      // If both have quantity 1 and are exact dupes, don't increment — it's the same physical screen
     } else {
       exactMap.set(key, { ...s });
     }
@@ -2059,6 +2063,9 @@ Rules:
             }
           }
 
+          // Final reconciliation after QA — QA can re-introduce duplicates
+          mercuryScreens = reconcileDisplays(mercuryScreens);
+
           // AI product matching
           try {
             const aiMatches = await matchProductsWithAI(mercuryScreens, options?.onProgress, options?.onProductMatch);
@@ -2483,6 +2490,9 @@ CRITICAL — DO NOT output the same display multiple times. Each unique physical
               mimoWarnings.push(`Extract QA failed: ${qaErr.message}`);
             }
 
+            // Final reconciliation after QA — QA can re-introduce duplicates
+            mimoScreens = reconcileDisplays(mimoScreens);
+
             // AI product matching
             try {
               const aiMatches = await matchProductsWithAI(mimoScreens, options?.onProgress, options?.onProductMatch);
@@ -2648,6 +2658,9 @@ CRITICAL — DO NOT output the same display multiple times. Each unique physical
       console.error(`[RFP v2] Extract QA failed:`, qaErr.message);
       finalResult.warnings.push(`Extract QA failed: ${qaErr.message}`);
     }
+
+    // Final reconciliation after QA — QA can re-introduce duplicates
+    finalResult.filtered = reconcileDisplays(finalResult.filtered);
 
     // AI product matching
     try {
