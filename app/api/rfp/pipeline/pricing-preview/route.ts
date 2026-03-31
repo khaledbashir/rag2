@@ -152,8 +152,7 @@ export async function POST(request: NextRequest) {
         environment: pd.spec.environment,
         quantity: pd.spec.quantity,
         areaSqFt: pd.areaSqFt,
-        hardwareCost: pd.hardwareCost,
-        sparePartsCost: pd.sparePartsCost,
+        hardwareCost: pd.hardwareCost + pd.sparePartsCost,  // Include 5% spares so web $/SqFt matches Excel
         processorCost: pd.processorCost,
         shippingCost: pd.shippingCost,
         installCost: pd.installCost,

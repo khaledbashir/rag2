@@ -354,9 +354,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
 
     const pricingSqFt = pd?.areaSqFt ?? (h * w);
     const pricingTotalSqFt = pricingSqFt * qty;
-    // Include spare parts (5%) in $/SqFt to match Excel's ledWithSpares calculation
-    const hwWithSpares = (pd?.hardwareCost ?? 0) + (pd?.sparePartsCost ?? 0);
-    const ratePerSqFt = pricingTotalSqFt > 0 ? hwWithSpares / pricingTotalSqFt : 0;
+    const ratePerSqFt = pricingTotalSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingTotalSqFt : 0;
     const weight = audit?.estimatedWeightLbs ?? mp?.totalWeightLbs ?? 0;
     const power = audit?.totalMaxPowerW ?? mp?.totalMaxPowerW ?? 0;
     
