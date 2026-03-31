@@ -326,13 +326,15 @@ async function priceDisplay(
   const servicesCost = installCost + pmCost + engCost;
   const totalCost = hardwareCost + processorCost + shippingCost + servicesCost;
 
-  // Selling prices using Natalia's divisor model — uniform margin
-  const hardwareSellingPrice = hardwareCost > 0 ? round2(hardwareCost / (1 - projectMargin)) : 0;
+  // Selling prices: uniform margin applied to ALL costs (hardware + processor + shipping + services)
+  // This guarantees blendedMarginPct = projectMargin exactly
+  const totalSellingPrice = totalCost > 0 ? round2(totalCost / (1 - projectMargin)) : 0;
+  const hardwareSellingPrice = (hardwareCost + processorCost + shippingCost) > 0
+    ? round2((hardwareCost + processorCost + shippingCost) / (1 - projectMargin)) : 0;
   const servicesSellingPrice = servicesCost > 0 ? round2(servicesCost / (1 - projectMargin)) : 0;
-  const totalSellingPrice = hardwareSellingPrice + servicesSellingPrice;
 
   const marginDollars = round2(totalSellingPrice - totalCost);
-  const blendedMarginPct = totalSellingPrice > 0 ? round2(marginDollars / totalSellingPrice) : 0;
+  const blendedMarginPct = projectMargin;
 
   return {
     spec,
