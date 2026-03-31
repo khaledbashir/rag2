@@ -116,18 +116,18 @@ export async function POST(request: NextRequest) {
 
     // Step 4: Build response — LED Cost Sheet totals from computeDisplays
     // LED Cost Sheet Total = hw + spares + processor bundle + shipping (NOT install/PM/eng/travel)
+    // LED Margin Override = 15% (flat, from Excel's yellow cell V2)
+    const LED_MARGIN = 0.15;
     const ledCostPerDisplay = computedDisplays.map(d =>
       d.ledHardwareCost + d.sparePartsCost
       + d.sendingCardCost + d.signalCableCost + d.upsCost
       + d.backupProcessorCost + d.weatherproofCost + d.shippingCost
     );
     const totalCost = ledCostPerDisplay.reduce((s, c) => s + c, 0);
-    const ledMargin = computedDisplays[0]?.marginPct ?? 0.15;
-    const totalSell = ledCostPerDisplay.reduce((s, c, i) => {
-      const m = computedDisplays[i].marginPct;
-      return s + (m < 1 ? Math.round(c / (1 - m) * 100) / 100 : c);
-    }, 0);
-    const totalMargin = totalSell - totalCost;
+    // Sum unrounded selling prices (matches Excel formula precision), then round total
+    const totalSell = Math.round(ledCostPerDisplay.reduce((s, c) =>
+      s + c / (1 - LED_MARGIN), 0) * 100) / 100;
+    const totalMargin = Math.round((totalSell - totalCost) * 100) / 100;
 
     return NextResponse.json({
       project: {
@@ -198,18 +198,15 @@ export async function POST(request: NextRequest) {
           totalCost: cd.ledHardwareCost + cd.sparePartsCost
             + cd.sendingCardCost + cd.signalCableCost + cd.upsCost
             + cd.backupProcessorCost + cd.weatherproofCost + cd.shippingCost,
-          // Selling price = LED Cost Sheet Total / (1 - margin)
+          // Selling price = LED Cost Sheet Total / (1 - 15%)
+          // Uses flat 15% LED Margin Override (Excel cell V2)
           hardwareSellingPrice: 0,
           servicesSellingPrice: 0,
-          totalSellingPrice: cd.marginPct < 1
-            ? Math.round((cd.ledHardwareCost + cd.sparePartsCost
-                + cd.sendingCardCost + cd.signalCableCost + cd.upsCost
-                + cd.backupProcessorCost + cd.weatherproofCost + cd.shippingCost)
-              / (1 - cd.marginPct) * 100) / 100
-            : cd.ledHardwareCost + cd.sparePartsCost
-                + cd.sendingCardCost + cd.signalCableCost + cd.upsCost
-                + cd.backupProcessorCost + cd.weatherproofCost + cd.shippingCost,
-          blendedMarginPct: cd.marginPct,
+          totalSellingPrice: Math.round((cd.ledHardwareCost + cd.sparePartsCost
+              + cd.sendingCardCost + cd.signalCableCost + cd.upsCost
+              + cd.backupProcessorCost + cd.weatherproofCost + cd.shippingCost)
+            / (1 - LED_MARGIN) * 100) / 100,
+          blendedMarginPct: LED_MARGIN,
           // Metadata from pricedDisplays
           costSource: pd?.costSource ?? "rate_card",
           rateCardEstimate: pd?.rateCardEstimate ?? null,
