@@ -124,9 +124,10 @@ export async function POST(request: NextRequest) {
       + d.backupProcessorCost + d.weatherproofCost + d.shippingCost
     );
     const totalCost = ledCostPerDisplay.reduce((s, c) => s + c, 0);
-    // Sum unrounded selling prices (matches Excel formula precision), then round total
-    const totalSell = Math.round(ledCostPerDisplay.reduce((s, c) =>
-      s + c / (1 - LED_MARGIN), 0) * 100) / 100;
+    // Round each per-display selling price to 2 decimals first, then sum
+    // (matches the spreadsheet SUM formula which sums the already-rounded cell values)
+    const perDisplaySelling = ledCostPerDisplay.map(c => Math.round(c / (1 - LED_MARGIN) * 100) / 100);
+    const totalSell = Math.round(perDisplaySelling.reduce((s, v) => s + v, 0) * 100) / 100;
     const totalMargin = Math.round((totalSell - totalCost) * 100) / 100;
 
     return NextResponse.json({
