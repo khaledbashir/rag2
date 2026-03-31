@@ -117,17 +117,27 @@ export async function POST(request: NextRequest) {
     // Step 4: Build response — LED Cost Sheet totals from computeDisplays
     // LED Cost Sheet Total = hw + spares + processor bundle + shipping (NOT install/PM/eng/travel)
     // LED Margin Override = 15% (flat, from Excel's yellow cell V2)
+    // LED Margin Override = 15% (flat, from Excel's yellow cell V2)
     const LED_MARGIN = 0.15;
-    const ledCostPerDisplay = computedDisplays.map(d =>
-      d.ledHardwareCost + d.sparePartsCost
-      + d.sendingCardCost + d.signalCableCost + d.upsCost
-      + d.backupProcessorCost + d.weatherproofCost + d.shippingCost
-    );
-    const totalCost = ledCostPerDisplay.reduce((s, c) => s + c, 0);
-    // Round each per-display selling price to 2 decimals first, then sum
-    // (matches the spreadsheet SUM formula which sums the already-rounded cell values)
-    const perDisplaySelling = ledCostPerDisplay.map(c => Math.round(c / (1 - LED_MARGIN) * 100) / 100);
-    const totalSell = Math.round(perDisplaySelling.reduce((s, v) => s + v, 0) * 100) / 100;
+
+    // Compute per-display LED Cost Sheet Total using Excel's formula chain:
+    // $/SqFt (rounded) × area = Display Cost → + Processor bundle + Shipping = Total Cost
+    const perDisplayTotals = computedDisplays.map(d => {
+      const ledWithSpares = d.ledHardwareCost + d.sparePartsCost;
+      const bundleEquip = d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost;
+      let displayCost: number;
+      if (d.isTV) {
+        displayCost = ledWithSpares;
+      } else {
+        const rateSqFt = d.areaSqFt > 0 ? Math.round(ledWithSpares / d.areaSqFt * 100) / 100 : 0;
+        displayCost = Math.round(rateSqFt * d.areaSqFt * 100) / 100;
+      }
+      const tc = Math.round((displayCost + bundleEquip + d.shippingCost) * 100) / 100;
+      const sell = Math.round(tc / (1 - LED_MARGIN) * 100) / 100;
+      return { cost: tc, sell };
+    });
+    const totalCost = Math.round(perDisplayTotals.reduce((s, d) => s + d.cost, 0) * 100) / 100;
+    const totalSell = Math.round(perDisplayTotals.reduce((s, d) => s + d.sell, 0) * 100) / 100;
     const totalMargin = Math.round((totalSell - totalCost) * 100) / 100;
 
     return NextResponse.json({
@@ -186,27 +196,50 @@ export async function POST(request: NextRequest) {
           environment: cd.spec.environment,
           quantity: cd.spec.quantity,
           areaSqFt: cd.areaSqFt,
-          // Cost fields from computeDisplays (matches Excel LED Cost Sheet exactly)
-          hardwareCost: cd.ledHardwareCost + cd.sparePartsCost,
-          processorCost: cd.sendingCardCost,
+          // Cost fields — match Excel LED Cost Sheet formula chain exactly:
+          // Excel: $/SqFt (rounded) × area = Display Cost → + Processor + Shipping = Total Cost
+          hardwareCost: (() => {
+            const ledWithSpares = cd.ledHardwareCost + cd.sparePartsCost;
+            if (cd.isTV) return ledWithSpares; // TVs use $/Unit × Qty
+            // Match Excel round-trip: $/SqFt rounded to 2 decimals × area
+            const rateSqFt = cd.areaSqFt > 0 ? Math.round(ledWithSpares / cd.areaSqFt * 100) / 100 : 0;
+            return Math.round(rateSqFt * cd.areaSqFt * 100) / 100;
+          })(),
+          processorCost: cd.sendingCardCost + cd.signalCableCost + cd.upsCost + cd.backupProcessorCost + cd.weatherproofCost,
           shippingCost: cd.shippingCost,
           installCost: cd.structuralMaterialsCost + cd.structuralLaborCost + cd.electricalCost,
           pmCost: cd.pmCost,
           engCost: cd.engCost,
           travelCost: cd.travelCost,
-          // LED Cost Sheet Total Cost = hw + spares + processor bundle + shipping
-          // (install/PM/eng/travel are separate tabs in Excel)
-          totalCost: cd.ledHardwareCost + cd.sparePartsCost
-            + cd.sendingCardCost + cd.signalCableCost + cd.upsCost
-            + cd.backupProcessorCost + cd.weatherproofCost + cd.shippingCost,
-          // Selling price = LED Cost Sheet Total / (1 - 15%)
-          // Uses flat 15% LED Margin Override (Excel cell V2)
+          // LED Cost Sheet Total = Display Cost + Processor bundle + Shipping
+          totalCost: (() => {
+            const ledWithSpares = cd.ledHardwareCost + cd.sparePartsCost;
+            const bundleEquip = cd.sendingCardCost + cd.signalCableCost + cd.upsCost + cd.backupProcessorCost + cd.weatherproofCost;
+            let displayCost: number;
+            if (cd.isTV) {
+              displayCost = ledWithSpares;
+            } else {
+              const rateSqFt = cd.areaSqFt > 0 ? Math.round(ledWithSpares / cd.areaSqFt * 100) / 100 : 0;
+              displayCost = Math.round(rateSqFt * cd.areaSqFt * 100) / 100;
+            }
+            return Math.round((displayCost + bundleEquip + cd.shippingCost) * 100) / 100;
+          })(),
+          // Selling price = Total Cost / (1 - 15%)
           hardwareSellingPrice: 0,
           servicesSellingPrice: 0,
-          totalSellingPrice: Math.round((cd.ledHardwareCost + cd.sparePartsCost
-              + cd.sendingCardCost + cd.signalCableCost + cd.upsCost
-              + cd.backupProcessorCost + cd.weatherproofCost + cd.shippingCost)
-            / (1 - LED_MARGIN) * 100) / 100,
+          totalSellingPrice: (() => {
+            const ledWithSpares = cd.ledHardwareCost + cd.sparePartsCost;
+            const bundleEquip = cd.sendingCardCost + cd.signalCableCost + cd.upsCost + cd.backupProcessorCost + cd.weatherproofCost;
+            let displayCost: number;
+            if (cd.isTV) {
+              displayCost = ledWithSpares;
+            } else {
+              const rateSqFt = cd.areaSqFt > 0 ? Math.round(ledWithSpares / cd.areaSqFt * 100) / 100 : 0;
+              displayCost = Math.round(rateSqFt * cd.areaSqFt * 100) / 100;
+            }
+            const tc = Math.round((displayCost + bundleEquip + cd.shippingCost) * 100) / 100;
+            return Math.round(tc / (1 - LED_MARGIN) * 100) / 100;
+          })(),
           blendedMarginPct: LED_MARGIN,
           // Metadata from pricedDisplays
           costSource: pd?.costSource ?? "rate_card",
