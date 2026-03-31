@@ -424,11 +424,11 @@ export default function AnalysisDetailPage() {
     });
   }, [autoSaveSpecs]);
 
-  const handleRemoveScreen = useCallback((screenName: string) => {
-    // No confirmation — just remove like Excel
+  const handleRemoveScreen = useCallback((screenIndex: number) => {
+    // No confirmation — just remove like Excel. Uses index to avoid deleting all same-name screens.
     setAnalysis((prev) => {
       if (!prev) return prev;
-      const screens = prev.screens.filter((s) => s.name !== screenName);
+      const screens = (prev.screens as any[]).filter((_, i) => i !== screenIndex);
       autoSaveSpecs(screens, prev.id);
       return { ...prev, screens };
     });
@@ -436,17 +436,17 @@ export default function AnalysisDetailPage() {
       if (!prev) return prev;
       return {
         ...prev,
-        displays: prev.displays.filter((d: any) => d.name !== screenName),
+        displays: prev.displays.filter((_: any, i: number) => i !== screenIndex),
         summary: { ...prev.summary, displayCount: Math.max(0, prev.summary.displayCount - 1) },
       };
     });
   }, [autoSaveSpecs]);
 
-  const handleQtyChange = useCallback((displayName: string, qty: number) => {
+  const handleQtyChange = useCallback((displayIndex: number, qty: number) => {
     setAnalysis((prev) => {
       if (!prev) return prev;
-      const screens = (prev.screens as any[]).map((s: any) =>
-        s.name === displayName ? { ...s, quantity: qty } : s
+      const screens = (prev.screens as any[]).map((s: any, i: number) =>
+        i === displayIndex ? { ...s, quantity: qty } : s
       );
       autoSaveSpecs(screens, prev.id);
       return { ...prev, screens };

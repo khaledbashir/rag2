@@ -848,12 +848,12 @@ export default function RfpAnalyzerClient() {
     });
   }, []);
 
-  const handleRemoveScreen = useCallback((screenName: string) => {
-    // No confirmation — just remove like Excel
+  const handleRemoveScreen = useCallback((screenIndex: number) => {
+    // No confirmation — just remove like Excel. Uses index to avoid deleting all same-name screens.
     // Remove from result.screens + editableSpecs
     setResult(prev => {
       if (!prev) return prev;
-      const updated = prev.screens.filter(s => s.name !== screenName);
+      const updated = prev.screens.filter((_, i) => i !== screenIndex);
       setEditableSpecs(updated);
       autoSaveSpecs(updated, prev.id);
       return { ...prev, screens: updated };
@@ -862,7 +862,7 @@ export default function RfpAnalyzerClient() {
       if (!prev) return prev;
       return {
         ...prev,
-        displays: prev.displays.filter(d => d.name !== screenName),
+        displays: prev.displays.filter((_: any, i: number) => i !== screenIndex),
         summary: { ...prev.summary, displayCount: Math.max(0, prev.summary.displayCount - 1) },
       };
     });
@@ -872,10 +872,10 @@ export default function RfpAnalyzerClient() {
   // Qty change handler
   // ========================================================================
 
-  const handleQtyChange = useCallback((displayName: string, qty: number) => {
+  const handleQtyChange = useCallback((displayIndex: number, qty: number) => {
     const base = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
-    const updatedSpecs = base.map((s: ExtractedLEDSpec) =>
-      s.name === displayName ? { ...s, quantity: qty } : s
+    const updatedSpecs = base.map((s: ExtractedLEDSpec, i: number) =>
+      i === displayIndex ? { ...s, quantity: qty } : s
     );
     setEditableSpecs(updatedSpecs);
     if (result?.id) autoSaveSpecs(updatedSpecs, result.id);

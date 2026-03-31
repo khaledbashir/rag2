@@ -99,10 +99,10 @@ export interface RfpWorkbookInput {
   onAddLineItem?: () => void;
   /** Callback to add a new screen to LED Cost Sheet */
   onAddScreen?: () => void;
-  /** Callback to remove a screen by name from LED Cost Sheet */
-  onRemoveScreen?: (screenName: string) => void;
+  /** Callback to remove a screen by index from LED Cost Sheet */
+  onRemoveScreen?: (screenIndex: number) => void;
   /** Callback when user changes quantity for a display */
-  onQtyChange?: (displayName: string, qty: number) => void;
+  onQtyChange?: (displayIndex: number, qty: number) => void;
   /** Callback when user clicks "Fix" on a row — triggers AI repair agent */
   onRepairRow?: (displayName: string, rowIndex: number) => void;
   /** Show Spec Match column (product nits vs RFP nits comparison) — default false */
@@ -165,7 +165,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   // Build a used-index tracker so duplicate names get matched to different pricing entries
   const usedPricingIdx = new Set<number>();
 
-  const dataRows: SheetRow[] = input.screens.map((spec) => {
+  const dataRows: SheetRow[] = input.screens.map((spec, specIndex) => {
     const bidPitch = spec.pixelPitchMm ?? 0;
     const bidW = spec.widthFt ?? 0;
     const bidH = spec.heightFt ?? 0;
@@ -255,7 +255,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
         c(spec.name, {
           bold: true,
           onClick: firstPage && input.onSourcePageClick ? () => input.onSourcePageClick!(firstPage) : undefined,
-          onRemove: input.onRemoveScreen ? () => input.onRemoveScreen!(spec.name) : undefined,
+          onRemove: input.onRemoveScreen ? () => input.onRemoveScreen!(specIndex) : undefined,
           onRepair: input.onRepairRow ? () => input.onRepairRow!(spec.name, input.screens.indexOf(spec)) : undefined,
         }),
         num(bidH > 0 ? Math.round(bidH * 100) / 100 : null, { className: "bg-blue-50/40 dark:bg-blue-900/15" }),  // RFP H (ft)
@@ -275,7 +275,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
               value: String(qty),
               align: "center" as const,
               dropdown: Array.from({ length: 20 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) })),
-              onDropdownChange: (val: string) => input.onQtyChange!(spec.name, parseInt(val, 10) || 1),
+              onDropdownChange: (val: string) => input.onQtyChange!(specIndex, parseInt(val, 10) || 1),
             }
           : num(qty, { align: "center" }),
         num(Math.round(totalSqFt * 100) / 100 || null),
