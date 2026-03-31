@@ -264,7 +264,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     0: { w: 200 }, 1: { w: 75 }, 2: { w: 75 }, 3: { w: 70 },
     4: { w: 90 }, 5: { w: 140 }, 6: { w: 75 },
     7: { w: 65 }, 8: { w: 65 }, 9: { w: 65 }, 10: { w: 65 },
-    11: { w: 90 }, 12: { w: 50 }, 13: { w: 85 }, 14: { w: 60 },
+    11: { w: 90 }, 12: { w: 60 }, 13: { w: 85 }, 14: { w: 60 },
     15: { w: 70 }, 16: { w: 75 }, 17: { w: 100 }, 18: { w: 85 },
     19: { w: 80 }, 20: { w: 100 }, 21: { w: 75 }, 22: { w: 100 },
     23: { w: 90 }, 24: { w: 90 }, 25: { w: 80 },
@@ -395,7 +395,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
       9: pitch > 0 ? { f: `=ROUND(H${row + 1}*304.8/G${row + 1},0)`, s: "number" } : { v: hPx > 0 ? hPx : "" },  // H (px)
       10: pitch > 0 ? { f: `=ROUND(I${row + 1}*304.8/G${row + 1},0)`, s: "number" } : { v: wPx > 0 ? wPx : "" }, // W (px)
       11: { v: sqFtPerScreen || "", s: "number2" },                              // SqFt/Screen
-      12: { v: qty },                                                            // Qty
+      12: { v: qty, s: "number" },                                                // Qty
       13: { v: totalSqFt || "", s: "number2" },                                  // Total SqFt
       14: { v: resolvedNits },                                                   // NITs (product)
       15: { v: spec.serviceType ?? "" },                                         // Service
