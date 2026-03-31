@@ -1491,12 +1491,13 @@ function buildLedCostSheet(
     dr.getCell(20).font = { bold: true, name: "Calibri" };
     // U: Margin % — references master override cell V2
     dr.getCell(21).value = { formula: `V$${masterMarginRow}`, result: d.marginPct }; dr.getCell(21).numFmt = FMT_PCT;
-    // V: Selling Price — hard value (no formula round-trip through T/(1-U))
-    dr.getCell(22).value = round2(d.sellingPrice);
+    // V: Selling Price — formula: Cost / (1 - Margin%)
+    const rowNum = dr.number;
+    dr.getCell(22).value = { formula: `IFERROR(T${rowNum}/(1-U${rowNum}),0)`, result: round2(d.sellingPrice) };
     dr.getCell(22).numFmt = FMT_USD;
     dr.getCell(22).font = { bold: true, name: "Calibri" };
-    // W: ANC Margin — hard value (no formula round-trip through V-T)
-    dr.getCell(23).value = round2(d.marginDollars);
+    // W: ANC Margin — formula: Selling - Cost
+    dr.getCell(23).value = { formula: `V${rowNum}-T${rowNum}`, result: round2(d.marginDollars) };
     dr.getCell(23).numFmt = FMT_USD;
 
     // X-Z: Weight, Power, BTU
