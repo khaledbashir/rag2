@@ -375,9 +375,10 @@ function CellView({ cell, editable, isEditing, onClick, onChange, onBlur }: Cell
           onChange={(e) => {
             if (cell.onDropdownChange) cell.onDropdownChange(e.target.value);
           }}
-          className="w-full text-xs bg-white dark:bg-zinc-900 border border-border rounded px-1 py-0.5 cursor-pointer focus:ring-1 focus:ring-blue-400 focus:outline-none appearance-auto"
+          className="w-full text-xs bg-white dark:bg-zinc-900 border border-border rounded px-1 py-0.5 cursor-pointer focus:ring-1 focus:ring-blue-400 focus:outline-none"
+          style={{ minWidth: "50px" }}
         >
-          <option value="">Select product...</option>
+          {cell.dropdown.every(o => !isNaN(Number(o.value))) ? null : <option value="">Select...</option>}
           {cell.dropdown.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
