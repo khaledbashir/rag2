@@ -1874,9 +1874,29 @@ Rules:
           }));
 
           let mercuryScreens = aiToSpecs(ledDisplays);
-          // No deterministic dedup for Mercury — it handles dedup correctly via prompt.
-          // The dedup step was for MiMo's cross-page duplicate problem. Mercury gets
-          // the full text in one shot and follows the "1 row per table row" instruction.
+
+          // Deterministic dedup — same pattern as MiMo path.
+          // GPT may extract the same display from spec table + schedule table + cost table.
+          {
+            const before = mercuryScreens.length;
+            const seen = new Map<string, number>();
+            const toRemove: number[] = [];
+            for (let i = 0; i < mercuryScreens.length; i++) {
+              const s = mercuryScreens[i];
+              const key = `${(s.name || "").toLowerCase().trim()}|${s.widthFt ?? ""}|${s.heightFt ?? ""}`;
+              const firstIdx = seen.get(key);
+              if (firstIdx !== undefined) {
+                toRemove.push(i);
+              } else {
+                seen.set(key, i);
+              }
+            }
+            if (toRemove.length > 0) {
+              mercuryScreens = mercuryScreens.filter((_, i) => !toRemove.includes(i));
+              console.log(`[RFP v2] GPT dedup: ${before} → ${mercuryScreens.length} (removed ${toRemove.length} exact duplicates)`);
+              options?.onProgress?.(`Dedup: removed ${toRemove.length} duplicate rows (${mercuryScreens.length} unique displays)`);
+            }
+          }
 
           // Validation — reuse the pdftotext we already have (no second call)
           const sourceText = fullText.substring(0, 50000);
@@ -2006,6 +2026,29 @@ Rules:
           const { ledDisplays, nonLedRequirements } = separateAiByCategory(allDisplays);
           options?.onProgress?.(`Mercury 2 found ${ledDisplays.length} LED displays`);
           let screens = aiToSpecs(ledDisplays);
+
+          // Deterministic dedup — same pattern as GPT/MiMo paths
+          {
+            const before = screens.length;
+            const seen = new Map<string, number>();
+            const toRemove: number[] = [];
+            for (let i = 0; i < screens.length; i++) {
+              const s = screens[i];
+              const key = `${(s.name || "").toLowerCase().trim()}|${s.widthFt ?? ""}|${s.heightFt ?? ""}`;
+              const firstIdx = seen.get(key);
+              if (firstIdx !== undefined) {
+                toRemove.push(i);
+              } else {
+                seen.set(key, i);
+              }
+            }
+            if (toRemove.length > 0) {
+              screens = screens.filter((_, i) => !toRemove.includes(i));
+              console.log(`[RFP v2] Mercury dedup: ${before} → ${screens.length} (removed ${toRemove.length} exact duplicates)`);
+              options?.onProgress?.(`Dedup: removed ${toRemove.length} duplicate rows (${screens.length} unique displays)`);
+            }
+          }
+
           // Skip to product matching (Mercury path is fast, minimal processing)
           try {
             const aiMatches = await matchProductsWithAI(screens, options?.onProgress, options?.onProductMatch);

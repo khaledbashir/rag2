@@ -14,7 +14,7 @@
 import { NextRequest } from "next/server";
 import { stat, readFile } from "fs/promises";
 import { existsSync } from "fs";
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -181,6 +181,55 @@ export async function POST(request: NextRequest) {
         const sizeMb = (fileStat.size / 1024 / 1024).toFixed(1);
 
         // =============================================================
+        // STEP 1.2: Hash cache — same PDF = skip LLM, return cached result
+        // SHA-256 the file bytes and check DB for a prior successful analysis.
+        // =============================================================
+        const pdfBytesForHash = await readFile(filePath);
+        const fileHash = createHash("sha256").update(pdfBytesForHash).digest("hex");
+
+        const cachedAnalysis = await prisma.rfpAnalysis.findFirst({
+          where: { fileHash, status: "complete" },
+          orderBy: { createdAt: "desc" },
+        });
+
+        if (cachedAnalysis) {
+          log.info(`[Pipeline] Hash cache HIT — ${fileHash.slice(0, 12)}… → analysis ${cachedAnalysis.id}`);
+          send("stage", { stage: "extracting", message: "Found cached analysis for this file — skipping extraction" });
+
+          const cachedScreens = (cachedAnalysis.screens as any[]) || [];
+          const cachedProject = (cachedAnalysis.project as Record<string, any>) || {};
+          const cachedRequirements = (cachedAnalysis.requirements as any[]) || [];
+
+          // Emit product matches from cached screens so the UI populates
+          for (const s of cachedScreens) {
+            if (s.selectedProductId) {
+              send("product_match", {
+                displayName: s.name,
+                productId: s.selectedProductId,
+                productName: s.selectedProductName || null,
+              });
+            }
+          }
+
+          send("stage", { stage: "extracted", message: `Cached: ${cachedScreens.length} LED display(s)`, specsFound: cachedScreens.length, requirementsFound: cachedRequirements.length, extractionSource: "cache" });
+          send("done", {
+            analysisId: cachedAnalysis.id,
+            screens: cachedScreens,
+            project: cachedProject,
+            requirements: cachedRequirements,
+            stats: { totalPages: cachedAnalysis.pageCount, relevantPages: cachedAnalysis.relevantPages, specsFound: cachedScreens.length, processingTimeMs: Date.now() - startTime, cached: true },
+            warnings: [],
+          });
+
+          clearInterval(globalHeartbeat);
+          controller.close();
+          streamClosed = true;
+          return;
+        }
+
+        log.info(`[Pipeline] Hash cache MISS — ${fileHash.slice(0, 12)}… (new file)`);
+
+        // =============================================================
         // STEP 1.5: GLM5 PRIMARY extraction (via NVIDIA API)
         // Uses pdftotext + GLM5 for reliable extraction.
         // Two calls (indoor + outdoor) for full coverage.
@@ -259,6 +308,7 @@ export async function POST(request: NextRequest) {
                   filename: body.filename || "RFP",
                   fileSize: fileStat2.size,
                   pageCount: totalPages,
+                  fileHash,
                   pdfFilePath: filePath,
                   pdfData: pdfBuffer,
                   projectName: finalProject.projectName,
@@ -895,6 +945,7 @@ export async function POST(request: NextRequest) {
               filename: body.filename || "document.pdf",
               fileSize: fileStat.size,
               pageCount: ocrResult.totalPages,
+              fileHash,
               pdfFilePath: persistentPdfPath,
               pdfData: pdfBuffer2,
               relevantPages: relevantPages.length,

@@ -956,6 +956,7 @@ model RfpAnalysis {
   filename    String   // Original uploaded filename
   fileSize    Int      // Bytes
   pageCount   Int      // Total pages in PDF
+  fileHash    String?  // SHA-256 of PDF bytes — used for extraction cache (same file = skip LLM)
   pdfFilePath String?  // Persistent path to uploaded PDF for split-panel view
   pdfData     Bytes?   // PDF binary stored in DB — survives container restarts
 
@@ -995,6 +996,7 @@ model RfpAnalysis {
   @@index([clientName])
   @@index([createdAt])
   @@index([status])
+  @@index([fileHash])
 }
 
 // SOW Generation History — tracks every SOW generated
