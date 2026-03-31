@@ -1,0 +1,889 @@
+- generic:
+  - generic:
+    - complementary:
+      - generic:
+        - link:
+          - /url: /projects
+          - generic:
+            - img
+        - button:
+          - img
+      - navigation:
+        - generic:
+          - heading [level=3]: Main
+          - generic:
+            - generic:
+              - generic:
+                - link:
+                  - /url: /projects
+                  - img
+                  - generic: Projects
+            - generic:
+              - generic:
+                - link:
+                  - /url: /pipeline
+                  - img
+                  - generic: Pipeline
+        - generic:
+          - heading [level=3]: Tools
+          - generic:
+            - generic:
+              - generic:
+                - link:
+                  - /url: /tools/rfp-analyzer
+                  - img
+                  - generic: RFP Analyzer
+                - button:
+                  - img
+            - generic:
+              - generic:
+                - link:
+                  - /url: /tools/sow-generator
+                  - img
+                  - generic: SOW Builder
+                - button:
+                  - img
+            - generic:
+              - generic:
+                - link:
+                  - /url: /tools/spec-generator
+                  - img
+                  - generic: Spec Sheets
+            - generic:
+              - generic:
+                - link:
+                  - /url: /estimator
+                  - img
+                  - generic: Estimator
+                - button:
+                  - img
+      - generic:
+        - button:
+          - img
+          - generic: Settings
+        - generic:
+          - paragraph: Claude Agent
+          - paragraph: Admin
+        - button:
+          - img
+          - generic: Sign Out
+    - generic:
+      - generic:
+        - generic:
+          - banner:
+            - generic:
+              - link:
+                - /url: /
+                - generic: ANC
+              - generic:
+                - img
+                - textbox:
+                  - /placeholder: Search projects...
+                - generic: ⌘K
+            - generic:
+              - link:
+                - /url: /estimator/new
+                - img
+                - generic: New Estimate
+              - generic:
+                - button:
+                  - img
+                  - generic: New Project
+          - main:
+            - generic:
+              - generic:
+                - generic:
+                  - heading [level=1]: Good morning, Claude
+                  - paragraph: 693 projects in the pipeline worth $2.9B.. 11 proposals updated today.
+                - generic:
+                  - generic:
+                    - button: Overview
+                    - button: Drafts
+                    - button: Approved
+                    - button: Signed
+                  - generic:
+                    - button: All Types
+                    - button: Budgets
+                    - button: Proposals
+                    - button: LOIs
+                    - button: Contracts
+                  - button:
+                    - img
+              - generic:
+                - generic:
+                  - generic: 693All Projects
+                  - generic: 263Mirror
+                  - generic: 167Intelligence
+                  - generic: 263Estimates
+                  - generic: $2,865,954,312Pipeline
+                - generic:
+                  - generic:
+                    - generic: Name
+                    - generic: Type
+                    - generic: Status
+                    - generic: Value
+                  - generic:
+                    - generic:
+                      - generic: Georgetown
+                      - generic: Generic
+                    - generic: Proposal
+                    - generic:
+                      - combobox
+                    - generic: $16,878
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Georgetown
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Untitled Estimate
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Untitled Estimate
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Rose Bowl
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Georgetown
+                      - generic: Generic
+                    - generic: Budget
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: natalia s test
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: "Courtside Test #1"
+                      - generic: Generic
+                    - generic: Budget
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Georgetown
+                      - generic: Generic
+                    - generic: Budget
+                    - generic:
+                      - combobox
+                    - generic: $1,244,362
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Untitled Estimate
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: St. Bonaventure
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: NBA arena
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Panthers Stadium LLC
+                      - generic: Bank of America Stadium
+                    - generic: Budget
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Panthers Stadium LLC
+                      - generic: Bank of America Stadium
+                    - generic: Budget
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Arena LED Steps Retest
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Georgetown
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Untitled Estimate
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Orange Barrel Media
+                      - generic: West Hollywood
+                    - generic: LOI
+                    - generic:
+                      - combobox
+                    - generic: $60,343
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Florida Panthers
+                      - generic: Generic
+                    - generic: Proposal
+                    - generic:
+                      - combobox
+                    - generic: $373,490
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Florida Panthers
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Florida Panthers
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Untitled Estimate
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Florida Panthers
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Florida Panthers
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Grand Total Match Test
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Grand Total Match Test
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Grand Total Test
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Untitled Estimate
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Georgetown University
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: New Estimate
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Georgetown University
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Georgetown Test
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Untitled Estimate
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: TEST
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Moody Center
+                      - generic: Generic
+                    - generic: Proposal
+                    - generic:
+                      - combobox
+                    - generic: $4,070,492
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Rutgers University
+                      - generic: Generic
+                    - generic: LOI
+                    - generic:
+                      - combobox
+                    - generic: $899,479
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Cleveland Browns
+                      - generic: Generic
+                    - generic: Proposal
+                    - generic:
+                      - combobox
+                    - generic: $1,362,292
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Scotiabanck Arena
+                      - generic: Generic
+                    - generic: Proposal
+                    - generic:
+                      - combobox
+                    - generic: CA$5,849,633
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Untitled Estimate
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: New Estimate
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: New Estimate
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Georgetown University
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Untitled Estimate
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Indiana Fever
+                      - generic: Generic
+                    - generic: LOI
+                    - generic:
+                      - combobox
+                    - generic: $111,573
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: "9877788"
+                      - generic: Generic
+                    - generic: Budget
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: hghghg
+                      - generic: Generic
+                    - generic: Contract
+                    - generic:
+                      - combobox
+                    - generic: $488,275
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: University of Maine
+                      - generic: Generic
+                    - generic: Budget
+                    - generic:
+                      - combobox
+                    - generic: $5,755,207
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Panthers Stadium, LLC
+                      - generic: Bank of America Stadium
+                    - generic: Budget
+                    - generic:
+                      - combobox
+                    - generic: $43,677,497
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Philadelphia Eagles2
+                      - generic: Generic
+                    - generic: Contract
+                    - generic:
+                      - combobox
+                    - generic: $8,031,380
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Test Client - Demo Project
+                    - generic:
+                      - generic: Estimate
+                    - generic:
+                      - combobox
+                    - generic: —
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - img
+                      - img
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - img
+                  - heading [level=3]: Brief Me
+                - button:
+                  - img
+          - button:
+            - img
+            - generic: Lux
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - img
+                - generic:
+                  - heading [level=3]: Lux
+                  - paragraph: ANC's AI copilot
+              - generic:
+                - button:
+                  - img
+                - button:
+                  - img
+                - button:
+                  - img
+            - generic:
+              - generic:
+                - generic:
+                  - generic: ⚡ Hey — I'm Lux.
+                  - generic:
+                    - paragraph: I work with the ANC proposal team.
+                    - paragraph: Drop me an Excel, tell me about a project, or just ask me something.
+                  - paragraph: What are we working on?
+            - generic:
+              - generic:
+                - button:
+                  - img
+                - textbox:
+                  - /placeholder: Ask me anything or tell me about the project...
+                - button [disabled]:
+                  - img
+  - contentinfo:
+    - paragraph: © 2026 ANC Sports Proposal Engine. All rights reserved.
+  - list
+  - alert
+  - dialog "New Project" [ref=e1206]:
+    - generic [ref=e1207]:
+      - heading "New Project" [level=2] [ref=e1208]
+      - paragraph [ref=e1209]: Start a new proposal
+    - generic [ref=e1210]:
+      - textbox "Client Name (e.g., Lakers)" [active] [ref=e1211]
+      - textbox "Contact Email (optional)" [ref=e1212]
+      - generic [ref=e1213] [cursor=pointer]:
+        - checkbox "Knowledge Base AI-powered chat & document analysis for this project" [checked] [ref=e1215]
+        - img [ref=e1218]
+        - generic [ref=e1221]:
+          - text: Knowledge Base
+          - paragraph [ref=e1222]: AI-powered chat & document analysis for this project
+      - generic [ref=e1223]:
+        - button "Cancel" [ref=e1224] [cursor=pointer]
+        - button "Create Project" [ref=e1225] [cursor=pointer]
+    - button "Close" [ref=e1226] [cursor=pointer]:
+      - img [ref=e1227]
+      - generic [ref=e1230]: Close

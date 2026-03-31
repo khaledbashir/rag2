@@ -3028,8 +3028,10 @@ function buildTechSpecsSheet(
     // IMPORTANT: result values required — browser preview can't resolve cross-sheet formulas
     const qty = d.spec.quantity || 1;
     const displayName = d.spec.name + (d.spec.location ? ` — ${d.spec.location}` : "");
-    const pitchLabel = (selectedProduct?.pixelPitch ?? d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm) ? `${selectedProduct?.pixelPitch ?? d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm}mm` : "—";
-    const effPitch = selectedProduct?.pixelPitch ?? d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm;
+    // Resolve product first so we can get correct pitch
+    const tsSelectedProduct = d.spec.selectedProductId ? resolveProduct(d.spec.selectedProductId) : null;
+    const pitchLabel = (tsSelectedProduct?.pixelPitch ?? d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm) ? `${tsSelectedProduct?.pixelPitch ?? d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm}mm` : "—";
+    const effPitch = tsSelectedProduct?.pixelPitch ?? d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm;
     const hPx = d.spec.heightPx || (effPitch && d.heightFt ? Math.round(d.heightFt * 304.8 / effPitch) : 0);
     const wPx = d.spec.widthPx || (effPitch && d.widthFt ? Math.round(d.widthFt * 304.8 / effPitch) : 0);
 
@@ -3049,9 +3051,8 @@ function buildTechSpecsSheet(
 
     // Weight & Power & BTU — cross-sheet refs to LED Cost Sheet (cols U, V, W)
     const areaM2 = d.areaSqFt * 0.092903;
-    const selectedProduct = d.spec.selectedProductId ? resolveProduct(d.spec.selectedProductId) : null;
     const pitch = effPitch ?? d.spec.pixelPitchMm ?? 0;
-    const catalogMatch = selectedProduct
+    const catalogMatch = tsSelectedProduct
       ?? (pitch > 0 ? getAllProducts().find((p) => Math.abs(p.pitchMm - pitch) < 0.5) : null);
     const tsWeight = catalogMatch ? Math.round(areaM2 * catalogMatch.weightDensityLbm2) : Math.round(d.areaSqFt * 5);
     const tsPower = catalogMatch ? Math.round(areaM2 * catalogMatch.powerDensityWm2) : 0;

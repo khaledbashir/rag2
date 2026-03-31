@@ -1,0 +1,77 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - link "ANC" [ref=e5] [cursor=pointer]:
+          - /url: /projects
+          - img "ANC" [ref=e7]
+        - button [ref=e8] [cursor=pointer]:
+          - img [ref=e9]
+      - navigation [ref=e12]:
+        - generic [ref=e13]:
+          - heading "Main" [level=3] [ref=e14]
+          - generic [ref=e15]:
+            - link "Projects" [ref=e18] [cursor=pointer]:
+              - /url: /projects
+              - img [ref=e19]
+              - generic [ref=e24]: Projects
+            - link "Pipeline" [ref=e27] [cursor=pointer]:
+              - /url: /pipeline
+              - img [ref=e28]
+              - generic [ref=e29]: Pipeline
+        - generic [ref=e30]:
+          - heading "Tools" [level=3] [ref=e31]
+          - generic [ref=e32]:
+            - generic [ref=e33]:
+              - generic [ref=e34]:
+                - link "RFP Analyzer" [ref=e35] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer
+                  - img [ref=e36]
+                  - generic [ref=e41]: RFP Analyzer
+                - button [ref=e42] [cursor=pointer]:
+                  - img [ref=e43]
+              - generic [ref=e45]:
+                - link "New Analysis" [ref=e46] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer
+                  - img [ref=e47]
+                  - generic [ref=e52]: New Analysis
+                - link "History" [ref=e53] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history
+                  - img [ref=e54]
+                  - generic [ref=e58]: History
+            - generic [ref=e60]:
+              - link "SOW Builder" [ref=e61] [cursor=pointer]:
+                - /url: /tools/sow-generator
+                - img [ref=e62]
+                - generic [ref=e65]: SOW Builder
+              - button [ref=e66] [cursor=pointer]:
+                - img [ref=e67]
+            - link "Spec Sheets" [ref=e71] [cursor=pointer]:
+              - /url: /tools/spec-generator
+              - img [ref=e72]
+              - generic [ref=e75]: Spec Sheets
+            - generic [ref=e77]:
+              - link "Estimator" [ref=e78] [cursor=pointer]:
+                - /url: /estimator
+                - img [ref=e79]
+                - generic [ref=e81]: Estimator
+              - button [ref=e82] [cursor=pointer]:
+                - img [ref=e83]
+      - generic [ref=e85]:
+        - button "Settings" [ref=e86] [cursor=pointer]:
+          - img [ref=e87]
+          - generic [ref=e90]: Settings
+        - generic [ref=e91]:
+          - paragraph [ref=e92]: User
+          - paragraph [ref=e93]: Viewer
+        - button "Sign Out" [ref=e94] [cursor=pointer]:
+          - img [ref=e95]
+          - generic [ref=e98]: Sign Out
+    - generic [ref=e100]:
+      - img [ref=e101]
+      - generic [ref=e103]: Loading analysis...
+  - contentinfo [ref=e104]:
+    - paragraph [ref=e105]: © 2026 ANC Sports Proposal Engine. All rights reserved.
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e106]

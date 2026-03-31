@@ -1,0 +1,206 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - link "ANC" [ref=e5] [cursor=pointer]:
+          - /url: /projects
+          - img "ANC" [ref=e7]
+        - button [ref=e8] [cursor=pointer]:
+          - img [ref=e9]
+      - navigation [ref=e12]:
+        - generic [ref=e13]:
+          - heading "Main" [level=3] [ref=e14]
+          - generic [ref=e15]:
+            - link "Projects" [ref=e18] [cursor=pointer]:
+              - /url: /projects
+              - img [ref=e19]
+              - generic [ref=e24]: Projects
+            - link "Pipeline" [ref=e27] [cursor=pointer]:
+              - /url: /pipeline
+              - img [ref=e28]
+              - generic [ref=e29]: Pipeline
+        - generic [ref=e30]:
+          - heading "Tools" [level=3] [ref=e31]
+          - generic [ref=e32]:
+            - generic [ref=e33]:
+              - generic [ref=e34]:
+                - link "RFP Analyzer" [ref=e35] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer
+                  - img [ref=e36]
+                  - generic [ref=e41]: RFP Analyzer
+                - button [ref=e42] [cursor=pointer]:
+                  - img [ref=e43]
+              - generic [ref=e45]:
+                - link "New Analysis" [ref=e46] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer
+                  - img [ref=e47]
+                  - generic [ref=e52]: New Analysis
+                - link "History" [ref=e53] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history
+                  - img [ref=e54]
+                  - generic [ref=e58]: History
+            - generic [ref=e60]:
+              - link "SOW Builder" [ref=e61] [cursor=pointer]:
+                - /url: /tools/sow-generator
+                - img [ref=e62]
+                - generic [ref=e65]: SOW Builder
+              - button [ref=e66] [cursor=pointer]:
+                - img [ref=e67]
+            - link "Spec Sheets" [ref=e71] [cursor=pointer]:
+              - /url: /tools/spec-generator
+              - img [ref=e72]
+              - generic [ref=e75]: Spec Sheets
+            - generic [ref=e77]:
+              - link "Estimator" [ref=e78] [cursor=pointer]:
+                - /url: /estimator
+                - img [ref=e79]
+                - generic [ref=e81]: Estimator
+              - button [ref=e82] [cursor=pointer]:
+                - img [ref=e83]
+      - generic [ref=e85]:
+        - button "Settings" [ref=e86] [cursor=pointer]:
+          - img [ref=e87]
+          - generic [ref=e90]: Settings
+        - generic [ref=e91]:
+          - paragraph [ref=e92]: User
+          - paragraph [ref=e93]: Viewer
+        - button "Sign Out" [ref=e94] [cursor=pointer]:
+          - img [ref=e95]
+          - generic [ref=e98]: Sign Out
+    - generic [ref=e100]:
+      - banner [ref=e101]:
+        - generic [ref=e103]:
+          - link "History" [ref=e104] [cursor=pointer]:
+            - /url: /tools/rfp-analyzer/history
+            - img [ref=e105]
+            - text: History
+          - generic [ref=e108]:
+            - heading "Large Format LED" [level=1] [ref=e109]
+            - paragraph [ref=e110]: Carolina Panthers - Updated LED Schedule DWG.pdf — 1 pages — Mar 30, 2026
+      - generic [ref=e111]:
+        - generic [ref=e112]:
+          - generic [ref=e113]:
+            - generic [ref=e114]:
+              - img [ref=e115]
+              - generic [ref=e118]: Total Pages
+            - generic [ref=e119]: "1"
+          - generic [ref=e120]:
+            - generic [ref=e121]:
+              - img [ref=e122]
+              - generic [ref=e125]: Relevant
+            - generic [ref=e126]: "1"
+            - paragraph [ref=e127]: 100% kept
+          - generic [ref=e128]:
+            - generic [ref=e129]:
+              - img [ref=e130]
+              - generic [ref=e132]: LED Displays
+            - generic [ref=e133]: "44"
+          - generic [ref=e134]:
+            - generic [ref=e135]:
+              - img [ref=e136]
+              - generic [ref=e138]: Requirements
+            - generic [ref=e139]: "0"
+          - generic [ref=e140]:
+            - generic [ref=e141]:
+              - img [ref=e142]
+              - generic [ref=e144]: Vision Pages
+            - generic [ref=e145]: "0"
+          - generic [ref=e146]:
+            - generic [ref=e147]:
+              - img [ref=e148]
+              - generic [ref=e151]: Processing
+            - generic [ref=e152]: 29.1s
+        - generic [ref=e153]:
+          - button "Documents Original RFP files" [ref=e154] [cursor=pointer]:
+            - img [ref=e156]
+            - generic [ref=e159]:
+              - generic [ref=e160]: Documents
+              - generic [ref=e161]: Original RFP files
+          - img [ref=e163]
+          - button "LED Specs 44 displays found" [ref=e165] [cursor=pointer]:
+            - img [ref=e167]
+            - generic [ref=e170]:
+              - generic [ref=e171]: LED Specs
+              - generic [ref=e172]: 44 displays found
+          - img [ref=e174]
+          - button "What's Inside Project & requirements" [ref=e176] [cursor=pointer]:
+            - img [ref=e178]
+            - generic [ref=e181]:
+              - generic [ref=e182]: What's Inside
+              - generic [ref=e183]: Project & requirements
+          - img [ref=e185]
+          - button "Estimate Pricing & workbook" [ref=e187] [cursor=pointer]:
+            - img [ref=e189]
+            - generic [ref=e192]:
+              - generic [ref=e193]: Estimate
+              - generic [ref=e194]: Pricing & workbook
+          - img [ref=e196]
+          - button "Actions Export & proposal" [ref=e198] [cursor=pointer]:
+            - img [ref=e200]
+            - generic [ref=e203]:
+              - generic [ref=e204]: Actions
+              - generic [ref=e205]: Export & proposal
+      - main [ref=e206]:
+        - generic [ref=e207]:
+          - generic [ref=e208]:
+            - generic [ref=e210]:
+              - img [ref=e211]
+              - generic [ref=e215]: Project Information
+            - generic [ref=e216]:
+              - generic [ref=e217]:
+                - generic [ref=e218]: Project
+                - text: Large Format LED
+              - generic [ref=e219]:
+                - generic [ref=e220]: Venue
+                - text: Large Format LED
+          - generic [ref=e221]:
+            - heading "Requirements (0)" [level=3] [ref=e222]:
+              - img [ref=e223]
+              - text: Requirements (0)
+            - paragraph [ref=e225]: No requirements extracted from this document.
+          - generic [ref=e226]:
+            - heading "Pipeline Log (9 steps)" [level=3] [ref=e227]:
+              - img [ref=e228]
+              - text: Pipeline Log (9 steps)
+            - generic [ref=e231]:
+              - generic [ref=e232]:
+                - generic [ref=e233]: "01"
+                - generic [ref=e234]: Extracting tables with pdfplumber...
+                - generic [ref=e235]: 11:05:57 AM
+              - generic [ref=e236]:
+                - generic [ref=e237]: "02"
+                - generic [ref=e238]: pdfplumber found 47 displays — deterministic extraction
+                - generic [ref=e239]: 11:05:57 AM
+              - generic [ref=e240]:
+                - generic [ref=e241]: "03"
+                - generic [ref=e242]: Validating extraction...
+                - generic [ref=e243]: 11:05:57 AM
+              - generic [ref=e244]:
+                - generic [ref=e245]: "04"
+                - generic [ref=e246]: "Validation: All 6 checks passed"
+                - generic [ref=e247]: 11:05:57 AM
+              - generic [ref=e248]:
+                - generic [ref=e249]: "05"
+                - generic [ref=e250]: Verifying 47 displays against source...
+                - generic [ref=e251]: 11:05:57 AM
+              - generic [ref=e252]:
+                - generic [ref=e253]: "06"
+                - generic [ref=e254]: "QA: Fixed 21 dimension/name corrections. All 47 displays verified against source. No missing or duplicate displays found."
+                - generic [ref=e255]: 11:06:18 AM
+              - generic [ref=e256]:
+                - generic [ref=e257]: "07"
+                - generic [ref=e258]: "Extract QA: Fixed 21 dimension/name corrections. All 47 displays verified against source. No missing or duplicate displays found."
+                - generic [ref=e259]: 11:06:18 AM
+              - generic [ref=e260]:
+                - generic [ref=e261]: "08"
+                - generic [ref=e262]: Selecting products for 47 displays...
+                - generic [ref=e263]: 11:06:18 AM
+              - generic [ref=e264]:
+                - generic [ref=e265]: "09"
+                - generic [ref=e266]: "Product matching: 47 displays..."
+                - generic [ref=e267]: 11:06:18 AM
+  - contentinfo [ref=e268]:
+    - paragraph [ref=e269]: © 2026 ANC Sports Proposal Engine. All rights reserved.
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e270]

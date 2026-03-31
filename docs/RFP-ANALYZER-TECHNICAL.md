@@ -558,3 +558,4 @@ RFPs list game clocks, scoring controllers, headend racks, spare parts alongside
 6. Qty dropdown works and persists
 7. Cabinet/module sizing calculates on product selection
 8. 80/20 pricing (80% cabinet sqft + 20% module sqft)
+8. 80/20 pricing (80% cabinet sqft + 20% module sqft)

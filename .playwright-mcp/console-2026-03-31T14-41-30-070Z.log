@@ -1,0 +1,4 @@
+[  289851ms] [ERROR] Access to fetch at 'https://static.userback.io/widget/v1.js' from origin 'https://proposals.anc.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ https://proposals.anc.com/tools/rfp-analyzer/history/cmndi1wnl008lvjtiab7zuvfd:0
+[  289852ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://static.userback.io/widget/v1.js:0
+[  326531ms] [ERROR] Access to fetch at 'https://static.userback.io/widget/v1.js' from origin 'https://proposals.anc.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ https://proposals.anc.com/tools/rfp-analyzer/history/cmndi1wnl008lvjtiab7zuvfd:0
+[  326531ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://static.userback.io/widget/v1.js:0

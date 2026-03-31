@@ -6,7 +6,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { needsWestfieldReextract, reextractSavedPdfAnalysis } from "@/services/rfp/unified/healSavedAnalysis";
+import { needsWestfieldReextract, reextractSavedPdfAnalysis, preservePitchFromOriginal } from "@/services/rfp/unified/healSavedAnalysis";
+import type { ExtractedLEDSpec, ExtractedProjectInfo } from "@/services/rfp/unified/types";
 
 export const dynamic = "force-dynamic";
 
@@ -27,17 +28,21 @@ export async function GET(
   if (needsWestfieldReextract(analysis)) {
     try {
       const healed = await reextractSavedPdfAnalysis(analysis);
+      const originalScreens = (analysis.screens as unknown as ExtractedLEDSpec[]) || [];
+      const preservedSpecs = preservePitchFromOriginal(healed.screens, originalScreens);
+      const project = {
+        ...((analysis.project as any) || {}),
+        ...healed.project,
+        _healedAt: new Date().toISOString(),
+      };
       const updated = await prisma.rfpAnalysis.update({
         where: { id },
         data: {
-          screens: JSON.parse(JSON.stringify(healed.screens)),
+          screens: JSON.parse(JSON.stringify(preservedSpecs)),
           requirements: JSON.parse(JSON.stringify(healed.requirements)),
           incompleteSpecs: JSON.parse(JSON.stringify(healed.incompleteSpecs)),
-          project: JSON.parse(JSON.stringify({
-            ...(analysis.project as any || {}),
-            ...healed.project,
-          })),
-          specsFound: healed.screens.length,
+          project: JSON.parse(JSON.stringify(project)),
+          specsFound: preservedSpecs.length,
         },
       });
       return NextResponse.json(updated);

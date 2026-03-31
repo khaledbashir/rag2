@@ -1,0 +1,734 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - link "ANC" [ref=e5] [cursor=pointer]:
+          - /url: /projects
+          - img "ANC" [ref=e7]
+        - button [ref=e8] [cursor=pointer]:
+          - img [ref=e9]
+      - navigation [ref=e12]:
+        - generic [ref=e13]:
+          - heading "Main" [level=3] [ref=e14]
+          - generic [ref=e15]:
+            - link "Projects" [ref=e18] [cursor=pointer]:
+              - /url: /projects
+              - img [ref=e19]
+              - generic [ref=e24]: Projects
+            - link "Pipeline" [ref=e27] [cursor=pointer]:
+              - /url: /pipeline
+              - img [ref=e28]
+              - generic [ref=e29]: Pipeline
+        - generic [ref=e30]:
+          - heading "Tools" [level=3] [ref=e31]
+          - generic [ref=e32]:
+            - generic [ref=e34]:
+              - link "RFP Analyzer" [ref=e35] [cursor=pointer]:
+                - /url: /tools/rfp-analyzer
+                - img [ref=e36]
+                - generic [ref=e41]: RFP Analyzer
+              - button [ref=e42] [cursor=pointer]:
+                - img [ref=e43]
+            - generic [ref=e46]:
+              - link "SOW Builder" [ref=e47] [cursor=pointer]:
+                - /url: /tools/sow-generator
+                - img [ref=e48]
+                - generic [ref=e51]: SOW Builder
+              - button [ref=e52] [cursor=pointer]:
+                - img [ref=e53]
+            - link "Spec Sheets" [ref=e57] [cursor=pointer]:
+              - /url: /tools/spec-generator
+              - img [ref=e58]
+              - generic [ref=e61]: Spec Sheets
+            - generic [ref=e63]:
+              - link "Estimator" [ref=e64] [cursor=pointer]:
+                - /url: /estimator
+                - img [ref=e65]
+                - generic [ref=e67]: Estimator
+              - button [ref=e68] [cursor=pointer]:
+                - img [ref=e69]
+      - generic [ref=e71]:
+        - button "Settings" [ref=e72] [cursor=pointer]:
+          - img [ref=e73]
+          - generic [ref=e76]: Settings
+        - generic [ref=e77]:
+          - paragraph [ref=e78]: Claude Agent
+          - paragraph [ref=e79]: Admin
+        - button "Sign Out" [ref=e80] [cursor=pointer]:
+          - img [ref=e81]
+          - generic [ref=e84]: Sign Out
+    - generic [ref=e87]:
+      - banner [ref=e88]:
+        - generic [ref=e89]: Admin Console
+      - main [ref=e90]:
+        - generic [ref=e92]:
+          - generic [ref=e93]:
+            - heading "User Management" [level=1] [ref=e94]
+            - paragraph [ref=e95]: Manage user roles and permissions across the ANC Proposal Engine.
+          - generic [ref=e96]:
+            - generic [ref=e97]:
+              - generic [ref=e98]:
+                - heading "Total Users" [level=3] [ref=e100]:
+                  - img [ref=e101]
+                  - text: Total Users
+                - generic [ref=e106]:
+                  - generic [ref=e107]: "17"
+                  - paragraph [ref=e108]: 13 admins · 3 estimators
+              - generic [ref=e109]:
+                - heading "Total Proposals" [level=3] [ref=e111]:
+                  - img [ref=e112]
+                  - text: Total Proposals
+                - generic [ref=e115]:
+                  - generic [ref=e116]: "200"
+                  - paragraph [ref=e117]: Across all users
+              - generic [ref=e118]:
+                - heading "Active This Week" [level=3] [ref=e120]:
+                  - img [ref=e121]
+                  - text: Active This Week
+                - generic [ref=e123]:
+                  - generic [ref=e124]: "7"
+                  - paragraph [ref=e125]: Logged in within 7 days
+              - generic [ref=e126]:
+                - heading "Top Contributor" [level=3] [ref=e128]:
+                  - img [ref=e129]
+                  - text: Top Contributor
+                - generic [ref=e132]:
+                  - generic [ref=e133]: Ahmad Basheer
+                  - paragraph [ref=e134]: 119 proposals created
+            - generic [ref=e135]:
+              - generic [ref=e136]:
+                - generic [ref=e137]:
+                  - heading "User Management" [level=3] [ref=e138]
+                  - paragraph [ref=e139]: Manage user roles and permissions. Changes take effect immediately.
+                - button "Add User" [ref=e140] [cursor=pointer]:
+                  - img [ref=e141]
+                  - text: Add User
+              - table [ref=e144]:
+                - rowgroup [ref=e145]:
+                  - row "User Current Role Proposals Actions Last Activity Last Login" [ref=e146]:
+                    - columnheader "User" [ref=e147]
+                    - columnheader "Current Role" [ref=e148]
+                    - columnheader "Proposals" [ref=e149]
+                    - columnheader "Actions" [ref=e150]
+                    - columnheader "Last Activity" [ref=e151]
+                    - columnheader "Last Login" [ref=e152]
+                    - columnheader [ref=e153]
+                - rowgroup [ref=e154]:
+                  - row "AnythingLLM Agent agent@ancsports.com 0 0 — Never" [ref=e155]:
+                    - cell "AnythingLLM Agent agent@ancsports.com" [ref=e156]:
+                      - generic [ref=e157]: AnythingLLM Agent
+                      - generic [ref=e158]: agent@ancsports.com
+                    - cell [ref=e159]:
+                      - combobox [ref=e160] [cursor=pointer]:
+                        - generic:
+                          - generic:
+                            - generic: Viewer
+                        - img [ref=e161]
+                    - cell "0" [ref=e163]:
+                      - generic [ref=e164]: "0"
+                    - cell "0" [ref=e165]:
+                      - generic [ref=e166]: "0"
+                    - cell "—" [ref=e167]
+                    - cell "Never" [ref=e168]
+                    - cell [ref=e169]:
+                      - generic [ref=e170]:
+                        - button [ref=e171] [cursor=pointer]:
+                          - img [ref=e172]
+                        - button [ref=e175] [cursor=pointer]:
+                          - img [ref=e176]
+                  - row "Admin ahmad@assisted.vip 0 0 — Never" [ref=e179]:
+                    - cell "Admin ahmad@assisted.vip" [ref=e180]:
+                      - generic [ref=e181]: Admin
+                      - generic [ref=e182]: ahmad@assisted.vip
+                    - cell [ref=e183]:
+                      - combobox [ref=e184] [cursor=pointer]:
+                        - generic:
+                          - generic:
+                            - generic: Administrator
+                        - img [ref=e185]
+                    - cell "0" [ref=e187]:
+                      - generic [ref=e188]: "0"
+                    - cell "0" [ref=e189]:
+                      - generic [ref=e190]: "0"
+                    - cell "—" [ref=e191]
+                    - cell "Never" [ref=e192]
+                    - cell [ref=e193]:
+                      - generic [ref=e194]:
+                        - button [ref=e195] [cursor=pointer]:
+                          - img [ref=e196]
+                        - button [ref=e199] [cursor=pointer]:
+                          - img [ref=e200]
+                  - row "Ahmad Basheer ahmad@basheer.app 119 221 Updated client 1d ago 17h ago" [ref=e203]:
+                    - cell "Ahmad Basheer ahmad@basheer.app" [ref=e204]:
+                      - generic [ref=e205]: Ahmad Basheer
+                      - generic [ref=e206]: ahmad@basheer.app
+                    - cell [ref=e207]:
+                      - combobox [ref=e208] [cursor=pointer]:
+                        - generic:
+                          - generic:
+                            - generic: Administrator
+                        - img [ref=e209]
+                    - cell "119" [ref=e211]:
+                      - generic [ref=e212]: "119"
+                    - cell "221" [ref=e213]:
+                      - generic [ref=e214]: "221"
+                    - cell "Updated client 1d ago" [ref=e215]:
+                      - generic [ref=e216]:
+                        - generic [ref=e217]: Updated client
+                        - generic [ref=e218]: 1d ago
+                    - cell "17h ago" [ref=e219]
+                    - cell [ref=e220]:
+                      - generic [ref=e221]:
+                        - button [ref=e222] [cursor=pointer]:
+                          - img [ref=e223]
+                        - button [ref=e226] [cursor=pointer]:
+                          - img [ref=e227]
+                  - row "anc-test anc-test@anc.com 0 0 — Never" [ref=e230]:
+                    - cell "anc-test anc-test@anc.com" [ref=e231]:
+                      - generic [ref=e232]: anc-test
+                      - generic [ref=e233]: anc-test@anc.com
+                    - cell [ref=e234]:
+                      - combobox [ref=e235] [cursor=pointer]:
+                        - generic:
+                          - generic:
+                            - generic: Administrator
+                        - img [ref=e236]
+                    - cell "0" [ref=e238]:
+                      - generic [ref=e239]: "0"
+                    - cell "0" [ref=e240]:
+                      - generic [ref=e241]: "0"
+                    - cell "—" [ref=e242]
+                    - cell "Never" [ref=e243]
+                    - cell [ref=e244]:
+                      - generic [ref=e245]:
+                        - button [ref=e246] [cursor=pointer]:
+                          - img [ref=e247]
+                        - button [ref=e250] [cursor=pointer]:
+                          - img [ref=e251]
+                  - row "Charlie Dinh cdinh2@anc.com 0 0 — 5d ago" [ref=e254]:
+                    - cell "Charlie Dinh cdinh2@anc.com" [ref=e255]:
+                      - generic [ref=e256]: Charlie Dinh
+                      - generic [ref=e257]: cdinh2@anc.com
+                    - cell [ref=e258]:
+                      - combobox [ref=e259] [cursor=pointer]:
+                        - generic:
+                          - generic:
+                            - generic: Administrator
+                        - img [ref=e260]
+                    - cell "0" [ref=e262]:
+                      - generic [ref=e263]: "0"
+                    - cell "0" [ref=e264]:
+                      - generic [ref=e265]: "0"
+                    - cell "—" [ref=e266]
+                    - cell "5d ago" [ref=e267]
+                    - cell [ref=e268]:
+                      - generic [ref=e269]:
+                        - button [ref=e270] [cursor=pointer]:
+                          - img [ref=e271]
+                        - button [ref=e274] [cursor=pointer]:
+                          - img [ref=e275]
+                  - row "Charlie Dinh cdinh@anc.com 0 0 — Never" [ref=e278]:
+                    - cell "Charlie Dinh cdinh@anc.com" [ref=e279]:
+                      - generic [ref=e280]: Charlie Dinh
+                      - generic [ref=e281]: cdinh@anc.com
+                    - cell [ref=e282]:
+                      - combobox [ref=e283] [cursor=pointer]:
+                        - generic:
+                          - generic:
+                            - generic: Administrator
+                        - img [ref=e284]
+                    - cell "0" [ref=e286]:
+                      - generic [ref=e287]: "0"
+                    - cell "0" [ref=e288]:
+                      - generic [ref=e289]: "0"
+                    - cell "—" [ref=e290]
+                    - cell "Never" [ref=e291]
+                    - cell [ref=e292]:
+                      - generic [ref=e293]:
+                        - button [ref=e294] [cursor=pointer]:
+                          - img [ref=e295]
+                        - button [ref=e298] [cursor=pointer]:
+                          - img [ref=e299]
+                  - row "Claude Agent claude@anc.com 0 0 — 2m ago" [ref=e302]:
+                    - cell "Claude Agent claude@anc.com" [ref=e303]:
+                      - generic [ref=e304]: Claude Agent
+                      - generic [ref=e305]: claude@anc.com
+                    - cell [ref=e306]:
+                      - combobox [ref=e307] [cursor=pointer]:
+                        - generic:
+                          - generic:
+                            - generic: Administrator
+                        - img [ref=e308]
+                    - cell "0" [ref=e310]:
+                      - generic [ref=e311]: "0"
+                    - cell "0" [ref=e312]:
+                      - generic [ref=e313]: "0"
+                    - cell "—" [ref=e314]
+                    - cell "2m ago" [ref=e315]
+                    - cell [ref=e316]:
+                      - generic [ref=e317]:
+                        - button [ref=e318] [cursor=pointer]:
+                          - img [ref=e319]
+                        - button [ref=e322] [cursor=pointer]:
+                          - img [ref=e323]
+                  - row "Eric Gruner eric@anc.com 0 0 — 1w ago" [ref=e326]:
+                    - cell "Eric Gruner eric@anc.com" [ref=e327]:
+                      - generic [ref=e328]: Eric Gruner
+                      - generic [ref=e329]: eric@anc.com
+                    - cell [ref=e330]:
+                      - combobox [ref=e331] [cursor=pointer]:
+                        - generic:
+                          - generic:
+                            - generic: Administrator
+                        - img [ref=e332]
+                    - cell "0" [ref=e334]:
+                      - generic [ref=e335]: "0"
+                    - cell "0" [ref=e336]:
+                      - generic [ref=e337]: "0"
+                    - cell "—" [ref=e338]
+                    - cell "1w ago" [ref=e339]
+                    - cell [ref=e340]:
+                      - generic [ref=e341]:
+                        - button [ref=e342] [cursor=pointer]:
+                          - img [ref=e343]
+                        - button [ref=e346] [cursor=pointer]:
+                          - img [ref=e347]
+                  - row "Jack Mccrossin jack.mccrossin@anc.com 17 46 Updated client 21h ago 4d ago" [ref=e350]:
+                    - cell "Jack Mccrossin jack.mccrossin@anc.com" [ref=e351]:
+                      - generic [ref=e352]: Jack Mccrossin
+                      - generic [ref=e353]: jack.mccrossin@anc.com
+                    - cell [ref=e354]:
+                      - combobox [ref=e355] [cursor=pointer]:
+                        - generic:
+                          - generic:
+                            - generic: Estimator
+                        - img [ref=e356]
+                    - cell "17" [ref=e358]:
+                      - generic [ref=e359]: "17"
+                    - cell "46" [ref=e360]:
+                      - generic [ref=e361]: "46"
+                    - cell "Updated client 21h ago" [ref=e362]:
+                      - generic [ref=e363]:
+                        - generic [ref=e364]: Updated client
+                        - generic [ref=e365]: 21h ago
+                    - cell "4d ago" [ref=e366]
+                    - cell [ref=e367]:
+                      - generic [ref=e368]:
+                        - button [ref=e369] [cursor=pointer]:
+                          - img [ref=e370]
+                        - button [ref=e373] [cursor=pointer]:
+                          - img [ref=e374]
+                  - row "Jireh Billings jbillings@anc.com 15 49 Updated client 6d ago 3d ago" [ref=e377]:
+                    - cell "Jireh Billings jbillings@anc.com" [ref=e378]:
+                      - generic [ref=e379]: Jireh Billings
+                      - generic [ref=e380]: jbillings@anc.com
+                    - cell [ref=e381]:
+                      - combobox [ref=e382] [cursor=pointer]:
+                        - generic:
+                          - generic:
+                            - generic: Administrator
+                        - img [ref=e383]
+                    - cell "15" [ref=e385]:
+                      - generic [ref=e386]: "15"
+                    - cell "49" [ref=e387]:
+                      - generic [ref=e388]: "49"
+                    - cell "Updated client 6d ago" [ref=e389]:
+                      - generic [ref=e390]:
+                        - generic [ref=e391]: Updated client
+                        - generic [ref=e392]: 6d ago
+                    - cell "3d ago" [ref=e393]
+                    - cell [ref=e394]:
+                      - generic [ref=e395]:
+                        - button [ref=e396] [cursor=pointer]:
+                          - img [ref=e397]
+                        - button [ref=e400] [cursor=pointer]:
+                          - img [ref=e401]
+                  - row "Jeremy Riley jeremy.riley@anc.com 5 9 Updated client 2w ago 4d ago" [ref=e404]:
+                    - cell "Jeremy Riley jeremy.riley@anc.com" [ref=e405]:
+                      - generic [ref=e406]: Jeremy Riley
+                      - generic [ref=e407]: jeremy.riley@anc.com
+                    - cell [ref=e408]:
+                      - combobox [ref=e409] [cursor=pointer]:
+                        - generic:
+                          - generic:
+                            - generic: Administrator
+                        - img [ref=e410]
+                    - cell "5" [ref=e412]:
+                      - generic [ref=e413]: "5"
+                    - cell "9" [ref=e414]:
+                      - generic [ref=e415]: "9"
+                    - cell "Updated client 2w ago" [ref=e416]:
+                      - generic [ref=e417]:
+                        - generic [ref=e418]: Updated client
+                        - generic [ref=e419]: 2w ago
+                    - cell "4d ago" [ref=e420]
+                    - cell [ref=e421]:
+                      - generic [ref=e422]:
+                        - button [ref=e423] [cursor=pointer]:
+                          - img [ref=e424]
+                        - button [ref=e427] [cursor=pointer]:
+                          - img [ref=e428]
+                  - row "Korey Ryan korey.ryan@anc.com 1 0 — 2w ago" [ref=e431]:
+                    - cell "Korey Ryan korey.ryan@anc.com" [ref=e432]:
+                      - generic [ref=e433]: Korey Ryan
+                      - generic [ref=e434]: korey.ryan@anc.com
+                    - cell [ref=e435]:
+                      - combobox [ref=e436] [cursor=pointer]:
+                        - generic:
+                          - generic:
+                            - generic: Estimator
+                        - img [ref=e437]
+                    - cell "1" [ref=e439]:
+                      - generic [ref=e440]: "1"
+                    - cell "0" [ref=e441]:
+                      - generic [ref=e442]: "0"
+                    - cell "—" [ref=e443]
+                    - cell "2w ago" [ref=e444]
+                    - cell [ref=e445]:
+                      - generic [ref=e446]:
+                        - button [ref=e447] [cursor=pointer]:
+                          - img [ref=e448]
+                        - button [ref=e451] [cursor=pointer]:
+                          - img [ref=e452]
+                  - row "Krissy Carter krissy.carter@anc.com 0 0 — Never" [ref=e455]:
+                    - cell "Krissy Carter krissy.carter@anc.com" [ref=e456]:
+                      - generic [ref=e457]: Krissy Carter
+                      - generic [ref=e458]: krissy.carter@anc.com
+                    - cell [ref=e459]:
+                      - combobox [ref=e460] [cursor=pointer]:
+                        - generic:
+                          - generic:
+                            - generic: Estimator
+                        - img [ref=e461]
+                    - cell "0" [ref=e463]:
+                      - generic [ref=e464]: "0"
+                    - cell "0" [ref=e465]:
+                      - generic [ref=e466]: "0"
+                    - cell "—" [ref=e467]
+                    - cell "Never" [ref=e468]
+                    - cell [ref=e469]:
+                      - generic [ref=e470]:
+                        - button [ref=e471] [cursor=pointer]:
+                          - img [ref=e472]
+                        - button [ref=e475] [cursor=pointer]:
+                          - img [ref=e476]
+                  - row "Matthew Hobbs matthew.hobbs@anc.com 2 10 Updated client 2w ago 1w ago" [ref=e479]:
+                    - cell "Matthew Hobbs matthew.hobbs@anc.com" [ref=e480]:
+                      - generic [ref=e481]: Matthew Hobbs
+                      - generic [ref=e482]: matthew.hobbs@anc.com
+                    - cell [ref=e483]:
+                      - combobox [ref=e484] [cursor=pointer]:
+                        - generic:
+                          - generic:
+                            - generic: Administrator
+                        - img [ref=e485]
+                    - cell "2" [ref=e487]:
+                      - generic [ref=e488]: "2"
+                    - cell "10" [ref=e489]:
+                      - generic [ref=e490]: "10"
+                    - cell "Updated client 2w ago" [ref=e491]:
+                      - generic [ref=e492]:
+                        - generic [ref=e493]: Updated client
+                        - generic [ref=e494]: 2w ago
+                    - cell "1w ago" [ref=e495]
+                    - cell [ref=e496]:
+                      - generic [ref=e497]:
+                        - button [ref=e498] [cursor=pointer]:
+                          - img [ref=e499]
+                        - button [ref=e502] [cursor=pointer]:
+                          - img [ref=e503]
+                  - row "Natalia natalia.kovaleva@anc.com 39 152 pdf exported 31m ago 1w ago" [ref=e506]:
+                    - cell "Natalia natalia.kovaleva@anc.com" [ref=e507]:
+                      - generic [ref=e508]: Natalia
+                      - generic [ref=e509]: natalia.kovaleva@anc.com
+                    - cell [ref=e510]:
+                      - combobox [ref=e511] [cursor=pointer]:
+                        - generic:
+                          - generic:
+                            - generic: Administrator
+                        - img [ref=e512]
+                    - cell "39" [ref=e514]:
+                      - generic [ref=e515]: "39"
+                    - cell "152" [ref=e516]:
+                      - generic [ref=e517]: "152"
+                    - cell "pdf exported 31m ago" [ref=e518]:
+                      - generic [ref=e519]:
+                        - generic [ref=e520]: pdf exported
+                        - generic [ref=e521]: 31m ago
+                    - cell "1w ago" [ref=e522]
+                    - cell [ref=e523]:
+                      - generic [ref=e524]:
+                        - button [ref=e525] [cursor=pointer]:
+                          - img [ref=e526]
+                        - button [ref=e529] [cursor=pointer]:
+                          - img [ref=e530]
+                  - row "— noreply@anc.com 0 0 — Never" [ref=e533]:
+                    - cell "— noreply@anc.com" [ref=e534]:
+                      - generic [ref=e535]: —
+                      - generic [ref=e536]: noreply@anc.com
+                    - cell [ref=e537]:
+                      - combobox [ref=e538] [cursor=pointer]:
+                        - generic:
+                          - generic:
+                            - generic: Administrator
+                        - img [ref=e539]
+                    - cell "0" [ref=e541]:
+                      - generic [ref=e542]: "0"
+                    - cell "0" [ref=e543]:
+                      - generic [ref=e544]: "0"
+                    - cell "—" [ref=e545]
+                    - cell "Never" [ref=e546]
+                    - cell [ref=e547]:
+                      - generic [ref=e548]:
+                        - button [ref=e549] [cursor=pointer]:
+                          - img [ref=e550]
+                        - button [ref=e553] [cursor=pointer]:
+                          - img [ref=e554]
+                  - row "— ui-test@anc.local 2 4 Updated client 10h ago 10h ago" [ref=e557]:
+                    - cell "— ui-test@anc.local" [ref=e558]:
+                      - generic [ref=e559]: —
+                      - generic [ref=e560]: ui-test@anc.local
+                    - cell [ref=e561]:
+                      - combobox [ref=e562] [cursor=pointer]:
+                        - generic:
+                          - generic:
+                            - generic: Administrator
+                        - img [ref=e563]
+                    - cell "2" [ref=e565]:
+                      - generic [ref=e566]: "2"
+                    - cell "4" [ref=e567]:
+                      - generic [ref=e568]: "4"
+                    - cell "Updated client 10h ago" [ref=e569]:
+                      - generic [ref=e570]:
+                        - generic [ref=e571]: Updated client
+                        - generic [ref=e572]: 10h ago
+                    - cell "10h ago" [ref=e573]
+                    - cell [ref=e574]:
+                      - generic [ref=e575]:
+                        - button [ref=e576] [cursor=pointer]:
+                          - img [ref=e577]
+                        - button [ref=e580] [cursor=pointer]:
+                          - img [ref=e581]
+            - generic [ref=e584]:
+              - heading "Role Overview" [level=2] [ref=e585]
+              - generic [ref=e586]:
+                - generic [ref=e587]:
+                  - generic [ref=e589]:
+                    - heading "Administrator 13" [level=3] [ref=e590]:
+                      - generic [ref=e591]: Administrator
+                      - generic [ref=e592]:
+                        - img [ref=e593]
+                        - text: "13"
+                    - paragraph [ref=e598]: Full system access including workspace management and branding
+                  - generic [ref=e600]:
+                    - generic [ref=e601]:
+                      - img [ref=e602]
+                      - generic [ref=e605]: Projects
+                    - generic [ref=e606]:
+                      - img [ref=e607]
+                      - generic [ref=e610]: Proposals
+                    - generic [ref=e611]:
+                      - img [ref=e612]
+                      - generic [ref=e615]: Rate Card
+                    - generic [ref=e616]:
+                      - img [ref=e617]
+                      - generic [ref=e620]: Product Catalog
+                    - generic [ref=e621]:
+                      - img [ref=e622]
+                      - generic [ref=e625]: Pricing Logic
+                    - generic [ref=e626]:
+                      - img [ref=e627]
+                      - generic [ref=e630]: Intelligence Mode
+                    - generic [ref=e631]:
+                      - img [ref=e632]
+                      - generic [ref=e635]: Finance
+                    - generic [ref=e636]:
+                      - img [ref=e637]
+                      - generic [ref=e639]:
+                        - generic [ref=e640]: Admin
+                        - generic [ref=e641]: Manage Users, Manage Roles
+                - generic [ref=e642]:
+                  - generic [ref=e644]:
+                    - heading "Estimator 3" [level=3] [ref=e645]:
+                      - generic [ref=e646]: Estimator
+                      - generic [ref=e647]:
+                        - img [ref=e648]
+                        - text: "3"
+                    - paragraph [ref=e653]: Create and edit proposals, run AI extraction, generate all exports
+                  - generic [ref=e655]:
+                    - generic [ref=e656]:
+                      - img [ref=e657]
+                      - generic [ref=e660]: Projects
+                    - generic [ref=e661]:
+                      - img [ref=e662]
+                      - generic [ref=e665]: Proposals
+                    - generic [ref=e666]:
+                      - img [ref=e667]
+                      - generic [ref=e670]: Rate Card
+                    - generic [ref=e671]:
+                      - img [ref=e672]
+                      - generic [ref=e675]: Product Catalog
+                    - generic [ref=e676]:
+                      - img [ref=e677]
+                      - generic [ref=e681]: Pricing Logic
+                    - generic [ref=e682]:
+                      - img [ref=e683]
+                      - generic [ref=e686]: Intelligence Mode
+                    - generic [ref=e687]:
+                      - img [ref=e688]
+                      - generic [ref=e691]: Finance
+                - generic [ref=e692]:
+                  - generic [ref=e694]:
+                    - heading "Product Expert 0" [level=3] [ref=e695]:
+                      - generic [ref=e696]: Product Expert
+                      - generic [ref=e697]:
+                        - img [ref=e698]
+                        - text: "0"
+                    - paragraph [ref=e703]: Validate technical specs, edit proposals, all exports except workspace creation
+                  - generic [ref=e705]:
+                    - generic [ref=e706]:
+                      - img [ref=e707]
+                      - generic [ref=e711]: Projects
+                    - generic [ref=e712]:
+                      - img [ref=e713]
+                      - generic [ref=e716]: Proposals
+                    - generic [ref=e717]:
+                      - img [ref=e718]
+                      - generic [ref=e721]: Rate Card
+                    - generic [ref=e722]:
+                      - img [ref=e723]
+                      - generic [ref=e726]: Product Catalog
+                    - generic [ref=e727]:
+                      - img [ref=e728]
+                      - generic [ref=e732]: Pricing Logic
+                    - generic [ref=e733]:
+                      - img [ref=e734]
+                      - generic [ref=e737]: Intelligence Mode
+                    - generic [ref=e738]:
+                      - img [ref=e739]
+                      - generic [ref=e742]: Finance
+                - generic [ref=e743]:
+                  - generic [ref=e745]:
+                    - heading "Proposal Lead 0" [level=3] [ref=e746]:
+                      - generic [ref=e747]: Proposal Lead
+                      - generic [ref=e748]:
+                        - img [ref=e749]
+                        - text: "0"
+                    - paragraph [ref=e754]: Full estimator access plus proposal deletion and approval authority
+                  - generic [ref=e756]:
+                    - generic [ref=e757]:
+                      - img [ref=e758]
+                      - generic [ref=e761]: Projects
+                    - generic [ref=e762]:
+                      - img [ref=e763]
+                      - generic [ref=e766]: Proposals
+                    - generic [ref=e767]:
+                      - img [ref=e768]
+                      - generic [ref=e771]: Rate Card
+                    - generic [ref=e772]:
+                      - img [ref=e773]
+                      - generic [ref=e776]: Product Catalog
+                    - generic [ref=e777]:
+                      - img [ref=e778]
+                      - generic [ref=e782]: Pricing Logic
+                    - generic [ref=e783]:
+                      - img [ref=e784]
+                      - generic [ref=e787]: Intelligence Mode
+                    - generic [ref=e788]:
+                      - img [ref=e789]
+                      - generic [ref=e792]: Finance
+                - generic [ref=e793]:
+                  - generic [ref=e795]:
+                    - heading "Finance 0" [level=3] [ref=e796]:
+                      - generic [ref=e797]: Finance
+                      - generic [ref=e798]:
+                        - img [ref=e799]
+                        - text: "0"
+                    - paragraph [ref=e804]: View costs and margins, generate Internal Audit Excel only
+                  - generic [ref=e806]:
+                    - generic [ref=e807]:
+                      - img [ref=e808]
+                      - generic [ref=e812]: Projects
+                    - generic [ref=e813]:
+                      - img [ref=e814]
+                      - generic [ref=e817]: Proposals
+                    - generic [ref=e818]:
+                      - img [ref=e819]
+                      - generic [ref=e822]: Rate Card
+                    - generic [ref=e823]:
+                      - img [ref=e824]
+                      - generic [ref=e827]: Product Catalog
+                    - generic [ref=e828]:
+                      - img [ref=e829]
+                      - generic [ref=e833]: Pricing Logic
+                    - generic [ref=e834]:
+                      - img [ref=e835]
+                      - generic [ref=e839]: Intelligence Mode
+                    - generic [ref=e840]:
+                      - img [ref=e841]
+                      - generic [ref=e844]: Finance
+                - generic [ref=e845]:
+                  - generic [ref=e847]:
+                    - heading "Viewer 1" [level=3] [ref=e848]:
+                      - generic [ref=e849]: Viewer
+                      - generic [ref=e850]:
+                        - img [ref=e851]
+                        - text: "1"
+                    - paragraph [ref=e856]: Read-only access to proposals and final prices
+                  - generic [ref=e858]:
+                    - generic [ref=e859]:
+                      - img [ref=e860]
+                      - generic [ref=e864]: Projects
+                    - generic [ref=e865]:
+                      - img [ref=e866]
+                      - generic [ref=e869]: Proposals
+                    - generic [ref=e870]:
+                      - img [ref=e871]
+                      - generic [ref=e875]: Rate Card
+                    - generic [ref=e876]:
+                      - img [ref=e877]
+                      - generic [ref=e880]: Product Catalog
+                    - generic [ref=e881]:
+                      - img [ref=e882]
+                      - generic [ref=e886]: Pricing Logic
+                    - generic [ref=e887]:
+                      - img [ref=e888]
+                      - generic [ref=e892]: Intelligence Mode
+                    - generic [ref=e893]:
+                      - img [ref=e894]
+                      - generic [ref=e898]: Finance
+                - generic [ref=e899]:
+                  - generic [ref=e901]:
+                    - heading "Subcontractor 0" [level=3] [ref=e902]:
+                      - generic [ref=e903]: Subcontractor
+                      - generic [ref=e904]:
+                        - img [ref=e905]
+                        - text: "0"
+                    - paragraph [ref=e910]: Technical specs only - no access to pricing or margins
+                  - generic [ref=e912]:
+                    - generic [ref=e913]:
+                      - img [ref=e914]
+                      - generic [ref=e918]: Projects
+                    - generic [ref=e919]:
+                      - img [ref=e920]
+                      - generic [ref=e923]: Proposals
+                    - generic [ref=e924]:
+                      - img [ref=e925]
+                      - generic [ref=e929]: Rate Card
+                    - generic [ref=e930]:
+                      - img [ref=e931]
+                      - generic [ref=e935]: Product Catalog
+                    - generic [ref=e936]:
+                      - img [ref=e937]
+                      - generic [ref=e941]: Pricing Logic
+                    - generic [ref=e942]:
+                      - img [ref=e943]
+                      - generic [ref=e947]: Intelligence Mode
+                    - generic [ref=e948]:
+                      - img [ref=e949]
+                      - generic [ref=e953]: Finance
+  - contentinfo [ref=e954]:
+    - paragraph [ref=e955]: © 2026 ANC Sports Proposal Engine. All rights reserved.
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e956]

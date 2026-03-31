@@ -1,0 +1,11 @@
+[   55771ms] [LOG] [Login] signIn result: {"status":200,"ok":true,"url":"https://proposals.anc.com/"} @ https://static.userback.io/widget/v1.js:1
+[   56018ms] Error: Minified React error #418; visit https://react.dev/errors/418?args[]=text&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+    at rD (https://proposals.anc.com/_next/static/chunks/4bd1b696-49b827ca95ef45b5.js:1:35446)
+    at rO (https://proposals.anc.com/_next/static/chunks/4bd1b696-49b827ca95ef45b5.js:1:36479)
+    at https://proposals.anc.com/_next/static/chunks/4bd1b696-49b827ca95ef45b5.js:1:118467
+    at ix (https://proposals.anc.com/_next/static/chunks/4bd1b696-49b827ca95ef45b5.js:1:123339)
+    at ik (https://proposals.anc.com/_next/static/chunks/4bd1b696-49b827ca95ef45b5.js:1:115127)
+    at https://proposals.anc.com/_next/static/chunks/4bd1b696-49b827ca95ef45b5.js:1:111114
+    at iu (https://proposals.anc.com/_next/static/chunks/4bd1b696-49b827ca95ef45b5.js:1:111215)
+    at iX (https://proposals.anc.com/_next/static/chunks/4bd1b696-49b827ca95ef45b5.js:1:133318)
+    at MessagePort.x (https://proposals.anc.com/_next/static/chunks/7391-48d3b154424e4139.js:10:40198)

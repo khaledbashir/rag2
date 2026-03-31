@@ -1,0 +1,650 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - link "ANC" [ref=e5] [cursor=pointer]:
+          - /url: /projects
+          - img "ANC" [ref=e7]
+        - button [ref=e8] [cursor=pointer]:
+          - img [ref=e9]
+      - navigation [ref=e12]:
+        - generic [ref=e13]:
+          - heading "Main" [level=3] [ref=e14]
+          - generic [ref=e15]:
+            - link "Projects" [ref=e18] [cursor=pointer]:
+              - /url: /projects
+              - img [ref=e19]
+              - generic [ref=e24]: Projects
+            - link "Pipeline" [ref=e27] [cursor=pointer]:
+              - /url: /pipeline
+              - img [ref=e28]
+              - generic [ref=e29]: Pipeline
+        - generic [ref=e30]:
+          - heading "Tools" [level=3] [ref=e31]
+          - generic [ref=e32]:
+            - generic [ref=e33]:
+              - generic [ref=e34]:
+                - link "RFP Analyzer" [ref=e35] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer
+                  - img [ref=e36]
+                  - generic [ref=e41]: RFP Analyzer
+                - button [ref=e42] [cursor=pointer]:
+                  - img [ref=e43]
+              - generic [ref=e45]:
+                - link "New Analysis" [ref=e46] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer
+                  - img [ref=e47]
+                  - generic [ref=e52]: New Analysis
+                - link "History" [ref=e53] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history
+                  - img [ref=e54]
+                  - generic [ref=e58]: History
+            - generic [ref=e60]:
+              - link "SOW Builder" [ref=e61] [cursor=pointer]:
+                - /url: /tools/sow-generator
+                - img [ref=e62]
+                - generic [ref=e65]: SOW Builder
+              - button [ref=e66] [cursor=pointer]:
+                - img [ref=e67]
+            - link "Spec Sheets" [ref=e71] [cursor=pointer]:
+              - /url: /tools/spec-generator
+              - img [ref=e72]
+              - generic [ref=e75]: Spec Sheets
+            - generic [ref=e77]:
+              - link "Estimator" [ref=e78] [cursor=pointer]:
+                - /url: /estimator
+                - img [ref=e79]
+                - generic [ref=e81]: Estimator
+              - button [ref=e82] [cursor=pointer]:
+                - img [ref=e83]
+      - generic [ref=e85]:
+        - button "Settings" [ref=e86] [cursor=pointer]:
+          - img [ref=e87]
+          - generic [ref=e90]: Settings
+        - generic [ref=e91]:
+          - paragraph [ref=e92]: Claude Agent
+          - paragraph [ref=e93]: Admin
+        - button "Sign Out" [ref=e94] [cursor=pointer]:
+          - img [ref=e95]
+          - generic [ref=e98]: Sign Out
+    - generic [ref=e100]:
+      - banner [ref=e101]:
+        - generic [ref=e102]:
+          - generic [ref=e103]:
+            - link "Analyzer" [ref=e104] [cursor=pointer]:
+              - /url: /tools/rfp-analyzer
+              - img [ref=e105]
+              - text: Analyzer
+            - generic [ref=e108]:
+              - heading "Analysis History" [level=1] [ref=e109]
+              - paragraph [ref=e110]: 277 saved — 20 with results on this page
+          - generic [ref=e111]:
+            - generic [ref=e112]:
+              - button "Table view" [ref=e113] [cursor=pointer]:
+                - img [ref=e114]
+              - button "Card view" [ref=e117] [cursor=pointer]:
+                - img [ref=e118]
+            - generic [ref=e123]:
+              - img [ref=e124]
+              - textbox "Search projects, venues..." [ref=e127]
+      - main [ref=e128]:
+        - table [ref=e130]:
+          - rowgroup [ref=e131]:
+            - row "# Project / Venue Client Displays Pages Relevant File Created By When" [ref=e132]:
+              - columnheader "#" [ref=e133]
+              - columnheader "Project / Venue" [ref=e134]
+              - columnheader "Client" [ref=e135]
+              - columnheader "Displays" [ref=e136]
+              - columnheader "Pages" [ref=e137]
+              - columnheader "Relevant" [ref=e138]
+              - columnheader "File" [ref=e139]
+              - columnheader "Created By" [ref=e140]
+              - columnheader "When" [ref=e141]
+              - columnheader [ref=e142]
+          - rowgroup [ref=e143]:
+            - row "1 Latest LED Tunnel Display System Rose Bowl Stadium Rose Bowl Stadium 1 14 14 Rose Bowl Stadium LED Technical Specifications 03.18.2026.pdf Ahmad Basheer 19h ago Mar 30, 2026" [ref=e144]:
+              - cell "1" [ref=e145]
+              - cell "Latest LED Tunnel Display System Rose Bowl Stadium" [ref=e146]:
+                - link "Latest LED Tunnel Display System Rose Bowl Stadium" [ref=e147] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmndlch4s000vmhymgnz0joh9
+                  - generic [ref=e148]:
+                    - generic [ref=e149]: Latest
+                    - generic [ref=e150]: LED Tunnel Display System
+                  - generic [ref=e151]:
+                    - img [ref=e152]
+                    - text: Rose Bowl Stadium
+              - cell "Rose Bowl Stadium" [ref=e155]
+              - cell "1" [ref=e156]:
+                - generic [ref=e157]:
+                  - img [ref=e158]
+                  - text: "1"
+              - cell "14" [ref=e160]
+              - cell "14" [ref=e161]
+              - cell "Rose Bowl Stadium LED Technical Specifications 03.18.2026.pdf" [ref=e162]
+              - cell "Ahmad Basheer" [ref=e163]
+              - cell "19h ago Mar 30, 2026" [ref=e164]:
+                - generic [ref=e165]: 19h ago
+                - generic [ref=e166]: Mar 30, 2026
+              - cell [ref=e167]:
+                - generic [ref=e168]:
+                  - link "View analysis" [ref=e169] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmndlch4s000vmhymgnz0joh9
+                    - img [ref=e170]
+                  - button "Delete analysis" [ref=e173] [cursor=pointer]:
+                    - img [ref=e174]
+            - row "2 Rose Bowl Stadium LED Tunnel Display System Rose Bowl Stadium Rose Bowl Stadium 1 14 14 Rose Bowl Stadium LED Technical Specifications 03.18.2026.pdf Ahmad Basheer 19h ago Mar 30, 2026" [ref=e177]:
+              - cell "2" [ref=e178]
+              - cell "Rose Bowl Stadium LED Tunnel Display System Rose Bowl Stadium" [ref=e179]:
+                - link "Rose Bowl Stadium LED Tunnel Display System Rose Bowl Stadium" [ref=e180] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmndl9wy2000qmhym6h4b8huf
+                  - generic [ref=e182]: Rose Bowl Stadium LED Tunnel Display System
+                  - generic [ref=e183]:
+                    - img [ref=e184]
+                    - text: Rose Bowl Stadium
+              - cell "Rose Bowl Stadium" [ref=e187]
+              - cell "1" [ref=e188]:
+                - generic [ref=e189]:
+                  - img [ref=e190]
+                  - text: "1"
+              - cell "14" [ref=e192]
+              - cell "14" [ref=e193]
+              - cell "Rose Bowl Stadium LED Technical Specifications 03.18.2026.pdf" [ref=e194]
+              - cell "Ahmad Basheer" [ref=e195]
+              - cell "19h ago Mar 30, 2026" [ref=e196]:
+                - generic [ref=e197]: 19h ago
+                - generic [ref=e198]: Mar 30, 2026
+              - cell [ref=e199]:
+                - generic [ref=e200]:
+                  - link "View analysis" [ref=e201] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmndl9wy2000qmhym6h4b8huf
+                    - img [ref=e202]
+                  - button "Delete analysis" [ref=e205] [cursor=pointer]:
+                    - img [ref=e206]
+            - row "3 Rose Bowl Stadium LED Tunnel Display System Rose Bowl Stadium Rose Bowl Stadium 1 14 14 Rose Bowl Stadium LED Technical Specifications 03.18.2026.pdf Ahmad Basheer 19h ago Mar 30, 2026" [ref=e209]:
+              - cell "3" [ref=e210]
+              - cell "Rose Bowl Stadium LED Tunnel Display System Rose Bowl Stadium" [ref=e211]:
+                - link "Rose Bowl Stadium LED Tunnel Display System Rose Bowl Stadium" [ref=e212] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmndl5c5h000hmhymq4i10i5t
+                  - generic [ref=e214]: Rose Bowl Stadium LED Tunnel Display System
+                  - generic [ref=e215]:
+                    - img [ref=e216]
+                    - text: Rose Bowl Stadium
+              - cell "Rose Bowl Stadium" [ref=e219]
+              - cell "1" [ref=e220]:
+                - generic [ref=e221]:
+                  - img [ref=e222]
+                  - text: "1"
+              - cell "14" [ref=e224]
+              - cell "14" [ref=e225]
+              - cell "Rose Bowl Stadium LED Technical Specifications 03.18.2026.pdf" [ref=e226]
+              - cell "Ahmad Basheer" [ref=e227]
+              - cell "19h ago Mar 30, 2026" [ref=e228]:
+                - generic [ref=e229]: 19h ago
+                - generic [ref=e230]: Mar 30, 2026
+              - cell [ref=e231]:
+                - generic [ref=e232]:
+                  - link "View analysis" [ref=e233] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmndl5c5h000hmhymq4i10i5t
+                    - img [ref=e234]
+                  - button "Delete analysis" [ref=e237] [cursor=pointer]:
+                    - img [ref=e238]
+            - row "4 LED Tunnel Display System Rose Bowl Stadium Rose Bowl Stadium 1 14 14 Rose Bowl Stadium LED Technical Specifications 03.18.2026.pdf Jeremy Riley 19h ago Mar 30, 2026" [ref=e241]:
+              - cell "4" [ref=e242]
+              - cell "LED Tunnel Display System Rose Bowl Stadium" [ref=e243]:
+                - link "LED Tunnel Display System Rose Bowl Stadium" [ref=e244] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmndknyhm00e0104nbf8bvvya
+                  - generic [ref=e246]: LED Tunnel Display System
+                  - generic [ref=e247]:
+                    - img [ref=e248]
+                    - text: Rose Bowl Stadium
+              - cell "Rose Bowl Stadium" [ref=e251]
+              - cell "1" [ref=e252]:
+                - generic [ref=e253]:
+                  - img [ref=e254]
+                  - text: "1"
+              - cell "14" [ref=e256]
+              - cell "14" [ref=e257]
+              - cell "Rose Bowl Stadium LED Technical Specifications 03.18.2026.pdf" [ref=e258]
+              - cell "Jeremy Riley" [ref=e259]
+              - cell "19h ago Mar 30, 2026" [ref=e260]:
+                - generic [ref=e261]: 19h ago
+                - generic [ref=e262]: Mar 30, 2026
+              - cell [ref=e263]:
+                - generic [ref=e264]:
+                  - link "View analysis" [ref=e265] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmndknyhm00e0104nbf8bvvya
+                    - img [ref=e266]
+                  - button "Delete analysis" [ref=e269] [cursor=pointer]:
+                    - img [ref=e270]
+            - row "5 Large Format LED — 47 1 1 Carolina Panthers - Updated LED Schedule DWG.pdf Jeremy Riley 20h ago Mar 30, 2026" [ref=e273]:
+              - cell "5" [ref=e274]
+              - cell "Large Format LED" [ref=e275]:
+                - link "Large Format LED" [ref=e276] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmndi1wnl008lvjtiab7zuvfd
+                  - generic [ref=e278]: Large Format LED
+              - cell "—" [ref=e279]
+              - cell "47" [ref=e280]:
+                - generic [ref=e281]:
+                  - img [ref=e282]
+                  - text: "47"
+              - cell "1" [ref=e284]
+              - cell "1" [ref=e285]
+              - cell "Carolina Panthers - Updated LED Schedule DWG.pdf" [ref=e286]
+              - cell "Jeremy Riley" [ref=e287]
+              - cell "20h ago Mar 30, 2026" [ref=e288]:
+                - generic [ref=e289]: 20h ago
+                - generic [ref=e290]: Mar 30, 2026
+              - cell [ref=e291]:
+                - generic [ref=e292]:
+                  - link "View analysis" [ref=e293] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmndi1wnl008lvjtiab7zuvfd
+                    - img [ref=e294]
+                  - button "Delete analysis" [ref=e297] [cursor=pointer]:
+                    - img [ref=e298]
+            - row "6 Large Format LED — 47 1 1 Pages from 2026.02.12 - BofA SM 100% DD - AV Schedules.pdf Ahmad Basheer 21h ago Mar 30, 2026" [ref=e301]:
+              - cell "6" [ref=e302]
+              - cell "Large Format LED" [ref=e303]:
+                - link "Large Format LED" [ref=e304] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmndgxaz3005dvjtijac9s5sb
+                  - generic [ref=e306]: Large Format LED
+              - cell "—" [ref=e307]
+              - cell "47" [ref=e308]:
+                - generic [ref=e309]:
+                  - img [ref=e310]
+                  - text: "47"
+              - cell "1" [ref=e312]
+              - cell "1" [ref=e313]
+              - cell "Pages from 2026.02.12 - BofA SM 100% DD - AV Schedules.pdf" [ref=e314]
+              - cell "Ahmad Basheer" [ref=e315]
+              - cell "21h ago Mar 30, 2026" [ref=e316]:
+                - generic [ref=e317]: 21h ago
+                - generic [ref=e318]: Mar 30, 2026
+              - cell [ref=e319]:
+                - generic [ref=e320]:
+                  - link "View analysis" [ref=e321] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmndgxaz3005dvjtijac9s5sb
+                    - img [ref=e322]
+                  - button "Delete analysis" [ref=e325] [cursor=pointer]:
+                    - img [ref=e326]
+            - row "7 Large Format LED — 47 1 1 Pages from 2026.02.12 - BofA SM 100% DD - AV Schedules (1).pdf Natalia 21h ago Mar 30, 2026" [ref=e329]:
+              - cell "7" [ref=e330]
+              - cell "Large Format LED" [ref=e331]:
+                - link "Large Format LED" [ref=e332] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmndg7zx8000ivva7z77inem6
+                  - generic [ref=e334]: Large Format LED
+              - cell "—" [ref=e335]
+              - cell "47" [ref=e336]:
+                - generic [ref=e337]:
+                  - img [ref=e338]
+                  - text: "47"
+              - cell "1" [ref=e340]
+              - cell "1" [ref=e341]
+              - cell "Pages from 2026.02.12 - BofA SM 100% DD - AV Schedules (1).pdf" [ref=e342]
+              - cell "Natalia" [ref=e343]
+              - cell "21h ago Mar 30, 2026" [ref=e344]:
+                - generic [ref=e345]: 21h ago
+                - generic [ref=e346]: Mar 30, 2026
+              - cell [ref=e347]:
+                - generic [ref=e348]:
+                  - link "View analysis" [ref=e349] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmndg7zx8000ivva7z77inem6
+                    - img [ref=e350]
+                  - button "Delete analysis" [ref=e353] [cursor=pointer]:
+                    - img [ref=e354]
+            - row "8 Large Format LED — 47 1 1 Pages from 2026.02.12 - BofA SM 100% DD - AV Schedules.pdf Ahmad Basheer 21h ago Mar 30, 2026" [ref=e357]:
+              - cell "8" [ref=e358]
+              - cell "Large Format LED" [ref=e359]:
+                - link "Large Format LED" [ref=e360] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmndf8o4j000213atlhbpo55k
+                  - generic [ref=e362]: Large Format LED
+              - cell "—" [ref=e363]
+              - cell "47" [ref=e364]:
+                - generic [ref=e365]:
+                  - img [ref=e366]
+                  - text: "47"
+              - cell "1" [ref=e368]
+              - cell "1" [ref=e369]
+              - cell "Pages from 2026.02.12 - BofA SM 100% DD - AV Schedules.pdf" [ref=e370]
+              - cell "Ahmad Basheer" [ref=e371]
+              - cell "21h ago Mar 30, 2026" [ref=e372]:
+                - generic [ref=e373]: 21h ago
+                - generic [ref=e374]: Mar 30, 2026
+              - cell [ref=e375]:
+                - generic [ref=e376]:
+                  - link "View analysis" [ref=e377] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmndf8o4j000213atlhbpo55k
+                    - img [ref=e378]
+                  - button "Delete analysis" [ref=e381] [cursor=pointer]:
+                    - img [ref=e382]
+            - row "9 Large Format LED — 47 1 1 Pages from 2026.02.12 - BofA SM 100% DD - AV Schedules (1).pdf Natalia 22h ago Mar 30, 2026" [ref=e385]:
+              - cell "9" [ref=e386]
+              - cell "Large Format LED" [ref=e387]:
+                - link "Large Format LED" [ref=e388] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmnder4st004rxmo0u51lddfw
+                  - generic [ref=e390]: Large Format LED
+              - cell "—" [ref=e391]
+              - cell "47" [ref=e392]:
+                - generic [ref=e393]:
+                  - img [ref=e394]
+                  - text: "47"
+              - cell "1" [ref=e396]
+              - cell "1" [ref=e397]
+              - cell "Pages from 2026.02.12 - BofA SM 100% DD - AV Schedules (1).pdf" [ref=e398]
+              - cell "Natalia" [ref=e399]
+              - cell "22h ago Mar 30, 2026" [ref=e400]:
+                - generic [ref=e401]: 22h ago
+                - generic [ref=e402]: Mar 30, 2026
+              - cell [ref=e403]:
+                - generic [ref=e404]:
+                  - link "View analysis" [ref=e405] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmnder4st004rxmo0u51lddfw
+                    - img [ref=e406]
+                  - button "Delete analysis" [ref=e409] [cursor=pointer]:
+                    - img [ref=e410]
+            - row "10 Large Format LED — 47 1 1 Pages from 2026.02.12 - BofA SM 100% DD - AV Schedules.pdf Ahmad Basheer 22h ago Mar 30, 2026" [ref=e413]:
+              - cell "10" [ref=e414]
+              - cell "Large Format LED" [ref=e415]:
+                - link "Large Format LED" [ref=e416] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmndd73kw001mxmo0s2vr6ws0
+                  - generic [ref=e418]: Large Format LED
+              - cell "—" [ref=e419]
+              - cell "47" [ref=e420]:
+                - generic [ref=e421]:
+                  - img [ref=e422]
+                  - text: "47"
+              - cell "1" [ref=e424]
+              - cell "1" [ref=e425]
+              - cell "Pages from 2026.02.12 - BofA SM 100% DD - AV Schedules.pdf" [ref=e426]
+              - cell "Ahmad Basheer" [ref=e427]
+              - cell "22h ago Mar 30, 2026" [ref=e428]:
+                - generic [ref=e429]: 22h ago
+                - generic [ref=e430]: Mar 30, 2026
+              - cell [ref=e431]:
+                - generic [ref=e432]:
+                  - link "View analysis" [ref=e433] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmndd73kw001mxmo0s2vr6ws0
+                    - img [ref=e434]
+                  - button "Delete analysis" [ref=e437] [cursor=pointer]:
+                    - img [ref=e438]
+            - row "11 Bank of America Stadium Modernization Bank of America Stadium Panthers Stadium, LLC 43 43 43 Carolina Panthers - Bank of America Stadium - Section 116843 - Outdoor LED Videoboards.pdf Natalia 1d ago Mar 30, 2026" [ref=e441]:
+              - cell "11" [ref=e442]
+              - cell "Bank of America Stadium Modernization Bank of America Stadium" [ref=e443]:
+                - link "Bank of America Stadium Modernization Bank of America Stadium" [ref=e444] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmnd9m4h40001ysfsy8ttnugj
+                  - generic [ref=e446]: Bank of America Stadium Modernization
+                  - generic [ref=e447]:
+                    - img [ref=e448]
+                    - text: Bank of America Stadium
+              - cell "Panthers Stadium, LLC" [ref=e451]
+              - cell "43" [ref=e452]:
+                - generic [ref=e453]:
+                  - img [ref=e454]
+                  - text: "43"
+              - cell "43" [ref=e456]
+              - cell "43" [ref=e457]
+              - cell "Carolina Panthers - Bank of America Stadium - Section 116843 - Outdoor LED Videoboards.pdf" [ref=e458]
+              - cell "Natalia" [ref=e459]
+              - cell "1d ago Mar 30, 2026" [ref=e460]:
+                - generic [ref=e461]: 1d ago
+                - generic [ref=e462]: Mar 30, 2026
+              - cell [ref=e463]:
+                - generic [ref=e464]:
+                  - link "View analysis" [ref=e465] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmnd9m4h40001ysfsy8ttnugj
+                    - img [ref=e466]
+                  - button "Delete analysis" [ref=e469] [cursor=pointer]:
+                    - img [ref=e470]
+            - row "12 Large Format LED — 47 1 1 Pages from 2026.02.12 - BofA SM 100% DD - AV Schedules (1).pdf Natalia 1d ago Mar 30, 2026" [ref=e473]:
+              - cell "12" [ref=e474]
+              - cell "Large Format LED" [ref=e475]:
+                - link "Large Format LED" [ref=e476] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmnd827cv0000ysfsp6ej3y1i
+                  - generic [ref=e478]: Large Format LED
+              - cell "—" [ref=e479]
+              - cell "47" [ref=e480]:
+                - generic [ref=e481]:
+                  - img [ref=e482]
+                  - text: "47"
+              - cell "1" [ref=e484]
+              - cell "1" [ref=e485]
+              - cell "Pages from 2026.02.12 - BofA SM 100% DD - AV Schedules (1).pdf" [ref=e486]
+              - cell "Natalia" [ref=e487]
+              - cell "1d ago Mar 30, 2026" [ref=e488]:
+                - generic [ref=e489]: 1d ago
+                - generic [ref=e490]: Mar 30, 2026
+              - cell [ref=e491]:
+                - generic [ref=e492]:
+                  - link "View analysis" [ref=e493] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmnd827cv0000ysfsp6ej3y1i
+                    - img [ref=e494]
+                  - button "Delete analysis" [ref=e497] [cursor=pointer]:
+                    - img [ref=e498]
+            - row "13 Bank of America Stadium Modernization Bank of America Stadium Panthers Stadium, LLC 18 20 20 Carolina Panthers - Bank of America Stadium - Section 116843 - Outdoor LED Videoboards.pdf Ahmad Basheer 1d ago Mar 29, 2026" [ref=e501]:
+              - cell "13" [ref=e502]
+              - cell "Bank of America Stadium Modernization Bank of America Stadium" [ref=e503]:
+                - link "Bank of America Stadium Modernization Bank of America Stadium" [ref=e504] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmnc8te8i0000b2rifb5f4nhq
+                  - generic [ref=e506]: Bank of America Stadium Modernization
+                  - generic [ref=e507]:
+                    - img [ref=e508]
+                    - text: Bank of America Stadium
+              - cell "Panthers Stadium, LLC" [ref=e511]
+              - cell "18" [ref=e512]:
+                - generic [ref=e513]:
+                  - img [ref=e514]
+                  - text: "18"
+              - cell "20" [ref=e516]
+              - cell "20" [ref=e517]
+              - cell "Carolina Panthers - Bank of America Stadium - Section 116843 - Outdoor LED Videoboards.pdf" [ref=e518]
+              - cell "Ahmad Basheer" [ref=e519]
+              - cell "1d ago Mar 29, 2026" [ref=e520]:
+                - generic [ref=e521]: 1d ago
+                - generic [ref=e522]: Mar 29, 2026
+              - cell [ref=e523]:
+                - generic [ref=e524]:
+                  - link "View analysis" [ref=e525] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmnc8te8i0000b2rifb5f4nhq
+                    - img [ref=e526]
+                  - button "Delete analysis" [ref=e529] [cursor=pointer]:
+                    - img [ref=e530]
+            - row "14 Large Format LED — 47 1 1 Pages from 2026.02.12 - BofA SM 100% DD - AV Schedules (1).pdf Natalia 1d ago Mar 29, 2026" [ref=e533]:
+              - cell "14" [ref=e534]
+              - cell "Large Format LED" [ref=e535]:
+                - link "Large Format LED" [ref=e536] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmnc8bw3h00004hjx5x3olwlk
+                  - generic [ref=e538]: Large Format LED
+              - cell "—" [ref=e539]
+              - cell "47" [ref=e540]:
+                - generic [ref=e541]:
+                  - img [ref=e542]
+                  - text: "47"
+              - cell "1" [ref=e544]
+              - cell "1" [ref=e545]
+              - cell "Pages from 2026.02.12 - BofA SM 100% DD - AV Schedules (1).pdf" [ref=e546]
+              - cell "Natalia" [ref=e547]
+              - cell "1d ago Mar 29, 2026" [ref=e548]:
+                - generic [ref=e549]: 1d ago
+                - generic [ref=e550]: Mar 29, 2026
+              - cell [ref=e551]:
+                - generic [ref=e552]:
+                  - link "View analysis" [ref=e553] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmnc8bw3h00004hjx5x3olwlk
+                    - img [ref=e554]
+                  - button "Delete analysis" [ref=e557] [cursor=pointer]:
+                    - img [ref=e558]
+            - row "15 Bank of America Stadium Modernization Bank of America Stadium Panthers Stadium, LLC 18 20 20 Carolina Panthers - Bank of America Stadium - Section 116843 - Outdoor LED Videoboards.pdf Ahmad Basheer 1d ago Mar 29, 2026" [ref=e561]:
+              - cell "15" [ref=e562]
+              - cell "Bank of America Stadium Modernization Bank of America Stadium" [ref=e563]:
+                - link "Bank of America Stadium Modernization Bank of America Stadium" [ref=e564] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmnc3ntgg0001npdbtg0qbjg7
+                  - generic [ref=e566]: Bank of America Stadium Modernization
+                  - generic [ref=e567]:
+                    - img [ref=e568]
+                    - text: Bank of America Stadium
+              - cell "Panthers Stadium, LLC" [ref=e571]
+              - cell "18" [ref=e572]:
+                - generic [ref=e573]:
+                  - img [ref=e574]
+                  - text: "18"
+              - cell "20" [ref=e576]
+              - cell "20" [ref=e577]
+              - cell "Carolina Panthers - Bank of America Stadium - Section 116843 - Outdoor LED Videoboards.pdf" [ref=e578]
+              - cell "Ahmad Basheer" [ref=e579]
+              - cell "1d ago Mar 29, 2026" [ref=e580]:
+                - generic [ref=e581]: 1d ago
+                - generic [ref=e582]: Mar 29, 2026
+              - cell [ref=e583]:
+                - generic [ref=e584]:
+                  - link "View analysis" [ref=e585] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmnc3ntgg0001npdbtg0qbjg7
+                    - img [ref=e586]
+                  - button "Delete analysis" [ref=e589] [cursor=pointer]:
+                    - img [ref=e590]
+            - row "16 Bank of America Stadium Modernization Bank of America Stadium Panthers Stadium, LLC 25 23 23 Carolina Panthers - Bank of America Stadium - Section 116843 - Indoor LED Videoboards.pdf Ahmad Basheer 1d ago Mar 29, 2026" [ref=e593]:
+              - cell "16" [ref=e594]
+              - cell "Bank of America Stadium Modernization Bank of America Stadium" [ref=e595]:
+                - link "Bank of America Stadium Modernization Bank of America Stadium" [ref=e596] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmnc3mf700000npdbikgsve2a
+                  - generic [ref=e598]: Bank of America Stadium Modernization
+                  - generic [ref=e599]:
+                    - img [ref=e600]
+                    - text: Bank of America Stadium
+              - cell "Panthers Stadium, LLC" [ref=e603]
+              - cell "25" [ref=e604]:
+                - generic [ref=e605]:
+                  - img [ref=e606]
+                  - text: "25"
+              - cell "23" [ref=e608]
+              - cell "23" [ref=e609]
+              - cell "Carolina Panthers - Bank of America Stadium - Section 116843 - Indoor LED Videoboards.pdf" [ref=e610]
+              - cell "Ahmad Basheer" [ref=e611]
+              - cell "1d ago Mar 29, 2026" [ref=e612]:
+                - generic [ref=e613]: 1d ago
+                - generic [ref=e614]: Mar 29, 2026
+              - cell [ref=e615]:
+                - generic [ref=e616]:
+                  - link "View analysis" [ref=e617] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmnc3mf700000npdbikgsve2a
+                    - img [ref=e618]
+                  - button "Delete analysis" [ref=e621] [cursor=pointer]:
+                    - img [ref=e622]
+            - row "17 Bank of America Stadium Modernization Bank of America Stadium Panthers Stadium, LLC 25 23 23 Carolina Panthers - Bank of America Stadium - Section 116843 - Indoor LED Videoboards.pdf Ahmad Basheer 1d ago Mar 29, 2026" [ref=e625]:
+              - cell "17" [ref=e626]
+              - cell "Bank of America Stadium Modernization Bank of America Stadium" [ref=e627]:
+                - link "Bank of America Stadium Modernization Bank of America Stadium" [ref=e628] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmnc3h2vi0000cfpkmpvusilq
+                  - generic [ref=e630]: Bank of America Stadium Modernization
+                  - generic [ref=e631]:
+                    - img [ref=e632]
+                    - text: Bank of America Stadium
+              - cell "Panthers Stadium, LLC" [ref=e635]
+              - cell "25" [ref=e636]:
+                - generic [ref=e637]:
+                  - img [ref=e638]
+                  - text: "25"
+              - cell "23" [ref=e640]
+              - cell "23" [ref=e641]
+              - cell "Carolina Panthers - Bank of America Stadium - Section 116843 - Indoor LED Videoboards.pdf" [ref=e642]
+              - cell "Ahmad Basheer" [ref=e643]
+              - cell "1d ago Mar 29, 2026" [ref=e644]:
+                - generic [ref=e645]: 1d ago
+                - generic [ref=e646]: Mar 29, 2026
+              - cell [ref=e647]:
+                - generic [ref=e648]:
+                  - link "View analysis" [ref=e649] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmnc3h2vi0000cfpkmpvusilq
+                    - img [ref=e650]
+                  - button "Delete analysis" [ref=e653] [cursor=pointer]:
+                    - img [ref=e654]
+            - row "18 Large Format LED — 47 1 1 Pages from 2026.02.12 - BofA SM 100% DD - AV Schedules.pdf Ahmad Basheer 1d ago Mar 29, 2026" [ref=e657]:
+              - cell "18" [ref=e658]
+              - cell "Large Format LED" [ref=e659]:
+                - link "Large Format LED" [ref=e660] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmnc3awvz00016q1ra1d251mg
+                  - generic [ref=e662]: Large Format LED
+              - cell "—" [ref=e663]
+              - cell "47" [ref=e664]:
+                - generic [ref=e665]:
+                  - img [ref=e666]
+                  - text: "47"
+              - cell "1" [ref=e668]
+              - cell "1" [ref=e669]
+              - cell "Pages from 2026.02.12 - BofA SM 100% DD - AV Schedules.pdf" [ref=e670]
+              - cell "Ahmad Basheer" [ref=e671]
+              - cell "1d ago Mar 29, 2026" [ref=e672]:
+                - generic [ref=e673]: 1d ago
+                - generic [ref=e674]: Mar 29, 2026
+              - cell [ref=e675]:
+                - generic [ref=e676]:
+                  - link "View analysis" [ref=e677] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmnc3awvz00016q1ra1d251mg
+                    - img [ref=e678]
+                  - button "Delete analysis" [ref=e681] [cursor=pointer]:
+                    - img [ref=e682]
+            - row "19 Bank of America Stadium Modernization Bank of America Stadium Panthers Stadium, LLC 18 20 20 Carolina Panthers - Bank of America Stadium - Section 116843 - Outdoor LED Videoboards.pdf Ahmad Basheer 1d ago Mar 29, 2026" [ref=e685]:
+              - cell "19" [ref=e686]
+              - cell "Bank of America Stadium Modernization Bank of America Stadium" [ref=e687]:
+                - link "Bank of America Stadium Modernization Bank of America Stadium" [ref=e688] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmnc38h5u00006q1r0fnilo7c
+                  - generic [ref=e690]: Bank of America Stadium Modernization
+                  - generic [ref=e691]:
+                    - img [ref=e692]
+                    - text: Bank of America Stadium
+              - cell "Panthers Stadium, LLC" [ref=e695]
+              - cell "18" [ref=e696]:
+                - generic [ref=e697]:
+                  - img [ref=e698]
+                  - text: "18"
+              - cell "20" [ref=e700]
+              - cell "20" [ref=e701]
+              - cell "Carolina Panthers - Bank of America Stadium - Section 116843 - Outdoor LED Videoboards.pdf" [ref=e702]
+              - cell "Ahmad Basheer" [ref=e703]
+              - cell "1d ago Mar 29, 2026" [ref=e704]:
+                - generic [ref=e705]: 1d ago
+                - generic [ref=e706]: Mar 29, 2026
+              - cell [ref=e707]:
+                - generic [ref=e708]:
+                  - link "View analysis" [ref=e709] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmnc38h5u00006q1r0fnilo7c
+                    - img [ref=e710]
+                  - button "Delete analysis" [ref=e713] [cursor=pointer]:
+                    - img [ref=e714]
+            - row "20 Bank of America Stadium Modernization Bank of America Stadium Panthers Stadium, LLC 18 20 20 Carolina Panthers - Bank of America Stadium - Section 116843 - Outdoor LED Videoboards.pdf Ahmad Basheer 1d ago Mar 29, 2026" [ref=e717]:
+              - cell "20" [ref=e718]
+              - cell "Bank of America Stadium Modernization Bank of America Stadium" [ref=e719]:
+                - link "Bank of America Stadium Modernization Bank of America Stadium" [ref=e720] [cursor=pointer]:
+                  - /url: /tools/rfp-analyzer/history/cmnc2wxfd0000nn2xe9dkfmk0
+                  - generic [ref=e722]: Bank of America Stadium Modernization
+                  - generic [ref=e723]:
+                    - img [ref=e724]
+                    - text: Bank of America Stadium
+              - cell "Panthers Stadium, LLC" [ref=e727]
+              - cell "18" [ref=e728]:
+                - generic [ref=e729]:
+                  - img [ref=e730]
+                  - text: "18"
+              - cell "20" [ref=e732]
+              - cell "20" [ref=e733]
+              - cell "Carolina Panthers - Bank of America Stadium - Section 116843 - Outdoor LED Videoboards.pdf" [ref=e734]
+              - cell "Ahmad Basheer" [ref=e735]
+              - cell "1d ago Mar 29, 2026" [ref=e736]:
+                - generic [ref=e737]: 1d ago
+                - generic [ref=e738]: Mar 29, 2026
+              - cell [ref=e739]:
+                - generic [ref=e740]:
+                  - link "View analysis" [ref=e741] [cursor=pointer]:
+                    - /url: /tools/rfp-analyzer/history/cmnc2wxfd0000nn2xe9dkfmk0
+                    - img [ref=e742]
+                  - button "Delete analysis" [ref=e745] [cursor=pointer]:
+                    - img [ref=e746]
+        - generic [ref=e749]:
+          - paragraph [ref=e750]: Showing 1–20 of 277
+          - generic [ref=e751]:
+            - button "Previous" [disabled] [ref=e752]
+            - generic [ref=e753]: Page 1 of 14
+            - button "Next" [ref=e754] [cursor=pointer]
+  - contentinfo [ref=e755]:
+    - paragraph [ref=e756]: © 2026 ANC Sports Proposal Engine. All rights reserved.
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e757]
