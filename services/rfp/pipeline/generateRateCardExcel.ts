@@ -24,7 +24,6 @@ import {
   calculateExhibitG,
   calculateHardwareCost,
   estimatePricing,
-  getServiceMargin,
   MARGIN_PRESETS,
   BOND_RATE,
   LED_COST_PER_SQFT_BY_PITCH,
@@ -319,17 +318,17 @@ async function priceDisplay(
     engCost = round2(4706);
   }
 
-  // Margins
-  const ledMarginPct = MARGIN_PRESETS.ledHardware; // 30%
-  const svcMarginPct = getServiceMargin(areaSqFt); // 20% or 30% for small
+  // Margins — flat 15% across all categories (Natalia confirmed March 2026)
+  const ledMarginPct = MARGIN_PRESETS.ledHardware; // 15%
+  const projectMargin = ledMarginPct; // uniform margin for all line items
 
   const { processorCost, shippingCost } = computeProcessorAndShipping(spec, areaSqFt);
   const servicesCost = installCost + pmCost + engCost;
   const totalCost = hardwareCost + processorCost + shippingCost + servicesCost;
 
-  // Selling prices using Natalia's divisor model
-  const hardwareSellingPrice = hardwareCost > 0 ? round2(hardwareCost / (1 - ledMarginPct)) : 0;
-  const servicesSellingPrice = servicesCost > 0 ? round2(servicesCost / (1 - svcMarginPct)) : 0;
+  // Selling prices using Natalia's divisor model — uniform margin
+  const hardwareSellingPrice = hardwareCost > 0 ? round2(hardwareCost / (1 - projectMargin)) : 0;
+  const servicesSellingPrice = servicesCost > 0 ? round2(servicesCost / (1 - projectMargin)) : 0;
   const totalSellingPrice = hardwareSellingPrice + servicesSellingPrice;
 
   const marginDollars = round2(totalSellingPrice - totalCost);
@@ -348,7 +347,7 @@ async function priceDisplay(
     engCost,
     totalCost,
     ledMarginPct,
-    svcMarginPct,
+    svcMarginPct: projectMargin,
     hardwareSellingPrice,
     servicesSellingPrice,
     totalSellingPrice,

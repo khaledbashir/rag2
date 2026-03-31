@@ -31,7 +31,6 @@ import {
   HEAVY_EQUIPMENT_PER_LB,
   PM_BASE_FEE,
   ENG_BASE_FEE,
-  getServiceMargin,
   getAllProducts,
   getProduct,
   calculateHardwareCost,
@@ -572,7 +571,8 @@ function computeDisplays(
     // Margin: per-category approach (override > priced > default)
     // Hardware and services get separate margins, then sum for blended selling price
     const hwMarginPct = co?.marginPct != null ? co.marginPct : (ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware);
-    const svcMarginPct = ov?.servicesMarginPct ?? getServiceMargin(areaSqFt);
+    // Flat margin across all categories (Natalia confirmed March 2026)
+    const svcMarginPct = ov?.servicesMarginPct ?? hwMarginPct;
     const hwCosts = ledHardwareCost + sparePartsCost;
     const svcCosts = round2(structuralMaterialsCost * unionMult)
       + round2(structuralLaborCost * unionMult)
@@ -1142,9 +1142,8 @@ function buildBudgetSummary(
   const marginFormula = (r: number) => `IFERROR(D${r}-C${r},0)`;
 
   const hwMargin = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
-  // Use size-based margin matching the Install tab logic (30% for small displays <100sqft)
-  const totalDisplaySqFtForMargin = displays.reduce((sum, d) => sum + d.areaSqFt, 0);
-  const svcMargin = ov?.servicesMarginPct ?? getServiceMargin(totalDisplaySqFtForMargin);
+  // Flat margin across all categories (Natalia confirmed March 2026)
+  const svcMargin = ov?.servicesMarginPct ?? hwMargin;
 
   const ledDataEnd = 3 + displays.length; // LED Cost Sheet rows: 4..4+len-1
   const installCostSum = (builder: (tab: string) => string) => installTabNames.length > 0
@@ -1440,7 +1439,8 @@ function buildMarginAnalysis(
     const catStartRow = row;
     const ledHardwareWithSpares = d.ledHardwareCost + d.sparePartsCost;
     const hwMargin = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
-    const svcMargin = ov?.servicesMarginPct ?? getServiceMargin(d.areaSqFt);
+    // Flat margin across all categories (Natalia confirmed March 2026)
+    const svcMargin = ov?.servicesMarginPct ?? hwMargin;
 
     // Cross-sheet formula refs: LED Cost Sheet data row = 4 + display index
     const ledSheetRow = 4 + idx;
@@ -2043,10 +2043,10 @@ function buildInstallSheet(
   ws.getCell(row, 1).value = "Revised By: ANC Proposal Engine";
   ws.getCell(row, 1).font = { name: "Calibri", size: 10, color: { argb: "FF666666" } };
 
-  // Compute the service margin for this display BEFORE the margin assignment section
-  // so the header cells and the data rows use the exact same value.
+  // Flat margin across all categories (Natalia confirmed March 2026)
   // Respect user override (ov?.servicesMarginPct) to stay consistent with MA tab.
-  const svcMargin = ov?.servicesMarginPct ?? getServiceMargin(d.areaSqFt);
+  const hwMarginForInstall = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
+  const svcMargin = ov?.servicesMarginPct ?? hwMarginForInstall;
 
   // Margin assignment — track row numbers so data rows can reference them
   row += 2;
