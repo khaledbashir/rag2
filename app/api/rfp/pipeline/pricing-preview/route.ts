@@ -114,10 +114,20 @@ export async function POST(request: NextRequest) {
       resolveProduct,
     );
 
-    // Step 4: Build response — costs from computeDisplays, metadata from pricedDisplays
-    const totalCost = computedDisplays.reduce((s, d) => s + d.totalCost, 0);
-    const totalSell = computedDisplays.reduce((s, d) => s + d.sellingPrice, 0);
-    const totalMargin = computedDisplays.reduce((s, d) => s + d.marginDollars, 0);
+    // Step 4: Build response — LED Cost Sheet totals from computeDisplays
+    // LED Cost Sheet Total = hw + spares + processor bundle + shipping (NOT install/PM/eng/travel)
+    const ledCostPerDisplay = computedDisplays.map(d =>
+      d.ledHardwareCost + d.sparePartsCost
+      + d.sendingCardCost + d.signalCableCost + d.upsCost
+      + d.backupProcessorCost + d.weatherproofCost + d.shippingCost
+    );
+    const totalCost = ledCostPerDisplay.reduce((s, c) => s + c, 0);
+    const ledMargin = computedDisplays[0]?.marginPct ?? 0.15;
+    const totalSell = ledCostPerDisplay.reduce((s, c, i) => {
+      const m = computedDisplays[i].marginPct;
+      return s + (m < 1 ? Math.round(c / (1 - m) * 100) / 100 : c);
+    }, 0);
+    const totalMargin = totalSell - totalCost;
 
     return NextResponse.json({
       project: {
@@ -175,19 +185,30 @@ export async function POST(request: NextRequest) {
           environment: cd.spec.environment,
           quantity: cd.spec.quantity,
           areaSqFt: cd.areaSqFt,
-          // Cost fields from computeDisplays (matches Excel exactly)
+          // Cost fields from computeDisplays (matches Excel LED Cost Sheet exactly)
           hardwareCost: cd.ledHardwareCost + cd.sparePartsCost,
-          processorCost: cd.sendingCardCost + cd.signalCableCost + cd.upsCost + cd.backupProcessorCost + cd.weatherproofCost,
+          processorCost: cd.sendingCardCost,
           shippingCost: cd.shippingCost,
           installCost: cd.structuralMaterialsCost + cd.structuralLaborCost + cd.electricalCost,
           pmCost: cd.pmCost,
           engCost: cd.engCost,
           travelCost: cd.travelCost,
-          totalCost: cd.totalCost,
-          // Selling/margin from computeDisplays
-          hardwareSellingPrice: 0,  // Not broken out in computeDisplays — use totalSellingPrice
+          // LED Cost Sheet Total Cost = hw + spares + processor bundle + shipping
+          // (install/PM/eng/travel are separate tabs in Excel)
+          totalCost: cd.ledHardwareCost + cd.sparePartsCost
+            + cd.sendingCardCost + cd.signalCableCost + cd.upsCost
+            + cd.backupProcessorCost + cd.weatherproofCost + cd.shippingCost,
+          // Selling price = LED Cost Sheet Total / (1 - margin)
+          hardwareSellingPrice: 0,
           servicesSellingPrice: 0,
-          totalSellingPrice: cd.sellingPrice,
+          totalSellingPrice: cd.marginPct < 1
+            ? Math.round((cd.ledHardwareCost + cd.sparePartsCost
+                + cd.sendingCardCost + cd.signalCableCost + cd.upsCost
+                + cd.backupProcessorCost + cd.weatherproofCost + cd.shippingCost)
+              / (1 - cd.marginPct) * 100) / 100
+            : cd.ledHardwareCost + cd.sparePartsCost
+                + cd.sendingCardCost + cd.signalCableCost + cd.upsCost
+                + cd.backupProcessorCost + cd.weatherproofCost + cd.shippingCost,
           blendedMarginPct: cd.marginPct,
           // Metadata from pricedDisplays
           costSource: pd?.costSource ?? "rate_card",
