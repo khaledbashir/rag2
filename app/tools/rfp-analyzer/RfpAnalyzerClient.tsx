@@ -1649,6 +1649,33 @@ export default function RfpAnalyzerClient() {
       if (!res.ok) throw new Error(`Pricing failed (${res.status})`);
       const data = await res.json();
       setPricingPreview(data);
+      // Sync matched products back to specs so server generator uses the same products.
+      // Without this, the server falls back to pitch-based matching which may pick different products.
+      if (data.displays?.length > 0) {
+        const base = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
+        let changed = false;
+        const synced = base.map((s: ExtractedLEDSpec, i: number) => {
+          const d = data.displays[i];
+          if (!d?.matchedProduct) return s;
+          const mp = d.matchedProduct;
+          // Only sync if spec doesn't already have a product selected
+          if (s.selectedProductName && s.selectedProductId) return s;
+          const updates: Partial<ExtractedLEDSpec> = {};
+          if (mp.model && !s.selectedProductName) updates.selectedProductName = mp.model;
+          if (mp.pitch && !s.pixelPitchMm) updates.pixelPitchMm = mp.pitch;
+          if (d.activeWidthFt || mp.activeWidthFt) updates.activeWidthFt = d.activeWidthFt || mp.activeWidthFt;
+          if (d.activeHeightFt || mp.activeHeightFt) updates.activeHeightFt = d.activeHeightFt || mp.activeHeightFt;
+          if (Object.keys(updates).length > 0) {
+            changed = true;
+            return { ...s, ...updates };
+          }
+          return s;
+        });
+        if (changed) {
+          setEditableSpecs(synced);
+          if (result?.id) autoSaveSpecs(synced, result.id);
+        }
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
