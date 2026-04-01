@@ -44,6 +44,7 @@ import {
   getAllProducts,
   getProduct,
   calculateHardwareCost,
+  HARDWARE_COST_PER_SQM,
   type ZoneClass,
   type InstallComplexity,
 } from "@/services/rfp/productCatalog";
@@ -1363,22 +1364,34 @@ function buildLedCostSheet(
 
   setTitle(ws, "W", `${projectName} — LED Cost Sheet`);
 
-  // Build product dropdown list for data validation on column F
+  // Build product data sheet for dropdown + VLOOKUP formulas on LED Cost Sheet
+  // Columns: A=Name, B=Vendor, C=Pitch(mm), D=$/SqFt, E=NITs, F=Weight(lbs/m²), G=Power(W/m²)
   const allProducts = getAllProducts();
-  const productNames = allProducts
-    .map((p) => p.name)
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b));
-  // Excel data validation list has a 255-char limit for inline lists,
-  // so store product names in a hidden "Products" sheet and reference it
+  const sortedProducts = [...allProducts]
+    .filter((p) => p.name)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const productNames = sortedProducts.map((p) => p.name);
   let productSheet = wb.getWorksheet("_Products");
   if (!productSheet) {
     productSheet = wb.addWorksheet("_Products", { state: "veryHidden" });
-    productNames.forEach((name, i) => {
-      productSheet!.getCell(i + 1, 1).value = name;
+    sortedProducts.forEach((p, i) => {
+      const r = i + 1;
+      productSheet!.getCell(r, 1).value = p.name;                       // A: Name
+      productSheet!.getCell(r, 2).value = p.manufacturer || "";          // B: Vendor
+      productSheet!.getCell(r, 3).value = p.pitchMm;                    // C: Pitch (mm)
+      // D: $/SqFt — from product-specific cost table or pitch-based rate card
+      const costPerSqm = HARDWARE_COST_PER_SQM[p.id];
+      const costPerSqFt = costPerSqm
+        ? round2(costPerSqm / 10.7639)
+        : (LED_COST_PER_SQFT_BY_PITCH[String(p.pitchMm)] ?? 0);
+      productSheet!.getCell(r, 4).value = costPerSqFt;                  // D: $/SqFt
+      productSheet!.getCell(r, 5).value = p.brightnessNits;             // E: NITs
+      productSheet!.getCell(r, 6).value = round2(p.weightDensityLbm2);  // F: Weight (lbs/m²)
+      productSheet!.getCell(r, 7).value = round2(p.powerDensityWm2);    // G: Power (W/m²)
     });
   }
   const productListRef = `'_Products'!$A$1:$A$${productNames.length}`;
+  const prodRange = `'_Products'!$A$1:$G$${productNames.length}`;
 
   // Master LED Margin Override (yellow cell) — changing this overrides all display margins
   const masterMarginRow = 2;
@@ -1441,19 +1454,23 @@ function buildLedCostSheet(
     dr.getCell(2).value = rfpH > 0 ? rfpH : ""; dr.getCell(2).numFmt = "0.00";
     dr.getCell(3).value = rfpW > 0 ? rfpW : ""; dr.getCell(3).numFmt = "0.00";
     dr.getCell(4).value = rfpNits > 0 ? rfpNits : "";
-    // E: Vendor — manufacturer name only
+    // ═══════ All data cells use VLOOKUP formulas tied to product dropdown (F) ═══════
+    // When user changes F (product), all dependent cells auto-recalculate.
     const selectedProduct = d.spec.selectedProductId ? resolveProduct(d.spec.selectedProductId) : null;
-    dr.getCell(5).value = selectedProduct?.manufacturer
+    const effectivePitch = selectedProduct?.pixelPitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.match?.module?.pitch ?? d.spec.pixelPitchMm;
+
+    // E: Vendor — VLOOKUP from _Products col 2
+    const vendorResult = selectedProduct?.manufacturer
       || d.match?.module?.manufacturer
       || (d.spec.environment === "outdoor" ? "Yaham" : "LG/Yaham");
-    // F: Product
+    dr.getCell(5).value = { formula: `IFERROR(VLOOKUP(F${row},${prodRange},2,FALSE),"")`, result: vendorResult };
+    // F: Product — dropdown with data validation
     dr.getCell(6).value = isClockLike
       ? (selectedProduct?.name || d.spec.selectedProductName || "—")
       : selectedProduct?.name
       || d.spec.selectedProductName
       || d.match?.module?.name
       || "—";
-    // F: Product dropdown — allow user to change product in Excel
     dr.getCell(6).dataValidation = {
       type: "list",
       allowBlank: true,
@@ -1462,21 +1479,21 @@ function buildLedCostSheet(
       errorTitle: "Invalid Product",
       error: "Select a product from the dropdown list",
     };
-    // G: Pitch — prefer product DB pitch, then product name parse, then matched module pitch, then extracted pitch
-    // AI extractor often grabs mesh pitch (3.9mm) instead of LED pixel pitch (2.5mm)
-    const effectivePitch = selectedProduct?.pixelPitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.match?.module?.pitch ?? d.spec.pixelPitchMm;
-    dr.getCell(7).value = effectivePitch ? `${effectivePitch}mm` : "—";
+    // G: Pitch — VLOOKUP from _Products col 3 (numeric, formatted with "mm" suffix)
+    const pitchResult = effectivePitch || 0;
+    dr.getCell(7).value = { formula: `IFERROR(VLOOKUP(F${row},${prodRange},3,FALSE),0)`, result: pitchResult };
+    dr.getCell(7).numFmt = '0.0##"mm"';
     dr.getCell(7).alignment = { horizontal: "center" };
-    // H-I: H(ft), W(ft) — product-snapped dimensions (must be numeric for formulas)
+    // H-I: H(ft), W(ft) — user-adjustable dimensions (hardcoded, not product-driven)
     const cellH = Number(d.heightFt) || 0;
     const cellW = Number(d.widthFt) || 0;
     dr.getCell(8).value = cellH; dr.getCell(8).numFmt = "0.00";
     dr.getCell(9).value = cellW; dr.getCell(9).numFmt = "0.00";
-    // J-K: H(px), W(px) — use effectivePitch (product-matched) not raw extracted pitch
-    const hPx = d.spec.heightPx || (effectivePitch && d.heightFt ? Math.round(d.heightFt * 304.8 / effectivePitch) : 0);
-    const wPx = d.spec.widthPx || (effectivePitch && d.widthFt ? Math.round(d.widthFt * 304.8 / effectivePitch) : 0);
-    dr.getCell(10).value = hPx;
-    dr.getCell(11).value = wPx;
+    // J-K: H(px), W(px) — formula from dimensions ÷ pitch
+    const hPx = effectivePitch && d.heightFt ? Math.round(d.heightFt * 304.8 / effectivePitch) : (d.spec.heightPx || 0);
+    const wPx = effectivePitch && d.widthFt ? Math.round(d.widthFt * 304.8 / effectivePitch) : (d.spec.widthPx || 0);
+    dr.getCell(10).value = { formula: `IFERROR(ROUND(H${row}*304.8/G${row},0),0)`, result: hPx };
+    dr.getCell(11).value = { formula: `IFERROR(ROUND(I${row}*304.8/G${row},0),0)`, result: wPx };
     // L: Qty
     const qty = Number(d.spec.quantity) || 1;
     dr.getCell(12).value = qty; dr.getCell(12).alignment = { horizontal: "center" };
@@ -1484,37 +1501,40 @@ function buildLedCostSheet(
     const sqFtResult = Number(d.areaSqFt) || 0;
     dr.getCell(13).value = { formula: `H${row}*I${row}*L${row}`, result: isFinite(sqFtResult) ? sqFtResult : 0 };
     dr.getCell(13).numFmt = "#,##0";
-    // N: Product NITs
-    dr.getCell(14).value = isClockLike ? "" : (d.match?.module?.nits ?? d.spec.brightnessNits ?? "");
+    // N: Product NITs — VLOOKUP from _Products col 5
+    const nitsResult = isClockLike ? 0 : (d.match?.module?.nits ?? d.spec.brightnessNits ?? 0);
+    dr.getCell(14).value = isClockLike
+      ? ""
+      : { formula: `IFERROR(VLOOKUP(F${row},${prodRange},5,FALSE),0)`, result: nitsResult };
     dr.getCell(14).alignment = { horizontal: "center" };
     // O: Service
     dr.getCell(15).value = d.spec.serviceType || "Front";
     dr.getCell(15).alignment = { horizontal: "center" };
-    // P: $/SqFt (or $/Unit for TVs)
+    // P: $/SqFt — VLOOKUP from _Products col 4
     const ledWithSpares = d.ledHardwareCost + d.sparePartsCost;
+    const costPerSqFtResult = d.areaSqFt > 0 ? round2(ledWithSpares / d.areaSqFt) : 0;
     if (d.isTV) {
-      const qty = Number(d.spec.quantity) || 1;
-      const unitCost = qty > 0 ? round2(ledWithSpares / qty) : 0;
+      const tvQty = Number(d.spec.quantity) || 1;
+      const unitCost = tvQty > 0 ? round2(ledWithSpares / tvQty) : 0;
       dr.getCell(16).value = unitCost;
-      dr.getCell(16).numFmt = FMT_USD;
     } else {
-      const costPerSqFt = d.areaSqFt > 0 ? round2(ledWithSpares / d.areaSqFt) : 0;
-      dr.getCell(16).value = costPerSqFt;
-      dr.getCell(16).numFmt = FMT_USD;
+      dr.getCell(16).value = { formula: `IFERROR(VLOOKUP(F${row},${prodRange},4,FALSE),0)`, result: costPerSqFtResult };
     }
-    // Q: Display Cost — hard value from computed ledWithSpares (no formula round-trip through $/SqFt)
-    dr.getCell(17).value = round2(ledWithSpares);
+    dr.getCell(16).numFmt = FMT_USD;
+    // Q: Display Cost = $/SqFt × Total SqFt (formula, flows from P × M)
+    dr.getCell(17).value = { formula: `P${row}*M${row}`, result: round2(ledWithSpares) };
     dr.getCell(17).numFmt = FMT_USD;
     const bundleSubtotalRow = bundleSubtotalRows[idx];
-    // R: Processor
+    // R: Processor — cross-sheet formula to Bundle Equipment
     const bundleEquipmentCost = d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost;
     dr.getCell(18).value = bundleSubtotalRow
       ? { formula: `SUM('Bundle Equipment'!E${bundleSubtotalRow}:E${bundleSubtotalRow})`, result: bundleEquipmentCost || 0 }
       : (bundleEquipmentCost || 0);
     dr.getCell(18).numFmt = FMT_USD;
-    // S: Shipping
-    dr.getCell(19).value = d.shippingCost; dr.getCell(19).numFmt = FMT_USD;
-    // T: Total Cost = Display Cost + Processor + Shipping (formula so it flows)
+    // S: Shipping — formula: $10/sqft, $500 minimum
+    dr.getCell(19).value = { formula: `MAX(M${row}*10,500)`, result: d.shippingCost };
+    dr.getCell(19).numFmt = FMT_USD;
+    // T: Total Cost = Display Cost + Processor + Shipping
     const totalLedCost = round2(ledWithSpares + bundleEquipmentCost + d.shippingCost);
     dr.getCell(20).value = { formula: `Q${row}+R${row}+S${row}`, result: totalLedCost };
     dr.getCell(20).numFmt = FMT_USD;
@@ -1522,31 +1542,34 @@ function buildLedCostSheet(
     // U: Margin % — references master override cell V2
     const ledMarginPct = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
     dr.getCell(21).value = { formula: `V$${masterMarginRow}`, result: ledMarginPct }; dr.getCell(21).numFmt = FMT_PCT;
-    // V: Selling Price — formula: Cost / (1 - Margin%)
-    // Cached result must match formula output (LED-only costs, not full d.sellingPrice which includes services)
+    // V: Selling Price = Cost / (1 - Margin%)
     const rowNum = dr.number;
     const ledOnlySellingPrice = ledMarginPct < 1 ? round2(totalLedCost / (1 - ledMarginPct)) : totalLedCost;
     dr.getCell(22).value = { formula: `IFERROR(T${rowNum}/(1-U${rowNum}),0)`, result: ledOnlySellingPrice };
     dr.getCell(22).numFmt = FMT_USD;
     dr.getCell(22).font = { bold: true, name: "Calibri" };
-    // W: ANC Margin — formula: Selling - Cost
+    // W: ANC Margin = Selling - Cost
     dr.getCell(23).value = { formula: `V${rowNum}-T${rowNum}`, result: round2(ledOnlySellingPrice - totalLedCost) };
     dr.getCell(23).numFmt = FMT_USD;
 
-    // X-Z: Weight, Power, BTU
+    // X: Weight — formula: area(m²) × weight density from _Products col 6
     const areaM2 = d.areaSqFt * 0.092903;
-    const pitch = effectivePitch ?? d.spec.pixelPitchMm ?? 0;
     const catalogMatch = selectedProduct
-      ?? (pitch > 0 ? getAllProducts().find((p) => Math.abs(p.pitchMm - pitch) < 0.5) : null);
-    const weight = catalogMatch
+      ?? (effectivePitch ? getAllProducts().find((p) => Math.abs(p.pitchMm - effectivePitch) < 0.5) : null);
+    const weightResult = catalogMatch
       ? Math.round(areaM2 * catalogMatch.weightDensityLbm2)
       : Math.round(d.areaSqFt * 5);
-    const power = catalogMatch
+    const powerResult = catalogMatch
       ? Math.round(areaM2 * catalogMatch.powerDensityWm2)
       : 0;
-    if (weight > 0) { dr.getCell(24).value = weight; dr.getCell(24).numFmt = "#,##0"; }
-    if (power > 0) { dr.getCell(25).value = power; dr.getCell(25).numFmt = "#,##0"; }
-    if (power > 0) { dr.getCell(26).value = { formula: `Y${row}*3.412`, result: Math.round(power * 3.412) }; dr.getCell(26).numFmt = "#,##0"; }
+    dr.getCell(24).value = { formula: `IFERROR(ROUND(M${row}*0.092903*VLOOKUP(F${row},${prodRange},6,FALSE),0),0)`, result: weightResult };
+    dr.getCell(24).numFmt = "#,##0";
+    // Y: Power — formula: area(m²) × power density from _Products col 7
+    dr.getCell(25).value = { formula: `IFERROR(ROUND(M${row}*0.092903*VLOOKUP(F${row},${prodRange},7,FALSE),0),0)`, result: powerResult };
+    dr.getCell(25).numFmt = "#,##0";
+    // Z: BTU = Power × 3.412
+    dr.getCell(26).value = { formula: `Y${row}*3.412`, result: Math.round(powerResult * 3.412) };
+    dr.getCell(26).numFmt = "#,##0";
 
     stripe(dr, COLS, idx % 2 === 0);
 
