@@ -93,8 +93,8 @@ export interface RfpWorkbookInput {
   onSourcePageClick?: (page: number) => void;
   /** Available products for dropdown selector */
   availableProducts?: Array<{ id: string; label: string; pitch: number; name: string }>;
-  /** Callback when user selects a product for a display */
-  onProductSelect?: (displayName: string, productId: string) => void;
+  /** Callback when user selects a product for a display (by index to avoid same-name collisions) */
+  onProductSelect?: (displayIndex: number, productId: string) => void;
   /** Callback to add a custom line item to Margin Analysis */
   onAddLineItem?: () => void;
   /** Callback to add a new screen to LED Cost Sheet */
@@ -240,7 +240,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
           value: matchedProductId,
           dropdown: dropdownOpts,
           onDropdownChange: input.onProductSelect
-            ? (val: string) => input.onProductSelect!(spec.name, val)
+            ? (val: string) => input.onProductSelect!(specIndex, val)
             : undefined,
         }
       : c(productLabel || "No match", {

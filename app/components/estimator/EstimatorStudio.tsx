@@ -346,29 +346,77 @@ export default function EstimatorStudio({
         setAnswers(next);
     }, []);
 
-    // Inline cell editing on the Univer preview — maps LED Cost Sheet edits back to answers
+    // Inline cell editing on the Univer preview — maps LED Cost Sheet & Margin Analysis edits back to answers
     const handlePreviewCellEdit = useCallback((sheetName: string, row: number, col: number, value: number | string) => {
-        if (sheetName !== "LED Cost Sheet") return;
+        // ── LED Cost Sheet edits ──
+        if (sheetName === "LED Cost Sheet") {
+            // LED Cost Sheet columns (0-based): 5=Product, 7=H(ft), 8=W(ft), 11=Qty, 20=Margin%, 21=SellingPrice
+            const displayIndex = displayRowMap[row];
+            if (displayIndex == null || displayIndex < 0 || displayIndex >= answers.displays.length) return;
 
-        // LED Cost Sheet columns (0-based): 7=H(ft), 8=W(ft), 12=Qty
-        const fieldMap: Record<number, "heightFt" | "widthFt" | "quantity"> = {
-            7: "heightFt",
-            8: "widthFt",
-            12: "quantity",
-        };
-        const field = fieldMap[col];
-        if (!field) return;
+            // Product change (col 5) — find matching product and update
+            if (col === 5) {
+                const productName = String(value).trim();
+                const product = availableProducts.find((p) => p.name === productName || p.label === productName);
+                if (product) {
+                    const updated = { ...answers };
+                    updated.displays = [...updated.displays];
+                    updated.displays[displayIndex] = { ...updated.displays[displayIndex], productId: product.id };
+                    setAnswers(updated);
+                }
+                return;
+            }
 
-        // Map row to display index using server-provided mapping
-        const displayIndex = displayRowMap[row];
-        if (displayIndex == null || displayIndex < 0 || displayIndex >= answers.displays.length) return;
+            // Dimension / quantity edits
+            const fieldMap: Record<number, "heightFt" | "widthFt" | "quantity"> = {
+                7: "heightFt",
+                8: "widthFt",
+                11: "quantity",
+            };
+            const field = fieldMap[col];
+            if (field) {
+                const numValue = typeof value === "number" ? value : (parseFloat(String(value)) || 0);
+                const updated = { ...answers };
+                updated.displays = [...updated.displays];
+                updated.displays[displayIndex] = { ...updated.displays[displayIndex], [field]: numValue };
+                setAnswers(updated);
+                return;
+            }
 
-        const numValue = typeof value === "number" ? value : (parseFloat(String(value)) || 0);
-        const updated = { ...answers };
-        updated.displays = [...updated.displays];
-        updated.displays[displayIndex] = { ...updated.displays[displayIndex], [field]: numValue };
-        setAnswers(updated);
-    }, [answers, displayRowMap]);
+            // Margin % edit (col 20) — update cost overrides
+            if (col === 20) {
+                const pct = typeof value === "number" ? value : (parseFloat(String(value)) || 0);
+                const marginPct = pct > 1 ? pct / 100 : pct; // handle both 0.35 and 35
+                handleWorkbookPricingEdit(displayIndex, "blendedMarginPct", Math.max(0, Math.min(0.95, marginPct)));
+                return;
+            }
+
+            // Selling Price edit (col 21) — reverse-calculate margin
+            if (col === 21) {
+                const sp = typeof value === "number" ? value : (parseFloat(String(value)) || 0);
+                if (sp > 0) {
+                    handleWorkbookMarginAnalysisEdit(displayIndex, "sellingPrice", sp);
+                }
+                return;
+            }
+            return;
+        }
+
+        // ── Margin Analysis edits ──
+        if (sheetName === "Margin Analysis") {
+            // MA rows: header at row 2 (0-based), data starts row 3
+            const itemIdx = row - 3;
+            if (itemIdx < 0) return;
+
+            // MA columns (0-based): typically 3=Cost, 5=SellingPrice, 4=Margin%
+            // Detect by value type — selling price edits are large numbers, margin is 0-1 range
+            const numVal = typeof value === "number" ? value : (parseFloat(String(value)) || 0);
+            if (numVal > 0) {
+                handleWorkbookMarginAnalysisEdit(itemIdx, col <= 4 ? "cost" : "sellingPrice", numVal);
+            }
+            return;
+        }
+    }, [answers, displayRowMap, availableProducts, handleWorkbookPricingEdit, handleWorkbookMarginAnalysisEdit]);
 
     const handleExport = useCallback(async () => {
         if (!serverPreview) {

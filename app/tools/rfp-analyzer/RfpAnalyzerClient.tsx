@@ -616,7 +616,7 @@ export default function RfpAnalyzerClient() {
     return null;
   }
 
-  const handleProductSelect = useCallback((displayName: string, productId: string) => {
+  const handleProductSelect = useCallback((displayIndex: number, productId: string) => {
     const product = availableProducts.find((p) => p.id === productId);
     if (!product) return;
 
@@ -642,9 +642,10 @@ export default function RfpAnalyzerClient() {
       };
     })();
 
-    // Find the current spec to get requested dimensions
-    const currentSpec = editableSpecs.find((s) => s.name === displayName)
-      || result?.screens?.find((s: ExtractedLEDSpec) => s.name === displayName);
+    // Find the current spec by index to get requested dimensions
+    const base = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
+    const currentSpec = base[displayIndex];
+    const displayName = currentSpec?.name || "";
     const newPitch = product.pitch || 0;
     const weightKgPerCab = product.weightKg || 0;
     const maxPowerPerCab = product.maxPowerWatts || 0;
@@ -690,10 +691,10 @@ export default function RfpAnalyzerClient() {
     const btuPerHr = Math.round(totalPowerW * 3.412);
     console.log(`[ProductSelect] ${displayName} → ${product.name}: isLED=${isLedPanel}, nits=${productNits}, cabs=${totalCabs}`);
 
-    // Update editableSpecs with product selection + dimensions, then persist to DB
-    const base = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
-    const updatedSpecs = base.map((s: ExtractedLEDSpec) =>
-      s.name === displayName
+    // Update editableSpecs with product selection + dimensions, then persist to DB (index-based)
+    const specBase = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
+    const updatedSpecs = specBase.map((s: ExtractedLEDSpec, i: number) =>
+      i === displayIndex
         ? {
             ...s,
             ...(isLedPanel ? {
@@ -720,8 +721,8 @@ export default function RfpAnalyzerClient() {
 
     setPricingPreview((prev) => {
       const base = prev || currentPreview;
-      const updatedDisplays = base.displays.map((d) => {
-        if (d.name !== displayName) return d;
+      const updatedDisplays = base.displays.map((d, i) => {
+        if (i !== displayIndex) return d;
         // Set matched product info
         let updated = {
           ...d,

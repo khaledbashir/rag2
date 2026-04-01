@@ -254,11 +254,13 @@ export default function AnalysisDetailPage() {
       .catch(() => {});
   }, [analysis, availableProducts.length]);
 
-  const handleProductSelect = useCallback((displayName: string, productId: string) => {
+  const handleProductSelect = useCallback((displayIndex: number, productId: string) => {
     const product = availableProducts.find((p) => p.id === productId);
     if (!product) return;
 
-    const currentSpec = analysis?.screens?.find((s: any) => s.name === displayName);
+    const screens = analysis?.screens as any[] || [];
+    const currentSpec = screens[displayIndex];
+    const displayName = currentSpec?.name || "";
     const newPitch = product.pitch || 0;
     const weightKgPerCab = product.weightKg || 0;
     const maxPowerPerCab = product.maxPowerWatts || 0;
@@ -299,8 +301,8 @@ export default function AnalysisDetailPage() {
 
     // Persist product selection + dimensions to DB
     if (analysis?.id) {
-      const updatedScreens = (analysis.screens as any[]).map((s: any) =>
-        s.name === displayName
+      const updatedScreens = (analysis.screens as any[]).map((s: any, i: number) =>
+        i === displayIndex
           ? {
               ...s,
               ...(isLedPanel ? {
@@ -331,8 +333,8 @@ export default function AnalysisDetailPage() {
       if (!prev) return prev;
       return {
         ...prev,
-        displays: prev.displays.map((d: any) =>
-          d.name === displayName
+        displays: prev.displays.map((d: any, i: number) =>
+          i === displayIndex
             ? {
                 ...d,
                 nits: productNits,
