@@ -853,6 +853,10 @@ export const HARDWARE_COST_PER_SQM: Record<string, number> = {
     'lg-lapa163':        5466,  // LG LAPA163 1.88mm AIO.    $507.80/sqft × 10.7639
     'lg-lapa136':        5505,  // LG LAPA136 1.56mm AIO.    $511.46/sqft × 10.7639
     'lg-lsga018':        2348,  // LG LSGA018 1.85mm rear.   $218.14/sqft × 10.7639
+    // Mesh + Alt products (Capital One, March 2026)
+    'mesh-p10-039':      2800,  // Mesh P10 FM1921 3.9mm. Same rate as 10mm mesh ($260.13/sqft)
+    'lg-c12-mip':        4628,  // C1.2-MIP 1.2mm indoor.  $430/sqft × 10.7639
+    'lg-c18-mip':        3500,  // C1.8-MIP 1.8mm indoor.  $325.12/sqft × 10.7639 (between 1.5mm LG and 2.5mm)
 };
 
 /** Calculate hardware cost from active area and product ID. */
