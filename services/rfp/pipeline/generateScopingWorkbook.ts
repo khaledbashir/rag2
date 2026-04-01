@@ -638,13 +638,13 @@ function buildProjectOverview(wb: ExcelJS.Workbook, data: ProjectOverviewData): 
   hdr(fpR.getCell(3), C.ANC_BLUE);
   row++;
 
-  const finRows: [string, string][] = [
-    ["LED Hardware Margin", `${(DEFAULT_MARGINS.ledHardware * 100).toFixed(0)}%`],
-    ["Install / Services Margin", `${(DEFAULT_MARGINS.install * 100).toFixed(0)}%`],
-    ["Engineering Margin", `${(DEFAULT_MARGINS.engineering * 100).toFixed(0)}%`],
-    ["Equipment Margin", `${(DEFAULT_MARGINS.equipment * 100).toFixed(0)}%`],
-    ["CMS Margin", `${(DEFAULT_MARGINS.cms * 100).toFixed(0)}%`],
-    ["Bond Rate", data.bondRequired ? `${(rc("bond_tax.bond_rate", BOND_RATE) * 100).toFixed(1)}%` : "N/A"],
+  const finRows: [string, number | string][] = [
+    ["LED Hardware Margin", DEFAULT_MARGINS.ledHardware],
+    ["Install / Services Margin", DEFAULT_MARGINS.install],
+    ["Engineering Margin", DEFAULT_MARGINS.engineering],
+    ["Equipment Margin", DEFAULT_MARGINS.equipment],
+    ["CMS Margin", DEFAULT_MARGINS.cms],
+    ["Bond Rate", data.bondRequired ? rc("bond_tax.bond_rate", BOND_RATE) : "N/A"],
     ["Tax Rate", "Per zone (editable on MA)"],
     ["Tariff Rate", "Per zone (editable on MA)"],
   ];
@@ -655,6 +655,7 @@ function buildProjectOverview(wb: ExcelJS.Workbook, data: ProjectOverviewData): 
     r.getCell(2).font = { bold: true, name: "Calibri", size: 10 };
     r.getCell(3).value = value;
     r.getCell(3).font = { name: "Calibri", size: 10 };
+    if (typeof value === "number") r.getCell(3).numFmt = FMT_PCT;
     if (row % 2 === 0) {
       r.getCell(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.LIGHT_GRAY } };
       r.getCell(3).fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.LIGHT_GRAY } };
@@ -1400,7 +1401,7 @@ function buildLedCostSheet(
   masterMarginLabel.font = { bold: true, name: "Calibri", size: 11 };
   masterMarginLabel.alignment = { horizontal: "right", vertical: "middle" };
   const masterMarginCell = ws.getCell(masterMarginRow, 22); // column V
-  masterMarginCell.value = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
+  masterMarginCell.value = Number(ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware);
   masterMarginCell.numFmt = FMT_PCT;
   masterMarginCell.font = { bold: true, name: "Calibri", size: 12 };
   masterMarginCell.alignment = { horizontal: "center", vertical: "middle" };
@@ -1561,7 +1562,7 @@ function buildLedCostSheet(
     dr.getCell(20).numFmt = FMT_USD;
     dr.getCell(20).font = { bold: true, name: "Calibri" };
     // U: Margin % — references master override cell V2
-    const ledMarginPct = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
+    const ledMarginPct = Number(ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware);
     dr.getCell(21).value = { formula: `V$${masterMarginRow}`, result: ledMarginPct }; dr.getCell(21).numFmt = FMT_PCT;
     // V: Selling Price = Cost / (1 - Margin%)
     const rowNum = dr.number;
