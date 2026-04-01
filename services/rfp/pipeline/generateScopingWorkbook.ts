@@ -1510,9 +1510,9 @@ function buildLedCostSheet(
     dr.getCell(18).numFmt = FMT_USD;
     // S: Shipping
     dr.getCell(19).value = d.shippingCost; dr.getCell(19).numFmt = FMT_USD;
-    // T: Total Cost — hard value (no formula round-trip through Q+R+S)
+    // T: Total Cost = Display Cost + Processor + Shipping (formula so it flows)
     const totalLedCost = round2(ledWithSpares + bundleEquipmentCost + d.shippingCost);
-    dr.getCell(20).value = totalLedCost;
+    dr.getCell(20).value = { formula: `Q${row}+R${row}+S${row}`, result: totalLedCost };
     dr.getCell(20).numFmt = FMT_USD;
     dr.getCell(20).font = { bold: true, name: "Calibri" };
     // U: Margin % — references master override cell V2
