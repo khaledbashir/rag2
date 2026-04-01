@@ -1377,7 +1377,7 @@ function buildLedCostSheet(
   
   // Inject any DB-resolved products into the sortedProducts array so they appear in _Products sheet
   // and pass the productNames.includes() check later!
-  for (const d of baseDisplays) {
+  for (const d of displays) {
     if (d.spec.selectedProductId) {
       const dbProd = resolveProduct(d.spec.selectedProductId);
       if (dbProd) {
