@@ -291,7 +291,9 @@ export default function RfpAnalyzerClient() {
   const [quotePreviewOpen, setQuotePreviewOpen] = useState(false);
   const [editableSpecs, setEditableSpecs] = useState<ExtractedLEDSpec[]>([]);
   // Server-generated scoping workbook preview — same generator as export, one source of truth
-  const [useServerWorkbook, setUseServerWorkbook] = useState(true);
+  const [useServerWorkbook, setUseServerWorkbook] = useState(false);
+  // Delay server workbook activation until after hydration to prevent React #418
+  useEffect(() => { setUseServerWorkbook(true); }, []);
   // Full-screen spreadsheet mode — hides pipeline, stats, project info
   const [spreadsheetMode, setSpreadsheetMode] = useState(true);
   // PDF split-panel viewer

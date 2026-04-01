@@ -1,22 +1,10 @@
 /**
  * POST /api/rfp/pipeline/scoping-workbook
  *
- * Generates the full multi-sheet scoping workbook (Toyota Center format).
- * Up to 15+ sheets: Margin Analysis, LED Cost Sheet, per-zone Install sheets,
- * P&L, Cash Flow, PO's, Processor Count, Resp Matrix, Travel, CMS.
+ * Generates the full multi-sheet scoping workbook.
+ * SAME code path as /api/rfp/preview-univer — one source of truth.
  *
- * Body: {
- *   analysisId: string,
- *   quotes?: QuotedSpec[],
- *   zoneClass?: "standard"|"medium"|"large"|"complex",
- *   installComplexity?: "simple"|"standard"|"complex"|"heavy",
- *   includeBond?: boolean,
- *   currency?: string,
- *   paymentTerms?: string,       // e.g. "50/20/20/10"
- *   contractDate?: string,
- *   completionDate?: string,
- * }
- *
+ * Body: { analysisId, clientSpecs?, quotes?, includeBond?, ... }
  * Returns: Excel file download
  */
 
@@ -33,10 +21,6 @@ export const maxDuration = 60;
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    console.log("[scoping-workbook] received body with analysisId:", body.analysisId, "clientDisplays length:", body.clientDisplays?.length);
-    if (body.clientDisplays?.length > 0) {
-      console.log("[scoping-workbook] FIRST DISPLAY:", JSON.stringify(body.clientDisplays[0], null, 2));
-    }
     const {
       analysisId,
       quotes = [],
@@ -48,20 +32,17 @@ export async function POST(request: NextRequest) {
       contractDate,
       completionDate,
       clientSpecs,
-      clientDisplays,
     } = body;
 
     if (!analysisId) {
       return NextResponse.json({ error: "analysisId is required" }, { status: 400 });
     }
 
-    // Load analysis
     const analysis = await prisma.rfpAnalysis.findUnique({ where: { id: analysisId } });
     if (!analysis) {
       return NextResponse.json({ error: "Analysis not found" }, { status: 404 });
     }
 
-    // Use client-supplied specs if available (ensures export uses same data shown on screen)
     let specs = (clientSpecs || analysis.screens) as unknown as ExtractedLEDSpec[] || [];
     let project = (analysis.project as unknown as ExtractedProjectInfo) || {};
     let requirements = (analysis.requirements as unknown as ExtractedRequirement[]) || [];
@@ -70,12 +51,9 @@ export async function POST(request: NextRequest) {
       try {
         const originalScreens = specs;
         const healed = await reextractSavedPdfAnalysis(analysis);
-        // Preserve known-good pitch values from original analysis —
-        // AI extraction sometimes confuses mesh pitch (3.9mm) with LED pitch (2.5mm)
         specs = preservePitchFromOriginal(healed.screens, originalScreens);
         requirements = healed.requirements;
         project = { ...project, ...healed.project };
-        // Store healed flag in DB JSON (not in the typed project object)
         const projectForDb = { ...project, _healedAt: new Date().toISOString() };
         await prisma.rfpAnalysis.update({
           where: { id: analysis.id },
@@ -87,16 +65,12 @@ export async function POST(request: NextRequest) {
             specsFound: specs.length,
           },
         });
-        log.info(`[scoping-workbook] Westfield healed: ${specs.length} screens, pitch preserved from original`);
       } catch (err) {
         log.warn("[scoping-workbook] Westfield re-extract failed, using saved analysis");
-        // Mark as healed even on failure to stop re-extraction loop
         try {
           await prisma.rfpAnalysis.update({
             where: { id: analysis.id },
-            data: {
-              project: JSON.parse(JSON.stringify({ ...project, _healedAt: new Date().toISOString() })),
-            },
+            data: { project: JSON.parse(JSON.stringify({ ...project, _healedAt: new Date().toISOString() })) },
           });
         } catch {}
       }
@@ -106,72 +80,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No LED specs found in this analysis" }, { status: 400 });
     }
 
-    // Use client-provided displays if available, otherwise generate them via rate card
+    // Price via rate card — SAME path as preview-univer endpoint. No client mapping.
     let pricedDisplays;
-    if (clientDisplays && Array.isArray(clientDisplays) && clientDisplays.length > 0) {
-      pricedDisplays = clientDisplays.map((d: any, i: number) => {
-        const spec = specs[i] || specs[0]; // Best effort match if client and server specs have different length
-        const baseHardwareCost = d.hardwareCost || 0;
-        
-        return {
-          spec,
-          match: d.matchedProduct ? {
-            module: {
-              manufacturer: d.matchedProduct.manufacturer || "",
-              name: d.matchedProduct.model || "",
-              pitch: d.matchedProduct.pitch || 0,
-              nits: d.matchedProduct.nits || d.nits || 0,
-            },
-            fitScore: d.matchedProduct.fitScore || 100,
-            activeWidthFt: d.matchedProduct.activeWidthFt,
-            activeHeightFt: d.matchedProduct.activeHeightFt,
-          } : null,
-          hardwareCost: baseHardwareCost,
-          sparePartsCost: 0,
-          processorCost: d.processorCost || 0,
-          shippingCost: d.shippingCost || 0,
-          installCost: d.installCost || 0,
-          pmCost: d.pmCost || 0,
-          engCost: d.engCost || 0,
-          totalCost: d.totalCost || 0,
-          areaSqFt: d.areaSqFt || 0,
-          hardwareSellingPrice: d.hardwareSellingPrice || 0,
-          servicesSellingPrice: d.servicesSellingPrice || 0,
-          totalSellingPrice: d.totalSellingPrice || 0,
-          marginDollars: d.marginDollars || 0,
-          blendedMarginPct: d.blendedMarginPct || 0.15,
-          ledMarginPct: d.ledMarginPct || 0.15,
-          svcMarginPct: d.svcMarginPct || 0.15,
-          leadTimeWeeks: d.leadTimeWeeks || null,
-          costSource: d.costSource || "rate_card",
-          rateCardEstimate: d.rateCardEstimate || null,
-          quote: null,
-        };
+    try {
+      const rateCardResult = await generateRateCardExcel({
+        project, specs, quotes, zoneClass, installComplexity, includeBond, currency,
       });
-    } else {
-      try {
-        const rateCardResult = await generateRateCardExcel({
-          project, specs, quotes, zoneClass, installComplexity, includeBond, currency,
-        });
-        pricedDisplays = rateCardResult.pricedDisplays;
-      } catch {
-        pricedDisplays = undefined;
-      }
+      pricedDisplays = rateCardResult.pricedDisplays;
+    } catch {
+      pricedDisplays = undefined;
     }
 
     const { buffer, displays } = await generateScopingWorkbook({
-      project,
-      specs,
-      requirements,
-      pricedDisplays,
+      project, specs, requirements, pricedDisplays,
       includeAlternatesInBase: true,
-      zoneClass,
-      installComplexity,
-      includeBond,
-      currency,
-      paymentTerms,
-      contractDate,
-      completionDate,
+      zoneClass, installComplexity, includeBond, currency, paymentTerms, contractDate, completionDate,
     });
 
     const projectLabel = (project.projectName || project.venue || "Project").replace(/[^a-zA-Z0-9\s-]/g, "").replace(/\s+/g, "_");
@@ -182,7 +105,7 @@ export async function POST(request: NextRequest) {
       totalSellingPrice: displays.reduce((s, d) => s + d.sellingPrice, 0),
       totalMargin: displays.reduce((s, d) => s + d.marginDollars, 0),
       displayCount: displays.length,
-      sheetCount: 6 + displays.length, // base sheets + per-zone install sheets
+      sheetCount: 6 + displays.length,
     };
 
     return new NextResponse(buffer, {
