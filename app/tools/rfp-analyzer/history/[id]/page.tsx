@@ -507,7 +507,7 @@ export default function AnalysisDetailPage() {
     if (!analysis) return;
     setDownloading("scoping");
     try {
-      await downloadBlob("/api/rfp/pipeline/scoping-workbook", { analysisId: analysis.id, clientSpecs: (analysis.screens as any[]) || undefined }, "Scoping_Workbook.xlsx");
+      await downloadBlob("/api/rfp/pipeline/scoping-workbook", { analysisId: analysis.id, clientSpecs: (analysis.screens as any[]) || undefined, clientDisplays: pricingPreview?.displays || undefined }, "Scoping_Workbook.xlsx");
     } catch (err: any) {
       console.error("Scoping workbook failed:", err);
     } finally {
