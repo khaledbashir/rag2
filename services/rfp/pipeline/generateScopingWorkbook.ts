@@ -1461,13 +1461,9 @@ function buildLedCostSheet(
     const selectedPitch = (selectedProduct as any)?.pitchMm ?? (selectedProduct as any)?.pitch;
     const effectivePitch = selectedPitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.match?.module?.pitch ?? d.spec.pixelPitchMm;
 
-    // E: Vendor — VLOOKUP from _Products col 2
-    const vendorResult = selectedProduct?.manufacturer
-      || d.match?.module?.manufacturer
-      || (d.spec.environment === "outdoor" ? "Yaham" : "LG/Yaham");
-    dr.getCell(5).value = { formula: `IFERROR(VLOOKUP(F${row},${prodRange},2,FALSE),"")`, result: vendorResult };
     // F: Product — must match a name in _Products for VLOOKUPs to work.
     // Priority: catalog name > matched module name > pitch-based best match > extracted name
+    // IMPORTANT: Determine product name FIRST, then use _Products data for cached VLOOKUP results.
     let productNameForF: string = "—";
     if (isClockLike) {
       productNameForF = selectedProduct?.name || d.spec.selectedProductName || "—";
@@ -1501,8 +1497,19 @@ function buildLedCostSheet(
       errorTitle: "Invalid Product",
       error: "Select a product from the dropdown list",
     };
+
+    // Look up the ACTUAL product in _Products list for cached VLOOKUP results.
+    // This ensures cached results match what VLOOKUP would return from the _Products sheet.
+    const catalogProduct = sortedProducts.find((p) => p.name === productNameForF);
+
+    // E: Vendor — VLOOKUP from _Products col 2
+    const vendorResult = catalogProduct?.manufacturer
+      || selectedProduct?.manufacturer
+      || d.match?.module?.manufacturer
+      || (d.spec.environment === "outdoor" ? "Yaham" : "LG/Yaham");
+    dr.getCell(5).value = { formula: `IFERROR(VLOOKUP(F${row},${prodRange},2,FALSE),"")`, result: vendorResult };
     // G: Pitch — VLOOKUP from _Products col 3 (numeric, formatted with "mm" suffix)
-    const pitchResult = effectivePitch || 0;
+    const pitchResult = catalogProduct?.pitchMm ?? effectivePitch ?? 0;
     dr.getCell(7).value = { formula: `IFERROR(VLOOKUP(F${row},${prodRange},3,FALSE),0)`, result: pitchResult };
     dr.getCell(7).numFmt = '0.0##"mm"';
     dr.getCell(7).alignment = { horizontal: "center" };
@@ -1524,7 +1531,7 @@ function buildLedCostSheet(
     dr.getCell(13).value = { formula: `H${row}*I${row}*L${row}`, result: isFinite(sqFtResult) ? sqFtResult : 0 };
     dr.getCell(13).numFmt = "#,##0";
     // N: Product NITs — VLOOKUP from _Products col 5
-    const nitsResult = isClockLike ? 0 : (d.match?.module?.nits ?? d.spec.brightnessNits ?? 0);
+    const nitsResult = isClockLike ? 0 : (catalogProduct?.brightnessNits ?? d.match?.module?.nits ?? d.spec.brightnessNits ?? 0);
     dr.getCell(14).value = isClockLike
       ? ""
       : { formula: `IFERROR(VLOOKUP(F${row},${prodRange},5,FALSE),0)`, result: nitsResult };
@@ -1577,7 +1584,7 @@ function buildLedCostSheet(
 
     // X: Weight — formula: area(m²) × weight density from _Products col 6
     const areaM2 = d.areaSqFt * 0.092903;
-    const catalogMatch = selectedProduct
+    const catalogMatch = catalogProduct ?? selectedProduct
       ?? (effectivePitch ? getAllProducts().find((p) => Math.abs(p.pitchMm - effectivePitch) < 0.5) : null);
     const weightResult = catalogMatch
       ? Math.round(areaM2 * catalogMatch.weightDensityLbm2)
