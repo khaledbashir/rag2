@@ -1700,7 +1700,17 @@ export default function RfpAnalyzerClient() {
           // Only sync if spec doesn't already have a product selected
           if (s.selectedProductName && s.selectedProductId) return s;
           const updates: Partial<ExtractedLEDSpec> = {};
-          if (mp.model && !s.selectedProductName) updates.selectedProductName = mp.model;
+          // Find the product in availableProducts to get the correct ID and catalog name
+          const matchedAvail = availableProducts.find(p =>
+            p.name === mp.model || p.label === mp.model ||
+            (mp.pitch && Math.abs(p.pitch - mp.pitch) < 0.5 && p.manufacturer === mp.manufacturer)
+          );
+          if (matchedAvail) {
+            if (!s.selectedProductId) updates.selectedProductId = matchedAvail.id;
+            if (!s.selectedProductName) updates.selectedProductName = matchedAvail.name;
+          } else if (mp.model && !s.selectedProductName) {
+            updates.selectedProductName = mp.model;
+          }
           if (mp.pitch && !s.pixelPitchMm) updates.pixelPitchMm = mp.pitch;
           if (d.activeWidthFt || mp.activeWidthFt) updates.activeWidthFt = d.activeWidthFt || mp.activeWidthFt;
           if (d.activeHeightFt || mp.activeHeightFt) updates.activeHeightFt = d.activeHeightFt || mp.activeHeightFt;
