@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
       contractDate,
       completionDate,
       clientPricedDisplays,
+      clientSpecs,
     } = body;
 
     if (!analysisId) {
@@ -56,7 +57,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Analysis not found" }, { status: 404 });
     }
 
-    let specs = (analysis.screens as unknown as ExtractedLEDSpec[]) || [];
+    // Use client-supplied specs if available (ensures export uses same data shown on screen)
+    let specs = (clientSpecs || analysis.screens) as unknown as ExtractedLEDSpec[] || [];
     let project = (analysis.project as unknown as ExtractedProjectInfo) || {};
     let requirements = (analysis.requirements as unknown as ExtractedRequirement[]) || [];
 
