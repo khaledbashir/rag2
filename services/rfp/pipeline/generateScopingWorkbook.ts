@@ -1555,19 +1555,12 @@ function buildLedCostSheet(
     row++;
   });
 
-  // Total row with SUM formulas — only base displays, not alternates
-  // When includeAlternatesInBase is true, alternates are mixed in with base displays.
-  // The TOTAL should only count base (non-alternate) displays per ANC rules.
-  const baseDisplays = displays.filter((d) => !d.spec.isAlternate);
-  const baseRowIndices: number[] = [];
-  displays.forEach((d, idx) => {
-    if (!d.spec.isAlternate) baseRowIndices.push(dataStartRow + idx);
-  });
-  // Build SUMPRODUCT formula that only sums base display rows (skip alternates)
-  const baseSumFormula = (col: string) =>
-    baseRowIndices.length > 0
-      ? baseRowIndices.map((r) => `${col}${r}`).join("+")
-      : `SUM(${col}${dataStartRow}:${col}${dataStartRow})`;
+  // Total row — include all displays in the workbook.
+  // When includeAlternatesInBase is true (RFP analyzer export), alternates are
+  // real displays that should be counted. Use simple SUM over all data rows.
+  const baseDisplays = displays;
+  const lastDataRow = dataStartRow + displays.length - 1;
+  const baseSumFormula = (col: string) => `SUM(${col}${dataStartRow}:${col}${lastDataRow})`;
 
   row++;
   const gtR = ws.getRow(row);
