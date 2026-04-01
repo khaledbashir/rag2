@@ -949,13 +949,50 @@ export default function RfpAnalyzerClient() {
   // ========================================================================
 
   const requirements = result?.requirements || [];
-  // Server-generated preview — uses SAME generateScopingWorkbook as export
-  const serverPreviewSpecs = useMemo(() => editableSpecs.length > 0 ? editableSpecs : (result?.screens || []), [editableSpecs, result?.screens]);
-  const { data: serverWorkbookData, loading: serverWorkbookLoading, error: serverWorkbookError, projectTotal: serverProjectTotal, displayRowMap } = useRfpServerPreview({
-    analysisId: result?.id || null,
-    specs: serverPreviewSpecs,
-    includeBond: result?.project?.bondRequired,
-  });
+  // Server-generated preview — uses SAME generateScopingWorkbook as export.
+  // Direct fetch, no debounce abstraction. Fires once when result loads.
+  const [serverWorkbookData, setServerWorkbookData] = useState<any | null>(null);
+  const [serverWorkbookLoading, setServerWorkbookLoading] = useState(false);
+  const [serverWorkbookError, setServerWorkbookError] = useState<string | null>(null);
+  const [serverProjectTotal, setServerProjectTotal] = useState(0);
+  const [displayRowMap, setDisplayRowMap] = useState<Record<number, number>>({});
+  const serverFetchedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const specs = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
+    if (!result?.id || !specs.length) return;
+    // Only fetch once per analysis (or when specs change meaningfully)
+    const key = `${result.id}:${specs.length}:${specs[0]?.selectedProductName || specs[0]?.name || ""}`;
+    if (serverFetchedRef.current === key) return;
+    serverFetchedRef.current = key;
+
+    setServerWorkbookLoading(true);
+    setServerWorkbookError(null);
+
+    fetch("/api/rfp/preview-univer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        analysisId: result.id,
+        clientSpecs: specs,
+        includeBond: result.project?.bondRequired || false,
+      }),
+    })
+      .then(res => {
+        if (!res.ok) return res.json().then(e => { throw new Error(e.error || `${res.status}`); });
+        return res.json();
+      })
+      .then(data => {
+        setServerWorkbookData(data);
+        if (data.projectTotal != null) setServerProjectTotal(data.projectTotal);
+        if (data.displayRowMap) setDisplayRowMap(data.displayRowMap);
+      })
+      .catch(err => {
+        console.error("[Server Preview] Failed:", err.message);
+        setServerWorkbookError(err.message);
+      })
+      .finally(() => setServerWorkbookLoading(false));
+  }, [result?.id, result?.screens, editableSpecs, result?.project?.bondRequired]);
 
   // Handle cell edits from the server-rendered UniverPreview.
   // Maps row/col → spec field, updates editableSpecs → triggers server rebuild.
