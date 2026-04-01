@@ -1359,6 +1359,23 @@ function buildLedCostSheet(
 
   setTitle(ws, "W", `${projectName} — LED Cost Sheet`);
 
+  // Build product dropdown list for data validation on column F
+  const allProducts = getAllProducts();
+  const productNames = allProducts
+    .map((p) => p.name)
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+  // Excel data validation list has a 255-char limit for inline lists,
+  // so store product names in a hidden "Products" sheet and reference it
+  let productSheet = wb.getWorksheet("_Products");
+  if (!productSheet) {
+    productSheet = wb.addWorksheet("_Products", { state: "veryHidden" });
+    productNames.forEach((name, i) => {
+      productSheet!.getCell(i + 1, 1).value = name;
+    });
+  }
+  const productListRef = `'_Products'!$A$1:$A$${productNames.length}`;
+
   // Master LED Margin Override (yellow cell) — changing this overrides all display margins
   const masterMarginRow = 2;
   const masterMarginLabel = ws.getCell(masterMarginRow, 21); // column U
@@ -1432,6 +1449,15 @@ function buildLedCostSheet(
       || d.spec.selectedProductName
       || d.match?.module?.name
       || "—";
+    // F: Product dropdown — allow user to change product in Excel
+    dr.getCell(6).dataValidation = {
+      type: "list",
+      allowBlank: true,
+      formulae: [productListRef],
+      showErrorMessage: true,
+      errorTitle: "Invalid Product",
+      error: "Select a product from the dropdown list",
+    };
     // G: Pitch — prefer product DB pitch, then product name parse, then matched module pitch, then extracted pitch
     // AI extractor often grabs mesh pitch (3.9mm) instead of LED pixel pitch (2.5mm)
     const effectivePitch = selectedProduct?.pixelPitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.match?.module?.pitch ?? d.spec.pixelPitchMm;
