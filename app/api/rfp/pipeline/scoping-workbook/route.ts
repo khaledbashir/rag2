@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
       specs,
       requirements,
       pricedDisplays,
-      includeAlternatesInBase: false,
+      includeAlternatesInBase: true,
       zoneClass,
       installComplexity,
       includeBond,
