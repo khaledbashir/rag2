@@ -12,6 +12,7 @@ interface RfpPreviewInput {
   analysisId: string | null;
   specs: any[];
   quotes?: any[];
+  clientDisplays?: any[];
   includeBond?: boolean;
 }
 
@@ -21,11 +22,13 @@ interface RfpPreviewInput {
  * server workbook output are included (selectedProductName, pixelPitchMm,
  * heightFt, widthFt, quantity, orientation, mountType).
  */
-function specsKey(specs: any[]): string {
+function specsKey(specs: any[], displays?: any[]): string {
   if (!specs?.length) return "[]";
-  return specs.map(s =>
+  const sKey = specs.map(s =>
     `${s.selectedProductName ?? ""}|${s.pixelPitchMm ?? ""}|${s.heightFt ?? ""}|${s.widthFt ?? ""}|${s.quantity ?? ""}|${s.orientation ?? ""}|${s.mountType ?? ""}`
   ).join(";");
+  const dKey = displays ? displays.map(d => `${d.match?.product?.name ?? ""}`).join(";") : "";
+  return sKey + "###" + dKey;
 }
 
 export function useRfpServerPreview(input: RfpPreviewInput) {
@@ -40,7 +43,7 @@ export function useRfpServerPreview(input: RfpPreviewInput) {
   const skipNextRebuild = useCallback(() => { skipRef.current = true; }, []);
 
   // Stable key — only changes when spec content actually changes
-  const stableSpecsKey = useMemo(() => specsKey(input.specs), [input.specs]);
+  const stableSpecsKey = useMemo(() => specsKey(input.specs, input.clientDisplays), [input.specs, input.clientDisplays]);
 
   useEffect(() => {
     const specNames = input.specs?.slice(0, 3).map((s: any) => s.selectedProductName || s.displayName || "?").join(", ");
@@ -69,6 +72,7 @@ export function useRfpServerPreview(input: RfpPreviewInput) {
           body: JSON.stringify({
             analysisId: input.analysisId,
             clientSpecs: input.specs,
+            clientDisplays: input.clientDisplays || [],
             quotes: input.quotes || [],
             includeBond: input.includeBond || false,
           }),

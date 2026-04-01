@@ -954,6 +954,8 @@ export default function RfpAnalyzerClient() {
   const { data: serverWorkbookData, loading: serverWorkbookLoading, error: serverWorkbookError, projectTotal: serverProjectTotal, displayRowMap } = useRfpServerPreview({
     analysisId: result?.id || null,
     specs: serverPreviewSpecs,
+    quotes: quoteImportResult?.quotes || [],
+    clientDisplays: pricingPreview?.displays,
     includeBond: result?.project?.bondRequired,
   });
 
@@ -1699,6 +1701,7 @@ export default function RfpAnalyzerClient() {
           quotes: quoteImportResult?.quotes || [],
           includeBond: result.project.bondRequired,
           clientSpecs: editableSpecs.length > 0 ? editableSpecs : undefined,
+          clientDisplays: pricingPreview?.displays || undefined,
         }),
       });
       if (!res.ok) throw new Error(`Failed (${res.status})`);

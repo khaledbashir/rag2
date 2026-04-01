@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
     const {
       analysisId,
       clientSpecs,
+      clientDisplays,
       quotes = [],
       zoneClass = "standard",
       installComplexity = "standard",
@@ -48,15 +49,57 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No LED specs" }, { status: 400 });
     }
 
-    // Price displays via rate card — same as export
+    // Map client-side pricing displays to PricedDisplay format if provided.
+    // This ensures the preview uses the EXACT same products shown in the UI.
     let pricedDisplays;
-    try {
-      const rateCardResult = await generateRateCardExcel({
-        project, specs, quotes, zoneClass, installComplexity, includeBond, currency,
+    if (clientDisplays && Array.isArray(clientDisplays) && clientDisplays.length > 0) {
+      pricedDisplays = clientDisplays.map((d: any, i: number) => {
+        const spec = specs[i] || {};
+        const hw = d.hardwareCost || 0;
+        const spare = 0;
+        const proc = d.processorCost || 0;
+        const ship = d.shippingCost || 0;
+        const inst = d.installCost || 0;
+        const pm = d.pmCost || 0;
+        const eng = d.engCost || 0;
+        const total = d.totalCost || 0;
+        const margin = d.blendedMarginPct || 0.15;
+        const selling = d.totalSellingPrice || (margin < 1 ? total / (1 - margin) : total);
+        return {
+          spec,
+          match: d.matchedProduct ? {
+            module: {
+              manufacturer: d.matchedProduct.manufacturer || "",
+              name: d.matchedProduct.model || "",
+              pitch: d.matchedProduct.pitch || 0,
+              nits: d.matchedProduct.nits || d.nits || 0,
+            },
+            fitScore: d.matchedProduct.fitScore || 100,
+            activeWidthFt: d.matchedProduct.activeWidthFt,
+            activeHeightFt: d.matchedProduct.activeHeightFt,
+          } : null,
+          quote: null,
+          areaSqFt: d.areaSqFt || 0,
+          hardwareCost: hw,
+          sparePartsCost: spare,
+          processorCost: proc,
+          shippingCost: ship,
+          installCost: inst,
+          pmCost: pm,
+          engCost: eng,
+          totalCost: total,
+          sellingPrice: selling,
+        };
       });
-      pricedDisplays = rateCardResult.pricedDisplays;
-    } catch {
-      pricedDisplays = undefined;
+    } else {
+      try {
+        const rateCardResult = await generateRateCardExcel({
+          project, specs, quotes, zoneClass, installComplexity, includeBond, currency,
+        });
+        pricedDisplays = rateCardResult.pricedDisplays;
+      } catch {
+        pricedDisplays = undefined;
+      }
     }
 
     // Generate workbook — SAME call as export endpoint
