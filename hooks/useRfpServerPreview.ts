@@ -27,8 +27,9 @@ export function useRfpServerPreview(input: RfpPreviewInput) {
   const skipNextRebuild = useCallback(() => { skipRef.current = true; }, []);
 
   useEffect(() => {
+    console.log("[RFP Server Preview] Effect triggered", { analysisId: input.analysisId, specCount: input.specs?.length, skip: skipRef.current });
     if (skipRef.current) { skipRef.current = false; return; }
-    if (!input.analysisId || !input.specs?.length) { setData(null); return; }
+    if (!input.analysisId || !input.specs?.length) { console.log("[RFP Server Preview] Skipped — no analysisId or specs"); setData(null); return; }
 
     if (timerRef.current) clearTimeout(timerRef.current);
 
