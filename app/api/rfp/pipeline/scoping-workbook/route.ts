@@ -102,23 +102,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No LED specs found in this analysis" }, { status: 400 });
     }
 
-    // Map client-side pricing displays to PricedDisplay format if provided.
-    // This ensures the export uses the EXACT same numbers shown on the online preview.
+    // Use client-provided displays if available, otherwise generate them via rate card
     let pricedDisplays;
     if (clientDisplays && Array.isArray(clientDisplays) && clientDisplays.length > 0) {
       pricedDisplays = clientDisplays.map((d: any, i: number) => {
-        const spec = specs[i] || {};
-        // Client hardwareCost is the full LED cost shown on screen — don't add spares on top
-        const hw = d.hardwareCost || 0;
-        const spare = 0;
-        const proc = d.processorCost || 0;
-        const ship = d.shippingCost || 0;
-        const inst = d.installCost || 0;
-        const pm = d.pmCost || 0;
-        const eng = d.engCost || 0;
-        const total = d.totalCost || 0;
-        const margin = d.blendedMarginPct || 0.15;
-        const selling = d.totalSellingPrice || (margin < 1 ? total / (1 - margin) : total);
+        const spec = specs[i] || specs[0]; // Best effort match if client and server specs have different length
+        const baseHardwareCost = d.hardwareCost || 0;
+        
         return {
           spec,
           match: d.matchedProduct ? {
@@ -132,38 +122,21 @@ export async function POST(request: NextRequest) {
             activeWidthFt: d.matchedProduct.activeWidthFt,
             activeHeightFt: d.matchedProduct.activeHeightFt,
           } : null,
-          quote: null,
-          areaSqFt: d.areaSqFt || 0,
-          hardwareCost: hw,
-          sparePartsCost: spare,
-          processorCost: proc,
-          shippingCost: ship,
-          installCost: inst,
-          pmCost: pm,
-          engCost: eng,
-          totalCost: total,
-          ledMarginPct: margin,
-          svcMarginPct: margin,
-          hardwareSellingPrice: margin < 1 ? (hw + spare + proc + ship) / (1 - margin) : (hw + spare + proc + ship),
-          servicesSellingPrice: margin < 1 ? (inst + pm + eng) / (1 - margin) : (inst + pm + eng),
-          totalSellingPrice: selling,
-          marginDollars: selling - total,
-          blendedMarginPct: margin,
-          leadTimeWeeks: null,
-          costSource: d.costSource || "rate_card",
+          hardwareCost: baseHardwareCost,
+          sparePartsCost: 0,
+          processorCost: d.processorCost || 0,
+          mountsCost: d.mountsCost || 0,
+          installCost: d.installCost || 0,
+          shippingCost: d.shippingCost || 0,
+          otherCosts: d.otherCosts || 0,
+          bondsAndFees: d.bondsAndFees || 0,
+          totalCost: d.totalCost || 0,
         };
       });
-      log.info(`[scoping-workbook] Using ${pricedDisplays.length} client-supplied pricing displays`);
     } else {
       try {
         const rateCardResult = await generateRateCardExcel({
-          project,
-          specs,
-          quotes,
-          zoneClass,
-          installComplexity,
-          includeBond,
-          currency,
+          project, specs, quotes, zoneClass, installComplexity, includeBond, currency,
         });
         pricedDisplays = rateCardResult.pricedDisplays;
       } catch {

@@ -954,8 +954,6 @@ export default function RfpAnalyzerClient() {
   const { data: serverWorkbookData, loading: serverWorkbookLoading, error: serverWorkbookError, projectTotal: serverProjectTotal, displayRowMap } = useRfpServerPreview({
     analysisId: result?.id || null,
     specs: serverPreviewSpecs,
-    quotes: quoteImportResult?.quotes || [],
-    clientDisplays: pricingPreview?.displays,
     includeBond: result?.project?.bondRequired,
   });
 
@@ -1701,7 +1699,6 @@ export default function RfpAnalyzerClient() {
           quotes: quoteImportResult?.quotes || [],
           includeBond: result.project.bondRequired,
           clientSpecs: editableSpecs.length > 0 ? editableSpecs : undefined,
-          clientDisplays: pricingPreview?.displays || undefined,
         }),
       });
       if (!res.ok) throw new Error(`Failed (${res.status})`);
@@ -2706,16 +2703,6 @@ export default function RfpAnalyzerClient() {
                     </div>
                   </div>
                 )}
-              </div>
-
-              {/* DEBUG: Server preview state */}
-              <div className="bg-yellow-100 dark:bg-yellow-900 text-xs px-3 py-1 flex items-center gap-4 font-mono" style={{ display: useServerWorkbook ? 'flex' : 'none' }}>
-                <span>🔍 DEBUG: useServer={String(useServerWorkbook)}</span>
-                <span>analysisId={result?.id ? result.id.slice(0,8)+'…' : 'null'}</span>
-                <span>specs={serverPreviewSpecs?.length ?? 0}</span>
-                <span>loading={String(serverWorkbookLoading)}</span>
-                <span>data={serverWorkbookData ? 'YES' : 'NO'}</span>
-                <span>error={serverWorkbookError || 'none'}</span>
               </div>
 
               {/* ---- Univer Spreadsheet — FILLS REMAINING SPACE ---- */}
