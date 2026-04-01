@@ -43,7 +43,6 @@ export async function POST(request: NextRequest) {
       paymentTerms = "50/20/20/10",
       contractDate,
       completionDate,
-      clientPricedDisplays,
       clientSpecs,
     } = body;
 
@@ -102,25 +101,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No LED specs found in this analysis" }, { status: 400 });
     }
 
-    // Use client-supplied pricing data if available (ensures export matches what user sees on screen).
-    // Fall back to server-side rate card calculation if not provided.
-    let pricedDisplays = clientPricedDisplays || undefined;
-    if (!pricedDisplays) {
-      try {
-        const rateCardResult = await generateRateCardExcel({
-          project,
-          specs,
-          quotes,
-          zoneClass,
-          installComplexity,
-          includeBond,
-          currency,
-        });
-        pricedDisplays = rateCardResult.pricedDisplays;
-      } catch {
-        // If rate card fails, scoping workbook still works with its own calculations
-        pricedDisplays = undefined;
-      }
+    // Get priced displays from rate card generator for accurate pricing
+    let pricedDisplays;
+    try {
+      const rateCardResult = await generateRateCardExcel({
+        project,
+        specs,
+        quotes,
+        zoneClass,
+        installComplexity,
+        includeBond,
+        currency,
+      });
+      pricedDisplays = rateCardResult.pricedDisplays;
+    } catch {
+      // If rate card fails, scoping workbook still works with its own calculations
+      pricedDisplays = undefined;
     }
 
     const { buffer, displays } = await generateScopingWorkbook({
