@@ -4,7 +4,7 @@
  * so what you see online IS what you get in the Excel.
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 const DEBOUNCE_MS = 2000;
 
@@ -13,6 +13,19 @@ interface RfpPreviewInput {
   specs: any[];
   quotes?: any[];
   includeBond?: boolean;
+}
+
+/**
+ * Creates a stable string key from specs so the effect doesn't re-fire
+ * on identical-but-new-reference arrays. Only fields that affect the
+ * server workbook output are included (selectedProductName, pixelPitchMm,
+ * heightFt, widthFt, quantity, orientation, mountType).
+ */
+function specsKey(specs: any[]): string {
+  if (!specs?.length) return "[]";
+  return specs.map(s =>
+    `${s.selectedProductName ?? ""}|${s.pixelPitchMm ?? ""}|${s.heightFt ?? ""}|${s.widthFt ?? ""}|${s.quantity ?? ""}|${s.orientation ?? ""}|${s.mountType ?? ""}`
+  ).join(";");
 }
 
 export function useRfpServerPreview(input: RfpPreviewInput) {
@@ -25,6 +38,9 @@ export function useRfpServerPreview(input: RfpPreviewInput) {
   const abortRef = useRef<AbortController | null>(null);
   const skipRef = useRef(false);
   const skipNextRebuild = useCallback(() => { skipRef.current = true; }, []);
+
+  // Stable key — only changes when spec content actually changes
+  const stableSpecsKey = useMemo(() => specsKey(input.specs), [input.specs]);
 
   useEffect(() => {
     console.log("[RFP Server Preview] Effect triggered", { analysisId: input.analysisId, specCount: input.specs?.length, skip: skipRef.current });
@@ -77,7 +93,9 @@ export function useRfpServerPreview(input: RfpPreviewInput) {
     }, DEBOUNCE_MS);
 
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [input.analysisId, input.specs, input.quotes, input.includeBond]);
+    // Stable dependencies — specs represented by serialized key, not array reference
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [input.analysisId, stableSpecsKey, input.includeBond]);
 
   return { data, loading, error, projectTotal, displayRowMap, skipNextRebuild };
 }

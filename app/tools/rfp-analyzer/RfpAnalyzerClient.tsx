@@ -6,7 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import UploadZone, { type PipelineEvent } from "./_components/UploadZone";
 import PipelineCheckpoint from "./_components/PipelineCheckpoint";
-import { buildRfpWorkbook } from "./_components/rfpWorkbookBuilder";
 import { LED_COST_PER_SQFT_BY_PITCH } from "@/services/rfp/productCatalog";
 import { snapDimension } from "@/services/catalog/productMatcher";
 import { LED_MODULES } from "@/data/catalogs/led-products";
@@ -14,7 +13,6 @@ import type { PricingDocument } from "@/types/pricing";
 import dynamic from "next/dynamic";
 
 const PdfSplitPanel = dynamic(() => import("./_components/PdfSplitPanel"), { ssr: false });
-const UniverSpreadsheet = dynamic(() => import("./_components/UniverSpreadsheet"), { ssr: false });
 const UniverPreview = dynamic(() => import("@/app/components/estimator/UniverPreview"), { ssr: false });
 const LuxWidget = dynamic(() => import("./_components/LuxWidget"), { ssr: false });
 const ProductMatchPanel = dynamic(() => import("./_components/ProductMatchPanel"), { ssr: false });
@@ -953,37 +951,46 @@ export default function RfpAnalyzerClient() {
   const requirements = result?.requirements || [];
   // Server-generated preview — uses SAME generateScopingWorkbook as export
   const serverPreviewSpecs = useMemo(() => editableSpecs.length > 0 ? editableSpecs : (result?.screens || []), [editableSpecs, result?.screens]);
-  const { data: serverWorkbookData, loading: serverWorkbookLoading, error: serverWorkbookError, projectTotal: serverProjectTotal } = useRfpServerPreview({
+  const { data: serverWorkbookData, loading: serverWorkbookLoading, error: serverWorkbookError, projectTotal: serverProjectTotal, displayRowMap } = useRfpServerPreview({
     analysisId: result?.id || null,
     specs: serverPreviewSpecs,
     includeBond: result?.project?.bondRequired,
   });
 
-  const workbookData = useMemo(() => {
-    if (!result) return { fileName: "RFP Analysis", sheets: [] };
-    return buildRfpWorkbook({
-      project: result.project,
-      screens: editableSpecs.length > 0 ? editableSpecs : result.screens,
-      requirements,
-      triage: result.triage || [],
-      pricingDisplays: pricingPreview?.displays || [],
-      pricingSummary: pricingPreview?.summary || null,
-      bidFormResult: bidFormResult || null,
-      specMismatches: specMismatches.length > 0 ? specMismatches : undefined,
-      showSpecMatch,
-      availableProducts,
-      onProductSelect: handleProductSelect,
-      onAddLineItem: handleAddLineItem,
-      onAddScreen: handleAddScreen,
-      onRemoveScreen: handleRemoveScreen,
-      onQtyChange: handleQtyChange,
-      onRepairRow: handleRepairRow,
-      onSourcePageClick: (pg) => {
-        setPdfViewerPage(pg);
-        setShowPdfPanel(true);
-      },
+  // Handle cell edits from the server-rendered UniverPreview.
+  // Maps row/col → spec field, updates editableSpecs → triggers server rebuild.
+  const handlePreviewCellEdit = useCallback((sheetName: string, row: number, col: number, value: number | string) => {
+    // Only handle LED Cost Sheet edits (row is 0-based from UniverPreview)
+    if (sheetName !== "LED Cost Sheet") return;
+
+    // displayRowMap maps 1-based row → spec index. Convert Univer's 0-based row.
+    const oneBasedRow = row + 1;
+    const specIdx = displayRowMap[oneBasedRow];
+    if (specIdx == null) return;
+
+    // Column mapping (0-based): H(7)=Height, I(8)=Width, L(11)=Qty
+    let field: string | null = null;
+    if (col === 7) field = "heightFt";
+    else if (col === 8) field = "widthFt";
+    else if (col === 11) field = "quantity";
+
+    if (!field) return; // Only handle editable spec fields for now
+
+    const numValue = typeof value === "number" ? value : parseFloat(String(value));
+    if (isNaN(numValue) || numValue <= 0) return;
+
+    setResult(prev => {
+      if (!prev) return prev;
+      if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
+      const spec = { ...prev.screens[specIdx] };
+      (spec as any)[field!] = numValue;
+      const updated = [...prev.screens];
+      updated[specIdx] = spec;
+      setEditableSpecs(updated);
+      autoSaveSpecs(updated, prev.id);
+      return { ...prev, screens: updated };
     });
-  }, [result, editableSpecs, pricingPreview, requirements, bidFormResult, specMismatches, availableProducts, handleProductSelect, handleAddLineItem, handleAddScreen, handleRemoveScreen, handleQtyChange, handleRepairRow]);
+  }, [displayRowMap, autoSaveSpecs]);
 
   // ========================================================================
   // Auto-run pricing when extraction completes (no manual step needed)
@@ -1692,7 +1699,6 @@ export default function RfpAnalyzerClient() {
           quotes: quoteImportResult?.quotes || [],
           includeBond: result.project.bondRequired,
           clientSpecs: editableSpecs.length > 0 ? editableSpecs : undefined,
-          clientDisplays: pricingPreview?.displays || undefined,
         }),
       });
       if (!res.ok) throw new Error(`Failed (${res.status})`);
@@ -2525,7 +2531,7 @@ export default function RfpAnalyzerClient() {
                 {/* Main bar - always visible */}
                 <div className="flex items-center justify-between px-3 py-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold tracking-wide truncate">{workbookData.fileName || "RFP Analysis"}</span>
+                    <span className="text-xs font-semibold tracking-wide truncate">{result?.project?.projectName || "RFP Analysis"}</span>
                   </div>
                   <div className="flex items-center gap-1">
                     {/* Spec Match toggle */}
@@ -2700,177 +2706,28 @@ export default function RfpAnalyzerClient() {
               </div>
 
               {/* ---- Univer Spreadsheet — FILLS REMAINING SPACE ---- */}
-              <div className={`flex-1 min-h-0 overflow-hidden relative ${spreadsheetMode ? "border-x border-gray-200 dark:border-gray-700" : "border border-t-0 border-gray-200 dark:border-gray-700"}`}>
+              <div
+                className={`flex-1 min-h-0 overflow-hidden relative ${spreadsheetMode ? "border-x border-gray-200 dark:border-gray-700" : "border border-t-0 border-gray-200 dark:border-gray-700"}`}
+                style={{ minHeight: 200 }}
+              >
                 {/* Server-generated workbook: same generator as export = same numbers */}
                 {useServerWorkbook && serverWorkbookData ? (
                   <UniverPreview
                     workbookData={serverWorkbookData}
                     loading={serverWorkbookLoading}
                     error={serverWorkbookError}
+                    onCellEdit={handlePreviewCellEdit}
                   />
                 ) : useServerWorkbook && serverWorkbookError ? (
                   <div className="flex items-center justify-center h-full gap-2 text-sm text-destructive">
                     <AlertCircle className="w-4 h-4" />
                     <span>Server preview failed: {serverWorkbookError}</span>
                   </div>
-                ) : !pricingPreview || serverWorkbookLoading ? (
+                ) : (
                   <div className="flex items-center justify-center h-full gap-2 text-sm text-muted-foreground">
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    {serverWorkbookLoading ? "Generating scoping workbook..." : "Loading pricing data..."}
+                    Generating scoping workbook...
                   </div>
-                ) : (
-                <UniverSpreadsheet
-                  screens={editableSpecs.length > 0 ? editableSpecs : (result?.screens || [])}
-                  pricingDisplays={pricingPreview.displays}
-                  pricingSummary={pricingPreview.summary}
-                  pricingDocument={result?.pricingDocument}
-                  projectInfo={{
-                    projectName: result?.project?.projectName || result?.project?.clientName,
-                    clientName: result?.project?.clientName,
-                    venue: result?.project?.venue,
-                    location: result?.project?.location,
-                    documentMode: result?.project?.documentMode,
-                    createdAt: result?.createdAt,
-                    updatedAt: result?.updatedAt,
-                  }}
-                  internalAudit={result?.internalAudit}
-                  availableProducts={availableProducts}
-                  onSpecEdit={(screenIdx, field, value) => {
-                    setResult(prev => {
-                      if (!prev) return prev;
-                      if (screenIdx < 0 || screenIdx >= prev.screens.length) return prev;
-                      const spec = { ...prev.screens[screenIdx] };
-                      (spec as any)[field] = value;
-                      const updated = [...prev.screens];
-                      updated[screenIdx] = spec;
-                      setEditableSpecs(updated);
-                      autoSaveSpecs(updated, prev.id);
-                      return { ...prev, screens: updated };
-                    });
-                    setPricingPreview(prev => {
-                      if (!prev) return prev;
-                      if (screenIdx < 0 || screenIdx >= prev.displays.length) return prev;
-                      const display = prev.displays[screenIdx];
-                      const currentSpec = editableSpecs[screenIdx] || result?.screens?.[screenIdx];
-                      let h = currentSpec?.heightFt || 0, w = currentSpec?.widthFt || 0, qty = currentSpec?.quantity || 1;
-                      if (field === 'heightFt') h = value;
-                      if (field === 'widthFt') w = value;
-                      if (field === 'quantity') qty = value;
-                      const updatedDisplays = prev.displays.map((d, i) =>
-                        i === screenIdx ? recalcDisplayCosts(d, h * w, qty) : d);
-                      return recalcSummary(prev, updatedDisplays);
-                    });
-                  }}
-                  onPricingEdit={(displayIdx, field, value) => {
-                    setPricingPreview(prev => {
-                      if (!prev) return prev;
-                      if (displayIdx < 0 || displayIdx >= prev.displays.length) return prev;
-                      const updatedDisplays = prev.displays.map((d, i) => {
-                        if (i !== displayIdx) return d;
-                        const updated = { ...d };
-                        if (field === "blendedMarginPct") {
-                          updated.blendedMarginPct = value;
-                        } else {
-                          (updated as any)[field] = value;
-                        }
-                        updated.hardwareCost = updated.hardwareCost ?? 0;
-                        const ledTotal = updated.hardwareCost + (updated.processorCost ?? 0) + (updated.shippingCost ?? 0);
-                        updated.totalCost = ledTotal + (updated.installCost ?? 0) + (updated.structuralCost ?? 0) + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
-                        updated.totalSellingPrice = updated.blendedMarginPct > 0
-                          ? updated.totalCost / (1 - updated.blendedMarginPct) : updated.totalCost;
-                        return updated;
-                      });
-                      return recalcSummary(prev, updatedDisplays);
-                    });
-                  }}
-                  onMarginAnalysisEdit={(itemIdx, field, value) => {
-                    const hasMirrorPricing = Array.isArray(result?.pricingDocument?.tables)
-                      && result.pricingDocument.tables.some((table: any) => Array.isArray(table.items) && table.items.length > 0);
-
-                    if (hasMirrorPricing && (field === "sellingPrice" || field === "cost")) {
-                      setResult(prev => {
-                        if (!prev?.pricingDocument) return prev;
-                        const updatedPricingDocument = updatePricingDocumentFromMarginAnalysis(prev.pricingDocument as PricingDocument, itemIdx, field, value);
-                        if (updatedPricingDocument === prev.pricingDocument) return prev;
-                        return { ...prev, pricingDocument: updatedPricingDocument };
-                      });
-                      return;
-                    }
-
-                    setPricingPreview(prev => {
-                      if (!prev) return prev;
-                      const nonCustom = prev.displays.filter(d => !d.isCustom);
-                      const serviceCats = [
-                        { field: "structuralCost" }, { field: "installCost" },
-                        { field: "pmCost" }, { field: "engCost" },
-                      ].filter(cat => prev.displays.reduce((s, d) => s + ((d as any)[cat.field] ?? 0), 0) > 0);
-                      const customs = prev.displays.filter(d => d.isCustom);
-                      const dCount = nonCustom.length;
-                      const sCount = serviceCats.length;
-
-                      if (itemIdx < dCount) {
-                        const displayName = nonCustom[itemIdx].name;
-                        const updatedDisplays = prev.displays.map(d => {
-                          if (d.name !== displayName || d.isCustom) return d;
-                          const updated = { ...d };
-                          if (field === "marginPct") {
-                            updated.blendedMarginPct = value;
-                          } else if (field === "sellingPrice") {
-                            updated.totalSellingPrice = value;
-                            updated.blendedMarginPct = value > 0 ? (value - updated.totalCost) / value : 0;
-                          } else {
-                            updated.hardwareCost = value;
-                            updated.processorCost = 0;
-                            updated.shippingCost = 0;
-                          }
-                          updated.totalCost = updated.hardwareCost + (updated.processorCost ?? 0) + (updated.shippingCost ?? 0) + (updated.installCost ?? 0) + (updated.structuralCost ?? 0) + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
-                          updated.totalSellingPrice = updated.blendedMarginPct > 0 ? updated.totalCost / (1 - updated.blendedMarginPct) : updated.totalCost;
-                          return updated;
-                        });
-                        return recalcSummary(prev, updatedDisplays);
-                      } else if (itemIdx < dCount + sCount) {
-                        const cat = serviceCats[itemIdx - dCount];
-                        if (field === "cost") {
-                          const currentTotal = prev.displays.reduce((s, d) => s + ((d as any)[cat.field] ?? 0), 0);
-                          const ratio = currentTotal > 0 ? value / currentTotal : 0;
-                          const updatedDisplays = prev.displays.map(d => {
-                            const updated = { ...d };
-                            const oldVal = (d as any)[cat.field] ?? 0;
-                            (updated as any)[cat.field] = currentTotal > 0 ? oldVal * ratio : value / prev.displays.length;
-                            updated.totalCost = updated.hardwareCost + (updated.processorCost ?? 0) + (updated.shippingCost ?? 0) + (updated.installCost ?? 0) + (updated.structuralCost ?? 0) + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
-                            updated.totalSellingPrice = updated.blendedMarginPct > 0 ? updated.totalCost / (1 - updated.blendedMarginPct) : updated.totalCost;
-                            return updated;
-                          });
-                          return recalcSummary(prev, updatedDisplays);
-                        }
-                        return prev;
-                      } else if (itemIdx < dCount + sCount + 2 + customs.length) {
-                        const customIdx = itemIdx - dCount - sCount - 2;
-                        if (customIdx >= 0 && customIdx < customs.length) {
-                          const customName = customs[customIdx].name;
-                          const updatedDisplays = prev.displays.map(d => {
-                            if (d.name !== customName || !d.isCustom) return d;
-                            const updated = { ...d };
-                            if (field === "marginPct") {
-                              updated.blendedMarginPct = value;
-                            } else if (field === "sellingPrice") {
-                              updated.totalSellingPrice = value;
-                              updated.blendedMarginPct = value > 0 ? (value - updated.totalCost) / value : 0;
-                            } else {
-                              updated.hardwareCost = value;
-                            }
-                            updated.totalCost = updated.hardwareCost + (updated.installCost ?? 0) + (updated.structuralCost ?? 0) + (updated.pmCost ?? 0) + (updated.engCost ?? 0);
-                            updated.totalSellingPrice = updated.blendedMarginPct > 0 ? updated.totalCost / (1 - updated.blendedMarginPct) : updated.totalCost;
-                            return updated;
-                          });
-                          return recalcSummary(prev, updatedDisplays);
-                        }
-                      }
-                      return prev;
-                    });
-                  }}
-                  className="w-full h-full"
-                />
                 )}
               </div>
 
