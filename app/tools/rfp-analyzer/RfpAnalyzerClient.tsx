@@ -50,6 +50,7 @@ import {
   Zap,
   Wrench,
   Cpu,
+  AlertCircle,
 } from "lucide-react";
 
 // ==========================================================================
@@ -2707,7 +2708,12 @@ export default function RfpAnalyzerClient() {
                     loading={serverWorkbookLoading}
                     error={serverWorkbookError}
                   />
-                ) : !pricingPreview ? (
+                ) : useServerWorkbook && serverWorkbookError ? (
+                  <div className="flex items-center justify-center h-full gap-2 text-sm text-destructive">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>Server preview failed: {serverWorkbookError}</span>
+                  </div>
+                ) : !pricingPreview || serverWorkbookLoading ? (
                   <div className="flex items-center justify-center h-full gap-2 text-sm text-muted-foreground">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     {serverWorkbookLoading ? "Generating scoping workbook..." : "Loading pricing data..."}

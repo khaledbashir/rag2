@@ -83,9 +83,17 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
 
         if (disposed) return;
 
-        // Univer needs a container with non-zero dimensions
-        await new Promise((r) => requestAnimationFrame(r));
-        if (disposed || !el.offsetHeight) return;
+        // Univer needs a container with non-zero dimensions — retry a few times
+        // because flex layouts may not have computed height on the first frame
+        let retries = 0;
+        while (!disposed && !el.offsetHeight && retries < 10) {
+          await new Promise((r) => requestAnimationFrame(r));
+          retries++;
+        }
+        if (disposed || !el.offsetHeight) {
+          console.warn("[UniverPreview] Container has 0 height after retries, cannot initialize");
+          return;
+        }
 
         const { univerAPI } = createUniver({
           locale: LocaleType.EN_US,

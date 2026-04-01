@@ -41,6 +41,7 @@ export function useRfpServerPreview(input: RfpPreviewInput) {
       setError(null);
 
       try {
+        console.log("[RFP Server Preview] Fetching...", { analysisId: input.analysisId, specCount: input.specs?.length });
         const timeout = setTimeout(() => controller.abort(), 45_000);
         const res = await fetch("/api/rfp/preview-univer", {
           method: "POST",
@@ -61,11 +62,13 @@ export function useRfpServerPreview(input: RfpPreviewInput) {
         }
 
         const workbookData = await res.json();
+        console.log("[RFP Server Preview] Received workbook:", { sheets: Object.keys(workbookData.sheets || {}), sheetOrder: workbookData.sheetOrder });
         if (workbookData.projectTotal != null) setProjectTotal(workbookData.projectTotal);
         if (workbookData.displayRowMap) setDisplayRowMap(workbookData.displayRowMap);
         setData(workbookData);
       } catch (err: any) {
         if (err.name === "AbortError") { setLoading(false); return; }
+        console.error("[RFP Server Preview] Error:", err.message);
         setError(err.message || "Preview generation failed");
       } finally {
         setLoading(false);
