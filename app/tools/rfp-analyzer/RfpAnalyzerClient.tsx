@@ -1678,6 +1678,7 @@ export default function RfpAnalyzerClient() {
           analysisId: result.id,
           quotes: quoteImportResult?.quotes || [],
           includeBond: result.project.bondRequired,
+          clientPricedDisplays: pricingPreview?.displays || undefined,
         }),
       });
       if (!res.ok) throw new Error(`Failed (${res.status})`);
