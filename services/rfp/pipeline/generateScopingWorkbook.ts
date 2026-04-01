@@ -1314,13 +1314,17 @@ function buildMarginAnalysis(
   // Result must include tax+bond to match the per-screen grand total formulas
   const bbTaxRate = ov?.taxRate ?? 0;
   const bbBondRate = ov?.servicesMarginPct === 0 ? 0 : (ov?.bondRate ?? (includeBond ? 0.015 : 0));
+  const baseBidCost = displays.reduce((s, d) => {
+    const sell = d.sellingPrice;
+    return s + d.totalCost + round2(sell * bbTaxRate) + round2(sell * bbBondRate);
+  }, 0);
   const baseBidSelling = displays.reduce((s, d) => {
     const sell = d.sellingPrice;
     return s + sell + round2(sell * bbTaxRate) + round2(sell * bbBondRate);
   }, 0);
-  const baseBidMargin = round2(baseBidSelling - grandCost);
+  const baseBidMargin = round2(baseBidSelling - baseBidCost);
   const baseBidMarginPct = baseBidSelling > 0 ? round2(baseBidMargin / baseBidSelling) : 0;
-  bbR.getCell(3).value = { formula: `SUM(${costGtRefs})`, result: grandCost };
+  bbR.getCell(3).value = { formula: `SUM(${costGtRefs})`, result: round2(baseBidCost) };
   bbR.getCell(3).numFmt = FMT_USD;
   bbR.getCell(4).value = { formula: `SUM(${sellGtRefs})`, result: round2(baseBidSelling) };
   bbR.getCell(4).numFmt = FMT_USD;
@@ -1516,14 +1520,17 @@ function buildLedCostSheet(
     dr.getCell(20).numFmt = FMT_USD;
     dr.getCell(20).font = { bold: true, name: "Calibri" };
     // U: Margin % — references master override cell V2
-    dr.getCell(21).value = { formula: `V$${masterMarginRow}`, result: d.marginPct }; dr.getCell(21).numFmt = FMT_PCT;
+    const ledMarginPct = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
+    dr.getCell(21).value = { formula: `V$${masterMarginRow}`, result: ledMarginPct }; dr.getCell(21).numFmt = FMT_PCT;
     // V: Selling Price — formula: Cost / (1 - Margin%)
+    // Cached result must match formula output (LED-only costs, not full d.sellingPrice which includes services)
     const rowNum = dr.number;
-    dr.getCell(22).value = { formula: `IFERROR(T${rowNum}/(1-U${rowNum}),0)`, result: round2(d.sellingPrice) };
+    const ledOnlySellingPrice = ledMarginPct < 1 ? round2(totalLedCost / (1 - ledMarginPct)) : totalLedCost;
+    dr.getCell(22).value = { formula: `IFERROR(T${rowNum}/(1-U${rowNum}),0)`, result: ledOnlySellingPrice };
     dr.getCell(22).numFmt = FMT_USD;
     dr.getCell(22).font = { bold: true, name: "Calibri" };
     // W: ANC Margin — formula: Selling - Cost
-    dr.getCell(23).value = { formula: `V${rowNum}-T${rowNum}`, result: round2(d.marginDollars) };
+    dr.getCell(23).value = { formula: `V${rowNum}-T${rowNum}`, result: round2(ledOnlySellingPrice - totalLedCost) };
     dr.getCell(23).numFmt = FMT_USD;
 
     // X-Z: Weight, Power, BTU
@@ -2289,11 +2296,12 @@ function buildProcessorCount(
     const ledRow = 4 + i; // LED Cost Sheet data row
     const qty = d.spec.quantity || 1;
     const r = ws.getRow(row);
-    // Cross-sheet linked to LED Cost Sheet (BUG-11)
+    // Cross-sheet linked to LED Cost Sheet
+    // LED Cost Sheet columns: A=Display, J=H(px), K=W(px), L=Qty
     r.getCell(2).value = { formula: `'LED Cost Sheet'!A${ledRow}`, result: d.spec.name };
-    r.getCell(3).value = { formula: `'LED Cost Sheet'!H${ledRow}`, result: d.spec.widthPx || 0 }; r.getCell(3).numFmt = FMT_INT;
-    r.getCell(4).value = { formula: `'LED Cost Sheet'!G${ledRow}`, result: d.spec.heightPx || 0 }; r.getCell(4).numFmt = FMT_INT;
-    r.getCell(5).value = { formula: `'LED Cost Sheet'!I${ledRow}`, result: qty };
+    r.getCell(3).value = { formula: `'LED Cost Sheet'!K${ledRow}`, result: d.spec.widthPx || 0 }; r.getCell(3).numFmt = FMT_INT;
+    r.getCell(4).value = { formula: `'LED Cost Sheet'!J${ledRow}`, result: d.spec.heightPx || 0 }; r.getCell(4).numFmt = FMT_INT;
+    r.getCell(5).value = { formula: `'LED Cost Sheet'!L${ledRow}`, result: qty };
     // Total Pixels = W × H × Qty (cross-sheet formula)
     r.getCell(6).value = { formula: `C${row}*D${row}*E${row}`, result: d.totalPixels }; r.getCell(6).numFmt = FMT_INT;
     // Ports Needed = CEILING(TotalPixels / 650000, 1)
