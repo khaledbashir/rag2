@@ -1532,7 +1532,8 @@ function buildLedCostSheet(
     // O: Service
     dr.getCell(15).value = d.spec.serviceType || "Front";
     dr.getCell(15).alignment = { horizontal: "center" };
-    // P: $/SqFt — VLOOKUP from _Products col 4
+    // P: $/SqFt — computed value (includes spare parts) so it matches the platform exactly
+    // VLOOKUP would give catalog-only rate which excludes spares, causing mismatch
     const ledWithSpares = d.ledHardwareCost + d.sparePartsCost;
     const costPerSqFtResult = d.areaSqFt > 0 ? round2(ledWithSpares / d.areaSqFt) : 0;
     if (d.isTV) {
@@ -1540,10 +1541,10 @@ function buildLedCostSheet(
       const unitCost = tvQty > 0 ? round2(ledWithSpares / tvQty) : 0;
       dr.getCell(16).value = unitCost;
     } else {
-      dr.getCell(16).value = { formula: `IFERROR(VLOOKUP(F${row},${prodRange},4,FALSE),0)`, result: costPerSqFtResult };
+      dr.getCell(16).value = costPerSqFtResult;
     }
     dr.getCell(16).numFmt = FMT_USD;
-    // Q: Display Cost = $/SqFt × Total SqFt (formula, flows from P × M)
+    // Q: Display Cost = $/SqFt × Total SqFt (formula so it flows from dimensions)
     dr.getCell(17).value = { formula: `P${row}*M${row}`, result: round2(ledWithSpares) };
     dr.getCell(17).numFmt = FMT_USD;
     const bundleSubtotalRow = bundleSubtotalRows[idx];
