@@ -15,9 +15,11 @@ import dynamic from "next/dynamic";
 
 const PdfSplitPanel = dynamic(() => import("./_components/PdfSplitPanel"), { ssr: false });
 const UniverSpreadsheet = dynamic(() => import("./_components/UniverSpreadsheet"), { ssr: false });
+const UniverPreview = dynamic(() => import("@/app/components/estimator/UniverPreview"), { ssr: false });
 const LuxWidget = dynamic(() => import("./_components/LuxWidget"), { ssr: false });
 const ProductMatchPanel = dynamic(() => import("./_components/ProductMatchPanel"), { ssr: false });
 import type { ExtractedLEDSpec, ExtractedRequirement } from "@/services/rfp/unified/types";
+import { useRfpServerPreview } from "@/hooks/useRfpServerPreview";
 import { isPlatformOwner } from "@/lib/platformOwner";
 import {
   RefreshCcw,
@@ -289,6 +291,8 @@ export default function RfpAnalyzerClient() {
   const [drawingUpload, setDrawingUpload] = useState<{ uploading: boolean; results: Array<{ filename: string; pages: number }> }>({ uploading: false, results: [] });
   const [quotePreviewOpen, setQuotePreviewOpen] = useState(false);
   const [editableSpecs, setEditableSpecs] = useState<ExtractedLEDSpec[]>([]);
+  // Server-generated scoping workbook preview — same generator as export, one source of truth
+  const [useServerWorkbook, setUseServerWorkbook] = useState(true);
   // Full-screen spreadsheet mode — hides pipeline, stats, project info
   const [spreadsheetMode, setSpreadsheetMode] = useState(true);
   // PDF split-panel viewer
@@ -946,6 +950,14 @@ export default function RfpAnalyzerClient() {
   // ========================================================================
 
   const requirements = result?.requirements || [];
+  // Server-generated preview — uses SAME generateScopingWorkbook as export
+  const serverPreviewSpecs = useMemo(() => editableSpecs.length > 0 ? editableSpecs : (result?.screens || []), [editableSpecs, result?.screens]);
+  const { data: serverWorkbookData, loading: serverWorkbookLoading, error: serverWorkbookError, projectTotal: serverProjectTotal } = useRfpServerPreview({
+    analysisId: result?.id || null,
+    specs: serverPreviewSpecs,
+    includeBond: result?.project?.bondRequired,
+  });
+
   const workbookData = useMemo(() => {
     if (!result) return { fileName: "RFP Analysis", sheets: [] };
     return buildRfpWorkbook({
@@ -2688,10 +2700,17 @@ export default function RfpAnalyzerClient() {
 
               {/* ---- Univer Spreadsheet — FILLS REMAINING SPACE ---- */}
               <div className={`flex-1 min-h-0 overflow-hidden relative ${spreadsheetMode ? "border-x border-gray-200 dark:border-gray-700" : "border border-t-0 border-gray-200 dark:border-gray-700"}`}>
-                {!pricingPreview ? (
+                {/* Server-generated workbook: same generator as export = same numbers */}
+                {useServerWorkbook && serverWorkbookData ? (
+                  <UniverPreview
+                    workbookData={serverWorkbookData}
+                    loading={serverWorkbookLoading}
+                    error={serverWorkbookError}
+                  />
+                ) : !pricingPreview ? (
                   <div className="flex items-center justify-center h-full gap-2 text-sm text-muted-foreground">
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Loading pricing data...
+                    {serverWorkbookLoading ? "Generating scoping workbook..." : "Loading pricing data..."}
                   </div>
                 ) : (
                 <UniverSpreadsheet
@@ -2874,8 +2893,8 @@ export default function RfpAnalyzerClient() {
                       const totalQty = screens.reduce((sum: number, s: any) => sum + (s.quantity || 1), 0);
                       const unique = screens.length;
                       return totalQty > unique ? `${totalQty} displays (${unique} unique)` : `${unique} displays`;
-                    })()} • {typeof (result.pricingDocument?.documentTotal ?? pricingPreview?.summary?.totalSellingPrice) === "number"
-                      ? `$${(result.pricingDocument?.documentTotal ?? pricingPreview?.summary?.totalSellingPrice ?? 0).toLocaleString()}`
+                    })()} • {typeof (serverProjectTotal || (result.pricingDocument?.documentTotal ?? pricingPreview?.summary?.totalSellingPrice)) === "number"
+                      ? `$${(serverProjectTotal || (result.pricingDocument?.documentTotal ?? pricingPreview?.summary?.totalSellingPrice ?? 0)).toLocaleString()}`
                       : "—"}
                   </span>
                 </div>
