@@ -43,9 +43,12 @@ export function useRfpServerPreview(input: RfpPreviewInput) {
   const stableSpecsKey = useMemo(() => specsKey(input.specs), [input.specs]);
 
   useEffect(() => {
-    console.log("[RFP Server Preview] Effect triggered", { analysisId: input.analysisId, specCount: input.specs?.length, skip: skipRef.current });
+    const specNames = input.specs?.slice(0, 3).map((s: any) => s.selectedProductName || s.displayName || "?").join(", ");
+    console.log("[RFP Server Preview] Effect triggered", { analysisId: input.analysisId, specCount: input.specs?.length, specNames, skip: skipRef.current, stableKey: stableSpecsKey?.slice(0, 60) });
+    // Expose debug state globally so user can check in address bar: javascript:alert(window.__rfpPreviewDebug)
+    try { (window as any).__rfpPreviewDebug = { analysisId: input.analysisId, specCount: input.specs?.length, specNames, stableKey: stableSpecsKey?.slice(0, 80), skip: skipRef.current }; } catch {}
     if (skipRef.current) { skipRef.current = false; return; }
-    if (!input.analysisId || !input.specs?.length) { console.log("[RFP Server Preview] Skipped — no analysisId or specs"); setData(null); return; }
+    if (!input.analysisId || !input.specs?.length) { console.log("[RFP Server Preview] Skipped — no analysisId or specs", { hasId: !!input.analysisId, specCount: input.specs?.length }); setData(null); return; }
 
     if (timerRef.current) clearTimeout(timerRef.current);
 

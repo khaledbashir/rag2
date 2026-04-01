@@ -2705,6 +2705,16 @@ export default function RfpAnalyzerClient() {
                 )}
               </div>
 
+              {/* DEBUG: Server preview state */}
+              <div className="bg-yellow-100 dark:bg-yellow-900 text-xs px-3 py-1 flex items-center gap-4 font-mono" style={{ display: useServerWorkbook ? 'flex' : 'none' }}>
+                <span>🔍 DEBUG: useServer={String(useServerWorkbook)}</span>
+                <span>analysisId={result?.id ? result.id.slice(0,8)+'…' : 'null'}</span>
+                <span>specs={serverPreviewSpecs?.length ?? 0}</span>
+                <span>loading={String(serverWorkbookLoading)}</span>
+                <span>data={serverWorkbookData ? 'YES' : 'NO'}</span>
+                <span>error={serverWorkbookError || 'none'}</span>
+              </div>
+
               {/* ---- Univer Spreadsheet — FILLS REMAINING SPACE ---- */}
               <div
                 className={`flex-1 min-h-0 overflow-hidden relative ${spreadsheetMode ? "border-x border-gray-200 dark:border-gray-700" : "border border-t-0 border-gray-200 dark:border-gray-700"}`}
