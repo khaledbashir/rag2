@@ -90,7 +90,7 @@ export default function EstimatorStudio({
     const { rates, loading: ratesLoading } = useRateCard();
     // WYSIWYG preview: call the same server-side generator that produces the export.
     // No fake preview. No client-side approximation. Loading state shown until ready.
-    const { data: serverPreview, loading: serverPreviewLoading, error: serverPreviewError, projectTotal, displayRowMap } = useServerPreview(answers);
+    const { data: serverPreview, loading: serverPreviewLoading, error: serverPreviewError, projectTotal, displayRowMap, skipNextRebuild } = useServerPreview(answers);
     // Auto-save to DB when projectId is provided
     const { status: saveStatus } = useEstimatorAutoSave({
         projectId,
@@ -565,7 +565,7 @@ export default function EstimatorStudio({
             const displayIndex = displayRowMap[row];
             if (displayIndex == null || displayIndex < 0 || displayIndex >= answers.displays.length) return;
 
-            // Product change (col 5)
+            // Product change (col 5) — needs full rebuild to recalculate everything
             if (col === 5) {
                 const productName = String(value).trim();
                 const product = availableProducts.find((p) => p.name === productName || p.label === productName);
@@ -579,10 +579,12 @@ export default function EstimatorStudio({
             }
 
             // Dimension / quantity edits (7=H(ft), 8=W(ft), 11=Qty)
+            // Skip server rebuild — Univer recalculates formulas locally
             const fieldMap: Record<number, "heightFt" | "widthFt" | "quantity"> = { 7: "heightFt", 8: "widthFt", 11: "quantity" };
             const field = fieldMap[col];
             if (field) {
                 const numValue = typeof value === "number" ? value : (parseFloat(String(value)) || 0);
+                skipNextRebuild();
                 const updated = { ...answers };
                 updated.displays = [...updated.displays];
                 updated.displays[displayIndex] = { ...updated.displays[displayIndex], [field]: numValue };
@@ -617,7 +619,7 @@ export default function EstimatorStudio({
             }
             return;
         }
-    }, [answers, displayRowMap, availableProducts, handleWorkbookPricingEdit, handleWorkbookMarginAnalysisEdit]);
+    }, [answers, displayRowMap, availableProducts, skipNextRebuild, handleWorkbookPricingEdit, handleWorkbookMarginAnalysisEdit]);
 
     const handleVenueServicesEdit = useCallback((field: string, value: number) => {
         setAnswers((prev) => {

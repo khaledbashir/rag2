@@ -7,7 +7,7 @@
  * Returns the raw IWorkbookData JSON for UniverPreview to render.
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { EstimatorAnswers } from "@/app/components/estimator/questions";
 
 const DEBOUNCE_MS = 1500; // Wait 1.5s after last change before regenerating
@@ -19,6 +19,8 @@ export function useServerPreview(answers: EstimatorAnswers): {
   projectTotal: number;
   /** Maps 0-based row index → answers.displays index (LED Cost Sheet only) */
   displayRowMap: Record<number, number>;
+  /** Call to suppress the next server rebuild (e.g. when edit came from preview itself) */
+  skipNextRebuild: () => void;
 } {
   const [data, setData] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
@@ -27,8 +29,16 @@ export function useServerPreview(answers: EstimatorAnswers): {
   const [displayRowMap, setDisplayRowMap] = useState<Record<number, number>>({});
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const skipRef = useRef(false);
+  const skipNextRebuild = useCallback(() => { skipRef.current = true; }, []);
 
   useEffect(() => {
+    // Skip rebuild when edit came from the Univer preview itself — let formulas recalculate locally
+    if (skipRef.current) {
+      skipRef.current = false;
+      return;
+    }
+
     // Don't generate if no displays
     if (!answers.displays?.length) {
       setData(null);
@@ -102,5 +112,5 @@ export function useServerPreview(answers: EstimatorAnswers): {
     };
   }, [answers]);
 
-  return { data, loading, error, projectTotal, displayRowMap };
+  return { data, loading, error, projectTotal, displayRowMap, skipNextRebuild };
 }
