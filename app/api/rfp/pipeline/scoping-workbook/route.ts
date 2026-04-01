@@ -108,8 +108,9 @@ export async function POST(request: NextRequest) {
     if (clientDisplays && Array.isArray(clientDisplays) && clientDisplays.length > 0) {
       pricedDisplays = clientDisplays.map((d: any, i: number) => {
         const spec = specs[i] || {};
+        // Client hardwareCost is the full LED cost shown on screen — don't add spares on top
         const hw = d.hardwareCost || 0;
-        const spare = Math.round(hw * 0.05 * 100) / 100;
+        const spare = 0;
         const proc = d.processorCost || 0;
         const ship = d.shippingCost || 0;
         const inst = d.installCost || 0;
