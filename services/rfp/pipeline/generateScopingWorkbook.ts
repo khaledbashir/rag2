@@ -1367,11 +1367,39 @@ function buildLedCostSheet(
 
   // Build product data sheet for dropdown + VLOOKUP formulas on LED Cost Sheet
   // Columns: A=Name, B=Vendor, C=Pitch(mm), D=$/SqFt, E=NITs, F=Weight(lbs/m²), G=Power(W/m²)
+  // Helper to normalize product names (handles Prisma vs Catalog interface differences)
+  const getProductName = (p: any) => p?.name || p?.displayName || p?.model || "—";
+
   const allProducts = getAllProducts();
   const sortedProducts = [...allProducts]
     .filter((p) => p.name)
     .sort((a, b) => a.name.localeCompare(b.name));
-  const productNames = sortedProducts.map((p) => p.name);
+  
+  // Inject any DB-resolved products into the sortedProducts array so they appear in _Products sheet
+  // and pass the productNames.includes() check later!
+  for (const d of baseDisplays) {
+    if (d.spec.selectedProductId) {
+      const dbProd = resolveProduct(d.spec.selectedProductId);
+      if (dbProd) {
+        const dbProdName = getProductName(dbProd);
+        if (!sortedProducts.some(p => getProductName(p) === dbProdName)) {
+           // We cast to any to inject it into the _Products array
+           sortedProducts.push({
+             ...dbProd,
+             name: dbProdName, // force 'name' property for the VLOOKUP
+             pitchMm: dbProd.pixelPitch || dbProd.pitchMm || d.match?.module?.pitch || d.spec.pixelPitchMm || 2.5,
+             manufacturer: dbProd.manufacturer || d.match?.module?.manufacturer || "Generic",
+             environment: dbProd.environment || d.spec.environment || "Indoor",
+             brightnessNits: dbProd.maxNits || dbProd.brightnessNits || d.match?.module?.nits || d.spec.brightnessNits || 0,
+             maxPowerWattsPerCab: dbProd.maxPowerWattsPerCab || dbProd.maxPowerWatts || 0,
+             dimensionsMm: dbProd.dimensionsMm || "Custom"
+           } as any);
+        }
+      }
+    }
+  }
+
+  const productNames = sortedProducts.map((p) => getProductName(p));
   let productSheet = wb.getWorksheet("_Products");
   if (!productSheet) {
     productSheet = wb.addWorksheet("_Products", { state: "veryHidden" });
@@ -1461,14 +1489,16 @@ function buildLedCostSheet(
     const selectedPitch = (selectedProduct as any)?.pitchMm ?? (selectedProduct as any)?.pitch;
     const effectivePitch = selectedPitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.match?.module?.pitch ?? d.spec.pixelPitchMm;
 
+    const selProdName = selectedProduct ? getProductName(selectedProduct) : null;
+    
     // F: Product — must match a name in _Products for VLOOKUPs to work.
     // Priority: catalog name > matched module name > pitch-based best match > extracted name
     // IMPORTANT: Determine product name FIRST, then use _Products data for cached VLOOKUP results.
     let productNameForF: string = "—";
     if (isClockLike) {
-      productNameForF = selectedProduct?.name || d.spec.selectedProductName || "—";
-    } else if (selectedProduct?.name && productNames.includes(selectedProduct.name)) {
-      productNameForF = selectedProduct.name;
+      productNameForF = selProdName || d.spec.selectedProductName || "—";
+    } else if (selProdName && selProdName !== "—" && productNames.includes(selProdName)) {
+      productNameForF = selProdName;
     } else if (d.match?.module?.name && productNames.includes(d.match.module.name)) {
       productNameForF = d.match.module.name;
     } else if (d.spec.selectedProductName && productNames.includes(d.spec.selectedProductName)) {
@@ -1484,7 +1514,7 @@ function buildLedCostSheet(
         const bestMatch = envProducts.reduce((best, p) =>
           Math.abs(p.pitchMm - pitch) < Math.abs((best?.pitchMm ?? 999) - pitch) ? p : best
         , envProducts[0]);
-        if (bestMatch) productNameForF = bestMatch.name;
+        if (bestMatch) productNameForF = getProductName(bestMatch);
       }
     }
     dr.getCell(6).value = productNameForF;
@@ -1500,7 +1530,7 @@ function buildLedCostSheet(
 
     // Look up the ACTUAL product in _Products list for cached VLOOKUP results.
     // This ensures cached results match what VLOOKUP would return from the _Products sheet.
-    const catalogProduct = sortedProducts.find((p) => p.name === productNameForF);
+    const catalogProduct = sortedProducts.find((p) => getProductName(p) === productNameForF);
 
     // E: Vendor — VLOOKUP from _Products col 2
     const vendorResult = catalogProduct?.manufacturer

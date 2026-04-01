@@ -33,6 +33,10 @@ export const maxDuration = 60;
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    console.log("[scoping-workbook] received body with analysisId:", body.analysisId, "clientDisplays length:", body.clientDisplays?.length);
+    if (body.clientDisplays?.length > 0) {
+      console.log("[scoping-workbook] FIRST DISPLAY:", JSON.stringify(body.clientDisplays[0], null, 2));
+    }
     const {
       analysisId,
       quotes = [],
@@ -125,12 +129,23 @@ export async function POST(request: NextRequest) {
           hardwareCost: baseHardwareCost,
           sparePartsCost: 0,
           processorCost: d.processorCost || 0,
-          mountsCost: d.mountsCost || 0,
-          installCost: d.installCost || 0,
           shippingCost: d.shippingCost || 0,
-          otherCosts: d.otherCosts || 0,
-          bondsAndFees: d.bondsAndFees || 0,
+          installCost: d.installCost || 0,
+          pmCost: d.pmCost || 0,
+          engCost: d.engCost || 0,
           totalCost: d.totalCost || 0,
+          areaSqFt: d.areaSqFt || 0,
+          hardwareSellingPrice: d.hardwareSellingPrice || 0,
+          servicesSellingPrice: d.servicesSellingPrice || 0,
+          totalSellingPrice: d.totalSellingPrice || 0,
+          marginDollars: d.marginDollars || 0,
+          blendedMarginPct: d.blendedMarginPct || 0.15,
+          ledMarginPct: d.ledMarginPct || 0.15,
+          svcMarginPct: d.svcMarginPct || 0.15,
+          leadTimeWeeks: d.leadTimeWeeks || null,
+          costSource: d.costSource || "rate_card",
+          rateCardEstimate: d.rateCardEstimate || null,
+          quote: null,
         };
       });
     } else {
