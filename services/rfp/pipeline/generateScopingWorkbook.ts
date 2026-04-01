@@ -1464,13 +1464,32 @@ function buildLedCostSheet(
       || d.match?.module?.manufacturer
       || (d.spec.environment === "outdoor" ? "Yaham" : "LG/Yaham");
     dr.getCell(5).value = { formula: `IFERROR(VLOOKUP(F${row},${prodRange},2,FALSE),"")`, result: vendorResult };
-    // F: Product — dropdown with data validation
-    dr.getCell(6).value = isClockLike
-      ? (selectedProduct?.name || d.spec.selectedProductName || "—")
-      : selectedProduct?.name
-      || d.spec.selectedProductName
-      || d.match?.module?.name
-      || "—";
+    // F: Product — must match a name in _Products for VLOOKUPs to work.
+    // Priority: catalog name > matched module name > pitch-based best match > extracted name
+    let productNameForF: string = "—";
+    if (isClockLike) {
+      productNameForF = selectedProduct?.name || d.spec.selectedProductName || "—";
+    } else if (selectedProduct?.name && productNames.includes(selectedProduct.name)) {
+      productNameForF = selectedProduct.name;
+    } else if (d.match?.module?.name && productNames.includes(d.match.module.name)) {
+      productNameForF = d.match.module.name;
+    } else if (d.spec.selectedProductName && productNames.includes(d.spec.selectedProductName)) {
+      productNameForF = d.spec.selectedProductName;
+    } else {
+      // No exact name match — find closest product by pitch + environment
+      const pitch = effectivePitch || d.spec.pixelPitchMm || 0;
+      const env = d.spec.environment || "indoor";
+      if (pitch > 0) {
+        const envProducts = sortedProducts.filter((p) =>
+          p.environment === "Both" || p.environment.toLowerCase() === env.toLowerCase()
+        );
+        const bestMatch = envProducts.reduce((best, p) =>
+          Math.abs(p.pitchMm - pitch) < Math.abs((best?.pitchMm ?? 999) - pitch) ? p : best
+        , envProducts[0]);
+        if (bestMatch) productNameForF = bestMatch.name;
+      }
+    }
+    dr.getCell(6).value = productNameForF;
     dr.getCell(6).dataValidation = {
       type: "list",
       allowBlank: true,
