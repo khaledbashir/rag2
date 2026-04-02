@@ -10,14 +10,20 @@
  * fires with (sheetName, row, col, value) so the parent can update answers.
  */
 
-import React, { useRef, useEffect, useState, useCallback } from "react";
-import { Loader2, AlertCircle } from "lucide-react";
+import React, { useRef, useEffect, useState } from "react";
+import { Loader2, AlertCircle, ChevronDown } from "lucide-react";
 
 interface ProductOption {
   id: string;
   label: string;
   name: string;
   pitch: number;
+}
+
+interface DisplayInfo {
+  name: string;
+  productId?: string;
+  productName?: string;
 }
 
 interface UniverPreviewProps {
@@ -28,9 +34,11 @@ interface UniverPreviewProps {
   onCellEdit?: (sheetName: string, row: number, col: number, value: number | string) => void;
   /** Product list for dropdown on LED Cost Sheet column F */
   products?: ProductOption[];
+  /** Display names + current product for the product selector bar */
+  displays?: DisplayInfo[];
 }
 
-export default function UniverPreview({ workbookData, loading, error, onCellEdit, products }: UniverPreviewProps) {
+export default function UniverPreview({ workbookData, loading, error, onCellEdit, products, displays }: UniverPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<any>(null);
   const [mounted, setMounted] = useState(false);
@@ -41,17 +49,28 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
   const lastActiveSheetRef = useRef<string | null>(null);
   const onCellEditRef = useRef(onCellEdit);
   onCellEditRef.current = onCellEdit;
-  /** Product dropdown overlay state */
-  const [productDropdown, setProductDropdown] = useState<{ row: number; x: number; y: number; current: string } | null>(null);
-  const [productSearch, setProductSearch] = useState("");
-  const productsRef = useRef(products);
-  productsRef.current = products;
+  /** Product dropdown state: which display index is open */
+  const [openDropdown, setOpenDropdown] = useState<number | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Track mount for SSR safety
   useEffect(() => {
     setMounted(true);
     return () => setMounted(false);
   }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (openDropdown === null) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-product-selector]")) {
+        setOpenDropdown(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [openDropdown]);
 
   // Initialize / reinitialize Univer when workbookData changes
   useEffect(() => {
@@ -137,7 +156,6 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
             try {
               const wb = univerAPI.getActiveWorkbook?.();
               if (wb) {
-                // Try setActiveSheet with name first, fall back to iterating sheets
                 try {
                   wb.setActiveSheet(savedTab);
                 } catch {
@@ -164,37 +182,6 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
           el.appendChild(fixStyle);
         } catch { /* ignore */ }
 
-        // Listen for cell selection to show product dropdown on LED Cost Sheet column F (col 5)
-        try {
-          univerAPI.addEvent(univerAPI.Event.SelectionChanged, (params: any) => {
-            if (!productsRef.current?.length) return;
-            const wb = univerAPI.getActiveWorkbook?.();
-            const activeSheet = wb?.getActiveSheet?.();
-            const sheetName = activeSheet?.getSheetName?.() || "";
-            if (sheetName !== "LED Cost Sheet") {
-              setProductDropdown(null);
-              return;
-            }
-            const range = params?.range || params?.selections?.[0];
-            const row = range?.getRow?.() ?? range?.startRow;
-            const col = range?.getColumn?.() ?? range?.startColumn;
-            if (col === 5 && row != null && row >= 3) {
-              // Get cell position for dropdown placement
-              const container = containerRef.current;
-              if (!container) return;
-              const rect = container.getBoundingClientRect();
-              // Estimate cell position from column widths (col F ~= column 6)
-              const currentVal = activeSheet?.getRange?.(row, col)?.getValue?.() || "";
-              setProductDropdown({ row, x: rect.left + 320, y: rect.top + Math.min((row - 1) * 24, 200), current: String(currentVal) });
-              setProductSearch("");
-            } else {
-              setProductDropdown(null);
-            }
-          });
-        } catch (e) {
-          console.warn("[UniverPreview] Could not attach selection listener:", e);
-        }
-
         // Listen for cell edits via SheetValueChanged event
         try {
           univerAPI.addEvent(univerAPI.Event.SheetValueChanged, (params: any) => {
@@ -206,7 +193,6 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
               const col = fRange.getColumn?.();
               if (row == null || col == null) continue;
 
-              // Get sheet name from the range's sheet
               const sheetId = fRange.getSheetId?.();
               let sheetName = "";
               if (wb && sheetId) {
@@ -278,63 +264,84 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
     );
   }
 
+  // Show product selector bar when products and displays are available
+  const showProductBar = products && products.length > 0 && displays && displays.length > 0;
+
   // Filter products for dropdown
   const filteredProducts = products?.filter((p) =>
-    !productSearch || p.label.toLowerCase().includes(productSearch.toLowerCase()) || String(p.pitch).includes(productSearch),
+    !searchTerm || p.label.toLowerCase().includes(searchTerm.toLowerCase()) || String(p.pitch).includes(searchTerm),
   ) || [];
 
   return (
-    <div className="relative flex-1 w-full h-full min-h-0">
+    <div className="flex-1 flex flex-col w-full h-full min-h-0">
+      {/* Product selector bar — one dropdown per display */}
+      {showProductBar && (
+        <div className="flex items-center gap-2 px-2 py-1.5 bg-white dark:bg-zinc-900 border border-border rounded-t-lg overflow-x-auto shrink-0">
+          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide shrink-0">Product</span>
+          {displays!.map((d, idx) => {
+            const currentProduct = products!.find((p) => p.id === d.productId || p.name === d.productName);
+            const isOpen = openDropdown === idx;
+            return (
+              <div key={idx} className="relative shrink-0" data-product-selector>
+                <button
+                  onClick={() => { setOpenDropdown(isOpen ? null : idx); setSearchTerm(""); }}
+                  className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded border transition-colors ${
+                    isOpen
+                      ? "border-[#0A52EF] bg-blue-50 dark:bg-blue-900/20"
+                      : "border-border hover:border-zinc-400 dark:hover:border-zinc-600"
+                  }`}
+                >
+                  <span className="font-medium truncate max-w-[100px]">{d.name}</span>
+                  <span className="text-muted-foreground truncate max-w-[120px]">
+                    {currentProduct ? currentProduct.label : "No product"}
+                  </span>
+                  <ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />
+                </button>
+                {isOpen && (
+                  <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-zinc-900 border border-border rounded-lg shadow-xl w-[280px]">
+                    <div className="p-2 border-b border-border">
+                      <input
+                        autoFocus
+                        type="text"
+                        placeholder="Search products..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full px-2 py-1.5 text-xs border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-[#0A52EF]"
+                      />
+                    </div>
+                    <div className="overflow-y-auto max-h-[240px]">
+                      {filteredProducts.map((p) => (
+                        <button
+                          key={p.id}
+                          className={`w-full text-left px-3 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-between ${
+                            currentProduct?.id === p.id ? "bg-blue-50 dark:bg-blue-900/30 font-medium" : ""
+                          }`}
+                          onClick={() => {
+                            // col 5 = Product column (F) in LED Cost Sheet, row = 3 + display index (0-based)
+                            onCellEdit?.("LED Cost Sheet", 3 + idx, 5, p.name);
+                            setOpenDropdown(null);
+                          }}
+                        >
+                          <span className="truncate">{p.label}</span>
+                          <span className="text-[10px] text-muted-foreground ml-2 shrink-0">{p.pitch}mm</span>
+                        </button>
+                      ))}
+                      {filteredProducts.length === 0 && (
+                        <p className="text-xs text-muted-foreground p-3 text-center">No products match</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {/* Univer spreadsheet */}
       <div
         ref={containerRef}
-        className="w-full h-full rounded-lg border border-border bg-white"
+        className="flex-1 w-full min-h-0 rounded-b-lg border border-t-0 border-border bg-white"
       />
-      {/* Product dropdown overlay */}
-      {productDropdown && products?.length ? (
-        <div
-          className="absolute z-50 bg-white dark:bg-zinc-900 border border-border rounded-lg shadow-xl"
-          style={{ top: 80, right: 16, width: 280, maxHeight: 320 }}
-        >
-          <div className="p-2 border-b border-border">
-            <input
-              autoFocus
-              type="text"
-              placeholder="Search products..."
-              value={productSearch}
-              onChange={(e) => setProductSearch(e.target.value)}
-              className="w-full px-2 py-1.5 text-xs border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-[#0A52EF]"
-            />
-          </div>
-          <div className="overflow-y-auto max-h-[240px]">
-            {filteredProducts.map((p) => (
-              <button
-                key={p.id}
-                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-between ${
-                  p.name === productDropdown.current ? "bg-blue-50 dark:bg-blue-900/30 font-medium" : ""
-                }`}
-                onClick={() => {
-                  onCellEdit?.("LED Cost Sheet", productDropdown.row, 5, p.name);
-                  setProductDropdown(null);
-                }}
-              >
-                <span className="truncate">{p.label}</span>
-                <span className="text-[10px] text-muted-foreground ml-2 shrink-0">{p.pitch}mm</span>
-              </button>
-            ))}
-            {filteredProducts.length === 0 && (
-              <p className="text-xs text-muted-foreground p-3 text-center">No products match</p>
-            )}
-          </div>
-          <div className="p-1.5 border-t border-border">
-            <button
-              className="w-full text-xs text-muted-foreground hover:text-foreground py-1"
-              onClick={() => setProductDropdown(null)}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

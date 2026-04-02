@@ -1073,6 +1073,11 @@ export default function EstimatorStudio({
                         error={serverPreviewError}
                         onCellEdit={handlePreviewCellEdit}
                         products={availableProducts}
+                        displays={answers.displays.map((d) => ({
+                            name: d.name || `Display ${answers.displays.indexOf(d) + 1}`,
+                            productId: d.productId,
+                            productName: availableProducts.find((p) => p.id === d.productId)?.name,
+                        }))}
                     />
                     {/* Bundle panel overlay */}
                     {bundleOpen && (
