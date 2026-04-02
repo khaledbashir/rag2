@@ -362,6 +362,7 @@ export async function generateScopingWorkbook(
     grandMargin,
     grandMarginPct,
     displays,
+    ov,
   });
 
   // Pre-compute Install tab names so MA can reference them in cross-sheet formulas
@@ -582,6 +583,7 @@ interface ProjectOverviewData {
   grandMargin: number;
   grandMarginPct: number;
   displays: ComputedDisplay[];
+  ov?: FinancialOverrides;
 }
 
 function buildProjectOverview(wb: ExcelJS.Workbook, data: ProjectOverviewData): void {
@@ -645,8 +647,8 @@ function buildProjectOverview(wb: ExcelJS.Workbook, data: ProjectOverviewData): 
     ["Equipment Margin", DEFAULT_MARGINS.equipment],
     ["CMS Margin", DEFAULT_MARGINS.cms],
     ["Bond Rate", data.bondRequired ? rc("bond_tax.bond_rate", BOND_RATE) : "N/A"],
-    ["Tax Rate", "Per zone (editable on MA)"],
-    ["Tariff Rate", "Per zone (editable on MA)"],
+    ["Tax Rate", data.ov?.taxRate ?? 0],
+    ["Tariff Rate", 0],
   ];
 
   for (const [label, value] of finRows) {
@@ -1147,9 +1149,9 @@ function buildMarginAnalysis(
     const grandSell = d.sellingPrice + round2(d.sellingPrice * taxRateVal) + round2(d.sellingPrice * bondRateVal) + 0;
     grR.getCell(4).value = { formula: `D${subtotalRow}+D${taxRow}+D${bondRow}+D${tariffRow}`, result: grandSell };
     grR.getCell(4).numFmt = FMT_USD; grR.getCell(4).font = { bold: true, name: "Calibri" };
-    grR.getCell(5).value = { formula: `IFERROR(D${grandRow}-C${grandRow},0)`, result: grandSell - d.totalCost };
+    grR.getCell(5).value = { formula: `IFERROR(D${grandRow}-C${subtotalRow},0)`, result: grandSell - d.totalCost };
     grR.getCell(5).numFmt = FMT_USD; grR.getCell(5).font = { bold: true, name: "Calibri" };
-    grR.getCell(6).value = { formula: `IFERROR(1-C${grandRow}/D${grandRow},0)`, result: grandSell > 0 ? 1 - (d.totalCost / grandSell) : 0 };
+    grR.getCell(6).value = { formula: `IFERROR(E${grandRow}/D${grandRow},0)`, result: grandSell > 0 ? (grandSell - d.totalCost) / grandSell : 0 };
     grR.getCell(6).numFmt = FMT_PCT; grR.getCell(6).font = { bold: true, name: "Calibri" };
     // Light bottom border to separate from next section
     for (let c = 2; c <= 6; c++) {
@@ -1309,6 +1311,7 @@ function buildMarginAnalysis(
   // ═══════════════════════════════════════════════════════════════════════════
   const costGtRefs = screenGrandTotalRows.map((r) => `C${r}`).join(",");
   const sellGtRefs = screenGrandTotalRows.map((r) => `D${r}`).join(",");
+  const marginGtRefs = screenGrandTotalRows.map((r) => `E${r}`).join(",");
 
   const baseBidRow = row;
   const bbR = ws.getRow(row);
@@ -1324,15 +1327,16 @@ function buildMarginAnalysis(
     const sell = d.sellingPrice;
     return s + sell + round2(sell * bbTaxRate) + round2(sell * bbBondRate);
   }, 0);
-  const baseBidMargin = round2(baseBidSelling - baseBidCost);
-  const baseBidMarginPct = baseBidSelling > 0 ? round2(baseBidMargin / baseBidSelling) : 0;
+  const baseBidCostWithoutTaxAndBond = displays.reduce((s, d) => s + d.totalCost, 0);
+  const baseBidMarginFixed = round2(baseBidSelling - baseBidCostWithoutTaxAndBond);
+  const baseBidMarginPctFixed = baseBidSelling > 0 ? round2(baseBidMarginFixed / baseBidSelling) : 0;
   bbR.getCell(3).value = { formula: `SUM(${costGtRefs})`, result: round2(baseBidCost) };
   bbR.getCell(3).numFmt = FMT_USD;
   bbR.getCell(4).value = { formula: `SUM(${sellGtRefs})`, result: round2(baseBidSelling) };
   bbR.getCell(4).numFmt = FMT_USD;
-  bbR.getCell(5).value = { formula: `IFERROR(D${baseBidRow}-C${baseBidRow},0)`, result: baseBidMargin };
+  bbR.getCell(5).value = { formula: `SUM(${marginGtRefs})`, result: baseBidMarginFixed };
   bbR.getCell(5).numFmt = FMT_USD;
-  bbR.getCell(6).value = { formula: `IFERROR(1-C${baseBidRow}/D${baseBidRow},0)`, result: baseBidMarginPct };
+  bbR.getCell(6).value = { formula: `IFERROR(E${baseBidRow}/D${baseBidRow},0)`, result: baseBidMarginPctFixed };
   bbR.getCell(6).numFmt = FMT_PCT;
   totalStyle(bbR, 6, C.ANC_BLUE);
   for (let c = 2; c <= 6; c++) {
@@ -1387,12 +1391,12 @@ function buildLedCostSheet(
            sortedProducts.push({
              ...dbProd,
              name: dbProdName, // force 'name' property for the VLOOKUP
-             pitchMm: dbProd.pixelPitch || dbProd.pitchMm || d.match?.module?.pitch || d.spec.pixelPitchMm || 2.5,
+             pitchMm: (dbProd as any).pitch || (dbProd as any).pixelPitch || (dbProd as any).pitchMm || d.match?.module?.pitch || d.spec.pixelPitchMm || 2.5,
              manufacturer: dbProd.manufacturer || d.match?.module?.manufacturer || "Generic",
-             environment: dbProd.environment || d.spec.environment || "Indoor",
-             brightnessNits: dbProd.maxNits || dbProd.brightnessNits || d.match?.module?.nits || d.spec.brightnessNits || 0,
-             maxPowerWattsPerCab: dbProd.maxPowerWattsPerCab || dbProd.maxPowerWatts || 0,
-             dimensionsMm: dbProd.dimensionsMm || "Custom"
+             environment: (dbProd as any).environment || d.spec.environment || "Indoor",
+             brightnessNits: (dbProd as any).nits || (dbProd as any).maxNits || (dbProd as any).brightnessNits || d.match?.module?.nits || d.spec.brightnessNits || 0,
+             maxPowerWattsPerCab: (dbProd as any).maxPowerWattsPerCab || (dbProd as any).maxPowerWatts || 0,
+             dimensionsMm: (dbProd as any).dimensionsMm || "Custom"
            } as any);
         }
       }
