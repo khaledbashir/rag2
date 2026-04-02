@@ -596,7 +596,7 @@ export const FINANCIAL_QUESTIONS: Question[] = [
         phase: "financial",
         type: "number",
         label: "CMS Allocation",
-        subtitle: "Enter the total CMS cost. This will appear as a separate section on the Budget Summary.",
+        subtitle: "Enter the total CMS cost. This will appear as a separate section on the Budget Summary. Default: $5,000 per display.",
         defaultValue: 0,
         unit: "$",
         min: 0,

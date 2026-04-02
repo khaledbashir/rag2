@@ -345,6 +345,14 @@ export default function EstimatorStudio({
     // Univer handles all editing natively — no client-side cell override logic needed.
 
     const handleChange = useCallback((next: EstimatorAnswers) => {
+        // Auto-populate CMS allocation when toggled on ($5K per display)
+        if (next.includeCms && !next.cmsAllocation) {
+            next = { ...next, cmsAllocation: Math.max(1, next.displays?.length || 1) * 5000 };
+        }
+        // Auto-populate Scoring allocation when toggled on ($15K per display)
+        if (next.includeScoring && !next.scoringAllocation) {
+            next = { ...next, scoringAllocation: Math.max(1, next.displays?.length || 1) * 15000 };
+        }
         setAnswers(next);
     }, []);
 
