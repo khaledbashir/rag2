@@ -13,15 +13,24 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
 import { Loader2, AlertCircle } from "lucide-react";
 
+interface ProductOption {
+  id: string;
+  label: string;
+  name: string;
+  pitch: number;
+}
+
 interface UniverPreviewProps {
   workbookData: any;
   loading?: boolean;
   error?: string | null;
   /** Called when user edits a cell: (sheetName, row0based, col0based, newValue) */
   onCellEdit?: (sheetName: string, row: number, col: number, value: number | string) => void;
+  /** Product list for dropdown on LED Cost Sheet column F */
+  products?: ProductOption[];
 }
 
-export default function UniverPreview({ workbookData, loading, error, onCellEdit }: UniverPreviewProps) {
+export default function UniverPreview({ workbookData, loading, error, onCellEdit, products }: UniverPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<any>(null);
   const [mounted, setMounted] = useState(false);
@@ -32,6 +41,11 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
   const lastActiveSheetRef = useRef<string | null>(null);
   const onCellEditRef = useRef(onCellEdit);
   onCellEditRef.current = onCellEdit;
+  /** Product dropdown overlay state */
+  const [productDropdown, setProductDropdown] = useState<{ row: number; x: number; y: number; current: string } | null>(null);
+  const [productSearch, setProductSearch] = useState("");
+  const productsRef = useRef(products);
+  productsRef.current = products;
 
   // Track mount for SSR safety
   useEffect(() => {
@@ -150,6 +164,37 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
           el.appendChild(fixStyle);
         } catch { /* ignore */ }
 
+        // Listen for cell selection to show product dropdown on LED Cost Sheet column F (col 5)
+        try {
+          univerAPI.addEvent(univerAPI.Event.SelectionChanged, (params: any) => {
+            if (!productsRef.current?.length) return;
+            const wb = univerAPI.getActiveWorkbook?.();
+            const activeSheet = wb?.getActiveSheet?.();
+            const sheetName = activeSheet?.getSheetName?.() || "";
+            if (sheetName !== "LED Cost Sheet") {
+              setProductDropdown(null);
+              return;
+            }
+            const range = params?.range || params?.selections?.[0];
+            const row = range?.getRow?.() ?? range?.startRow;
+            const col = range?.getColumn?.() ?? range?.startColumn;
+            if (col === 5 && row != null && row >= 3) {
+              // Get cell position for dropdown placement
+              const container = containerRef.current;
+              if (!container) return;
+              const rect = container.getBoundingClientRect();
+              // Estimate cell position from column widths (col F ~= column 6)
+              const currentVal = activeSheet?.getRange?.(row, col)?.getValue?.() || "";
+              setProductDropdown({ row, x: rect.left + 320, y: rect.top + Math.min((row - 1) * 24, 200), current: String(currentVal) });
+              setProductSearch("");
+            } else {
+              setProductDropdown(null);
+            }
+          });
+        } catch (e) {
+          console.warn("[UniverPreview] Could not attach selection listener:", e);
+        }
+
         // Listen for cell edits via SheetValueChanged event
         try {
           univerAPI.addEvent(univerAPI.Event.SheetValueChanged, (params: any) => {
@@ -233,10 +278,63 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
     );
   }
 
+  // Filter products for dropdown
+  const filteredProducts = products?.filter((p) =>
+    !productSearch || p.label.toLowerCase().includes(productSearch.toLowerCase()) || String(p.pitch).includes(productSearch),
+  ) || [];
+
   return (
-    <div
-      ref={containerRef}
-      className="flex-1 w-full h-full min-h-0 rounded-lg border border-border bg-white"
-    />
+    <div className="relative flex-1 w-full h-full min-h-0">
+      <div
+        ref={containerRef}
+        className="w-full h-full rounded-lg border border-border bg-white"
+      />
+      {/* Product dropdown overlay */}
+      {productDropdown && products?.length ? (
+        <div
+          className="absolute z-50 bg-white dark:bg-zinc-900 border border-border rounded-lg shadow-xl"
+          style={{ top: 80, right: 16, width: 280, maxHeight: 320 }}
+        >
+          <div className="p-2 border-b border-border">
+            <input
+              autoFocus
+              type="text"
+              placeholder="Search products..."
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              className="w-full px-2 py-1.5 text-xs border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-[#0A52EF]"
+            />
+          </div>
+          <div className="overflow-y-auto max-h-[240px]">
+            {filteredProducts.map((p) => (
+              <button
+                key={p.id}
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-between ${
+                  p.name === productDropdown.current ? "bg-blue-50 dark:bg-blue-900/30 font-medium" : ""
+                }`}
+                onClick={() => {
+                  onCellEdit?.("LED Cost Sheet", productDropdown.row, 5, p.name);
+                  setProductDropdown(null);
+                }}
+              >
+                <span className="truncate">{p.label}</span>
+                <span className="text-[10px] text-muted-foreground ml-2 shrink-0">{p.pitch}mm</span>
+              </button>
+            ))}
+            {filteredProducts.length === 0 && (
+              <p className="text-xs text-muted-foreground p-3 text-center">No products match</p>
+            )}
+          </div>
+          <div className="p-1.5 border-t border-border">
+            <button
+              className="w-full text-xs text-muted-foreground hover:text-foreground py-1"
+              onClick={() => setProductDropdown(null)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }

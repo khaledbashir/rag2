@@ -579,12 +579,12 @@ export default function EstimatorStudio({
             }
 
             // Dimension / quantity edits (7=H(ft), 8=W(ft), 11=Qty)
-            // Skip server rebuild — Univer recalculates formulas locally
+            // Let server rebuild — Univer preview uses cached results (not live formulas)
+            // so cross-sheet links only update when the server regenerates the workbook
             const fieldMap: Record<number, "heightFt" | "widthFt" | "quantity"> = { 7: "heightFt", 8: "widthFt", 11: "quantity" };
             const field = fieldMap[col];
             if (field) {
                 const numValue = typeof value === "number" ? value : (parseFloat(String(value)) || 0);
-                skipNextRebuild();
                 const updated = { ...answers };
                 updated.displays = [...updated.displays];
                 updated.displays[displayIndex] = { ...updated.displays[displayIndex], [field]: numValue };
@@ -1072,6 +1072,7 @@ export default function EstimatorStudio({
                         loading={serverPreviewLoading}
                         error={serverPreviewError}
                         onCellEdit={handlePreviewCellEdit}
+                        products={availableProducts}
                     />
                     {/* Bundle panel overlay */}
                     {bundleOpen && (
