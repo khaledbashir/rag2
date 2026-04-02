@@ -198,7 +198,24 @@ export function resolveRateByPitch(pitchMm: number, areaSqFt: number, spec: Extr
   const pitchKey = `led_cost.${effectivePitch.replace(".", "_")}mm`;
   const rcRate = rc(pitchKey, 0);
   const catalogRate = LED_COST_PER_SQFT_BY_PITCH[effectivePitch];
-  const rate = rcRate > 0 ? rcRate : catalogRate;
+  let rate = rcRate > 0 ? rcRate : catalogRate;
+
+  // Nearest-pitch fallback: user-entered pitch (e.g. 3.9) may not match catalog
+  // pitch exactly (3.91). Find closest match within 5% tolerance.
+  if (!rate) {
+    const knownPitches = Object.keys(LED_COST_PER_SQFT_BY_PITCH).map(Number).filter(Number.isFinite);
+    let bestDelta = Infinity;
+    let bestKey = "";
+    for (const kp of knownPitches) {
+      const delta = Math.abs(kp - pitchMm);
+      if (delta < bestDelta && delta / pitchMm < 0.05) {
+        bestDelta = delta;
+        bestKey = String(kp);
+      }
+    }
+    if (bestKey) rate = LED_COST_PER_SQFT_BY_PITCH[bestKey];
+  }
+
   return rate ? round2(areaSqFt * rate) : 0;
 }
 
