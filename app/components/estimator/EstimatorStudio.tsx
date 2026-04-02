@@ -39,6 +39,7 @@ import type { ExtractedLEDSpec } from "@/services/rfp/unified/types";
 const EstimatorVenuePanel = dynamic(() => import("./EstimatorVenuePanel"), { ssr: false });
 const EditableWorkbook = dynamic(() => import("@/app/tools/rfp-analyzer/_components/UniverSpreadsheet"), { ssr: false });
 const UniverPreview = dynamic(() => import("./UniverPreview"), { ssr: false });
+const EstimatorProductWorkbook = dynamic(() => import("./EstimatorProductWorkbook"), { ssr: false });
 const EstimatorActivityPanel = dynamic(() => import("./EstimatorActivityPanel"), { ssr: false });
 
 // Sheet colors no longer needed — Univer renders tab colors from the workbook data.
@@ -1067,17 +1068,35 @@ export default function EstimatorStudio({
 
                 {/* Center/Right: Excel Preview */}
                 <section className="relative min-w-0 min-h-0 bg-zinc-100 dark:bg-zinc-950 flex flex-col p-3 pb-0">
+                    {/* Product selector — native dropdowns like RFP Analyzer */}
+                    {availableProducts.length > 0 && answers.displays.length > 0 && (
+                        <div className="shrink-0 mb-2 max-h-[180px] overflow-auto rounded-lg border border-border">
+                            <EstimatorProductWorkbook
+                                answers={answers}
+                                calcs={calcs}
+                                products={availableProducts}
+                                onProductSelect={(idx, product) => {
+                                    setAnswers((prev) => {
+                                        const displays = [...prev.displays];
+                                        displays[idx] = {
+                                            ...displays[idx],
+                                            productId: product.id,
+                                            productName: product.name,
+                                            pixelPitch: String(product.pitch),
+                                        };
+                                        return { ...prev, displays };
+                                    });
+                                    noteWorkbookSync(`Product changed: Display ${idx + 1} → ${product.label}`);
+                                }}
+                            />
+                        </div>
+                    )}
+                    {/* Full workbook preview */}
                     <UniverPreview
                         workbookData={serverPreview}
                         loading={serverPreviewLoading}
                         error={serverPreviewError}
                         onCellEdit={handlePreviewCellEdit}
-                        products={availableProducts}
-                        displays={answers.displays.map((d) => ({
-                            name: d.name || `Display ${answers.displays.indexOf(d) + 1}`,
-                            productId: d.productId,
-                            productName: availableProducts.find((p) => p.id === d.productId)?.name,
-                        }))}
                     />
                     {/* Bundle panel overlay */}
                     {bundleOpen && (
