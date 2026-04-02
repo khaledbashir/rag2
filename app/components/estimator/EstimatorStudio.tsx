@@ -1068,30 +1068,40 @@ export default function EstimatorStudio({
 
                 {/* Center/Right: Excel Preview */}
                 <section className="relative min-w-0 min-h-0 bg-zinc-100 dark:bg-zinc-950 flex flex-col p-3 pb-0">
-                    {/* Product selector — native dropdowns like RFP Analyzer */}
+                    {/* Product selectors — one dropdown per display */}
                     {availableProducts.length > 0 && answers.displays.length > 0 && (
-                        <div className="shrink-0 mb-2 max-h-[180px] overflow-auto rounded-lg border border-border">
-                            <EstimatorProductWorkbook
-                                answers={answers}
-                                calcs={calcs}
-                                products={availableProducts}
-                                onProductSelect={(idx, product) => {
-                                    setAnswers((prev) => {
-                                        const displays = [...prev.displays];
-                                        displays[idx] = {
-                                            ...displays[idx],
-                                            productId: product.id,
-                                            productName: product.name,
-                                            pixelPitch: String(product.pitch),
-                                        };
-                                        return { ...prev, displays };
-                                    });
-                                    noteWorkbookSync(`Product changed: Display ${idx + 1} → ${product.label}`);
-                                }}
-                            />
+                        <div className="shrink-0 mb-1.5 flex flex-wrap gap-1.5">
+                            {answers.displays.map((d, idx) => (
+                                <div key={idx} className="flex items-center gap-1.5 bg-white dark:bg-zinc-900 rounded border border-border px-2 py-1">
+                                    <span className="text-[11px] font-medium truncate max-w-[120px]">{d.name || d.displayName || `Display ${idx + 1}`}</span>
+                                    <select
+                                        value={d.productId || ""}
+                                        onChange={(e) => {
+                                            const product = availableProducts.find((p) => p.id === e.target.value);
+                                            if (!product) return;
+                                            setAnswers((prev) => {
+                                                const displays = [...prev.displays];
+                                                displays[idx] = {
+                                                    ...displays[idx],
+                                                    productId: product.id,
+                                                    productName: product.name,
+                                                    pixelPitch: String(product.pitch),
+                                                };
+                                                return { ...prev, displays };
+                                            });
+                                            noteWorkbookSync(`Product changed: Display ${idx + 1} → ${product.label}`);
+                                        }}
+                                        className="text-[11px] bg-white dark:bg-zinc-900 border border-border rounded px-1 py-0.5 cursor-pointer focus:ring-1 focus:ring-[#0A52EF] focus:outline-none max-w-[180px]"
+                                    >
+                                        <option value="">Select product...</option>
+                                        {[...availableProducts].sort((a, b) => a.label.localeCompare(b.label)).map((p) => (
+                                            <option key={p.id} value={p.id}>{p.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            ))}
                         </div>
                     )}
-                    {/* Full workbook preview */}
                     <UniverPreview
                         workbookData={serverPreview}
                         loading={serverPreviewLoading}
