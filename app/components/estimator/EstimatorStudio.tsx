@@ -20,8 +20,6 @@ import EstimatorCopilot from "./EstimatorCopilot";
 import { calculateDisplay, type SheetTab, type ProductSpec } from "./EstimatorBridge";
 import { getDefaultAnswers, type EstimatorAnswers, type DisplayAnswers } from "./questions";
 import VendorDropZone from "./VendorDropZone";
-import WorkbookShell from "@/app/components/reusables/WorkbookShell";
-import { univerToWorkbook } from "./univerToWorkbook";
 import BundlePanel from "./BundlePanel";
 import ReverseEngineerPanel from "./ReverseEngineerPanel";
 import LiabilityPanel from "./LiabilityPanel";
@@ -40,6 +38,7 @@ import type { ExtractedLEDSpec } from "@/services/rfp/unified/types";
 
 const EstimatorVenuePanel = dynamic(() => import("./EstimatorVenuePanel"), { ssr: false });
 const EditableWorkbook = dynamic(() => import("@/app/tools/rfp-analyzer/_components/UniverSpreadsheet"), { ssr: false });
+const UniverPreview = dynamic(() => import("./UniverPreview"), { ssr: false });
 const EstimatorActivityPanel = dynamic(() => import("./EstimatorActivityPanel"), { ssr: false });
 
 // Sheet colors no longer needed — Univer renders tab colors from the workbook data.
@@ -580,12 +579,12 @@ export default function EstimatorStudio({
             }
 
             // Dimension / quantity edits (7=H(ft), 8=W(ft), 11=Qty)
-            // Let server rebuild — Univer preview uses cached results (not live formulas)
-            // so cross-sheet links only update when the server regenerates the workbook
+            // Skip server rebuild — Univer recalculates formulas locally
             const fieldMap: Record<number, "heightFt" | "widthFt" | "quantity"> = { 7: "heightFt", 8: "widthFt", 11: "quantity" };
             const field = fieldMap[col];
             if (field) {
                 const numValue = typeof value === "number" ? value : (parseFloat(String(value)) || 0);
+                skipNextRebuild();
                 const updated = { ...answers };
                 updated.displays = [...updated.displays];
                 updated.displays[displayIndex] = { ...updated.displays[displayIndex], [field]: numValue };
@@ -1068,52 +1067,12 @@ export default function EstimatorStudio({
 
                 {/* Center/Right: Excel Preview */}
                 <section className="relative min-w-0 min-h-0 bg-zinc-100 dark:bg-zinc-950 flex flex-col p-3 pb-0">
-                    {/* Workbook preview with in-cell product dropdowns */}
-                    {serverPreviewLoading && (
-                        <div className="flex-1 flex items-center justify-center">
-                            <div className="flex flex-col items-center gap-3">
-                                <Loader2 className="w-6 h-6 animate-spin text-[#0A52EF]" />
-                                <p className="text-xs text-muted-foreground">Generating workbook...</p>
-                            </div>
-                        </div>
-                    )}
-                    {serverPreviewError && !serverPreviewLoading && (
-                        <div className="flex-1 flex items-center justify-center">
-                            <p className="text-xs text-destructive">{serverPreviewError}</p>
-                        </div>
-                    )}
-                    {serverPreview && !serverPreviewLoading && (() => {
-                        const sortedProducts = [...availableProducts].sort((a, b) => a.label.localeCompare(b.label));
-                        const wbData = univerToWorkbook(serverPreview, {
-                            productDropdowns: availableProducts.length > 0 ? {
-                                sheetName: "LED Cost Sheet",
-                                column: 5, // 0-based col F = Product
-                                dataStartRow: 3, // 0-based row 3 = Excel row 4 (first data row)
-                                products: sortedProducts.map((p) => ({ value: p.id, label: p.label })),
-                                displayProductIds: answers.displays.map((d) => d.productId || ""),
-                                onSelect: (displayIdx, productId) => {
-                                    const product = availableProducts.find((p) => p.id === productId);
-                                    if (!product) return;
-                                    setAnswers((prev) => {
-                                        const displays = [...prev.displays];
-                                        displays[displayIdx] = {
-                                            ...displays[displayIdx],
-                                            productId: product.id,
-                                            productName: product.name,
-                                            pixelPitch: String(product.pitch),
-                                        };
-                                        return { ...prev, displays };
-                                    });
-                                    noteWorkbookSync(`Product changed: Display ${displayIdx + 1} → ${product.label}`);
-                                },
-                            } : undefined,
-                        });
-                        return (
-                            <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-border bg-white">
-                                <WorkbookShell data={wbData} />
-                            </div>
-                        );
-                    })()}
+                    <UniverPreview
+                        workbookData={serverPreview}
+                        loading={serverPreviewLoading}
+                        error={serverPreviewError}
+                        onCellEdit={handlePreviewCellEdit}
+                    />
                     {/* Bundle panel overlay */}
                     {bundleOpen && (
                         <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-md rounded-lg border border-border shadow-lg">

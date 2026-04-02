@@ -10,7 +10,7 @@
  * fires with (sheetName, row, col, value) so the parent can update answers.
  */
 
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import { Loader2, AlertCircle } from "lucide-react";
 
 interface UniverPreviewProps {
@@ -123,6 +123,7 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
             try {
               const wb = univerAPI.getActiveWorkbook?.();
               if (wb) {
+                // Try setActiveSheet with name first, fall back to iterating sheets
                 try {
                   wb.setActiveSheet(savedTab);
                 } catch {
@@ -160,6 +161,7 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
               const col = fRange.getColumn?.();
               if (row == null || col == null) continue;
 
+              // Get sheet name from the range's sheet
               const sheetId = fRange.getSheetId?.();
               let sheetName = "";
               if (wb && sheetId) {
