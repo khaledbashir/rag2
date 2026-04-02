@@ -771,8 +771,8 @@ function buildBudgetSummary(
     {
       label: "LED Hardware (all displays)",
       marginPct: hwMargin,
-      costFormula: `SUM('LED Cost Sheet'!Q4:Q${ledDataEnd})`,
-      sellFormulaRef: `SUM('LED Cost Sheet'!S4:S${ledDataEnd})`,
+      costFormula: `SUM('LED Cost Sheet'!T4:T${ledDataEnd})`,
+      sellFormulaRef: `SUM('LED Cost Sheet'!V4:V${ledDataEnd})`,
       result: displays.reduce((s, d) => s + d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost, 0),
       showPricePerSqFt: true,
     },
