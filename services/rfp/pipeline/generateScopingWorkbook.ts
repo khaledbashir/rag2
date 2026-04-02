@@ -1403,17 +1403,29 @@ function buildLedCostSheet(
   let productSheet = wb.getWorksheet("_Products");
   if (!productSheet) {
     productSheet = wb.addWorksheet("_Products", { state: "veryHidden" });
+    const SPARE_PARTS_MULT = 1 + rc("spare_parts.led_pct", 0.05); // 1.05 = catalog + 5% spares
     sortedProducts.forEach((p, i) => {
       const r = i + 1;
       productSheet!.getCell(r, 1).value = p.name;                       // A: Name
       productSheet!.getCell(r, 2).value = p.manufacturer || "";          // B: Vendor
       productSheet!.getCell(r, 3).value = p.pitchMm;                    // C: Pitch (mm)
-      // D: $/SqFt — from product-specific cost table or pitch-based rate card
+      // D: $/SqFt — fully loaded (catalog rate + spare parts) so VLOOKUP gives the real cost
       const costPerSqm = HARDWARE_COST_PER_SQM[p.id];
-      const costPerSqFt = costPerSqm
+      let baseCostPerSqFt = costPerSqm
         ? round2(costPerSqm / 10.7639)
         : (LED_COST_PER_SQFT_BY_PITCH[String(p.pitchMm)] ?? 0);
-      productSheet!.getCell(r, 4).value = costPerSqFt;                  // D: $/SqFt
+      // Nearest-pitch fallback (e.g. 3.9 → 3.91)
+      if (!baseCostPerSqFt && p.pitchMm) {
+        const knownPitches = Object.keys(LED_COST_PER_SQFT_BY_PITCH).map(Number).filter(Number.isFinite);
+        let bestDelta = Infinity, bestKey = "";
+        for (const kp of knownPitches) {
+          const delta = Math.abs(kp - p.pitchMm);
+          if (delta < bestDelta && delta / p.pitchMm < 0.05) { bestDelta = delta; bestKey = String(kp); }
+        }
+        if (bestKey) baseCostPerSqFt = LED_COST_PER_SQFT_BY_PITCH[bestKey];
+      }
+      const costPerSqFt = round2(baseCostPerSqFt * SPARE_PARTS_MULT);
+      productSheet!.getCell(r, 4).value = costPerSqFt;                  // D: $/SqFt (loaded)
       productSheet!.getCell(r, 5).value = p.brightnessNits;             // E: NITs
       productSheet!.getCell(r, 6).value = round2(p.weightDensityLbm2);  // F: Weight (lbs/m²)
       productSheet!.getCell(r, 7).value = round2(p.powerDensityWm2);    // G: Power (W/m²)
@@ -1569,8 +1581,7 @@ function buildLedCostSheet(
     // O: Service
     dr.getCell(15).value = d.spec.serviceType || "Front";
     dr.getCell(15).alignment = { horizontal: "center" };
-    // P: $/SqFt — computed value (includes spare parts) so it matches the platform exactly
-    // VLOOKUP would give catalog-only rate which excludes spares, causing mismatch
+    // P: $/SqFt — VLOOKUP from _Products (which now contains fully-loaded rate incl spare parts)
     const ledWithSpares = d.ledHardwareCost + d.sparePartsCost;
     const costPerSqFtResult = d.areaSqFt > 0 ? round2(ledWithSpares / d.areaSqFt) : 0;
     if (d.isTV) {
@@ -1578,7 +1589,7 @@ function buildLedCostSheet(
       const unitCost = tvQty > 0 ? round2(ledWithSpares / tvQty) : 0;
       dr.getCell(16).value = unitCost;
     } else {
-      dr.getCell(16).value = costPerSqFtResult;
+      dr.getCell(16).value = { formula: `IFERROR(VLOOKUP(F${row},${prodRange},4,FALSE),0)`, result: costPerSqFtResult };
     }
     dr.getCell(16).numFmt = FMT_USD;
     // Q: Display Cost = $/SqFt × Total SqFt (formula so it flows from dimensions)
