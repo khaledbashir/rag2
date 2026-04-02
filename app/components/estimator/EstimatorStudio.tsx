@@ -20,6 +20,8 @@ import EstimatorCopilot from "./EstimatorCopilot";
 import { calculateDisplay, type SheetTab, type ProductSpec } from "./EstimatorBridge";
 import { getDefaultAnswers, type EstimatorAnswers, type DisplayAnswers } from "./questions";
 import VendorDropZone from "./VendorDropZone";
+import WorkbookShell from "@/app/components/reusables/WorkbookShell";
+import { univerToWorkbook } from "./univerToWorkbook";
 import BundlePanel from "./BundlePanel";
 import ReverseEngineerPanel from "./ReverseEngineerPanel";
 import LiabilityPanel from "./LiabilityPanel";
@@ -38,8 +40,6 @@ import type { ExtractedLEDSpec } from "@/services/rfp/unified/types";
 
 const EstimatorVenuePanel = dynamic(() => import("./EstimatorVenuePanel"), { ssr: false });
 const EditableWorkbook = dynamic(() => import("@/app/tools/rfp-analyzer/_components/UniverSpreadsheet"), { ssr: false });
-const UniverPreview = dynamic(() => import("./UniverPreview"), { ssr: false });
-const EstimatorProductWorkbook = dynamic(() => import("./EstimatorProductWorkbook"), { ssr: false });
 const EstimatorActivityPanel = dynamic(() => import("./EstimatorActivityPanel"), { ssr: false });
 
 // Sheet colors no longer needed — Univer renders tab colors from the workbook data.
@@ -1068,46 +1068,52 @@ export default function EstimatorStudio({
 
                 {/* Center/Right: Excel Preview */}
                 <section className="relative min-w-0 min-h-0 bg-zinc-100 dark:bg-zinc-950 flex flex-col p-3 pb-0">
-                    {/* Product selectors — one dropdown per display */}
-                    {availableProducts.length > 0 && answers.displays.length > 0 && (
-                        <div className="shrink-0 mb-1.5 flex flex-wrap gap-1.5">
-                            {answers.displays.map((d, idx) => (
-                                <div key={idx} className="flex items-center gap-1.5 bg-white dark:bg-zinc-900 rounded border border-border px-2 py-1">
-                                    <span className="text-[11px] font-medium truncate max-w-[120px]">{d.name || d.displayName || `Display ${idx + 1}`}</span>
-                                    <select
-                                        value={d.productId || ""}
-                                        onChange={(e) => {
-                                            const product = availableProducts.find((p) => p.id === e.target.value);
-                                            if (!product) return;
-                                            setAnswers((prev) => {
-                                                const displays = [...prev.displays];
-                                                displays[idx] = {
-                                                    ...displays[idx],
-                                                    productId: product.id,
-                                                    productName: product.name,
-                                                    pixelPitch: String(product.pitch),
-                                                };
-                                                return { ...prev, displays };
-                                            });
-                                            noteWorkbookSync(`Product changed: Display ${idx + 1} → ${product.label}`);
-                                        }}
-                                        className="text-[11px] bg-white dark:bg-zinc-900 border border-border rounded px-1 py-0.5 cursor-pointer focus:ring-1 focus:ring-[#0A52EF] focus:outline-none max-w-[180px]"
-                                    >
-                                        <option value="">Select product...</option>
-                                        {[...availableProducts].sort((a, b) => a.label.localeCompare(b.label)).map((p) => (
-                                            <option key={p.id} value={p.id}>{p.label}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            ))}
+                    {/* Workbook preview with in-cell product dropdowns */}
+                    {serverPreviewLoading && (
+                        <div className="flex-1 flex items-center justify-center">
+                            <div className="flex flex-col items-center gap-3">
+                                <Loader2 className="w-6 h-6 animate-spin text-[#0A52EF]" />
+                                <p className="text-xs text-muted-foreground">Generating workbook...</p>
+                            </div>
                         </div>
                     )}
-                    <UniverPreview
-                        workbookData={serverPreview}
-                        loading={serverPreviewLoading}
-                        error={serverPreviewError}
-                        onCellEdit={handlePreviewCellEdit}
-                    />
+                    {serverPreviewError && !serverPreviewLoading && (
+                        <div className="flex-1 flex items-center justify-center">
+                            <p className="text-xs text-destructive">{serverPreviewError}</p>
+                        </div>
+                    )}
+                    {serverPreview && !serverPreviewLoading && (() => {
+                        const sortedProducts = [...availableProducts].sort((a, b) => a.label.localeCompare(b.label));
+                        const wbData = univerToWorkbook(serverPreview, {
+                            productDropdowns: availableProducts.length > 0 ? {
+                                sheetName: "LED Cost Sheet",
+                                column: 5, // 0-based col F = Product
+                                dataStartRow: 3, // 0-based row 3 = Excel row 4 (first data row)
+                                products: sortedProducts.map((p) => ({ value: p.id, label: p.label })),
+                                displayProductIds: answers.displays.map((d) => d.productId || ""),
+                                onSelect: (displayIdx, productId) => {
+                                    const product = availableProducts.find((p) => p.id === productId);
+                                    if (!product) return;
+                                    setAnswers((prev) => {
+                                        const displays = [...prev.displays];
+                                        displays[displayIdx] = {
+                                            ...displays[displayIdx],
+                                            productId: product.id,
+                                            productName: product.name,
+                                            pixelPitch: String(product.pitch),
+                                        };
+                                        return { ...prev, displays };
+                                    });
+                                    noteWorkbookSync(`Product changed: Display ${displayIdx + 1} → ${product.label}`);
+                                },
+                            } : undefined,
+                        });
+                        return (
+                            <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-border bg-white">
+                                <WorkbookShell data={wbData} />
+                            </div>
+                        );
+                    })()}
                     {/* Bundle panel overlay */}
                     {bundleOpen && (
                         <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-md rounded-lg border border-border shadow-lg">
