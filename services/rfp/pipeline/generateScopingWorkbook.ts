@@ -3149,7 +3149,11 @@ function buildTechSpecsSheet(
   row++;
 
   // LED Cost Sheet data starts at row 4 (header at row 3)
-  // Columns: A=Display, D=Pitch, E=H(ft), F=W(ft), G=H(px), H=W(px), I=Qty, J=TotalSqFt, K=NITs, L=Service
+  // Columns: A=Display, B=RFP H, C=RFP W, D=RFP NITs, E=Vendor, F=Product,
+  //          G=Pitch, H=H(ft), I=W(ft), J=H(px), K=W(px), L=Qty, M=TotalSqFt,
+  //          N=Product NITs, O=Service, P=$/SqFt, Q=DisplayCost, R=Processor,
+  //          S=Shipping, T=TotalCost, U=Margin%, V=SellingPrice, W=ANCMargin,
+  //          X=Weight, Y=Power, Z=BTU
   displays.forEach((d, idx) => {
     const ledRow = 4 + idx; // LED Cost Sheet data row
     const r = ws.getRow(row);
@@ -3168,20 +3172,20 @@ function buildTechSpecsSheet(
     const wPx = d.spec.widthPx || (effPitch && d.widthFt ? Math.round(d.widthFt * 304.8 / effPitch) : 0);
 
     r.getCell(1).value = { formula: `'LED Cost Sheet'!A${ledRow}`, result: displayName };
-    r.getCell(2).value = { formula: `'LED Cost Sheet'!I${ledRow}`, result: qty };
-    r.getCell(3).value = { formula: `'LED Cost Sheet'!D${ledRow}`, result: pitchLabel };
-    r.getCell(4).value = { formula: `'LED Cost Sheet'!E${ledRow}`, result: d.heightFt || 0 };
-    r.getCell(5).value = { formula: `'LED Cost Sheet'!F${ledRow}`, result: d.widthFt || 0 };
-    r.getCell(6).value = { formula: `'LED Cost Sheet'!G${ledRow}`, result: hPx };
-    r.getCell(7).value = { formula: `'LED Cost Sheet'!H${ledRow}`, result: wPx };
+    r.getCell(2).value = { formula: `'LED Cost Sheet'!L${ledRow}`, result: qty };
+    r.getCell(3).value = { formula: `'LED Cost Sheet'!G${ledRow}`, result: pitchLabel };
+    r.getCell(4).value = { formula: `'LED Cost Sheet'!H${ledRow}`, result: d.heightFt || 0 };
+    r.getCell(5).value = { formula: `'LED Cost Sheet'!I${ledRow}`, result: d.widthFt || 0 };
+    r.getCell(6).value = { formula: `'LED Cost Sheet'!J${ledRow}`, result: hPx };
+    r.getCell(7).value = { formula: `'LED Cost Sheet'!K${ledRow}`, result: wPx };
     // Sq Ft: =D*E*B (height × width × qty)
     r.getCell(8).value = { formula: `D${row}*E${row}*B${row}`, result: d.areaSqFt };
     r.getCell(8).numFmt = "#,##0";
-    r.getCell(9).value = { formula: `'LED Cost Sheet'!K${ledRow}`, result: isClockLike ? "" : (d.spec.brightnessNits ?? "") };
-    r.getCell(10).value = { formula: `'LED Cost Sheet'!L${ledRow}`, result: d.spec.serviceType || "Front" };
+    r.getCell(9).value = { formula: `'LED Cost Sheet'!N${ledRow}`, result: isClockLike ? "" : (d.spec.brightnessNits ?? "") };
+    r.getCell(10).value = { formula: `'LED Cost Sheet'!O${ledRow}`, result: d.spec.serviceType || "Front" };
     r.getCell(11).value = d.spec.environment || "indoor";
 
-    // Weight & Power & BTU — cross-sheet refs to LED Cost Sheet (cols U, V, W)
+    // Weight & Power & BTU — cross-sheet refs to LED Cost Sheet (cols X, Y, Z)
     const areaM2 = d.areaSqFt * 0.092903;
     const pitch = effPitch ?? d.spec.pixelPitchMm ?? 0;
     const catalogMatch = tsSelectedProduct
@@ -3190,15 +3194,15 @@ function buildTechSpecsSheet(
     const tsPower = catalogMatch ? Math.round(areaM2 * catalogMatch.powerDensityWm2) : 0;
     const tsBtu = tsPower > 0 ? Math.round(tsPower * 3.412) : 0;
 
-    r.getCell(12).value = { formula: `'LED Cost Sheet'!U${ledRow}`, result: tsWeight || 0 };
+    r.getCell(12).value = { formula: `'LED Cost Sheet'!X${ledRow}`, result: tsWeight || 0 };
     r.getCell(12).numFmt = "#,##0";
-    r.getCell(13).value = { formula: `'LED Cost Sheet'!V${ledRow}`, result: tsPower || 0 };
+    r.getCell(13).value = { formula: `'LED Cost Sheet'!Y${ledRow}`, result: tsPower || 0 };
     r.getCell(13).numFmt = "#,##0";
     // Fiber Strands = total pixels / 400,000 (one strand per 400K pixels)
     const tsFiber = (hPx * wPx * qty) > 0 ? round2((hPx * wPx * qty) / 400000) : 0;
     r.getCell(14).value = { formula: `IFERROR((F${row}*G${row}*B${row})/400000,0)`, result: tsFiber };
     r.getCell(14).numFmt = "0.0";
-    r.getCell(15).value = { formula: `'LED Cost Sheet'!W${ledRow}`, result: tsBtu || 0 };
+    r.getCell(15).value = { formula: `'LED Cost Sheet'!Z${ledRow}`, result: tsBtu || 0 };
     r.getCell(15).numFmt = "#,##0";
 
     stripe(r, 15, idx % 2 === 0);
