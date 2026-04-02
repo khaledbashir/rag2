@@ -19,6 +19,8 @@ import QuestionFlow from "./QuestionFlow";
 import EstimatorCopilot from "./EstimatorCopilot";
 import { calculateDisplay, type SheetTab, type ProductSpec } from "./EstimatorBridge";
 import { getDefaultAnswers, type EstimatorAnswers, type DisplayAnswers } from "./questions";
+import WorkbookShell from "@/app/components/reusables/WorkbookShell";
+import { buildEstimatorWorkbook } from "./buildEstimatorWorkbook";
 import VendorDropZone from "./VendorDropZone";
 import BundlePanel from "./BundlePanel";
 import ReverseEngineerPanel from "./ReverseEngineerPanel";
@@ -1067,12 +1069,44 @@ export default function EstimatorStudio({
 
                 {/* Center/Right: Excel Preview */}
                 <section className="relative min-w-0 min-h-0 bg-zinc-100 dark:bg-zinc-950 flex flex-col p-3 pb-0">
-                    <UniverPreview
-                        workbookData={serverPreview}
-                        loading={serverPreviewLoading}
-                        error={serverPreviewError}
-                        onCellEdit={handlePreviewCellEdit}
-                    />
+                    {serverPreviewLoading && (
+                        <div className="flex-1 flex items-center justify-center">
+                            <div className="flex flex-col items-center gap-3">
+                                <Loader2 className="w-6 h-6 animate-spin text-[#0A52EF]" />
+                                <p className="text-xs text-muted-foreground">Generating workbook...</p>
+                            </div>
+                        </div>
+                    )}
+                    {serverPreviewError && !serverPreviewLoading && (
+                        <div className="flex-1 flex items-center justify-center">
+                            <p className="text-xs text-destructive">{serverPreviewError}</p>
+                        </div>
+                    )}
+                    {serverPreview && !serverPreviewLoading && (() => {
+                        const wbData = buildEstimatorWorkbook(serverPreview, availableProducts.length > 0 ? {
+                            products: availableProducts,
+                            displayProductIds: answers.displays.map((d) => d.productId || ""),
+                            onProductSelect: (displayIdx, productId) => {
+                                const product = availableProducts.find((p) => p.id === productId);
+                                if (!product) return;
+                                setAnswers((prev) => {
+                                    const displays = [...prev.displays];
+                                    displays[displayIdx] = {
+                                        ...displays[displayIdx],
+                                        productId: product.id,
+                                        productName: product.name,
+                                        pixelPitch: String(product.pitch),
+                                    };
+                                    return { ...prev, displays };
+                                });
+                            },
+                        } : undefined);
+                        return (
+                            <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-border bg-white">
+                                <WorkbookShell data={wbData} />
+                            </div>
+                        );
+                    })()}
                     {/* Bundle panel overlay */}
                     {bundleOpen && (
                         <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-md rounded-lg border border-border shadow-lg">
