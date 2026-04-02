@@ -1086,9 +1086,12 @@ export default function EstimatorStudio({
                         const wbData = buildEstimatorWorkbook(serverPreview, availableProducts.length > 0 ? {
                             products: availableProducts,
                             displayProductIds: answers.displays.map((d) => d.productId || ""),
+                            calcs,
                             onProductSelect: (displayIdx, productId) => {
                                 const product = availableProducts.find((p) => p.id === productId);
                                 if (!product) return;
+                                // Skip server rebuild — calcs recalculate client-side via useMemo
+                                skipNextRebuild();
                                 setAnswers((prev) => {
                                     const displays = [...prev.displays];
                                     displays[displayIdx] = {

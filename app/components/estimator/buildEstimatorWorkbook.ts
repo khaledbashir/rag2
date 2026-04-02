@@ -34,6 +34,28 @@ interface ProductOption {
   label: string;
   name: string;
   pitch: number;
+  manufacturer?: string;
+  nits?: number;
+}
+
+/** Per-display cost breakdown from client-side calculateDisplay() */
+interface DisplayCalc {
+  name: string;
+  heightFt: number;
+  widthFt: number;
+  areaSqFt: number;
+  pixelPitch: number;
+  pixelsW: number;
+  pixelsH: number;
+  costPerSqFt: number;
+  hardwareCost: number;
+  spareParts: number;
+  processorCost: number;
+  equipmentCost: number;
+  shippingCost: number;
+  totalCost: number;
+  marginPct: number;
+  sellPrice: number;
 }
 
 export interface EstimatorWorkbookOptions {
@@ -43,6 +65,8 @@ export interface EstimatorWorkbookOptions {
   displayProductIds: string[];
   /** Called when user picks a product from the dropdown */
   onProductSelect: (displayIndex: number, productId: string) => void;
+  /** Client-side cost calculations — used to update LED Cost Sheet instantly */
+  calcs?: DisplayCalc[];
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -185,13 +209,44 @@ export function buildEstimatorWorkbook(
           sc.bold = true;
         }
 
-        // Inject product dropdown on LED Cost Sheet, Product column, data rows only
-        if (isLedCostSheet && c === LED_PRODUCT_COL && r >= LED_DATA_START && options && dropdownOpts.length > 0) {
+        // LED Cost Sheet data rows: inject product dropdown + overlay client-side calcs
+        if (isLedCostSheet && r >= LED_DATA_START && options) {
           const displayIdx = r - LED_DATA_START;
           if (displayIdx >= 0 && displayIdx < options.displayProductIds.length) {
-            sc.value = options.displayProductIds[displayIdx] || "";
-            sc.dropdown = dropdownOpts;
-            sc.onDropdownChange = (val: string) => options.onProductSelect(displayIdx, val);
+            // Product dropdown (col 5 = F)
+            if (c === LED_PRODUCT_COL && dropdownOpts.length > 0) {
+              sc.value = options.displayProductIds[displayIdx] || "";
+              sc.dropdown = dropdownOpts;
+              sc.onDropdownChange = (val: string) => options.onProductSelect(displayIdx, val);
+            }
+
+            // Overlay client-side calcs for instant update (no server round-trip)
+            const calc = options.calcs?.[displayIdx];
+            const product = options.products.find((p) => p.id === options.displayProductIds[displayIdx]);
+            if (calc) {
+              // LED Cost Sheet columns (0-based):
+              // 4=Vendor, 6=Pitch, 7=H(ft), 8=W(ft), 9=H(px), 10=W(px),
+              // 12=TotalSqFt, 13=NITs, 15=$/SqFt, 16=DisplayCost,
+              // 17=Processor, 18=Shipping, 19=TotalCost,
+              // 20=Margin%, 21=SellingPrice, 22=ANCMargin
+              const fmt = (n: number) => Math.round(n * 100) / 100;
+              if (c === 4 && product) sc.value = product.manufacturer || "";
+              if (c === 6 && product) sc.value = product.pitch;
+              if (c === 7) sc.value = fmt(calc.heightFt);
+              if (c === 8) sc.value = fmt(calc.widthFt);
+              if (c === 9) sc.value = calc.pixelsH;
+              if (c === 10) sc.value = calc.pixelsW;
+              if (c === 12) sc.value = Math.round(calc.areaSqFt);
+              if (c === 13 && product) sc.value = product.nits || 0;
+              if (c === 15) { sc.value = fmt(calc.costPerSqFt); sc.currency = true; }
+              if (c === 16) { sc.value = fmt(calc.hardwareCost + calc.spareParts); sc.currency = true; }
+              if (c === 17) { sc.value = fmt(calc.processorCost + calc.equipmentCost); sc.currency = true; }
+              if (c === 18) { sc.value = fmt(calc.shippingCost); sc.currency = true; }
+              if (c === 19) { sc.value = fmt(calc.totalCost); sc.currency = true; sc.bold = true; }
+              if (c === 20) { sc.value = calc.marginPct; sc.percent = true; }
+              if (c === 21) { sc.value = fmt(calc.sellPrice); sc.currency = true; sc.bold = true; }
+              if (c === 22) { sc.value = fmt(calc.sellPrice - calc.totalCost); sc.currency = true; }
+            }
           }
         }
 
