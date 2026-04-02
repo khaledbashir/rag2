@@ -83,7 +83,7 @@ export default function EstimatorStudio({
         step: number;
         displayIndex: number;
     } | null>(null);
-    const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string }>>([]);
+    const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string; nits?: number; manufacturer?: string }>>([]);
     const { activeUsers } = usePresence(projectId);
     // Legacy cell overrides / custom sheets kept for auto-save compatibility
     const cellOverrides: Record<string, string | number> = {};
@@ -193,6 +193,8 @@ export default function EstimatorStudio({
                     label: p.label || p.displayName || p.modelNumber || "Unknown Product",
                     pitch: Number(p.pitch ?? p.pixelPitch ?? p.pixelPitchMm ?? 0) || 0,
                     name: p.name || p.displayName || p.modelNumber || "Unknown Product",
+                    nits: Number(p.nits ?? p.maxNits ?? 0) || 0,
+                    manufacturer: p.manufacturer || "",
                 }));
                 setAvailableProducts(products);
             })
@@ -218,8 +220,8 @@ export default function EstimatorStudio({
             const pitch = Number(display.pixelPitch || 0) || null;
             const productBrightness = product
                 ? (
-                    (product as any).brightnessNits
-                    ?? (product as any).maxNits
+                    (product as any).maxNits
+                    ?? (product as any).brightnessNits
                     ?? (product as any).typicalNits
                     ?? null
                 )

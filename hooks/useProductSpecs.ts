@@ -39,6 +39,7 @@ export function useProductSpecs(productIds: string[]) {
                                 maxPowerWattsPerCab: p.maxPowerWattsPerCab,
                                 typicalPowerWattsPerCab: p.typicalPowerWattsPerCab || undefined,
                                 pixelPitch: p.pixelPitch,
+                                maxNits: p.maxNits ?? 0,
                             } as ProductSpec,
                         };
                     })

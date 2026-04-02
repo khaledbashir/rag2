@@ -113,6 +113,7 @@ export interface ProductSpec {
     maxPowerWattsPerCab: number;
     typicalPowerWattsPerCab?: number;
     pixelPitch: number;
+    maxNits?: number;
     /** Module dimensions for finer granularity (optional) */
     moduleWidthMm?: number;
     moduleHeightMm?: number;
