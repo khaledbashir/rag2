@@ -182,9 +182,9 @@ export default function EstimatorStudio({
     const { specs: productSpecs } = useProductSpecs(productIds);
 
     useEffect(() => {
-        const env = answers.isIndoor ? "indoor" : "outdoor";
         let cancelled = false;
-        fetch(`/api/rfp/pipeline/products?environment=${env}`)
+        // Fetch ALL products (no environment filter) — a single project can mix indoor + outdoor displays
+        fetch(`/api/rfp/pipeline/products`)
             .then((r) => (r.ok ? r.json() : null))
             .then((data) => {
                 if (cancelled) return;
@@ -204,7 +204,7 @@ export default function EstimatorStudio({
         return () => {
             cancelled = true;
         };
-    }, [answers.isIndoor]);
+    }, []);
 
     // Calculate per-display cost breakdowns (used by copilot for query responses)
     const calcs = useMemo(() => {
