@@ -385,7 +385,7 @@ export async function generateScopingWorkbook(
   // ═══════════════════════════════════════════════════════════════════════════
 
   // 4. LED Cost Sheet
-  buildLedCostSheet(wb, projectName, displays, resolveProduct, ov, getBundleEquipmentSubtotalRows(displays));
+  buildLedCostSheet(wb, projectName, displays, resolveProduct, ov, getBundleEquipmentSubtotalRows(displays), altDisplays);
 
   // 5. Tech Specs (no pricing — for installers/subs)
   buildTechSpecsSheet(wb, projectName, displays, resolveProduct);
@@ -513,10 +513,8 @@ export async function generateScopingWorkbook(
   // Internal: PO's
   buildPOs(wb, projectName);
 
-  // Alternates (reference only — not in budget)
-  if (altDisplays.length > 0) {
-    buildAlternatesSheet(wb, projectName, altDisplays);
-  }
+  // Alternates are now shown on the LED Cost Sheet (below base bid TOTAL row)
+  // Separate tab removed per Natalia's feedback — less confusing to have it all in one place
 
   // ── Tab ordering: move key sheets to the front ──
   // Desired order: Overview, MA, Budget Summary, LED, Tech Specs, Install…,
@@ -1357,6 +1355,7 @@ function buildLedCostSheet(
   resolveProduct: ProductResolver,
   ov?: FinancialOverrides,
   bundleSubtotalRows: number[] = [],
+  altDisplays: ComputedDisplay[] = [],
 ): void {
   const ws = wb.addWorksheet("LED Cost Sheet", {
     properties: { tabColor: { argb: C.GREEN_TAB } },
@@ -1735,6 +1734,55 @@ function buildLedCostSheet(
   gtR.getCell(26).value = { formula: baseSumFormula("Z"), result: baseBtuTotal };
   gtR.getCell(26).numFmt = "#,##0";
   totalStyle(gtR, COLS, C.GREEN_BG);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ALTERNATES SECTION — appended below base bid on the same LED Cost Sheet
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (altDisplays.length > 0) {
+    row += 2;
+    const altHeaderR = ws.getRow(row);
+    altHeaderR.getCell(1).value = "ALTERNATES (Reference Only — NOT included in base bid)";
+    altHeaderR.getCell(1).font = { bold: true, name: "Calibri", size: 11, color: { argb: "FF333333" } };
+    for (let c = 1; c <= COLS; c++) {
+      altHeaderR.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.AMBER_BG } };
+      altHeaderR.getCell(c).border = { bottom: { style: "thin", color: { argb: C.AMBER_TAB } } };
+    }
+    row++;
+
+    altDisplays.forEach((d, idx) => {
+      const dr = ws.getRow(row);
+      const altLabel = d.spec.alternateId || `Alt ${idx + 1}`;
+      const altPitch = d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm;
+      // A: Display name with Alt prefix
+      dr.getCell(1).value = `${altLabel}: ${d.spec.name}`;
+      dr.getCell(1).font = { bold: true, name: "Calibri" };
+      // G: Pitch
+      dr.getCell(7).value = altPitch ? `${altPitch}mm` : "—";
+      dr.getCell(7).alignment = { horizontal: "center" };
+      // H-I: Dimensions
+      dr.getCell(8).value = d.heightFt || 0; dr.getCell(8).numFmt = "0.00";
+      dr.getCell(9).value = d.widthFt || 0; dr.getCell(9).numFmt = "0.00";
+      // L: Qty
+      dr.getCell(12).value = d.spec.quantity || 1; dr.getCell(12).alignment = { horizontal: "center" };
+      // M: Total SqFt
+      dr.getCell(13).value = d.areaSqFt; dr.getCell(13).numFmt = "#,##0";
+      // N: Environment
+      dr.getCell(14).value = d.spec.environment || "indoor";
+      dr.getCell(14).alignment = { horizontal: "center" };
+      // T: Est. Cost
+      if (d.totalCost > 0) { dr.getCell(20).value = d.totalCost; dr.getCell(20).numFmt = FMT_USD; }
+      // V: Selling Price
+      if (d.sellingPrice > 0) { dr.getCell(22).value = d.sellingPrice; dr.getCell(22).numFmt = FMT_USD; }
+      // Notes in last used column
+      dr.getCell(26).value = d.spec.alternateDescription || d.spec.notes || `Alternate pixel pitch: ${altPitch || "TBD"}mm`;
+      dr.getCell(26).alignment = { wrapText: true };
+      // Amber tint for alternate rows
+      for (let c = 1; c <= COLS; c++) {
+        dr.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF8E1" } };
+      }
+      row++;
+    });
+  }
 }
 
 // ─── 3. PER-ZONE INSTALL SHEET ─────────────────────────────────────────────
