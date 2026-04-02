@@ -485,7 +485,7 @@ export async function generateScopingWorkbook(
       const label = String(row.getCell(2).value || "");
       if (label === "Number of Displays") {
         row.getCell(3).value = {
-          formula: `SUM('LED Cost Sheet'!I4:I${ledDataEndPO})`,
+          formula: `SUM('LED Cost Sheet'!L4:L${ledDataEndPO})`,
           result: displays.reduce((sum, d) => sum + Math.max(d.spec.quantity || 1, 1), 0),
         };
       }
@@ -1669,8 +1669,13 @@ function buildLedCostSheet(
 
   row++;
   const gtR = ws.getRow(row);
-  gtR.getCell(1).value = `TOTAL (${baseDisplays.length} displays)`;
+  const totalQty = baseDisplays.reduce((s, d) => s + (Number(d.spec.quantity) || 1), 0);
+  gtR.getCell(1).value = `TOTAL (${totalQty} screens)`;
   gtR.getCell(1).font = { bold: true, name: "Calibri" };
+  // L: Total Qty
+  gtR.getCell(12).value = { formula: baseSumFormula("L"), result: totalQty };
+  gtR.getCell(12).alignment = { horizontal: "center" };
+  gtR.getCell(12).font = { bold: true, name: "Calibri" };
   // M: Total SqFt
   gtR.getCell(13).value = { formula: baseSumFormula("M"), result: baseDisplays.reduce((s, d) => s + d.areaSqFt, 0) };
   gtR.getCell(13).numFmt = "#,##0";
