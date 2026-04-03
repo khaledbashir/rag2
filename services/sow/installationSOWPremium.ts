@@ -32,6 +32,7 @@ import {
   Tab,
   TabStopType,
   TabStopPosition,
+  TableLayoutType,
 } from "docx";
 import {
   INSTALL_TASKS,
@@ -177,12 +178,13 @@ export async function generatePremiumSOW(input: InstallSOWInput): Promise<Buffer
   // Blue accent bar (full-width table trick)
   children.push(
     new Table({
+      layout: TableLayoutType.FIXED,
       width: { size: PAGE_W, type: WidthType.DXA },
+      columnWidths: [PAGE_W],
       rows: [
         new TableRow({
           children: [
             new TableCell({
-              width: { size: PAGE_W, type: WidthType.DXA },
               shading: { type: ShadingType.SOLID, color: BLUE },
               borders: {
                 top: { style: BorderStyle.NONE, size: 0, color: BLUE },
@@ -222,18 +224,18 @@ export async function generatePremiumSOW(input: InstallSOWInput): Promise<Buffer
 
   children.push(
     new Table({
+      layout: TableLayoutType.FIXED,
       width: { size: PAGE_W, type: WidthType.DXA },
+      columnWidths: [pct(25), pct(75)],
       rows: infoRows.map(([label, value]) =>
         new TableRow({
           children: [
             new TableCell({
-              width: { size: pct(22), type: WidthType.DXA },
               borders: { top: thinBorder, bottom: thinBorder, left: { style: BorderStyle.SINGLE, size: 8, color: BLUE }, right: thinBorder },
               shading: { type: ShadingType.SOLID, color: LIGHT_BLUE_BG },
               children: [new Paragraph({ spacing: { before: 40, after: 40 }, children: [txt(label, { bold: true, size: 18, color: DARK_BLUE })] })],
             }),
             new TableCell({
-              width: { size: pct(78), type: WidthType.DXA },
               borders: cellBorders,
               children: [new Paragraph({ spacing: { before: 40, after: 40 }, children: [txt(value, { size: 18, color: GRAY_600 })] })],
             }),
@@ -277,7 +279,9 @@ export async function generatePremiumSOW(input: InstallSOWInput): Promise<Buffer
 
   children.push(
     new Table({
+      layout: TableLayoutType.FIXED,
       width: { size: PAGE_W, type: WidthType.DXA },
+      columnWidths: [pct(30), pct(20), pct(12), pct(10), pct(13), pct(15)],
       rows: displayTableRows,
     })
   );
@@ -437,7 +441,9 @@ export async function generatePremiumSOW(input: InstallSOWInput): Promise<Buffer
 
   children.push(
     new Table({
+      layout: TableLayoutType.FIXED,
       width: { size: PAGE_W, type: WidthType.DXA },
+      columnWidths: [pct(50), pct(30), pct(20)],
       rows: pricingTableRows,
     })
   );
