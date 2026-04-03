@@ -1751,6 +1751,7 @@ function buildLedCostSheet(
 
     altDisplays.forEach((d, idx) => {
       const dr = ws.getRow(row);
+      const rowNum = dr.number;
       const altLabel = d.spec.alternateId || `Alt ${idx + 1}`;
       const altPitch = d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm;
       // A: Display name with Alt prefix
@@ -1762,17 +1763,49 @@ function buildLedCostSheet(
       // H-I: Dimensions
       dr.getCell(8).value = d.heightFt || 0; dr.getCell(8).numFmt = "0.00";
       dr.getCell(9).value = d.widthFt || 0; dr.getCell(9).numFmt = "0.00";
+      // J-K: Pixels (formulas from pitch + dimensions)
+      if (altPitch && altPitch > 0) {
+        dr.getCell(10).value = { formula: `ROUND(H${rowNum}*304.8/${altPitch},0)`, result: Math.round((d.heightFt || 0) * 304.8 / altPitch) };
+        dr.getCell(11).value = { formula: `ROUND(I${rowNum}*304.8/${altPitch},0)`, result: Math.round((d.widthFt || 0) * 304.8 / altPitch) };
+      }
       // L: Qty
       dr.getCell(12).value = d.spec.quantity || 1; dr.getCell(12).alignment = { horizontal: "center" };
-      // M: Total SqFt
-      dr.getCell(13).value = d.areaSqFt; dr.getCell(13).numFmt = "#,##0";
+      // M: Total SqFt — formula: H × W × Qty
+      dr.getCell(13).value = { formula: `H${rowNum}*I${rowNum}*L${rowNum}`, result: d.areaSqFt };
+      dr.getCell(13).numFmt = "#,##0";
       // N: Environment
       dr.getCell(14).value = d.spec.environment || "indoor";
       dr.getCell(14).alignment = { horizontal: "center" };
-      // T: Est. Cost
-      if (d.totalCost > 0) { dr.getCell(20).value = d.totalCost; dr.getCell(20).numFmt = FMT_USD; }
-      // V: Selling Price
-      if (d.sellingPrice > 0) { dr.getCell(22).value = d.sellingPrice; dr.getCell(22).numFmt = FMT_USD; }
+      // P: $/SqFt — LED hardware cost per sqft
+      const altCostPerSqFt = d.areaSqFt > 0 ? round2(d.ledHardwareCost / d.areaSqFt) : 0;
+      dr.getCell(16).value = altCostPerSqFt; dr.getCell(16).numFmt = FMT_USD;
+      // Q: Display Cost — formula: $/SqFt × Total SqFt
+      const altLedWithSpares = round2(d.ledHardwareCost + d.sparePartsCost);
+      dr.getCell(17).value = { formula: `P${rowNum}*M${rowNum}`, result: altLedWithSpares };
+      dr.getCell(17).numFmt = FMT_USD;
+      // R: Processor/Equipment
+      const altEquipCost = d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost;
+      dr.getCell(18).value = altEquipCost || 0; dr.getCell(18).numFmt = FMT_USD;
+      // S: Shipping — formula: $10/sqft, $500 minimum
+      dr.getCell(19).value = { formula: `MAX(M${rowNum}*10,500)`, result: d.shippingCost };
+      dr.getCell(19).numFmt = FMT_USD;
+      // T: Total Cost = Q + R + S (formula)
+      const altLedTotal = round2(altLedWithSpares + altEquipCost + d.shippingCost);
+      dr.getCell(20).value = { formula: `Q${rowNum}+R${rowNum}+S${rowNum}`, result: altLedTotal };
+      dr.getCell(20).numFmt = FMT_USD;
+      dr.getCell(20).font = { bold: true, name: "Calibri" };
+      // U: Margin % — references master override (same as base displays)
+      const altLedMargin = Number(ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware);
+      dr.getCell(21).value = { formula: `V$${masterMarginRow}`, result: altLedMargin };
+      dr.getCell(21).numFmt = FMT_PCT;
+      // V: Selling Price = Cost / (1 - Margin%) (formula)
+      const altLedSell = altLedMargin < 1 ? round2(altLedTotal / (1 - altLedMargin)) : altLedTotal;
+      dr.getCell(22).value = { formula: `IFERROR(T${rowNum}/(1-U${rowNum}),0)`, result: altLedSell };
+      dr.getCell(22).numFmt = FMT_USD;
+      dr.getCell(22).font = { bold: true, name: "Calibri" };
+      // W: ANC Margin = Selling - Cost (formula)
+      dr.getCell(23).value = { formula: `V${rowNum}-T${rowNum}`, result: round2(altLedSell - altLedTotal) };
+      dr.getCell(23).numFmt = FMT_USD;
       // Notes in last used column
       dr.getCell(26).value = d.spec.alternateDescription || d.spec.notes || `Alternate pixel pitch: ${altPitch || "TBD"}mm`;
       dr.getCell(26).alignment = { wrapText: true };

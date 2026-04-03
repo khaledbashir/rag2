@@ -95,7 +95,18 @@ const PdfPricingTables = ({
     if (pricingTables.length > 0) {
         const detailTables = pricingTables
             .map((table: any, origIdx: number) => ({ table, origIdx }))
-            .filter(({ origIdx }) => origIdx !== masterTableIndex);
+            .filter(({ table, origIdx }) => {
+                // Exclude the designated master table
+                if (origIdx === masterTableIndex) return false;
+                // When "None" selected (masterTableIndex === null), also exclude
+                // auto-generated summary/roll-up tables — they only exist to be the
+                // master table, so showing them as a detail table is confusing.
+                if (masterTableIndex === null) {
+                    const id = (table?.id || "").toString();
+                    if (id.includes("project-grand-total")) return false;
+                }
+                return true;
+            });
 
         // Render a single detail table card (reused in both portrait and landscape)
         const renderDetailTable = ({ table, origIdx }: { table: any; origIdx: number }) => {
