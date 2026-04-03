@@ -208,6 +208,7 @@ function getFixedPixelSpecs(resolvedProduct: any): { hPx: number; wPx: number } 
   const pType = resolvedProduct?.productType;
   if (pType !== "courtside" && pType !== "stanchion") return null;
   const specs = resolvedProduct?.extendedSpecs;
+  console.log(`[FixedPixelSpecs] productType=${pType}, extendedSpecs keys=${specs ? Object.keys(specs).join(",") : "NONE"}, displayHeightPx=${specs?.displayHeightPx}, displayWidthPx=${specs?.displayWidthPx}`);
   if (!specs?.displayHeightPx || !specs?.displayWidthPx) return null;
   return { hPx: specs.displayHeightPx, wPx: specs.displayWidthPx };
 }
@@ -1512,6 +1513,7 @@ function buildLedCostSheet(
     // ═══════ All data cells use VLOOKUP formulas tied to product dropdown (F) ═══════
     // When user changes F (product), all dependent cells auto-recalculate.
     const selectedProduct = d.spec.selectedProductId ? resolveProduct(d.spec.selectedProductId) : null;
+    console.log(`[ScopingWorkbook] Display "${d.spec.name}" selectedProductId=${d.spec.selectedProductId}, resolved=${!!selectedProduct}, productType=${(selectedProduct as any)?.productType ?? "N/A"}, hasExtSpecs=${!!(selectedProduct as any)?.extendedSpecs}`);
     const selectedPitch = (selectedProduct as any)?.pitchMm ?? (selectedProduct as any)?.pitch;
     const effectivePitch = selectedPitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.match?.module?.pitch ?? d.spec.pixelPitchMm;
 
