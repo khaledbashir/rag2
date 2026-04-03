@@ -55,6 +55,7 @@ interface DisplayCalc {
   shippingCost: number;
   totalCost: number;
   marginPct: number;
+  ledMarginPct: number;
   sellPrice: number;
 }
 
@@ -230,6 +231,13 @@ export function buildEstimatorWorkbook(
               // 17=Processor, 18=Shipping, 19=TotalCost,
               // 20=Margin%, 21=SellingPrice, 22=ANCMargin
               const fmt = (n: number) => Math.round(n * 100) / 100;
+              // LED-only costs: Display Cost + Processor/Equipment + Shipping
+              // (structural, labor, electrical, PM, engineering are in Margin Analysis, NOT here)
+              const ledDisplayCost = calc.hardwareCost + calc.spareParts;
+              const ledProcessorCost = calc.processorCost + calc.equipmentCost;
+              const ledTotalCost = ledDisplayCost + ledProcessorCost + calc.shippingCost;
+              const ledMargin = calc.ledMarginPct;
+              const ledSellPrice = ledMargin < 1 ? fmt(ledTotalCost / (1 - ledMargin)) : ledTotalCost;
               if (c === 4 && product) sc.value = product.manufacturer || "";
               if (c === 6 && product) sc.value = product.pitch;
               if (c === 7) sc.value = fmt(calc.heightFt);
@@ -239,14 +247,42 @@ export function buildEstimatorWorkbook(
               if (c === 12) sc.value = Math.round(calc.areaSqFt);
               if (c === 13 && product) sc.value = product.nits || 0;
               if (c === 15) { sc.value = fmt(calc.costPerSqFt); sc.currency = true; }
-              if (c === 16) { sc.value = fmt(calc.hardwareCost + calc.spareParts); sc.currency = true; }
-              if (c === 17) { sc.value = fmt(calc.processorCost + calc.equipmentCost); sc.currency = true; }
+              if (c === 16) { sc.value = fmt(ledDisplayCost); sc.currency = true; }
+              if (c === 17) { sc.value = fmt(ledProcessorCost); sc.currency = true; }
               if (c === 18) { sc.value = fmt(calc.shippingCost); sc.currency = true; }
-              if (c === 19) { sc.value = fmt(calc.totalCost); sc.currency = true; sc.bold = true; }
-              if (c === 20) { sc.value = calc.marginPct; sc.percent = true; }
-              if (c === 21) { sc.value = fmt(calc.sellPrice); sc.currency = true; sc.bold = true; }
-              if (c === 22) { sc.value = fmt(calc.sellPrice - calc.totalCost); sc.currency = true; }
+              if (c === 19) { sc.value = fmt(ledTotalCost); sc.currency = true; sc.bold = true; }
+              if (c === 20) { sc.value = ledMargin; sc.percent = true; }
+              if (c === 21) { sc.value = ledSellPrice; sc.currency = true; sc.bold = true; }
+              if (c === 22) { sc.value = fmt(ledSellPrice - ledTotalCost); sc.currency = true; }
             }
+          }
+        }
+
+        // LED Cost Sheet TOTAL row: overlay with summed client-side calcs
+        // so TOTAL matches overlaid data rows (both use LED-only values)
+        if (isLedCostSheet && options?.calcs && options.calcs.length > 0) {
+          const cellStr = String(rowData[0]?.v || "").toUpperCase();
+          if (cellStr.startsWith("TOTAL")) {
+            const fmt = (n: number) => Math.round(n * 100) / 100;
+            const allCalcs = options.calcs;
+            const sumDisplayCost = allCalcs.reduce((s, calc) => s + calc.hardwareCost + calc.spareParts, 0);
+            const sumProcessorCost = allCalcs.reduce((s, calc) => s + calc.processorCost + calc.equipmentCost, 0);
+            const sumShippingCost = allCalcs.reduce((s, calc) => s + calc.shippingCost, 0);
+            const sumLedTotal = sumDisplayCost + sumProcessorCost + sumShippingCost;
+            const avgLedMargin = allCalcs.length > 0 ? allCalcs[0].ledMarginPct : 0.15;
+            const sumLedSell = allCalcs.reduce((s, calc) => {
+              const lt = (calc.hardwareCost + calc.spareParts) + (calc.processorCost + calc.equipmentCost) + calc.shippingCost;
+              const m = calc.ledMarginPct;
+              return s + (m < 1 ? lt / (1 - m) : lt);
+            }, 0);
+            const blendedMargin = sumLedSell > 0 ? 1 - (sumLedTotal / sumLedSell) : avgLedMargin;
+            if (c === 16) { sc.value = fmt(sumDisplayCost); sc.currency = true; sc.bold = true; }
+            if (c === 17) { sc.value = fmt(sumProcessorCost); sc.currency = true; sc.bold = true; }
+            if (c === 18) { sc.value = fmt(sumShippingCost); sc.currency = true; sc.bold = true; }
+            if (c === 19) { sc.value = fmt(sumLedTotal); sc.currency = true; sc.bold = true; }
+            if (c === 20) { sc.value = blendedMargin; sc.percent = true; sc.bold = true; }
+            if (c === 21) { sc.value = fmt(sumLedSell); sc.currency = true; sc.bold = true; }
+            if (c === 22) { sc.value = fmt(sumLedSell - sumLedTotal); sc.currency = true; sc.bold = true; }
           }
         }
 
