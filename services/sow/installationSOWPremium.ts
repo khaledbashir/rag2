@@ -127,9 +127,13 @@ const cellBorders = {
   right: thinBorder,
 };
 
+// Page width in twips: 8.5" - 0.9" margins × 2 = 6.7" = 9648 twips
+const PAGE_W = 9648;
+const pct = (p: number) => Math.round(PAGE_W * p / 100);
+
 function tableCell(text: string, opts: { bold?: boolean; shading?: string; width?: number; align?: (typeof AlignmentType)[keyof typeof AlignmentType] } = {}): TableCell {
   return new TableCell({
-    width: opts.width ? { size: opts.width, type: WidthType.PERCENTAGE } : undefined,
+    width: opts.width ? { size: pct(opts.width), type: WidthType.DXA } : undefined,
     borders: cellBorders,
     shading: opts.shading ? { type: ShadingType.SOLID, color: opts.shading } : undefined,
     children: [
@@ -144,7 +148,7 @@ function tableCell(text: string, opts: { bold?: boolean; shading?: string; width
 
 function headerCell(text: string, width?: number): TableCell {
   return new TableCell({
-    width: width ? { size: width, type: WidthType.PERCENTAGE } : undefined,
+    width: width ? { size: pct(width), type: WidthType.DXA } : undefined,
     borders: cellBorders,
     shading: { type: ShadingType.SOLID, color: BLUE },
     children: [
@@ -173,12 +177,12 @@ export async function generatePremiumSOW(input: InstallSOWInput): Promise<Buffer
   // Blue accent bar (full-width table trick)
   children.push(
     new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
+      width: { size: PAGE_W, type: WidthType.DXA },
       rows: [
         new TableRow({
           children: [
             new TableCell({
-              width: { size: 100, type: WidthType.PERCENTAGE },
+              width: { size: PAGE_W, type: WidthType.DXA },
               shading: { type: ShadingType.SOLID, color: BLUE },
               borders: {
                 top: { style: BorderStyle.NONE, size: 0, color: BLUE },
@@ -218,18 +222,18 @@ export async function generatePremiumSOW(input: InstallSOWInput): Promise<Buffer
 
   children.push(
     new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
+      width: { size: PAGE_W, type: WidthType.DXA },
       rows: infoRows.map(([label, value]) =>
         new TableRow({
           children: [
             new TableCell({
-              width: { size: 22, type: WidthType.PERCENTAGE },
+              width: { size: pct(22), type: WidthType.DXA },
               borders: { top: thinBorder, bottom: thinBorder, left: { style: BorderStyle.SINGLE, size: 8, color: BLUE }, right: thinBorder },
               shading: { type: ShadingType.SOLID, color: LIGHT_BLUE_BG },
               children: [new Paragraph({ spacing: { before: 40, after: 40 }, children: [txt(label, { bold: true, size: 18, color: DARK_BLUE })] })],
             }),
             new TableCell({
-              width: { size: 78, type: WidthType.PERCENTAGE },
+              width: { size: pct(78), type: WidthType.DXA },
               borders: cellBorders,
               children: [new Paragraph({ spacing: { before: 40, after: 40 }, children: [txt(value, { size: 18, color: GRAY_600 })] })],
             }),
@@ -273,7 +277,7 @@ export async function generatePremiumSOW(input: InstallSOWInput): Promise<Buffer
 
   children.push(
     new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
+      width: { size: PAGE_W, type: WidthType.DXA },
       rows: displayTableRows,
     })
   );
@@ -433,7 +437,7 @@ export async function generatePremiumSOW(input: InstallSOWInput): Promise<Buffer
 
   children.push(
     new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
+      width: { size: PAGE_W, type: WidthType.DXA },
       rows: pricingTableRows,
     })
   );
