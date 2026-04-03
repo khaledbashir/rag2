@@ -310,17 +310,12 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
     const overrides = d.costOverrides || {};
 
     // For courtside/stanchion: use fixed pixel specs stored on display answers (set by wizard, no async dependency)
-    const formulaW = Math.round((w * 304.8) / pitch);
-    const formulaH = Math.round((h * 304.8) / pitch);
-    const pixelsW = d.fixedWidthPx || formulaW;
-    const pixelsH = d.fixedHeightPx || formulaH;
+    const pixelsW = d.fixedWidthPx || Math.round((w * 304.8) / pitch);
+    const pixelsH = d.fixedHeightPx || Math.round((h * 304.8) / pitch);
     const totalPixels = pixelsW * pixelsH * quantity;
 
     // ── Add-on products (courtside/stanchion): unit pricing, Screen + Install only ──
     const isAddon = isAddonDisplayType(d.displayType);
-    if (isAddon) {
-        console.log(`[EstimatorBridge] "${d.displayName}" type=${d.displayType} pitch=${pitch} fixedWPx=${d.fixedWidthPx} fixedHPx=${d.fixedHeightPx} formulaW=${formulaW} formulaH=${formulaH} → pixelsW=${pixelsW} pixelsH=${pixelsH} productId=${d.productId}`);
-    }
     const extSpecs = (productSpec as any)?.extendedSpecs;
     if (isAddon && extSpecs?.costModel === "per_unit") {
         const unitCost = extSpecs.unitCost || 0;
