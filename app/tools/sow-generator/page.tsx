@@ -1592,30 +1592,17 @@ function SOWGeneratorPage() {
               )}
             </div>
             <button
-              onClick={handleGenerate}
-              disabled={!canGenerate || generating}
-              className={cn(
-                "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all shrink-0",
-                canGenerate && !generating
-                  ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-600/20"
-                  : "bg-muted text-muted-foreground cursor-not-allowed"
-              )}
-            >
-              {generating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              DOCX
-            </button>
-            <button
               onClick={handleGeneratePremium}
               disabled={!canGenerate || generatingPremium}
               className={cn(
-                "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all shrink-0",
+                "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all shrink-0",
                 canGenerate && !generatingPremium
                   ? "bg-[#0A52EF] text-white hover:bg-[#0842BF] shadow-lg shadow-[#0A52EF]/20"
                   : "bg-muted text-muted-foreground cursor-not-allowed"
               )}
             >
-              {generatingPremium ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              Premium
+              {generatingPremium ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              DOCX
             </button>
           </div>
 

@@ -409,7 +409,7 @@ export async function generatePremiumSOW(input: InstallSOWInput): Promise<Buffer
         children: [
           tableCell(d.name, { bold: true }),
           tableCell(`${d.heightFt}'H × ${d.widthFt}'W, ${d.pixelPitch}mm, QTY ${d.quantity}`),
-          tableCell(d.installPrice ? `$${d.installPrice.toLocaleString()}` : "$ ___________", { align: AlignmentType.RIGHT }),
+          tableCell("$ ___________", { align: AlignmentType.RIGHT }),
         ],
       })
     ),
@@ -427,12 +427,7 @@ export async function generatePremiumSOW(input: InstallSOWInput): Promise<Buffer
           children: [new Paragraph({
             alignment: AlignmentType.RIGHT,
             spacing: { before: 60, after: 60 },
-            children: [txt(
-              input.displays.some(d => d.installPrice)
-                ? `$${input.displays.reduce((s, d) => s + (d.installPrice || 0), 0).toLocaleString()}`
-                : "$ ___________",
-              { bold: true, size: 20, color: DARK_BLUE }
-            )],
+            children: [txt("$ ___________", { bold: true, size: 20, color: DARK_BLUE })],
           })],
         }),
       ],
