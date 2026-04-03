@@ -309,6 +309,17 @@ export const DISPLAY_QUESTIONS: Question[] = [
         label: "Dimensions (ft)",
         subtitle: "Width and height in feet",
         required: true,
+        showIf: (answers) => !isAddonProduct(answers),
+        affectsSheet: "Display Details",
+    },
+    {
+        id: "courtsideConfig",
+        phase: "display",
+        type: "courtside-select",
+        label: "Product Configuration",
+        subtitle: "Select pitch and size — dimensions auto-populate from the product spec sheet",
+        required: true,
+        showIf: (answers) => isAddonProduct(answers),
         affectsSheet: "Display Details",
     },
     {
@@ -328,6 +339,7 @@ export const DISPLAY_QUESTIONS: Question[] = [
         type: "select",
         label: "Pixel Pitch",
         subtitle: "Smaller pitch = higher resolution = higher cost",
+        showIf: (answers) => !isAddonProduct(answers),
         options: [
             { value: "1.2", label: "1.2mm", description: "Ultra-fine — premium indoor", environment: "indoor" },
             { value: "1.5", label: "1.5mm", description: "Fine — indoor close-view", environment: "indoor" },
@@ -350,6 +362,7 @@ export const DISPLAY_QUESTIONS: Question[] = [
         type: "multi-select",
         label: "Alternate Pitches",
         subtitle: "Pick additional pitch options — same display, only LED cost changes. Skip if no alternates needed.",
+        showIf: (answers) => !isAddonProduct(answers),
         options: [
             { value: "1.2", label: "1.2mm", description: "Ultra-fine — premium indoor", environment: "indoor" },
             { value: "1.5", label: "1.5mm", description: "Fine — indoor close-view", environment: "indoor" },
@@ -372,6 +385,7 @@ export const DISPLAY_QUESTIONS: Question[] = [
         type: "product-select",
         label: "LED Product",
         subtitle: "Select a product from the catalog to auto-fill cost/sqft and specs",
+        showIf: (answers) => !isAddonProduct(answers),
         affectsSheet: "Display Details",
     },
     {

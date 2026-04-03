@@ -1753,6 +1753,16 @@ function QuestionInput({
                 </div>
             );
 
+        case "courtside-select":
+            return (
+                <CourtsideSelectInput
+                    answers={answers}
+                    displayIndex={displayIndex}
+                    setDisplayFields={setDisplayFields}
+                    onNext={onNext}
+                />
+            );
+
         case "product-select":
             return (
                 <ProductSelectInput
@@ -1868,6 +1878,167 @@ function ProductSelectInput({
                 currentHeightFt={currentDisplay.heightFt}
                 selectedProductId={value}
             />
+        </div>
+    );
+}
+
+// ============================================================================
+// COURTSIDE / STANCHION PRODUCT SELECTOR
+// ============================================================================
+
+const COURTSIDE_TABLE_SIZES = ["10ft", "8ft", "6ft", "5ft"] as const;
+const STANCHION_TYPES = ["single", "double"] as const;
+const COURTSIDE_PITCHES = ["3.9", "2.9"] as const;
+
+function CourtsideSelectInput({
+    answers,
+    displayIndex,
+    setDisplayFields,
+    onNext,
+}: {
+    answers?: EstimatorAnswers;
+    displayIndex?: number;
+    setDisplayFields?: (fields: Partial<DisplayAnswers>) => void;
+    onNext: () => void;
+}) {
+    const currentDisplay = answers?.displays[(displayIndex ?? 0)] || getDefaultDisplayAnswers();
+    const displayType = currentDisplay.displayType; // "courtside-table" or "stanchion"
+    const isStanchion = displayType === "stanchion";
+
+    const [selectedPitch, setSelectedPitch] = useState<string>(currentDisplay.pixelPitch || "3.9");
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const sizeOptions = isStanchion ? STANCHION_TYPES : COURTSIDE_TABLE_SIZES;
+
+    const handleSelect = async (sizeOrType: string) => {
+        if (!setDisplayFields) return;
+        setLoading(true);
+        setError(null);
+
+        try {
+            // Fetch products by type and exact pitch
+            const productType = isStanchion ? "stanchion" : "courtside";
+            const res = await fetch(
+                `/api/products?productType=${productType}&pitchMin=${selectedPitch}&pitchMax=${selectedPitch}`
+            );
+            if (!res.ok) throw new Error("Failed to fetch product");
+            const data = await res.json();
+            const products = data.products || data;
+
+            // Find exact match by tableLength or stanchionType in extendedSpecs
+            const match = products.find((p: any) => {
+                const specs = p.extendedSpecs || {};
+                if (isStanchion) return specs.stanchionType === sizeOrType;
+                return specs.tableLength === sizeOrType;
+            });
+
+            if (!match) {
+                setError(`No product found for ${sizeOrType} at ${selectedPitch}mm`);
+                setLoading(false);
+                return;
+            }
+
+            const specs = match.extendedSpecs || {};
+            setDisplayFields({
+                pixelPitch: selectedPitch,
+                productId: match.id,
+                productName: match.displayName,
+                widthFt: specs.displayWidthFt || 0,
+                heightFt: specs.displayHeightFt || 0,
+            });
+
+            setLoading(false);
+            requestAnimationFrame(() => onNext());
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to load product");
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="mt-2 space-y-4">
+            {/* Pitch toggle */}
+            <div>
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-2">
+                    Pixel Pitch
+                </div>
+                <div className="flex gap-2">
+                    {COURTSIDE_PITCHES.map((pitch) => (
+                        <button
+                            key={pitch}
+                            onClick={() => setSelectedPitch(pitch)}
+                            className={cn(
+                                "px-5 py-2.5 rounded-lg border-2 text-sm font-medium transition-all",
+                                selectedPitch === pitch
+                                    ? "border-[#0A52EF] bg-[#0A52EF]/5 text-[#0A52EF]"
+                                    : "border-border hover:border-[#0A52EF]/40"
+                            )}
+                        >
+                            {pitch}mm
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Size / type cards */}
+            <div>
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-2">
+                    {isStanchion ? "Stanchion Type" : "Table Length"}
+                </div>
+                <div className={cn("grid gap-2", isStanchion ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-4")}>
+                    {sizeOptions.map((size) => {
+                        const label = isStanchion
+                            ? (size === "single" ? "Single" : "Double")
+                            : size.replace("ft", "'");
+                        const desc = isStanchion
+                            ? (size === "single" ? "Single-height display" : "Double-stack display")
+                            : `${size} courtside table`;
+
+                        return (
+                            <button
+                                key={size}
+                                onClick={() => handleSelect(size)}
+                                disabled={loading}
+                                className={cn(
+                                    "text-left px-4 py-3 rounded-lg border-2 transition-all",
+                                    "border-border hover:border-[#0A52EF]/40 hover:bg-accent/20",
+                                    loading && "opacity-50 cursor-wait"
+                                )}
+                            >
+                                <div className="text-sm font-medium">{label}</div>
+                                <div className="text-xs text-muted-foreground mt-0.5">{desc}</div>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {loading && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Loading product specs...
+                </div>
+            )}
+
+            {error && (
+                <div className="text-sm text-red-600 bg-red-50 dark:bg-red-950/20 rounded-lg px-3 py-2">
+                    {error}
+                </div>
+            )}
+
+            {/* Show current selection if already configured */}
+            {currentDisplay.productId && currentDisplay.productName && (
+                <div className="flex items-center gap-3 px-4 py-3 rounded-lg border-2 border-[#0A52EF] bg-[#0A52EF]/5">
+                    <Check className="w-5 h-5 text-[#0A52EF] shrink-0" />
+                    <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{currentDisplay.productName}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                            {currentDisplay.widthFt}' W × {currentDisplay.heightFt}' H — Dimensions locked from product spec
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
