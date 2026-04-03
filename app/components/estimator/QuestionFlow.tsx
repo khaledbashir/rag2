@@ -1927,6 +1927,12 @@ function CourtsideSelectInput({
             const products = data.products || data;
 
             // Find exact match by tableLength or stanchionType in extendedSpecs
+            console.log(`[CourtsideWizard] Searching ${products.length} products for ${isStanchion ? "stanchionType" : "tableLength"}="${sizeOrType}" at pitch=${selectedPitch}mm`);
+            products.forEach((p: any) => {
+                const s = p.extendedSpecs || {};
+                console.log(`  [Product] ${p.modelNumber} "${p.displayName}" pitch=${p.pixelPitch} stanchionType=${s.stanchionType} tableLength=${s.tableLength} displayWidthPx=${s.displayWidthPx} displayHeightPx=${s.displayHeightPx}`);
+            });
+
             const match = products.find((p: any) => {
                 const specs = p.extendedSpecs || {};
                 if (isStanchion) return specs.stanchionType === sizeOrType;
@@ -1940,6 +1946,7 @@ function CourtsideSelectInput({
             }
 
             const specs = match.extendedSpecs || {};
+            console.log(`[CourtsideWizard] MATCHED: ${match.modelNumber} "${match.displayName}" → fixedWidthPx=${specs.displayWidthPx}, fixedHeightPx=${specs.displayHeightPx}, productId=${match.id}`);
             setDisplayFields({
                 pixelPitch: selectedPitch,
                 productId: match.id,
