@@ -1102,14 +1102,25 @@ export default function EstimatorStudio({
                                 if (!product) return;
                                 // Skip server rebuild — calcs recalculate client-side via useMemo
                                 skipNextRebuild();
+                                // Auto-fill dimensions from product specs for standard-size products
+                                // (stanchions, courtside tables, etc. have fixed cabinet dimensions)
+                                const spec = productSpecs[productId];
+                                const autoWidth = spec?.cabinetWidthMm ? Math.round(spec.cabinetWidthMm / 304.8 * 100) / 100 : 0;
+                                const autoHeight = spec?.cabinetHeightMm ? Math.round(spec.cabinetHeightMm / 304.8 * 100) / 100 : 0;
                                 setAnswers((prev) => {
                                     const displays = [...prev.displays];
-                                    displays[displayIdx] = {
+                                    const update: Record<string, any> = {
                                         ...displays[displayIdx],
                                         productId: product.id,
                                         productName: product.name,
                                         pixelPitch: String(product.pitch),
                                     };
+                                    // Only auto-fill dims if the product has them and user hasn't set custom values
+                                    if (autoWidth > 0 && autoHeight > 0) {
+                                        update.widthFt = autoWidth;
+                                        update.heightFt = autoHeight;
+                                    }
+                                    displays[displayIdx] = update;
                                     return { ...prev, displays };
                                 });
                             },

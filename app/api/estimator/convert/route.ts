@@ -341,7 +341,7 @@ export async function POST(req: NextRequest) {
           width: c.widthFt,
           height: c.heightFt,
           serviceType: d.serviceType || "Front/Rear",
-          quantity: 1,
+          quantity: d.quantity || 1,
           manufacturerProductId: d.productId || undefined,
         },
       });
