@@ -1106,6 +1106,78 @@ function SOWGeneratorPage() {
     }
   };
 
+  const [generatingPremium, setGeneratingPremium] = useState(false);
+
+  const handleGeneratePremium = async () => {
+    if (!canGenerate) return;
+    setGeneratingPremium(true);
+    setError(null);
+    try {
+      const stripHtml2 = (html: string) => {
+        const tmp = document.createElement("div");
+        tmp.innerHTML = html;
+        return tmp.textContent || tmp.innerText || "";
+      };
+      const sectionOverrides2: Record<string, string> = {};
+      Object.entries(sections).forEach(([key, html]) => {
+        sectionOverrides2[key] = stripHtml2(html);
+      });
+      sectionOverrides2.objective = objectiveText;
+      sectionOverrides2.installation = installationText;
+      const payload = {
+        projectName: projectName.trim(),
+        clientName: clientName.trim() || "Client",
+        venue: venue.trim() || projectName.trim(),
+        address: address.trim() || undefined,
+        date,
+        revision: parseInt(revision) || 1,
+        installStartDate: installStart || undefined,
+        installEndDate: installEnd || undefined,
+        isUnionLabor,
+        hasNightWork,
+        includeElectrical: true,
+        includeStructural: true,
+        includeReferenceDocuments: includeRefDocs,
+        currency,
+        bidDueDate,
+        sectionOverrides: sectionOverrides2,
+        customExclusions: exclusions.filter(e => e.enabled && !DEFAULT_EXCLUSIONS.some(d => d.text === e.text)).map(e => e.text),
+        customSections: [
+          ...customSectionsBefore.map(cs => ({ title: cs.title, content: stripHtml2(cs.content), position: "before-scope" })),
+          ...customSectionsAfter.map(cs => ({ title: cs.title, content: stripHtml2(cs.content), position: "after-tasks" })),
+        ],
+        displays: validDisplays.map((d) => ({
+          name: d.name.trim(),
+          widthFt: parseFloat(d.widthFt) || 0,
+          heightFt: parseFloat(d.heightFt) || 0,
+          pixelPitch: parseFloat(d.pixelPitch) || 0,
+          quantity: parseInt(d.quantity) || 1,
+          environment: d.environment,
+          structureType: d.structureType,
+          hasDemolition: d.hasDemolition,
+          installPrice: parseFloat(d.installPrice) || 0,
+        })),
+      };
+      const res = await fetch("/api/sow/generate-premium", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${projectName.trim()} - Installation SOW (Premium).docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setError(err.message || "Something went wrong");
+    } finally {
+      setGeneratingPremium(false);
+    }
+  };
+
   const inputSm = "px-2 py-1 text-xs rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-brand-blue/30";
 
   // Continuous numbering
@@ -1531,6 +1603,19 @@ function SOWGeneratorPage() {
             >
               {generating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
               DOCX
+            </button>
+            <button
+              onClick={handleGeneratePremium}
+              disabled={!canGenerate || generatingPremium}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all shrink-0",
+                canGenerate && !generatingPremium
+                  ? "bg-[#0A52EF] text-white hover:bg-[#0842BF] shadow-lg shadow-[#0A52EF]/20"
+                  : "bg-muted text-muted-foreground cursor-not-allowed"
+              )}
+            >
+              {generatingPremium ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              Premium
             </button>
           </div>
 
