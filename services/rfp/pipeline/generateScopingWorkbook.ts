@@ -1754,20 +1754,55 @@ function buildLedCostSheet(
       const rowNum = dr.number;
       const altLabel = d.spec.alternateId || `Alt ${idx + 1}`;
       const altPitch = d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm;
+
+      // Find the base display this alternate belongs to (for Bundle Equipment reference)
+      const altBaseName = (d.spec.name || "").toLowerCase().replace(/\s*—\s*alt.*$/i, "").trim();
+      const baseIdx = displays.findIndex((bd) => {
+        const bn = (bd.spec.name || "").toLowerCase().trim();
+        return altBaseName.includes(bn) || bn.includes(altBaseName);
+      });
+      const baseBundleRow = baseIdx >= 0 ? bundleSubtotalRows[baseIdx] : 0;
+
+      // Resolve product name in _Products for VLOOKUP (same logic as base displays)
+      let altProductName = "—";
+      if (d.match?.module?.name && productNames.includes(d.match.module.name)) {
+        altProductName = d.match.module.name;
+      } else if (d.spec.selectedProductName && productNames.includes(d.spec.selectedProductName)) {
+        altProductName = d.spec.selectedProductName;
+      } else if (altPitch && altPitch > 0) {
+        const env = d.spec.environment || "indoor";
+        const envProducts = sortedProducts.filter((p) =>
+          p.environment === "Both" || p.environment.toLowerCase() === env.toLowerCase()
+        );
+        const bestMatch = envProducts.reduce((best, p) =>
+          Math.abs(p.pitchMm - altPitch) < Math.abs((best?.pitchMm ?? 999) - altPitch) ? p : best
+        , envProducts[0]);
+        if (bestMatch) altProductName = getProductName(bestMatch);
+      }
+      const altCatalogProduct = sortedProducts.find((p) => getProductName(p) === altProductName);
+
       // A: Display name with Alt prefix
       dr.getCell(1).value = `${altLabel}: ${d.spec.name}`;
       dr.getCell(1).font = { bold: true, name: "Calibri" };
-      // G: Pitch
-      dr.getCell(7).value = altPitch ? `${altPitch}mm` : "—";
+      // E: Vendor — VLOOKUP from _Products
+      const altVendorResult = altCatalogProduct?.manufacturer || d.match?.module?.manufacturer || "";
+      dr.getCell(5).value = { formula: `IFERROR(VLOOKUP(F${rowNum},${prodRange},2,FALSE),"")`, result: altVendorResult };
+      // F: Product name (ties all VLOOKUPs together)
+      dr.getCell(6).value = altProductName;
+      dr.getCell(6).dataValidation = { type: "list", allowBlank: true, formulae: [productListRef] };
+      // G: Pitch — VLOOKUP from _Products col 3
+      const altPitchResult = altCatalogProduct?.pitchMm ?? altPitch ?? 0;
+      dr.getCell(7).value = { formula: `IFERROR(VLOOKUP(F${rowNum},${prodRange},3,FALSE),0)`, result: altPitchResult };
+      dr.getCell(7).numFmt = '0.0##"mm"';
       dr.getCell(7).alignment = { horizontal: "center" };
       // H-I: Dimensions
       dr.getCell(8).value = d.heightFt || 0; dr.getCell(8).numFmt = "0.00";
       dr.getCell(9).value = d.widthFt || 0; dr.getCell(9).numFmt = "0.00";
-      // J-K: Pixels (formulas from pitch + dimensions)
-      if (altPitch && altPitch > 0) {
-        dr.getCell(10).value = { formula: `ROUND(H${rowNum}*304.8/${altPitch},0)`, result: Math.round((d.heightFt || 0) * 304.8 / altPitch) };
-        dr.getCell(11).value = { formula: `ROUND(I${rowNum}*304.8/${altPitch},0)`, result: Math.round((d.widthFt || 0) * 304.8 / altPitch) };
-      }
+      // J-K: Pixels — formula from dimensions ÷ pitch (VLOOKUP pitch in G)
+      const altHPx = altPitch && d.heightFt ? Math.round(d.heightFt * 304.8 / altPitch) : 0;
+      const altWPx = altPitch && d.widthFt ? Math.round(d.widthFt * 304.8 / altPitch) : 0;
+      dr.getCell(10).value = { formula: `IFERROR(ROUND(H${rowNum}*304.8/G${rowNum},0),0)`, result: altHPx };
+      dr.getCell(11).value = { formula: `IFERROR(ROUND(I${rowNum}*304.8/G${rowNum},0),0)`, result: altWPx };
       // L: Qty
       dr.getCell(12).value = d.spec.quantity || 1; dr.getCell(12).alignment = { horizontal: "center" };
       // M: Total SqFt — formula: H × W × Qty
@@ -1776,16 +1811,20 @@ function buildLedCostSheet(
       // N: Environment
       dr.getCell(14).value = d.spec.environment || "indoor";
       dr.getCell(14).alignment = { horizontal: "center" };
-      // P: $/SqFt — LED hardware cost per sqft
-      const altCostPerSqFt = d.areaSqFt > 0 ? round2(d.ledHardwareCost / d.areaSqFt) : 0;
-      dr.getCell(16).value = altCostPerSqFt; dr.getCell(16).numFmt = FMT_USD;
-      // Q: Display Cost — formula: $/SqFt × Total SqFt
+      // P: $/SqFt — VLOOKUP from _Products col 4 (same as base displays)
       const altLedWithSpares = round2(d.ledHardwareCost + d.sparePartsCost);
+      const altCostPerSqFtResult = d.areaSqFt > 0 ? round2(altLedWithSpares / d.areaSqFt) : 0;
+      dr.getCell(16).value = { formula: `IFERROR(VLOOKUP(F${rowNum},${prodRange},4,FALSE),0)`, result: altCostPerSqFtResult };
+      dr.getCell(16).numFmt = FMT_USD;
+      // Q: Display Cost = $/SqFt × Total SqFt (formula)
       dr.getCell(17).value = { formula: `P${rowNum}*M${rowNum}`, result: altLedWithSpares };
       dr.getCell(17).numFmt = FMT_USD;
-      // R: Processor/Equipment
+      // R: Processor — cross-sheet formula to Bundle Equipment (same config as base display)
       const altEquipCost = d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost;
-      dr.getCell(18).value = altEquipCost || 0; dr.getCell(18).numFmt = FMT_USD;
+      dr.getCell(18).value = baseBundleRow
+        ? { formula: `SUM('Bundle Equipment'!E${baseBundleRow}:E${baseBundleRow})`, result: altEquipCost || 0 }
+        : (altEquipCost || 0);
+      dr.getCell(18).numFmt = FMT_USD;
       // S: Shipping — formula: $10/sqft, $500 minimum
       dr.getCell(19).value = { formula: `MAX(M${rowNum}*10,500)`, result: d.shippingCost };
       dr.getCell(19).numFmt = FMT_USD;
@@ -1806,9 +1845,16 @@ function buildLedCostSheet(
       // W: ANC Margin = Selling - Cost (formula)
       dr.getCell(23).value = { formula: `V${rowNum}-T${rowNum}`, result: round2(altLedSell - altLedTotal) };
       dr.getCell(23).numFmt = FMT_USD;
-      // Notes in last used column
-      dr.getCell(26).value = d.spec.alternateDescription || d.spec.notes || `Alternate pixel pitch: ${altPitch || "TBD"}mm`;
-      dr.getCell(26).alignment = { wrapText: true };
+      // X-Z: Weight, Power, BTU — VLOOKUP from _Products
+      const altAreaM2 = d.areaSqFt * 0.092903;
+      const altWeightResult = altCatalogProduct ? Math.round(altAreaM2 * altCatalogProduct.weightDensityLbm2) : Math.round(d.areaSqFt * 5);
+      const altPowerResult = altCatalogProduct ? Math.round(altAreaM2 * altCatalogProduct.powerDensityWm2) : 0;
+      dr.getCell(24).value = { formula: `IFERROR(ROUND(M${rowNum}*0.092903*VLOOKUP(F${rowNum},${prodRange},6,FALSE),0),0)`, result: altWeightResult };
+      dr.getCell(24).numFmt = "#,##0";
+      dr.getCell(25).value = { formula: `IFERROR(ROUND(M${rowNum}*0.092903*VLOOKUP(F${rowNum},${prodRange},7,FALSE),0),0)`, result: altPowerResult };
+      dr.getCell(25).numFmt = "#,##0";
+      dr.getCell(26).value = { formula: `Y${rowNum}*3.412`, result: Math.round(altPowerResult * 3.412) };
+      dr.getCell(26).numFmt = "#,##0";
       // Amber tint for alternate rows
       for (let c = 1; c <= COLS; c++) {
         dr.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF8E1" } };
