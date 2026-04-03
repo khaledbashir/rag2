@@ -203,6 +203,15 @@ function isClockLikeDisplay(d: ComputedDisplay): boolean {
   return /shot.?clock|play.?clock|time.?of.?day|tod.?clock|pitch.?clock|\bclock\b/.test(haystack);
 }
 
+/** Courtside tables and stanchions have fixed pixel specs that don't follow the LED formula. */
+function getFixedPixelSpecs(resolvedProduct: any): { hPx: number; wPx: number } | null {
+  const pType = resolvedProduct?.productType;
+  if (pType !== "courtside" && pType !== "stanchion") return null;
+  const specs = resolvedProduct?.extendedSpecs;
+  if (!specs?.displayHeightPx || !specs?.displayWidthPx) return null;
+  return { hPx: specs.displayHeightPx, wPx: specs.displayWidthPx };
+}
+
 function subtotalBorder(row: ExcelJS.Row, cols: number): void {
   for (let i = 1; i <= cols; i++) {
     const cell = row.getCell(i);
@@ -274,7 +283,7 @@ export async function generateScopingWorkbook(
   const selectedProductIds = allSpecs
     .map((s) => s.selectedProductId)
     .filter((id): id is string => !!id && !getProduct(id)); // only IDs not in hardcoded catalog
-  let dbProductMap = new Map<string, { manufacturer: string; name: string; pitch: number; nits: number; weightDensityLbm2: number; powerDensityWm2: number }>();
+  let dbProductMap = new Map<string, { manufacturer: string; name: string; pitch: number; nits: number; weightDensityLbm2: number; powerDensityWm2: number; productType?: string; extendedSpecs?: any }>();
   if (selectedProductIds.length > 0) {
     try {
       const { prisma } = await import("@/lib/prisma");
@@ -289,6 +298,8 @@ export async function generateScopingWorkbook(
           nits: p.maxNits,
           weightDensityLbm2: (p.weightKgPerCabinet * 2.205) / ((p.cabinetWidthMm * p.cabinetHeightMm) / 1e6),
           powerDensityWm2: p.maxPowerWattsPerCab / ((p.cabinetWidthMm * p.cabinetHeightMm) / 1e6),
+          productType: p.productType,
+          extendedSpecs: p.extendedSpecs,
         });
       }
       console.log(`[ScopingWorkbook] Loaded ${dbProductMap.size} user-selected DB products`);
@@ -1563,11 +1574,17 @@ function buildLedCostSheet(
     const cellW = Number(d.widthFt) || 0;
     dr.getCell(8).value = cellH; dr.getCell(8).numFmt = "0.00";
     dr.getCell(9).value = cellW; dr.getCell(9).numFmt = "0.00";
-    // J-K: H(px), W(px) — formula from dimensions ÷ pitch
-    const hPx = effectivePitch && d.heightFt ? Math.round(d.heightFt * 304.8 / effectivePitch) : (d.spec.heightPx || 0);
-    const wPx = effectivePitch && d.widthFt ? Math.round(d.widthFt * 304.8 / effectivePitch) : (d.spec.widthPx || 0);
-    dr.getCell(10).value = { formula: `IFERROR(ROUND(H${row}*304.8/G${row},0),0)`, result: hPx };
-    dr.getCell(11).value = { formula: `IFERROR(ROUND(I${row}*304.8/G${row},0),0)`, result: wPx };
+    // J-K: H(px), W(px) — courtside/stanchion use fixed product specs; LED uses formula
+    const fixedPx = getFixedPixelSpecs(selectedProduct);
+    const hPx = fixedPx?.hPx ?? (effectivePitch && d.heightFt ? Math.round(d.heightFt * 304.8 / effectivePitch) : (d.spec.heightPx || 0));
+    const wPx = fixedPx?.wPx ?? (effectivePitch && d.widthFt ? Math.round(d.widthFt * 304.8 / effectivePitch) : (d.spec.widthPx || 0));
+    if (fixedPx) {
+      dr.getCell(10).value = fixedPx.hPx;
+      dr.getCell(11).value = fixedPx.wPx;
+    } else {
+      dr.getCell(10).value = { formula: `IFERROR(ROUND(H${row}*304.8/G${row},0),0)`, result: hPx };
+      dr.getCell(11).value = { formula: `IFERROR(ROUND(I${row}*304.8/G${row},0),0)`, result: wPx };
+    }
     // L: Qty
     const qty = Number(d.spec.quantity) || 1;
     dr.getCell(12).value = qty; dr.getCell(12).alignment = { horizontal: "center" };
@@ -1798,11 +1815,17 @@ function buildLedCostSheet(
       // H-I: Dimensions
       dr.getCell(8).value = d.heightFt || 0; dr.getCell(8).numFmt = "0.00";
       dr.getCell(9).value = d.widthFt || 0; dr.getCell(9).numFmt = "0.00";
-      // J-K: Pixels — formula from dimensions ÷ pitch (VLOOKUP pitch in G)
-      const altHPx = altPitch && d.heightFt ? Math.round(d.heightFt * 304.8 / altPitch) : 0;
-      const altWPx = altPitch && d.widthFt ? Math.round(d.widthFt * 304.8 / altPitch) : 0;
-      dr.getCell(10).value = { formula: `IFERROR(ROUND(H${rowNum}*304.8/G${rowNum},0),0)`, result: altHPx };
-      dr.getCell(11).value = { formula: `IFERROR(ROUND(I${rowNum}*304.8/G${rowNum},0),0)`, result: altWPx };
+      // J-K: Pixels — courtside/stanchion use fixed product specs; LED uses formula
+      const altFixedPx = getFixedPixelSpecs(selectedProduct);
+      const altHPx = altFixedPx?.hPx ?? (altPitch && d.heightFt ? Math.round(d.heightFt * 304.8 / altPitch) : 0);
+      const altWPx = altFixedPx?.wPx ?? (altPitch && d.widthFt ? Math.round(d.widthFt * 304.8 / altPitch) : 0);
+      if (altFixedPx) {
+        dr.getCell(10).value = altFixedPx.hPx;
+        dr.getCell(11).value = altFixedPx.wPx;
+      } else {
+        dr.getCell(10).value = { formula: `IFERROR(ROUND(H${rowNum}*304.8/G${rowNum},0),0)`, result: altHPx };
+        dr.getCell(11).value = { formula: `IFERROR(ROUND(I${rowNum}*304.8/G${rowNum},0),0)`, result: altWPx };
+      }
       // L: Qty
       dr.getCell(12).value = d.spec.quantity || 1; dr.getCell(12).alignment = { horizontal: "center" };
       // M: Total SqFt — formula: H × W × Qty
@@ -3295,8 +3318,9 @@ function buildTechSpecsSheet(
     const tsPitch = (tsSelectedProduct as any)?.pitchMm ?? (tsSelectedProduct as any)?.pitch;
     const effPitch = tsPitch ?? d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm;
     const pitchLabel = effPitch ? `${effPitch}mm` : "—";
-    const hPx = d.spec.heightPx || (effPitch && d.heightFt ? Math.round(d.heightFt * 304.8 / effPitch) : 0);
-    const wPx = d.spec.widthPx || (effPitch && d.widthFt ? Math.round(d.widthFt * 304.8 / effPitch) : 0);
+    const tsFixedPx = getFixedPixelSpecs(tsSelectedProduct);
+    const hPx = tsFixedPx?.hPx ?? (d.spec.heightPx || (effPitch && d.heightFt ? Math.round(d.heightFt * 304.8 / effPitch) : 0));
+    const wPx = tsFixedPx?.wPx ?? (d.spec.widthPx || (effPitch && d.widthFt ? Math.round(d.widthFt * 304.8 / effPitch) : 0));
 
     r.getCell(1).value = { formula: `'LED Cost Sheet'!A${ledRow}`, result: displayName };
     r.getCell(2).value = { formula: `'LED Cost Sheet'!L${ledRow}`, result: qty };

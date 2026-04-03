@@ -56,6 +56,21 @@ Before saying you're done, confirm: "I verified that no RFP-protected or shared 
 ## Important Notes
 <!-- Anything Claude should know when working on this project -->
 
+## Estimator — Courtside/Stanchion Rules
+- Courtside tables and stanchions are FIXED-DIMENSION products. User does NOT enter H/W.
+- Wizard shows pitch toggle (3.9/2.9mm) + size cards (10'/8'/6'/5' for tables, Single/Double for stanchions).
+- All dimensions auto-populate from product DB (`extendedSpecs.displayWidthFt`, `displayHeightFt`, etc.)
+- Product seed: `prisma/seed-courtside-tables.ts` — 12 products with full display dimension data.
+- LED displays still use manual dimension entry. Courtside changes ONLY affect addon product types.
+
+## What's Live
+- Courtside/stanchion wizard with auto-populated dimensions from product DB (2026-04-03)
+- Premium SOW as default DOCX button, pricing left blank (2026-04-03)
+- Alternate rows with full VLOOKUP/formula breakdown (2026-04-03)
+- Grand Total "None" fix (2026-04-03)
+- LED Cost Sheet TOTAL row matching (2026-04-03)
+- RFP Analyzer TOTAL row fix (2026-04-03)
+
 ## ABSOLUTE RULE: NO SHORTCUTS
 
 NEVER search for workarounds, patches, hacks, or "quick fixes." When you hit a problem:
@@ -70,3 +85,17 @@ NEVER search for workarounds, patches, hacks, or "quick fixes." When you hit a p
 8. The "easy way" is ALWAYS the hard way later. Do the work NOW.
 
 If you catch yourself about to suggest a workaround, STOP and say: "I was about to take a shortcut. Here's the real fix instead."
+
+## CLAUDE.md SELF-MAINTENANCE
+
+At the end of every session where a rule was added, a decision was made, or project status changed:
+
+1. Update this file. Don't ask — just do it.
+2. Add new rules to the relevant section (RFP freeze goes under RFP, estimator rules under estimator, etc.)
+3. If a bug was fixed and confirmed, move it from "open" to "resolved" with the date.
+4. If a feature was built, add it to the "What's Live" section with a one-liner.
+5. If Ahmad gave you a new rule during the session (like "don't touch X"), add it here permanently.
+6. Never remove rules from this file unless Ahmad explicitly says to.
+7. Keep it tight — one line per item, no paragraphs.
+
+This file is the sync layer between all AI tools Ahmad uses. If it's not in here, it didn't happen.
