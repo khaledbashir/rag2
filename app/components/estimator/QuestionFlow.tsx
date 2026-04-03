@@ -1946,6 +1946,8 @@ function CourtsideSelectInput({
                 productName: match.displayName,
                 widthFt: specs.displayWidthFt || 0,
                 heightFt: specs.displayHeightFt || 0,
+                fixedWidthPx: specs.displayWidthPx || undefined,
+                fixedHeightPx: specs.displayHeightPx || undefined,
             });
 
             setLoading(false);

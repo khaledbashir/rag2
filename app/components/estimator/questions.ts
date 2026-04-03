@@ -831,6 +831,9 @@ export interface DisplayAnswers {
     altPitches: string[];
     // Per-display cost overrides — from direct cell edits on LED Cost Sheet
     costOverrides?: Record<string, number>;
+    // Fixed pixel dimensions — courtside/stanchion products have specs that don't follow the LED formula
+    fixedWidthPx?: number;
+    fixedHeightPx?: number;
 }
 
 export function getDefaultAnswers(): EstimatorAnswers {

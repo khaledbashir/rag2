@@ -66,9 +66,9 @@ function mapDisplay(d: DisplayAnswers, env: "indoor" | "outdoor"): ExtractedLEDS
     }
   }
 
-  // Compute pixel resolution from pitch + physical size
-  const widthPx = pitch && widthFt ? Math.round((widthFt * 304.8) / pitch) : null;
-  const heightPx = pitch && heightFt ? Math.round((heightFt * 304.8) / pitch) : null;
+  // Courtside/stanchion: use fixed pixel specs stored on display answers; LED: formula
+  const widthPx = d.fixedWidthPx || (pitch && widthFt ? Math.round((widthFt * 304.8) / pitch) : null);
+  const heightPx = d.fixedHeightPx || (pitch && heightFt ? Math.round((heightFt * 304.8) / pitch) : null);
   const displayLabel = d.displayName?.trim() || humanizeType(d.displayType) || "Unnamed Display";
   const mountingLabel = humanizeType(d.locationType);
 

@@ -309,14 +309,14 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
     const pitch = parseFloat(d.pixelPitch) || 4;
     const overrides = d.costOverrides || {};
 
-    const pixelsW = Math.round((w * 304.8) / pitch);
-    const pixelsH = Math.round((h * 304.8) / pitch);
+    // For courtside/stanchion: use fixed pixel specs stored on display answers (set by wizard, no async dependency)
+    const pixelsW = d.fixedWidthPx || Math.round((w * 304.8) / pitch);
+    const pixelsH = d.fixedHeightPx || Math.round((h * 304.8) / pitch);
     const totalPixels = pixelsW * pixelsH * quantity;
 
     // ── Add-on products (courtside/stanchion): unit pricing, Screen + Install only ──
     const isAddon = isAddonDisplayType(d.displayType);
     const extSpecs = (productSpec as any)?.extendedSpecs;
-    console.log(`[EstimatorBridge] "${d.displayName}" isAddon=${isAddon}, hasProductSpec=${!!productSpec}, hasExtSpecs=${!!extSpecs}, extSpecs.displayWidthPx=${extSpecs?.displayWidthPx}, extSpecs.displayHeightPx=${extSpecs?.displayHeightPx}, formula pixelsW=${pixelsW}, formula pixelsH=${pixelsH}`);
     if (isAddon && extSpecs?.costModel === "per_unit") {
         const unitCost = extSpecs.unitCost || 0;
         const unitSalePrice = extSpecs.unitSalePrice || 0;
@@ -339,9 +339,9 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
             heightFt: h,
             areaSqFt: area,
             pixelPitch: pitch,
-            pixelsW: extSpecs.displayWidthPx || extSpecs.pixelsW || pixelsW,
-            pixelsH: extSpecs.displayHeightPx || extSpecs.pixelsH || pixelsH,
-            totalPixels: (extSpecs.displayWidthPx || extSpecs.pixelsW || pixelsW) * (extSpecs.displayHeightPx || extSpecs.pixelsH || pixelsH) * quantity,
+            pixelsW,
+            pixelsH,
+            totalPixels,
             costPerSqFt: area > 0 ? unitCost / area : 0,
             hardwareCost: unitCost * quantity,
             spareParts: 0,
