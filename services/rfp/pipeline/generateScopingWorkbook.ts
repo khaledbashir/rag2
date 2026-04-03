@@ -208,7 +208,6 @@ function getFixedPixelSpecs(resolvedProduct: any): { hPx: number; wPx: number } 
   const pType = resolvedProduct?.productType;
   if (pType !== "courtside" && pType !== "stanchion") return null;
   const specs = resolvedProduct?.extendedSpecs;
-  console.log(`[FixedPixelSpecs] productType=${pType}, extendedSpecs keys=${specs ? Object.keys(specs).join(",") : "NONE"}, displayHeightPx=${specs?.displayHeightPx}, displayWidthPx=${specs?.displayWidthPx}`);
   if (!specs?.displayHeightPx || !specs?.displayWidthPx) return null;
   return { hPx: specs.displayHeightPx, wPx: specs.displayWidthPx };
 }
@@ -1513,7 +1512,6 @@ function buildLedCostSheet(
     // ═══════ All data cells use VLOOKUP formulas tied to product dropdown (F) ═══════
     // When user changes F (product), all dependent cells auto-recalculate.
     const selectedProduct = d.spec.selectedProductId ? resolveProduct(d.spec.selectedProductId) : null;
-    console.log(`[ScopingWorkbook] Display "${d.spec.name}" selectedProductId=${d.spec.selectedProductId}, resolved=${!!selectedProduct}, productType=${(selectedProduct as any)?.productType ?? "N/A"}, hasExtSpecs=${!!(selectedProduct as any)?.extendedSpecs}`);
     const selectedPitch = (selectedProduct as any)?.pitchMm ?? (selectedProduct as any)?.pitch;
     const effectivePitch = selectedPitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.match?.module?.pitch ?? d.spec.pixelPitchMm;
 
@@ -1581,9 +1579,11 @@ function buildLedCostSheet(
     const hPx = fixedPx?.hPx ?? (effectivePitch && d.heightFt ? Math.round(d.heightFt * 304.8 / effectivePitch) : (d.spec.heightPx || 0));
     const wPx = fixedPx?.wPx ?? (effectivePitch && d.widthFt ? Math.round(d.widthFt * 304.8 / effectivePitch) : (d.spec.widthPx || 0));
     if (fixedPx) {
+      console.log(`[WRITE FIXED] Row ${row}: Writing fixedPx H=${fixedPx.hPx}, W=${fixedPx.wPx} to J,K`);
       dr.getCell(10).value = fixedPx.hPx;
       dr.getCell(11).value = fixedPx.wPx;
     } else {
+      console.log(`[WRITE FORMULA] Row ${row}: Writing formula to J,K, hPx=${hPx}, wPx=${wPx}`);
       dr.getCell(10).value = { formula: `IFERROR(ROUND(H${row}*304.8/G${row},0),0)`, result: hPx };
       dr.getCell(11).value = { formula: `IFERROR(ROUND(I${row}*304.8/G${row},0),0)`, result: wPx };
     }
@@ -1822,9 +1822,11 @@ function buildLedCostSheet(
       const altHPx = altFixedPx?.hPx ?? (altPitch && d.heightFt ? Math.round(d.heightFt * 304.8 / altPitch) : 0);
       const altWPx = altFixedPx?.wPx ?? (altPitch && d.widthFt ? Math.round(d.widthFt * 304.8 / altPitch) : 0);
       if (altFixedPx) {
+        console.log(`[WRITE FIXED ALT] Row ${rowNum}: Writing altFixedPx H=${altFixedPx.hPx}, W=${altFixedPx.wPx} to J,K`);
         dr.getCell(10).value = altFixedPx.hPx;
         dr.getCell(11).value = altFixedPx.wPx;
       } else {
+        console.log(`[WRITE FORMULA ALT] Row ${rowNum}: Writing formula to J,K, altHPx=${altHPx}, altWPx=${altWPx}`);
         dr.getCell(10).value = { formula: `IFERROR(ROUND(H${rowNum}*304.8/G${rowNum},0),0)`, result: altHPx };
         dr.getCell(11).value = { formula: `IFERROR(ROUND(I${rowNum}*304.8/G${rowNum},0),0)`, result: altWPx };
       }
