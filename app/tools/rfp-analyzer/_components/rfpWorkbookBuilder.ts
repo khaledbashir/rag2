@@ -369,12 +369,12 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   }, 0);
   const totalRow: SheetRow = {
     cells: [
-      c(`TOTAL (${input.screens.length} displays)`, { bold: true }),
+      c(`TOTAL (${input.screens.reduce((sum, s) => sum + (s.quantity || 1), 0)} screens)`, { bold: true }),
       c(""), c(""), c(""),                                               // RFP H, RFP W, RFP NITs
       c(""), c(""), c(""),                                               // Vendor, Product, Pitch
       c(""), c(""), c(""), c(""),                                        // H, W, H(px), W(px)
       c(""),                                                              // SqFt/Screen
-      c(""),                                                              // Qty
+      c(String(input.screens.reduce((sum, s) => sum + (s.quantity || 1), 0)), { bold: true }), // Qty total
       num(Math.round(totalSqFtAll * 100) / 100, { bold: true }),         // Total SqFt
       c(""),                                                                // NITs
       ...(input.showSpecMatch ? [c("")] : []),                               // Spec Match (if shown)

@@ -418,11 +418,11 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
   const lastDataRow = screens.length + 1;
 
   ledCellData[totalRowIdx] = {
-    0: { v: `TOTAL (${screens.length} displays)`, s: "total" },
+    0: { v: `TOTAL (${screens.reduce((sum: number, s: any) => sum + (s.quantity || 1), 0)} screens)`, s: "total" },
     1: { v: "", s: "total" }, 2: { v: "", s: "total" }, 3: { v: "", s: "total" },  // RFP cols
     4: { v: "", s: "total" }, 5: { v: "", s: "total" }, 6: { v: "", s: "total" },  // Vendor/Product/Pitch
     7: { v: "", s: "total" }, 8: { v: "", s: "total" }, 9: { v: "", s: "total" }, 10: { v: "", s: "total" },  // H/W/Hpx/Wpx
-    11: { v: "", s: "total" }, 12: { v: "", s: "total" },  // SqFt/Screen, Qty
+    11: { v: "", s: "total" }, 12: { f: `=SUM(M${firstDataRow}:M${lastDataRow})`, s: "totalNumber" },  // Qty total
     13: { f: screens.length > 0 ? `=ROUND(SUM(N${firstDataRow}:N${lastDataRow}),2)` : "=0", s: "totalNumber" },  // Total SqFt
     14: { v: "", s: "total" }, 15: { v: "", s: "total" },  // NITs, Service
     16: { v: "", s: "total" },  // $/SqFt
