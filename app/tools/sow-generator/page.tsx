@@ -1198,7 +1198,7 @@ function SOWGeneratorPage() {
       <div className="bg-white dark:bg-zinc-900 rounded-xl border border-border shadow-sm overflow-hidden">
 
         {/* ANC Header */}
-        <div className="border-b-[3px] border-red-600 px-8 py-4 flex flex-col items-center">
+        <div className="border-b-[3px] border-[#0A52EF] px-8 py-4 flex flex-col items-center">
           <img src="/anc-logo-blue.png" alt="ANC" className="h-12 object-contain" />
           <div className="text-[10px] text-muted-foreground mt-0.5">www.anc.com</div>
         </div>
