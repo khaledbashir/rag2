@@ -316,6 +316,7 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
     // ── Add-on products (courtside/stanchion): unit pricing, Screen + Install only ──
     const isAddon = isAddonDisplayType(d.displayType);
     const extSpecs = (productSpec as any)?.extendedSpecs;
+    console.log(`[EstimatorBridge] "${d.displayName}" isAddon=${isAddon}, hasProductSpec=${!!productSpec}, hasExtSpecs=${!!extSpecs}, extSpecs.displayWidthPx=${extSpecs?.displayWidthPx}, extSpecs.displayHeightPx=${extSpecs?.displayHeightPx}, formula pixelsW=${pixelsW}, formula pixelsH=${pixelsH}`);
     if (isAddon && extSpecs?.costModel === "per_unit") {
         const unitCost = extSpecs.unitCost || 0;
         const unitSalePrice = extSpecs.unitSalePrice || 0;
