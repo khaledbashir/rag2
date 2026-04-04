@@ -196,8 +196,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     // Use API totalCost directly, derive displayCost from it
     // This ensures columns sum correctly and match the Excel export
     const pricingSqFt = pd?.areaSqFt ?? 0;
-    const pricingTotalSqFt = pricingSqFt * qty;
-    const ratePerSqFt = pricingTotalSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingTotalSqFt : 0;
+    const ratePerSqFt = pricingSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingSqFt : 0;
     const processorCost = pd?.processorCost ?? 0;
     const shippingCost = pd?.shippingCost ?? 0;
     const totalCost = pd?.totalCost ?? 0;
