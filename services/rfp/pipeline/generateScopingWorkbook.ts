@@ -1624,9 +1624,9 @@ function buildLedCostSheet(
       dr.getCell(16).value = { formula: `IFERROR(VLOOKUP(F${row},${prodRange},4,FALSE),0)`, result: costPerSqFtResult };
     }
     dr.getCell(16).numFmt = FMT_USD;
-    // Q: Display Cost — use computed value directly (matches online preview)
-    // Formula kept for Excel-side product changes, result is authoritative
-    dr.getCell(17).value = { formula: `P${row}*M${row}`, result: round2(ledWithSpares) };
+    // Q: Display Cost — precise API value, derived backward: TotalCost - Processor - Shipping
+    // NOT forward-calculated from $/SqFt × SqFt (causes floating-point drift vs API)
+    dr.getCell(17).value = round2(ledWithSpares);
     dr.getCell(17).numFmt = FMT_USD;
     const bundleSubtotalRow = bundleSubtotalRows[idx];
     // R: Processor — cross-sheet formula to Bundle Equipment
