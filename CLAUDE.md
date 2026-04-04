@@ -22,6 +22,7 @@ DO NOT TOUCH. Behavior must remain IDENTICAL. No "quick fixes" or "improvements"
 - Auto-populated courtside/stanchion wizard, Premium SOW default DOCX (2026-04-03)
 - Cost sheet row/formula/TOTAL row fixes (2026-04-03)
 - RFP Analyzer Univer preview migrated to unified server generator to match export exactly (2026-04-04)
+- Native Univer dropdown overlays added for Product and Qty columns (2026-04-04)
 
 ## 🛑 ABSOLUTE RULE: NO SHORTCUTS
 - Build it RIGHT, not fast. Fix the ROOT CAUSE, not the symptom.
