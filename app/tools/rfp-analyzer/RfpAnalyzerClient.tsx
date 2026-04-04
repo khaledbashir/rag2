@@ -2798,11 +2798,55 @@ export default function RfpAnalyzerClient() {
                 {/* Server-generated workbook: same generator as export = same numbers */}
                 {useServerWorkbook && serverWorkbookData ? (() => {
                   const specsArr = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
+                  // Build client-side calcs from pricingPreview for instant LED Cost Sheet overlay
+                  const rfpCalcs = pricingPreview?.displays?.map((d, i) => {
+                    const spec = specsArr[i];
+                    if (!spec || !d) return null;
+                    const h = spec.activeHeightFt ?? spec.heightFt ?? 0;
+                    const w = spec.activeWidthFt ?? spec.widthFt ?? 0;
+                    const area = h * w;
+                    const pitch = spec.pixelPitchMm ?? (d.pixelPitch || 4);
+                    const qty = spec.quantity || 1;
+                    const pixelsW = Math.round((w * 304.8) / pitch);
+                    const pixelsH = Math.round((h * 304.8) / pitch);
+                    const hw = d.hardwareCost || 0;
+                    const proc = d.processorCost ?? 0;
+                    const ship = d.shippingCost ?? 0;
+                    const ledTotal = hw + proc + ship;
+                    const margin = d.blendedMarginPct > 1 ? d.blendedMarginPct / 100 : d.blendedMarginPct;
+                    return {
+                      name: d.name,
+                      heightFt: h,
+                      widthFt: w,
+                      areaSqFt: area * qty,
+                      pixelPitch: pitch,
+                      pixelsW,
+                      pixelsH,
+                      costPerSqFt: area > 0 ? hw / (area * qty) : 0,
+                      hardwareCost: hw,
+                      spareParts: 0,
+                      processorCost: proc,
+                      equipmentCost: 0,
+                      shippingCost: ship,
+                      totalCost: ledTotal,
+                      marginPct: margin,
+                      ledMarginPct: margin,
+                      sellPrice: margin < 1 ? ledTotal / (1 - margin) : ledTotal,
+                      cabinetLayout: d.matchedProduct?.activeWidthFt ? {
+                        actualWidthFt: d.matchedProduct.activeWidthFt,
+                        actualHeightFt: d.matchedProduct.activeHeightFt || h,
+                        actualAreaSqFt: (d.matchedProduct.activeWidthFt || w) * (d.matchedProduct.activeHeightFt || h) * qty,
+                        actualResolutionW: d.matchedProduct.resolutionX || pixelsW,
+                        actualResolutionH: d.matchedProduct.resolutionY || pixelsH,
+                      } : null,
+                    };
+                  }).filter(Boolean) as any[] || [];
+
                   const wbData = buildEstimatorWorkbook(serverWorkbookData, availableProducts.length > 0 ? {
                     products: availableProducts,
                     displayProductIds: specsArr.map((s: any) => s.selectedProductId || ""),
                     onProductSelect: handleRfpProductSelect,
-                    // No onQtyChange — Qty is free-type editable via onCellEdit + editableColumns
+                    calcs: rfpCalcs.length > 0 ? rfpCalcs : undefined,
                   } : undefined);
                   return (
                     <div className="h-full overflow-auto rounded-lg bg-white">
