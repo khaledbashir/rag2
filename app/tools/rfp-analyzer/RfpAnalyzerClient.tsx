@@ -952,49 +952,19 @@ export default function RfpAnalyzerClient() {
 
   const requirements = result?.requirements || [];
   // Server-generated preview — uses SAME generateScopingWorkbook as export.
-  // Direct fetch, no debounce abstraction. Fires once when result loads.
-  const [serverWorkbookData, setServerWorkbookData] = useState<any | null>(null);
-  const [serverWorkbookLoading, setServerWorkbookLoading] = useState(false);
-  const [serverWorkbookError, setServerWorkbookError] = useState<string | null>(null);
-  const [serverProjectTotal, setServerProjectTotal] = useState(0);
-  const [displayRowMap, setDisplayRowMap] = useState<Record<number, number>>({});
-  const serverFetchedRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    const specs = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
-    if (!result?.id || !specs.length) return;
-    // Only fetch once per analysis (or when specs change meaningfully)
-    const key = `${result.id}:${specs.length}:${specs[0]?.selectedProductName || specs[0]?.name || ""}`;
-    if (serverFetchedRef.current === key) return;
-    serverFetchedRef.current = key;
-
-    setServerWorkbookLoading(true);
-    setServerWorkbookError(null);
-
-    fetch("/api/rfp/preview-univer", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        analysisId: result.id,
-        clientSpecs: specs,
-        includeBond: result.project?.bondRequired || false,
-      }),
-    })
-      .then(res => {
-        if (!res.ok) return res.json().then(e => { throw new Error(e.error || `${res.status}`); });
-        return res.json();
-      })
-      .then(data => {
-        setServerWorkbookData(data);
-        if (data.projectTotal != null) setServerProjectTotal(data.projectTotal);
-        if (data.displayRowMap) setDisplayRowMap(data.displayRowMap);
-      })
-      .catch(err => {
-        console.error("[Server Preview] Failed:", err.message);
-        setServerWorkbookError(err.message);
-      })
-      .finally(() => setServerWorkbookLoading(false));
-  }, [result?.id, result?.screens, editableSpecs, result?.project?.bondRequired]);
+  const specsForPreview = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
+  const {
+    data: serverWorkbookData,
+    loading: serverWorkbookLoading,
+    error: serverWorkbookError,
+    projectTotal: serverProjectTotal,
+    displayRowMap,
+    skipNextRebuild,
+  } = useRfpServerPreview({
+    analysisId: result?.id || null,
+    specs: specsForPreview,
+    includeBond: result?.project?.bondRequired || false,
+  });
 
   // Handle cell edits from the server-rendered UniverPreview.
   // Maps row/col → spec field, updates editableSpecs → triggers server rebuild.
@@ -1007,6 +977,32 @@ export default function RfpAnalyzerClient() {
     const specIdx = displayRowMap[oneBasedRow];
     if (specIdx == null) return;
 
+    // Handle Product Dropdown edit (col 5)
+    if (col === 5) {
+      const productName = String(value).trim();
+      const product = availableProducts.find((p) => p.name === productName || p.label === productName);
+      if (product) {
+        setResult(prev => {
+          if (!prev) return prev;
+          if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
+          const spec = { ...prev.screens[specIdx] };
+          spec.selectedProductId = product.id;
+          spec.selectedProductName = product.name;
+
+          // Clear active dimensions so server can resnap them using new product specs
+          spec.activeWidthFt = null;
+          spec.activeHeightFt = null;
+
+          const updated = [...prev.screens];
+          updated[specIdx] = spec;
+          setEditableSpecs(updated);
+          autoSaveSpecs(updated, prev.id);
+          return { ...prev, screens: updated };
+        });
+      }
+      return;
+    }
+
     // Column mapping (0-based): H(7)=Height, I(8)=Width, L(11)=Qty
     let field: string | null = null;
     if (col === 7) field = "heightFt";
@@ -1018,18 +1014,26 @@ export default function RfpAnalyzerClient() {
     const numValue = typeof value === "number" ? value : parseFloat(String(value));
     if (isNaN(numValue) || numValue <= 0) return;
 
+    // Skip server rebuild for dimension edits, Univer handles formulas locally
+    skipNextRebuild();
+
     setResult(prev => {
       if (!prev) return prev;
       if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
       const spec = { ...prev.screens[specIdx] };
       (spec as any)[field!] = numValue;
+
+      // Also reset active dimensions so they resnap based on the new H/W
+      if (field === "heightFt") spec.activeHeightFt = null;
+      if (field === "widthFt") spec.activeWidthFt = null;
+
       const updated = [...prev.screens];
       updated[specIdx] = spec;
       setEditableSpecs(updated);
       autoSaveSpecs(updated, prev.id);
       return { ...prev, screens: updated };
     });
-  }, [displayRowMap, autoSaveSpecs]);
+  }, [displayRowMap, autoSaveSpecs, availableProducts, skipNextRebuild]);
 
   // ========================================================================
   // Auto-run pricing when extraction completes (no manual step needed)

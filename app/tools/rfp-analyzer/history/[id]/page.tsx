@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import SpecsTable from "../../_components/SpecsTable";
 import RequirementsTable from "../../_components/RequirementsTable";
-import { buildRfpWorkbook } from "../../_components/rfpWorkbookBuilder";
+import { useRfpServerPreview } from "@/hooks/useRfpServerPreview";
 import { snapDimension } from "@/services/catalog/productMatcher";
 import WorkbookShell from "@/app/components/reusables/WorkbookShell";
 import type { ExtractedLEDSpec, ExtractedRequirement } from "@/services/rfp/unified/types";
@@ -455,24 +455,13 @@ export default function AnalysisDetailPage() {
     });
   }, [autoSaveSpecs]);
 
-  const workbookData = useMemo(() => {
-    if (!analysis) return { fileName: "RFP Analysis", sheets: [] };
-    return buildRfpWorkbook({
-      project: analysis.project,
-      screens: analysis.screens || [],
-      requirements: analysis.requirements || [],
-      triage: analysis.triage || [],
-      pricingDisplays: pricingPreview?.displays || [],
-      pricingSummary: pricingPreview?.summary || null,
-      bidFormResult: null,
-      showSpecMatch: true,
-      availableProducts,
-      onProductSelect: handleProductSelect,
-      onQtyChange: handleQtyChange,
-      onAddScreen: handleAddScreen,
-      onRemoveScreen: handleRemoveScreen,
-    });
-  }, [analysis, pricingPreview, availableProducts, handleProductSelect, handleQtyChange, handleAddScreen, handleRemoveScreen]);
+  const { data: serverWorkbookData, loading: serverWorkbookLoading } = useRfpServerPreview({
+    analysisId: analysis?.id || null,
+    specs: analysis?.screens || [],
+    includeBond: analysis?.project?.bondRequired || false,
+  });
+
+  const workbookData = serverWorkbookData || { fileName: "RFP Analysis", sheets: [] };
 
   // Download helper
   const downloadBlob = async (url: string, body: object, fallbackName: string) => {

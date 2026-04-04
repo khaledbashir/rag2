@@ -39,7 +39,6 @@ import { usePresence } from "@/hooks/usePresence";
 import type { ExtractedLEDSpec } from "@/services/rfp/unified/types";
 
 const EstimatorVenuePanel = dynamic(() => import("./EstimatorVenuePanel"), { ssr: false });
-const EditableWorkbook = dynamic(() => import("@/app/tools/rfp-analyzer/_components/UniverSpreadsheet"), { ssr: false });
 const UniverPreview = dynamic(() => import("./UniverPreview"), { ssr: false });
 const EstimatorActivityPanel = dynamic(() => import("./EstimatorActivityPanel"), { ssr: false });
 
