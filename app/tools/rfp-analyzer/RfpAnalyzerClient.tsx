@@ -766,9 +766,7 @@ export default function RfpAnalyzerClient() {
     });
   }, [availableProducts, pricingPreview, editableSpecs, result?.screens]);
 
-  // Stable ref so useMemo doesn't depend on the callback identity
-  const handleProductSelectRef = useRef(handleProductSelect);
-  handleProductSelectRef.current = handleProductSelect;
+  // handleProductSelect used directly in render — no ref needed
 
   // ========================================================================
   // Add custom line item to Margin Analysis
@@ -2247,22 +2245,8 @@ export default function RfpAnalyzerClient() {
   // ========================================================================
   const isSpreadsheetVisible = phase === "results" && result && pricingPreview && spreadsheetMode;
 
-  // Memoized workbook data — rebuilds when server data or specs change.
-  // NO client-side calcs overlay for RFP — server rebuild fires immediately (delay=0)
-  // on product change and returns correct VLOOKUP-based values. Calcs overlay was
-  // overwriting correct server values with stale client state.
-  const memoizedWorkbookData = useMemo(() => {
-    if (!serverWorkbookData || availableProducts.length === 0) return null;
-    const specsArr = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
-    const handler = handleProductSelectRef.current;
-    console.error(`[MEMO_BUILD] building workbook, handler=${handler?.name || 'anonymous'}, specs=${specsArr.length}, products=${availableProducts.length}`);
-    return buildEstimatorWorkbook(serverWorkbookData, {
-      products: availableProducts,
-      displayProductIds: specsArr.map((s: any) => s.selectedProductId || ""),
-      onProductSelect: (displayIndex: number, productId: string) => handleProductSelectRef.current(displayIndex, productId),
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverWorkbookData, editableSpecs, result?.screens, availableProducts]);
+  // No useMemo — build workbook inline during render to avoid stale closure issues.
+  // Server rebuild fires immediately (delay=0) on product change.
 
   return (
     <div className={`flex-1 min-w-0 bg-background relative ${isSpreadsheetVisible ? "flex flex-col h-screen overflow-hidden" : "min-h-screen pb-24"}`}>
@@ -2822,18 +2806,14 @@ export default function RfpAnalyzerClient() {
                 className={`flex-1 min-h-0 overflow-auto relative ${spreadsheetMode ? "border-x border-gray-200 dark:border-gray-700" : "border border-t-0 border-gray-200 dark:border-gray-700"}`}
                 style={{ minHeight: 200 }}
               >
-                {/* Server-generated workbook: memoized build + calcs overlay */}
-                {useServerWorkbook && memoizedWorkbookData ? (
-                    <div className="h-full overflow-auto rounded-lg bg-white">
-                      <WorkbookShell
-                        data={memoizedWorkbookData}
-                        editable
-                        onCellEdit={handleRfpCellEdit}
-                      />
-                    </div>
-                ) : useServerWorkbook && serverWorkbookData && availableProducts.length === 0 ? (() => {
-                  // Fallback: no products loaded yet, render without calcs
-                  const wbData = buildEstimatorWorkbook(serverWorkbookData);
+                {/* Server-generated workbook — built inline, no useMemo */}
+                {useServerWorkbook && serverWorkbookData ? (() => {
+                  const specsArr = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
+                  const wbData = buildEstimatorWorkbook(serverWorkbookData, availableProducts.length > 0 ? {
+                    products: availableProducts,
+                    displayProductIds: specsArr.map((s: any) => s.selectedProductId || ""),
+                    onProductSelect: handleProductSelect,
+                  } : undefined);
                   return (
                     <div className="h-full overflow-auto rounded-lg bg-white">
                       <WorkbookShell data={wbData} editable onCellEdit={handleRfpCellEdit} />
