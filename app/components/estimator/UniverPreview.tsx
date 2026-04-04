@@ -10,7 +10,7 @@
  * fires with (sheetName, row, col, value) so the parent can update answers.
  */
 
-import React, { useRef, useEffect, useState, useCallback } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { Loader2, AlertCircle } from "lucide-react";
 
 export interface UniverPreviewDropdown {
@@ -51,6 +51,8 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
   const lastActiveSheetRef = useRef<string | null>(null);
   const onCellEditRef = useRef(onCellEdit);
   onCellEditRef.current = onCellEdit;
+  /** Track last mousedown position (container-relative) for dropdown positioning */
+  const lastClickPosRef = useRef<{ x: number; y: number } | null>(null);
 
   // Track mount for SSR safety
   useEffect(() => {
@@ -135,6 +137,8 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
         univerAPI.createWorkbook(workbookDataRef.current);
 
         // Restore previously active sheet tab (after a frame so Univer is fully rendered)
+        // setActiveSheet(string) treats the string as a sheet ID, not name.
+        // We must find the FWorksheet by name and pass the object.
         if (lastActiveSheetRef.current) {
           const savedTab = lastActiveSheetRef.current;
           requestAnimationFrame(() => {
@@ -142,16 +146,11 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
             try {
               const wb = univerAPI.getActiveWorkbook?.();
               if (wb) {
-                // Try setActiveSheet with name first, fall back to iterating sheets
-                try {
-                  wb.setActiveSheet(savedTab);
-                } catch {
-                  const sheets = wb.getSheets?.() || [];
-                  for (const s of sheets) {
-                    if (s.getSheetName?.() === savedTab) {
-                      s.activate?.();
-                      break;
-                    }
+                const sheets = wb.getSheets?.() || [];
+                for (const s of sheets) {
+                  if (s.getSheetName?.() === savedTab) {
+                    wb.setActiveSheet(s);
+                    break;
                   }
                 }
               }
@@ -207,8 +206,10 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
         }
 
         // Listen for cell selection to show dropdown overlays
+        // We use mousedown position (container-relative) because getCellRect()
+        // returns sheet-space coordinates that don't account for scroll/viewport offset.
         try {
-          const selectionEvent = univerAPI.Event.SelectionChanged || univerAPI.Event.SheetSelectionChanged;
+          const selectionEvent = univerAPI.Event.SelectionChanged;
           if (selectionEvent) {
             univerAPI.addEvent(selectionEvent, () => {
               const wb = univerAPI.getActiveWorkbook?.();
@@ -229,27 +230,22 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
               const dropdownConfig = dropdownsRef.current[sheetName].find(d => d.col === col);
               if (!dropdownConfig) return setActiveDropdown(null);
 
-              try {
-                const rect = range.getCellRect?.();
-                if (rect) {
-                  const rawValue = range.getValue?.();
-                  setActiveDropdown({
-                    top: rect.top,
-                    left: rect.left,
-                    width: rect.width,
-                    height: rect.height,
-                    sheetName,
-                    row,
-                    col,
-                    value: rawValue != null ? String(rawValue) : "",
-                    options: dropdownConfig.options,
-                  });
-                  return;
-                }
-              } catch (err) {
-                console.warn("[UniverPreview] Error getting cell rect", err);
-              }
-              setActiveDropdown(null);
+              // Use the tracked mousedown position (container-relative)
+              const clickPos = lastClickPosRef.current;
+              if (!clickPos) return setActiveDropdown(null);
+
+              const rawValue = range.getValue?.();
+              setActiveDropdown({
+                top: clickPos.y,
+                left: clickPos.x,
+                width: 140,
+                height: 24,
+                sheetName,
+                row,
+                col,
+                value: rawValue != null ? String(rawValue) : "",
+                options: dropdownConfig.options,
+              });
             });
           }
         } catch (e) {
@@ -307,6 +303,18 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
       <div
         ref={containerRef}
         className="absolute inset-0 rounded-lg border border-border bg-white overflow-hidden"
+        onMouseDown={(e) => {
+          // Track click position relative to the outer wrapper (position:relative)
+          // so the dropdown overlay aligns exactly where the user clicked.
+          const wrapper = e.currentTarget.parentElement;
+          if (wrapper) {
+            const rect = wrapper.getBoundingClientRect();
+            lastClickPosRef.current = {
+              x: e.clientX - rect.left,
+              y: e.clientY - rect.top,
+            };
+          }
+        }}
         onWheel={() => setActiveDropdown(null)}
       />
       {activeDropdown && (
