@@ -191,7 +191,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const displayPxH = (hasProductDims && mp.resolutionY) ? mp.resolutionY : bidHPx;
     const displayPxW = (hasProductDims && mp.resolutionX) ? mp.resolutionX : bidWPx;
     const sqFtPerScreen = displayH * displayW;
-    const totalSqFt = sqFtPerScreen * qty;
+    const totalSqFt = pd?.areaSqFt ?? (sqFtPerScreen * qty);
 
     // Use API totalCost directly, derive displayCost from it
     // This ensures columns sum correctly and match the Excel export
