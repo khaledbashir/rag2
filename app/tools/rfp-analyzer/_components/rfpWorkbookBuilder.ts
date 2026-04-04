@@ -322,16 +322,19 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   let totalPowerWAll = 0;
   input.screens.forEach((spec) => {
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
-    const h = spec.heightFt ?? 0;
-    const w = spec.widthFt ?? 0;
-    const q = spec.quantity || 1;
-    const sqFt = h * w * q;
-    const pricingSqFt = pd?.areaSqFt ?? 0;
-    const rate = pricingSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingSqFt : 0;
-    totalDisplayCost += rate * sqFt;
-    totalProcessorCost += pd?.processorCost ?? 0;
-    totalShippingCost += pd?.shippingCost ?? 0;
-    totalSqFtAll += sqFt;
+
+    const processorCost = pd?.processorCost ?? 0;
+    const shippingCost = pd?.shippingCost ?? 0;
+    const totalCost = pd?.totalCost ?? 0;
+    const displayCost = totalCost > 0
+      ? Math.round((totalCost - processorCost - shippingCost) * 100) / 100
+      : 0;
+
+    totalDisplayCost += displayCost;
+    totalProcessorCost += processorCost;
+    totalShippingCost += shippingCost;
+
+    totalSqFtAll += pd?.areaSqFt ?? 0;
     totalModulesAll += pd?.matchedProduct?.totalModules ?? 0;
     totalWeightLbsAll += pd?.matchedProduct?.totalWeightLbs ?? 0;
     totalPowerWAll += pd?.matchedProduct?.totalMaxPowerW ?? 0;
@@ -340,18 +343,10 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   // Blended margin for total
   const totalLedSell = input.screens.reduce((s, spec) => {
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
-    const h = spec.heightFt ?? 0;
-    const w = spec.widthFt ?? 0;
-    const q = spec.quantity || 1;
-    const sqFt = h * w * q;
-    const pricingSqFt = pd?.areaSqFt ?? 0;
-    const rate = pricingSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingSqFt : 0;
-    const dc = rate * sqFt;
-    const pc = pd?.processorCost ?? 0;
-    const sc = pd?.shippingCost ?? 0;
-    const tc = dc + pc + sc;
+    const tc = pd?.totalCost ?? 0;
     const m = pd?.blendedMarginPct ?? 0;
-    return s + (m > 0 ? tc / (1 - m) : tc);
+    const sellingPrice = m > 0 ? tc / (1 - m) : tc;
+    return s + sellingPrice;
   }, 0);
   const blendedMarginTotal = totalLedSell > 0 ? (totalLedSell - totalLedCost) / totalLedSell : 0;
 
