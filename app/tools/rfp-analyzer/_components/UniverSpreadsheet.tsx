@@ -341,20 +341,21 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     // (fitScore 100 = user selection via handleProductSelect). Auto-matched products
     // should NOT override the RFP extraction dimensions — those are the source of truth
     // until the user consciously changes the product.
-    const isUserSelected = mp?.fitScore === 100 && mp?.activeWidthFt && mp?.activeHeightFt;
+    // Use cabinet-snapped dims from match when available (any fitScore), raw RFP dims as fallback
+    const hasSnappedDims = mp?.activeWidthFt && mp?.activeHeightFt;
     // Standard LCD fallback when extraction misses physical dimensions
     const lcdSize = extractLcdSizeInches(spec.name ?? "");
     const lcdDims = lcdSize ? STANDARD_LCD_SIZES[lcdSize] : null;
-    const h = isUserSelected ? mp.activeHeightFt! : ((spec.heightFt ?? 0) || lcdDims?.heightFt || 0);
-    const w = isUserSelected ? mp.activeWidthFt! : ((spec.widthFt ?? 0) || lcdDims?.widthFt || 0);
-    const pitch = (isUserSelected && mp.pitch) ? mp.pitch : (spec.pixelPitchMm ?? 0);
-    const hPx = isUserSelected && mp.resolutionY ? mp.resolutionY : (spec.heightPx ?? (pitch > 0 ? Math.round(h * 304.8 / pitch) : 0));
-    const wPx = isUserSelected && mp.resolutionX ? mp.resolutionX : (spec.widthPx ?? (pitch > 0 ? Math.round(w * 304.8 / pitch) : 0));
+    const h = hasSnappedDims ? mp.activeHeightFt! : ((spec.heightFt ?? 0) || lcdDims?.heightFt || 0);
+    const w = hasSnappedDims ? mp.activeWidthFt! : ((spec.widthFt ?? 0) || lcdDims?.widthFt || 0);
+    const pitch = (mp?.pitch) ? mp.pitch : (spec.pixelPitchMm ?? 0);
+    const hPx = mp?.resolutionY ? mp.resolutionY : (spec.heightPx ?? (pitch > 0 ? Math.round(h * 304.8 / pitch) : 0));
+    const wPx = mp?.resolutionX ? mp.resolutionX : (spec.widthPx ?? (pitch > 0 ? Math.round(w * 304.8 / pitch) : 0));
     const qty = audit?.quantity || spec.quantity || 1;
 
-    // pd.areaSqFt from computeDisplayCosts already includes * quantity
-    const pricingTotalSqFt = pd?.areaSqFt ?? (h * w * qty);
-    const ratePerSqFt = pricingTotalSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingTotalSqFt : 0;
+    // SqFt and $/SqFt from snapped dims — single source of truth
+    const snappedTotalSqFt = h * w * qty;
+    const ratePerSqFt = snappedTotalSqFt > 0 ? (pd?.hardwareCost ?? 0) / snappedTotalSqFt : 0;
     const weight = audit?.estimatedWeightLbs ?? mp?.totalWeightLbs ?? 0;
     const power = audit?.totalMaxPowerW ?? mp?.totalMaxPowerW ?? 0;
     
@@ -362,8 +363,8 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     // Previously back-calculated from LED costs only, which inflated the margin %.
     const marginPct = pd?.blendedMarginPct ?? 0.15;
     
-    // Use server-authoritative area (snapped dims) when available, fall back to raw RFP dims
-    const totalSqFt = pd?.areaSqFt ? Math.round(pd.areaSqFt * 100) / 100 : (h > 0 && w > 0 ? Math.round(h * w * qty * 100) / 100 : 0);
+    // SqFt from snapped H/W — matches the H(ft)/W(ft) cells shown in the preview
+    const totalSqFt = h > 0 && w > 0 ? Math.round(h * w * qty * 100) / 100 : 0;
     const sqFtPerScreen = qty > 0 ? Math.round(totalSqFt / qty * 100) / 100 : 0;
     const processorCost = pd?.processorCost ?? 0;
     const shippingCost = pd?.shippingCost ?? 0;
