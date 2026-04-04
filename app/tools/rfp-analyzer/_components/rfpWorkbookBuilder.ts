@@ -190,7 +190,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const activePitch = hasProductDims && mp.pitch ? mp.pitch : bidPitch;
     const displayPxH = (hasProductDims && mp.resolutionY) ? mp.resolutionY : bidHPx;
     const displayPxW = (hasProductDims && mp.resolutionX) ? mp.resolutionX : bidWPx;
-    const sqFtPerScreen = displayH * displayW;
+    const sqFtPerScreen = pd?.areaSqFt ? pd.areaSqFt / qty : (displayH * displayW);
     const totalSqFt = pd?.areaSqFt ?? (sqFtPerScreen * qty);
 
     // Use API totalCost directly, derive displayCost from it
