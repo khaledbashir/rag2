@@ -284,6 +284,13 @@ export function buildEstimatorWorkbook(
               return s + (m < 1 ? lt / (1 - m) : lt);
             }, 0);
             const blendedMargin = sumLedSell > 0 ? 1 - (sumLedTotal / sumLedSell) : avgLedMargin;
+            if (c === 12) {
+              const sumSqFt = allCalcs.reduce((s, calc) => {
+                const qty = 1; // qty already factored into areaSqFt
+                return s + Math.round(calc.cabinetLayout?.actualAreaSqFt ?? calc.areaSqFt);
+              }, 0);
+              sc.value = sumSqFt; sc.bold = true;
+            }
             if (c === 16) { sc.value = fmt(sumDisplayCost); sc.currency = true; sc.bold = true; }
             if (c === 17) { sc.value = fmt(sumProcessorCost); sc.currency = true; sc.bold = true; }
             if (c === 18) { sc.value = fmt(sumShippingCost); sc.currency = true; sc.bold = true; }
