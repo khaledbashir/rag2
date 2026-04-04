@@ -2241,60 +2241,20 @@ export default function RfpAnalyzerClient() {
   // ========================================================================
   const isSpreadsheetVisible = phase === "results" && result && pricingPreview && spreadsheetMode;
 
-  // Memoized workbook data — only rebuilds when actual data changes, not on every render
+  // Memoized workbook data — rebuilds when server data or specs change.
+  // NO client-side calcs overlay for RFP — server rebuild fires immediately (delay=0)
+  // on product change and returns correct VLOOKUP-based values. Calcs overlay was
+  // overwriting correct server values with stale client state.
   const memoizedWorkbookData = useMemo(() => {
     if (!serverWorkbookData || availableProducts.length === 0) return null;
     const specsArr = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
-    if (pricingPreview?.displays?.[0]) {
-      const d0 = pricingPreview.displays[0];
-      const s0 = specsArr[0] as any;
-      console.error('[CALCS_DEBUG] display0:', JSON.stringify({
-        hw: d0.hardwareCost, pitch: d0.pixelPitch, margin: d0.blendedMarginPct,
-        matchedProd: d0.matchedProduct ? { w: d0.matchedProduct.activeWidthFt, h: d0.matchedProduct.activeHeightFt } : null,
-        specActiveH: s0?.activeHeightFt, specActiveW: s0?.activeWidthFt, specPitch: s0?.pixelPitchMm,
-        selectedProduct: s0?.selectedProductId?.substring(0, 8),
-      }));
-    }
-    const rfpCalcs = pricingPreview?.displays?.map((d, i) => {
-      const spec = specsArr[i] as any;
-      if (!spec || !d) return null;
-      const h = spec.activeHeightFt ?? spec.heightFt ?? 0;
-      const w = spec.activeWidthFt ?? spec.widthFt ?? 0;
-      const area = h * w;
-      const pitch = spec.pixelPitchMm ?? (d.pixelPitch || 4);
-      const qty = spec.quantity || 1;
-      const pixelsW = Math.round((w * 304.8) / pitch);
-      const pixelsH = Math.round((h * 304.8) / pitch);
-      const hw = d.hardwareCost || 0;
-      const proc = d.processorCost ?? 0;
-      const ship = d.shippingCost ?? 0;
-      const ledTotal = hw + proc + ship;
-      const margin = d.blendedMarginPct > 1 ? d.blendedMarginPct / 100 : d.blendedMarginPct;
-      return {
-        name: d.name, heightFt: h, widthFt: w, areaSqFt: area * qty,
-        pixelPitch: pitch, pixelsW, pixelsH,
-        costPerSqFt: area > 0 ? hw / (area * qty) : 0,
-        hardwareCost: hw, spareParts: 0, processorCost: proc, equipmentCost: 0,
-        shippingCost: ship, totalCost: ledTotal, marginPct: margin, ledMarginPct: margin,
-        sellPrice: margin < 1 ? ledTotal / (1 - margin) : ledTotal,
-        cabinetLayout: d.matchedProduct?.activeWidthFt ? {
-          actualWidthFt: d.matchedProduct.activeWidthFt,
-          actualHeightFt: d.matchedProduct.activeHeightFt || h,
-          actualAreaSqFt: (d.matchedProduct.activeWidthFt || w) * (d.matchedProduct.activeHeightFt || h) * qty,
-          actualResolutionW: d.matchedProduct.resolutionX || pixelsW,
-          actualResolutionH: d.matchedProduct.resolutionY || pixelsH,
-        } : null,
-      };
-    }).filter(Boolean) as any[] || [];
-
     return buildEstimatorWorkbook(serverWorkbookData, {
       products: availableProducts,
       displayProductIds: specsArr.map((s: any) => s.selectedProductId || ""),
       onProductSelect: handleProductSelectRef.current,
-      calcs: rfpCalcs.length > 0 ? rfpCalcs : undefined,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverWorkbookData, editableSpecs, result?.screens, pricingPreview, availableProducts]);
+  }, [serverWorkbookData, editableSpecs, result?.screens, availableProducts]);
 
   return (
     <div className={`flex-1 min-w-0 bg-background relative ${isSpreadsheetVisible ? "flex flex-col h-screen overflow-hidden" : "min-h-screen pb-24"}`}>

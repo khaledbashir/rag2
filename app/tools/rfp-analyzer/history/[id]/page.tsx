@@ -805,40 +805,10 @@ export default function AnalysisDetailPage() {
                   </div>
                 ) : serverWorkbookData ? (() => {
                   const specs = analysis?.screens || [];
-                  const histCalcs = pricingPreview?.displays?.map((d: any, i: number) => {
-                    const spec = specs[i] as any;
-                    if (!spec || !d) return null;
-                    const h = spec.activeHeightFt ?? spec.heightFt ?? 0;
-                    const w = spec.activeWidthFt ?? spec.widthFt ?? 0;
-                    const area = h * w;
-                    const pitch = spec.pixelPitchMm ?? (d.pixelPitch || 4);
-                    const qty = spec.quantity || 1;
-                    const hw = d.hardwareCost || 0;
-                    const proc = d.processorCost ?? 0;
-                    const ship = d.shippingCost ?? 0;
-                    const ledTotal = hw + proc + ship;
-                    const margin = d.blendedMarginPct > 1 ? d.blendedMarginPct / 100 : d.blendedMarginPct;
-                    return {
-                      name: d.name, heightFt: h, widthFt: w, areaSqFt: area * qty,
-                      pixelPitch: pitch, pixelsW: Math.round((w * 304.8) / pitch), pixelsH: Math.round((h * 304.8) / pitch),
-                      costPerSqFt: area > 0 ? hw / (area * qty) : 0,
-                      hardwareCost: hw, spareParts: 0, processorCost: proc, equipmentCost: 0,
-                      shippingCost: ship, totalCost: ledTotal, marginPct: margin, ledMarginPct: margin,
-                      sellPrice: margin < 1 ? ledTotal / (1 - margin) : ledTotal,
-                      cabinetLayout: d.matchedProduct?.activeWidthFt ? {
-                        actualWidthFt: d.matchedProduct.activeWidthFt,
-                        actualHeightFt: d.matchedProduct.activeHeightFt || h,
-                        actualAreaSqFt: (d.matchedProduct.activeWidthFt || w) * (d.matchedProduct.activeHeightFt || h) * qty,
-                        actualResolutionW: d.matchedProduct.resolutionX || 0,
-                        actualResolutionH: d.matchedProduct.resolutionY || 0,
-                      } : null,
-                    };
-                  }).filter(Boolean) || [];
                   const wbData = buildEstimatorWorkbook(serverWorkbookData, availableProducts.length > 0 ? {
                     products: availableProducts,
                     displayProductIds: specs.map((s: any) => s.selectedProductId || ""),
                     onProductSelect: handleHistoryProductSelect,
-                    calcs: histCalcs.length > 0 ? histCalcs : undefined,
                   } : undefined);
                   return <WorkbookShell data={wbData} editable onCellEdit={handleHistoryCellEdit} />;
                 })() : null}
@@ -979,40 +949,10 @@ export default function AnalysisDetailPage() {
                   </div>
                 ) : serverWorkbookData ? (() => {
                   const specs = analysis?.screens || [];
-                  const histCalcs = pricingPreview?.displays?.map((d: any, i: number) => {
-                    const spec = specs[i] as any;
-                    if (!spec || !d) return null;
-                    const h = spec.activeHeightFt ?? spec.heightFt ?? 0;
-                    const w = spec.activeWidthFt ?? spec.widthFt ?? 0;
-                    const area = h * w;
-                    const pitch = spec.pixelPitchMm ?? (d.pixelPitch || 4);
-                    const qty = spec.quantity || 1;
-                    const hw = d.hardwareCost || 0;
-                    const proc = d.processorCost ?? 0;
-                    const ship = d.shippingCost ?? 0;
-                    const ledTotal = hw + proc + ship;
-                    const margin = d.blendedMarginPct > 1 ? d.blendedMarginPct / 100 : d.blendedMarginPct;
-                    return {
-                      name: d.name, heightFt: h, widthFt: w, areaSqFt: area * qty,
-                      pixelPitch: pitch, pixelsW: Math.round((w * 304.8) / pitch), pixelsH: Math.round((h * 304.8) / pitch),
-                      costPerSqFt: area > 0 ? hw / (area * qty) : 0,
-                      hardwareCost: hw, spareParts: 0, processorCost: proc, equipmentCost: 0,
-                      shippingCost: ship, totalCost: ledTotal, marginPct: margin, ledMarginPct: margin,
-                      sellPrice: margin < 1 ? ledTotal / (1 - margin) : ledTotal,
-                      cabinetLayout: d.matchedProduct?.activeWidthFt ? {
-                        actualWidthFt: d.matchedProduct.activeWidthFt,
-                        actualHeightFt: d.matchedProduct.activeHeightFt || h,
-                        actualAreaSqFt: (d.matchedProduct.activeWidthFt || w) * (d.matchedProduct.activeHeightFt || h) * qty,
-                        actualResolutionW: d.matchedProduct.resolutionX || 0,
-                        actualResolutionH: d.matchedProduct.resolutionY || 0,
-                      } : null,
-                    };
-                  }).filter(Boolean) || [];
                   const wbData = buildEstimatorWorkbook(serverWorkbookData, availableProducts.length > 0 ? {
                     products: availableProducts,
                     displayProductIds: specs.map((s: any) => s.selectedProductId || ""),
                     onProductSelect: handleHistoryProductSelect,
-                    calcs: histCalcs.length > 0 ? histCalcs : undefined,
                   } : undefined);
                   return <WorkbookShell data={wbData} editable onCellEdit={handleHistoryCellEdit} />;
                 })() : null}
