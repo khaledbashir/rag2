@@ -356,6 +356,9 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     // SqFt and $/SqFt from snapped dims — single source of truth
     const snappedTotalSqFt = h * w * qty;
     const ratePerSqFt = snappedTotalSqFt > 0 ? (pd?.hardwareCost ?? 0) / snappedTotalSqFt : 0;
+    if (spec.name?.includes("FOUNDERS")) {
+      console.log(`[FOUNDERS DEBUG] h=${h} w=${w} qty=${qty} snappedTotalSqFt=${snappedTotalSqFt} pd.hardwareCost=${pd?.hardwareCost} pd.areaSqFt=${pd?.areaSqFt} ratePerSqFt=${ratePerSqFt} hasSnappedDims=${hasSnappedDims} mp.activeW=${mp?.activeWidthFt} mp.activeH=${mp?.activeHeightFt}`);
+    }
     const weight = audit?.estimatedWeightLbs ?? mp?.totalWeightLbs ?? 0;
     const power = audit?.totalMaxPowerW ?? mp?.totalMaxPowerW ?? 0;
     
