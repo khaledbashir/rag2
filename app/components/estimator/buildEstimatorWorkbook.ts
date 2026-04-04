@@ -120,6 +120,12 @@ function getCellAlign(cell: UniverCell): "left" | "center" | "right" | undefined
   return undefined;
 }
 
+function hasYellowBg(cell: UniverCell): boolean {
+  const bg = cell.s?.bg?.rgb?.toLowerCase();
+  if (!bg) return false;
+  return bg.includes("ffff00") || bg.includes("fff200") || bg.includes("ffc000");
+}
+
 function hasCurrencyFormat(cell: UniverCell): boolean {
   const p = cell.s?.n?.pattern;
   return p ? (p.includes("$") || p.includes("#,##0.00")) : false;
@@ -212,6 +218,7 @@ export function buildEstimatorWorkbook(
           currency: hasCurrencyFormat(cell),
           percent: hasPercentFormat(cell),
           align: getCellAlign(cell),
+          highlight: hasYellowBg(cell),
         };
 
         // Header rows get header styling
