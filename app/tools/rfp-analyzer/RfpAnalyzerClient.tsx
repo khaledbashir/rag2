@@ -975,8 +975,10 @@ export default function RfpAnalyzerClient() {
     includeBond: result?.project?.bondRequired || false,
   });
 
-  // Handle product selection from WorkbookShell dropdown (receives displayIndex + productId)
+  // Handle product selection from WorkbookShell dropdown (MINIMAL — only updates productId)
+  // NOTE: This should NOT be called from the dropdown. handleProductSelect (full) should be used instead.
   const handleRfpProductSelect = useCallback((displayIndex: number, productId: string) => {
+    console.error(`[WRONG_HANDLER] handleRfpProductSelect called! This is the MINIMAL handler. The FULL handleProductSelect should be wired instead.`);
     const product = availableProducts.find((p) => p.id === productId);
     if (!product) return;
 
@@ -2252,6 +2254,8 @@ export default function RfpAnalyzerClient() {
   const memoizedWorkbookData = useMemo(() => {
     if (!serverWorkbookData || availableProducts.length === 0) return null;
     const specsArr = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
+    const handler = handleProductSelectRef.current;
+    console.error(`[MEMO_BUILD] building workbook, handler=${handler?.name || 'anonymous'}, specs=${specsArr.length}, products=${availableProducts.length}`);
     return buildEstimatorWorkbook(serverWorkbookData, {
       products: availableProducts,
       displayProductIds: specsArr.map((s: any) => s.selectedProductId || ""),
