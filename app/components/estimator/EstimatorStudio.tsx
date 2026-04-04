@@ -1154,6 +1154,19 @@ export default function EstimatorStudio({
                                     activeTab={activeWorkbookTab}
                                     onTabChange={setActiveWorkbookTab}
                                     onCellEdit={(_sheetIndex: number, rowIndex: number, colIndex: number, newValue: string) => {
+                                        // LED Cost Sheet master margin override: workbook row 1 (Excel row 2), col 21 (V)
+                                        if (rowIndex === 1 && colIndex === 21) {
+                                            const raw = parseFloat(String(newValue).replace(/[%,$\s]/g, ""));
+                                            if (isNaN(raw)) return;
+                                            const pctValue = raw <= 1 ? raw * 100 : raw;
+                                            const normalized = Math.max(0, Math.min(95, pctValue));
+                                            setAnswers((prev) => ({
+                                                ...prev,
+                                                ledMargin: normalized,
+                                                defaultMargin: normalized,
+                                            }));
+                                            return;
+                                        }
                                         // LED Cost Sheet: H(ft)=7, W(ft)=8, Qty=11
                                         const fieldMap: Record<number, "heightFt" | "widthFt" | "quantity"> = { 7: "heightFt", 8: "widthFt", 11: "quantity" };
                                         const field = fieldMap[colIndex];

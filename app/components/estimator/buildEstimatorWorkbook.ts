@@ -225,7 +225,7 @@ export function buildEstimatorWorkbook(
                 highlight: hasYellowBg(cell),
               });
             }
-            rows.push({ cells: specialCells, isHeader: true });
+            rows.push({ cells: specialCells, isHeader: true, sourceRow: r });
           }
         }
         continue;
@@ -271,7 +271,7 @@ export function buildEstimatorWorkbook(
         cells.push(sc);
       }
 
-      rows.push({ cells, isHeader: isHdr, isTotal });
+      rows.push({ cells, isHeader: isHdr, isTotal, sourceRow: r });
     }
 
     const tab: SheetTab = {

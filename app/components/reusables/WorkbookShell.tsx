@@ -146,15 +146,17 @@ export default function WorkbookShell({
                   editingCell={editingCell}
                   sheetIndex={activeTab}
                   onCellClick={(col) => {
+                    const sourceRow = row.sourceRow ?? rowIdx;
                     // Fire cell click handler (e.g., source page jump)
                     const cell = row.cells[col];
                     if (cell?.onClick) cell.onClick();
-                    onCellClick?.(activeTab, rowIdx, col);
+                    onCellClick?.(activeTab, sourceRow, col);
                     // Enter edit mode
-                    if (editable) setEditingCell({ row: rowIdx, col });
+                    if (editable) setEditingCell({ row: sourceRow, col });
                   }}
                   onCellChange={(col, value) => {
-                    onCellEdit?.(activeTab, rowIdx, col, value);
+                    const sourceRow = row.sourceRow ?? rowIdx;
+                    onCellEdit?.(activeTab, sourceRow, col, value);
                     setEditingCell(null);
                   }}
                   onCellBlur={() => setEditingCell(null)}
@@ -274,7 +276,8 @@ function RowView({ row, rowNum, colCount, editable, editableColumns, editingCell
     );
   }
 
-  const isEditingThisRow = editingCell?.row === rowNum - 1;
+  const sourceRow = row.sourceRow ?? (rowNum - 1);
+  const isEditingThisRow = editingCell?.row === sourceRow;
 
   return (
     <tr className={cn(
@@ -288,7 +291,10 @@ function RowView({ row, rowNum, colCount, editable, editableColumns, editingCell
       {Array.from({ length: colCount }).map((_, i) => {
         const cell = row.cells[i];
         const isEditingThisCell = isEditingThisRow && editingCell?.col === i;
-        const canEdit = editable && !row.isHeader && !row.isTotal && (!editableColumns || editableColumns.includes(i));
+        const canEdit = editable
+          && !row.isTotal
+          && (!row.isHeader || !!cell?.highlight)
+          && (!editableColumns || editableColumns.includes(i));
 
         if (!cell) {
           return (

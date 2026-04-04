@@ -32,6 +32,8 @@ export interface SheetRow {
   isHeader?: boolean;
   isSeparator?: boolean;
   isTotal?: boolean;
+  /** Original 0-based workbook row index, preserved across remapping/rendering */
+  sourceRow?: number;
 }
 
 export interface SheetTab {
