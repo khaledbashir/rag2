@@ -31,7 +31,8 @@ import SpecsTable from "../../_components/SpecsTable";
 import RequirementsTable from "../../_components/RequirementsTable";
 import { useRfpServerPreview } from "@/hooks/useRfpServerPreview";
 import { snapDimension } from "@/services/catalog/productMatcher";
-import WorkbookShell from "@/app/components/reusables/WorkbookShell";
+import dynamic from "next/dynamic";
+const UniverPreview = dynamic(() => import("@/app/components/estimator/UniverPreview"), { ssr: false });
 import type { ExtractedLEDSpec, ExtractedRequirement } from "@/services/rfp/unified/types";
 
 // ============================================================================
@@ -144,41 +145,7 @@ export default function AnalysisDetailPage() {
     }, 2000);
   }, []);
 
-  // Cell edit handler for LED Cost Sheet
-  const handleCellEdit = useCallback((sheetIdx: number, rowIdx: number, colIdx: number, value: string) => {
-    if (sheetIdx !== 0) return;
-    // Column indices: 0=Display, 7=H(ft), 8=W(ft), 12=Qty
-    // H(ft)/W(ft) edit the product-snapped dimensions, not the RFP extraction
-    const fieldMap: Record<number, string> = { 0: "name", 7: "activeHeightFt", 8: "activeWidthFt", 12: "quantity" };
-    const field = fieldMap[colIdx];
-    if (!field) return;
-    setAnalysis(prev => {
-      if (!prev) return prev;
-      const specIdx = rowIdx - 1;
-      if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
-      const oldName = prev.screens[specIdx].name;
-      const spec = { ...prev.screens[specIdx] };
-      if (field === "name") {
-        (spec as any)[field] = value;
-        // Sync name change to pricingPreview so dropdown/product matching stays linked
-        setPricingPreview((pp: any) => {
-          if (!pp) return pp;
-          return {
-            ...pp,
-            displays: pp.displays.map((d: any) =>
-              d.name === oldName ? { ...d, name: value } : d
-            ),
-          };
-        });
-      } else {
-        (spec as any)[field] = parseFloat(value) || 0;
-      }
-      const updated = [...prev.screens];
-      updated[specIdx] = spec;
-      autoSaveSpecs(updated, prev.id);
-      return { ...prev, screens: updated };
-    });
-  }, [autoSaveSpecs]);
+  // Remove old handleCellEdit
 
   useEffect(() => {
     if (!id) return;
@@ -455,13 +422,65 @@ export default function AnalysisDetailPage() {
     });
   }, [autoSaveSpecs]);
 
-  const { data: serverWorkbookData, loading: serverWorkbookLoading } = useRfpServerPreview({
+  const { data: serverWorkbookData, loading: serverWorkbookLoading, displayRowMap, skipNextRebuild } = useRfpServerPreview({
     analysisId: analysis?.id || null,
     specs: analysis?.screens || [],
     includeBond: analysis?.project?.bondRequired || false,
   });
 
   const workbookData = serverWorkbookData || { fileName: "RFP Analysis", sheets: [] };
+
+  const handlePreviewCellEdit = useCallback((sheetName: string, row: number, col: number, value: number | string) => {
+    if (sheetName !== "LED Cost Sheet") return;
+    const oneBasedRow = row + 1;
+    const specIdx = displayRowMap[oneBasedRow];
+    if (specIdx == null) return;
+
+    if (col === 5) {
+      const productName = String(value).trim();
+      const product = availableProducts.find((p) => p.name === productName || p.label === productName);
+      if (product) {
+        setAnalysis(prev => {
+          if (!prev) return prev;
+          if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
+          const spec = { ...prev.screens[specIdx] };
+          spec.selectedProductId = product.id;
+          spec.selectedProductName = product.name;
+          spec.activeWidthFt = null;
+          spec.activeHeightFt = null;
+          const updated = [...prev.screens];
+          updated[specIdx] = spec;
+          autoSaveSpecs(updated, prev.id);
+          return { ...prev, screens: updated };
+        });
+      }
+      return;
+    }
+
+    let field: string | null = null;
+    if (col === 7) field = "heightFt";
+    else if (col === 8) field = "widthFt";
+    else if (col === 11) field = "quantity";
+    if (!field) return;
+
+    const numValue = typeof value === "number" ? value : parseFloat(String(value));
+    if (isNaN(numValue) || numValue <= 0) return;
+
+    skipNextRebuild();
+
+    setAnalysis(prev => {
+      if (!prev) return prev;
+      if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
+      const spec = { ...prev.screens[specIdx] };
+      (spec as any)[field!] = numValue;
+      if (field === "heightFt") spec.activeHeightFt = null;
+      if (field === "widthFt") spec.activeWidthFt = null;
+      const updated = [...prev.screens];
+      updated[specIdx] = spec;
+      autoSaveSpecs(updated, prev.id);
+      return { ...prev, screens: updated };
+    });
+  }, [displayRowMap, autoSaveSpecs, availableProducts, skipNextRebuild]);
 
   // Download helper
   const downloadBlob = async (url: string, body: object, fallbackName: string) => {
@@ -766,19 +785,21 @@ export default function AnalysisDetailPage() {
                 <p className="text-sm text-blue-700 dark:text-blue-300">Matching products...</p>
               </div>
             )}
-            <div className="h-[calc(100vh-120px)]">
-            <WorkbookShell
-              data={workbookData}
-              editable
-              onCellEdit={handleCellEdit}
-              footer={autoSaveStatus !== "idle" ? (
-                <div className="px-4 py-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+            <div className="h-[calc(100vh-120px)] flex flex-col relative border border-border rounded-xl overflow-hidden bg-white">
+              <div className="flex-1 min-h-0 relative">
+                <UniverPreview
+                  workbookData={workbookData}
+                  loading={serverWorkbookLoading}
+                  onCellEdit={handlePreviewCellEdit}
+                />
+              </div>
+              {autoSaveStatus !== "idle" && (
+                <div className="shrink-0 px-4 py-2 flex items-center gap-1.5 text-[10px] text-muted-foreground bg-card border-t border-border">
                   {autoSaveStatus === "saving" && <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</>}
                   {autoSaveStatus === "saved" && <><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Saved</>}
                   {autoSaveStatus === "error" && <><AlertTriangle className="w-3 h-3 text-red-500" /> Save failed</>}
                 </div>
-              ) : undefined}
-            />
+              )}
             </div>
 
             {/* Needs Review — incomplete specs */}
@@ -889,21 +910,32 @@ export default function AnalysisDetailPage() {
                 </button>
               </div>
             )}
-            <div className="h-[calc(100vh-120px)]">
-            <WorkbookShell
-              data={workbookData}
-              editable
-              onCellEdit={handleCellEdit}
-              onExport={handleScoping}
-              exporting={downloading === "scoping"}
-              footer={autoSaveStatus !== "idle" ? (
-                <div className="px-4 py-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+            <div className="h-[calc(100vh-120px)] flex flex-col relative border border-border rounded-xl overflow-hidden bg-white">
+              <div className="shrink-0 px-4 py-2 flex items-center justify-between border-b border-border bg-card">
+                <div className="text-sm font-semibold text-foreground">Estimate Workbook</div>
+                <button
+                  onClick={handleScoping}
+                  disabled={downloading === "scoping"}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50"
+                >
+                  {downloading === "scoping" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                  Export Excel
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 relative">
+                <UniverPreview
+                  workbookData={workbookData}
+                  loading={serverWorkbookLoading}
+                  onCellEdit={handlePreviewCellEdit}
+                />
+              </div>
+              {autoSaveStatus !== "idle" && (
+                <div className="shrink-0 px-4 py-2 flex items-center gap-1.5 text-[10px] text-muted-foreground bg-card border-t border-border">
                   {autoSaveStatus === "saving" && <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</>}
                   {autoSaveStatus === "saved" && <><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Saved</>}
                   {autoSaveStatus === "error" && <><AlertTriangle className="w-3 h-3 text-red-500" /> Save failed</>}
                 </div>
-              ) : undefined}
-            />
+              )}
             </div>
           </div>
         )}
