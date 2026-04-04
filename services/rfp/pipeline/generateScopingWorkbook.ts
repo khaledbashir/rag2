@@ -1810,6 +1810,7 @@ function buildLedCostSheet(
         if (bestMatch) altProductName = getProductName(bestMatch);
       }
       const altCatalogProduct = sortedProducts.find((p) => getProductName(p) === altProductName);
+      const altSelectedProduct = d.spec.selectedProductId ? resolveProduct(d.spec.selectedProductId) : null;
 
       // A: Display name with Alt prefix
       dr.getCell(1).value = `${altLabel}: ${d.spec.name}`;
@@ -1829,7 +1830,7 @@ function buildLedCostSheet(
       dr.getCell(8).value = Number(d.match?.activeHeightFt) || d.heightFt || 0; dr.getCell(8).numFmt = "0.00";
       dr.getCell(9).value = Number(d.match?.activeWidthFt) || d.widthFt || 0; dr.getCell(9).numFmt = "0.00";
       // J-K: Pixels — courtside/stanchion use fixed product specs; LED uses formula
-      const altFixedPx = getFixedPixelSpecs(selectedProduct);
+      const altFixedPx = getFixedPixelSpecs(altSelectedProduct);
       const altCellH = Number(d.match?.activeHeightFt) || d.heightFt || 0;
       const altCellW = Number(d.match?.activeWidthFt) || d.widthFt || 0;
       const altHPx = altFixedPx?.hPx ?? (altPitch && altCellH ? Math.round(altCellH * 304.8 / altPitch) : 0);
@@ -1855,8 +1856,8 @@ function buildLedCostSheet(
       const altCostPerSqFtResult = altSnappedSqFt > 0 ? round2(altLedWithSpares / altSnappedSqFt) : 0;
       dr.getCell(16).value = { formula: `IFERROR(VLOOKUP(F${rowNum},${prodRange},4,FALSE),0)`, result: altCostPerSqFtResult };
       dr.getCell(16).numFmt = FMT_USD;
-      // Q: Display Cost = $/SqFt × Total SqFt (formula)
-      dr.getCell(17).value = { formula: `P${rowNum}*M${rowNum}`, result: altLedWithSpares };
+      // Q: Display Cost — use the exact computed value to avoid forward-calculation drift
+      dr.getCell(17).value = altLedWithSpares;
       dr.getCell(17).numFmt = FMT_USD;
       // R: Processor — cross-sheet formula to Bundle Equipment (same config as base display)
       const altEquipCost = d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost;

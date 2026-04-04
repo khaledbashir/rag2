@@ -24,6 +24,14 @@ export interface ExecutionResult {
     actionTaken: string;
 }
 
+function getScreenLabel(screen: any, index: number): string {
+    return (screen.externalName || screen.name || `Screen ${index + 1}`).toString();
+}
+
+function normalizeScreenLabel(value: any): string {
+    return (value || "").toString().trim().toLowerCase();
+}
+
 // ============================================================================
 // EXECUTOR
 // ============================================================================
@@ -176,11 +184,39 @@ function executeRemoveScreen(intent: ParsedIntent, ctx: ExecutionContext): Execu
     if (indexMatch) {
         removeIdx = parseInt(indexMatch[1], 10) - 1;
     } else if (target) {
-        // Fuzzy name match
-        removeIdx = screens.findIndex((s: any) => {
-            const name = ((s.externalName || s.name || "").toString()).toLowerCase();
-            return name.includes(target) || target.includes(name);
-        });
+        const exactMatches = screens
+            .map((screen, index) => ({ screen, index, name: normalizeScreenLabel(getScreenLabel(screen, index)) }))
+            .filter(({ name }) => name === target);
+
+        if (exactMatches.length > 1) {
+            const options = exactMatches.map(({ screen, index }) => `${index + 1}. ${getScreenLabel(screen, index)}`).join(" | ");
+            return {
+                success: false,
+                message: `Multiple screens match "${intent.params.target}". Please specify the screen number: ${options}.`,
+                actionTaken: "none",
+            };
+        }
+
+        if (exactMatches.length === 1) {
+            removeIdx = exactMatches[0].index;
+        } else {
+            const fuzzyMatches = screens
+                .map((screen, index) => ({ screen, index, name: normalizeScreenLabel(getScreenLabel(screen, index)) }))
+                .filter(({ name }) => name.includes(target) || target.includes(name));
+
+            if (fuzzyMatches.length > 1) {
+                const options = fuzzyMatches.map(({ screen, index }) => `${index + 1}. ${getScreenLabel(screen, index)}`).join(" | ");
+                return {
+                    success: false,
+                    message: `Multiple screens partially match "${intent.params.target}". Please specify the screen number: ${options}.`,
+                    actionTaken: "none",
+                };
+            }
+
+            if (fuzzyMatches.length === 1) {
+                removeIdx = fuzzyMatches[0].index;
+            }
+        }
     }
 
     if (removeIdx < 0 || removeIdx >= screens.length) {
@@ -188,7 +224,7 @@ function executeRemoveScreen(intent: ParsedIntent, ctx: ExecutionContext): Execu
     }
 
     const removed = screens[removeIdx];
-    const removedName = removed.externalName || removed.name || `Screen ${removeIdx + 1}`;
+    const removedName = getScreenLabel(removed, removeIdx);
     const updated = screens.filter((_: any, i: number) => i !== removeIdx);
     ctx.setValue("details.screens", updated, { shouldDirty: true });
 

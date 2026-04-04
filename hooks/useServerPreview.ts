@@ -7,10 +7,32 @@
  * Returns the raw IWorkbookData JSON for UniverPreview to render.
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import type { EstimatorAnswers } from "@/app/components/estimator/questions";
 
-const DEBOUNCE_MS = 1500; // Wait 1.5s after last change before regenerating
+const DEBOUNCE_TYPING_MS = 1200;
+
+function answersFingerprint(answers: EstimatorAnswers): string {
+  if (!answers.displays?.length) return "";
+  return answers.displays.map((d) =>
+    [
+      d.displayName ?? "",
+      d.productId ?? "",
+      d.productName ?? "",
+      d.pixelPitch ?? "",
+      d.heightFt ?? "",
+      d.widthFt ?? "",
+      d.quantity ?? "",
+      d.fixedHeightPx ?? "",
+      d.fixedWidthPx ?? "",
+    ].join("|")
+  ).join(";");
+}
+
+function productFingerprint(answers: EstimatorAnswers): string {
+  if (!answers.displays?.length) return "";
+  return answers.displays.map((d) => d.productId ?? "").join("|");
+}
 
 export function useServerPreview(answers: EstimatorAnswers): {
   data: any | null;
@@ -19,8 +41,6 @@ export function useServerPreview(answers: EstimatorAnswers): {
   projectTotal: number;
   /** Maps 0-based row index → answers.displays index (LED Cost Sheet only) */
   displayRowMap: Record<number, number>;
-  /** Call to suppress the next server rebuild (e.g. when edit came from preview itself) */
-  skipNextRebuild: () => void;
 } {
   const [data, setData] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
@@ -29,16 +49,11 @@ export function useServerPreview(answers: EstimatorAnswers): {
   const [displayRowMap, setDisplayRowMap] = useState<Record<number, number>>({});
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const skipRef = useRef(false);
-  const skipNextRebuild = useCallback(() => { skipRef.current = true; }, []);
+  const prevProductFpRef = useRef("");
+  const fingerprint = useMemo(() => answersFingerprint(answers), [answers]);
+  const productFp = useMemo(() => productFingerprint(answers), [answers]);
 
   useEffect(() => {
-    // Skip rebuild when edit came from the Univer preview itself — let formulas recalculate locally
-    if (skipRef.current) {
-      skipRef.current = false;
-      return;
-    }
-
     // Don't generate if no displays
     if (!answers.displays?.length) {
       setData(null);
@@ -56,10 +71,12 @@ export function useServerPreview(answers: EstimatorAnswers): {
       return;
     }
 
-    // Debounce
     if (timerRef.current) clearTimeout(timerRef.current);
+    const productChanged = prevProductFpRef.current !== "" && prevProductFpRef.current !== productFp;
+    prevProductFpRef.current = productFp;
+    const delay = productChanged ? 0 : DEBOUNCE_TYPING_MS;
 
-    timerRef.current = setTimeout(async () => {
+    const doFetch = async () => {
       // Abort previous request
       if (abortRef.current) abortRef.current.abort();
       const controller = new AbortController();
@@ -105,12 +122,20 @@ export function useServerPreview(answers: EstimatorAnswers): {
       } finally {
         setLoading(false);
       }
-    }, DEBOUNCE_MS);
+    };
+
+    if (delay === 0) {
+      void doFetch();
+    } else {
+      timerRef.current = setTimeout(() => {
+        void doFetch();
+      }, delay);
+    }
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [answers]);
+  }, [answers, fingerprint, productFp]);
 
-  return { data, loading, error, projectTotal, displayRowMap, skipNextRebuild };
+  return { data, loading, error, projectTotal, displayRowMap };
 }

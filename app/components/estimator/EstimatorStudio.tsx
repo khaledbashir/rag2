@@ -91,7 +91,7 @@ export default function EstimatorStudio({
     const { rates, loading: ratesLoading } = useRateCard();
     // WYSIWYG preview: call the same server-side generator that produces the export.
     // No fake preview. No client-side approximation. Loading state shown until ready.
-    const { data: serverPreview, loading: serverPreviewLoading, error: serverPreviewError, projectTotal, displayRowMap, skipNextRebuild } = useServerPreview(answers);
+    const { data: serverPreview, loading: serverPreviewLoading, error: serverPreviewError, projectTotal, displayRowMap } = useServerPreview(answers);
     // Auto-save to DB when projectId is provided
     const { status: saveStatus } = useEstimatorAutoSave({
         projectId,
@@ -303,7 +303,7 @@ export default function EstimatorStudio({
                     weightKgPerCab: (spec as any).weightKgPerCabinet,
                     maxPowerWPerCab: (spec as any).maxPowerWattsPerCab,
                     totalWeightLbs: calc.cabinetLayout?.totalWeightLbs,
-                    totalMaxPowerW: calc.cabinetLayout?.totalPowerWatts,
+                    totalMaxPowerW: calc.cabinetLayout?.totalMaxPowerW,
                     nits: productBrightness,
                   } : null,
             };
@@ -590,12 +590,10 @@ export default function EstimatorStudio({
             }
 
             // Dimension / quantity edits (7=H(ft), 8=W(ft), 11=Qty)
-            // Skip server rebuild — Univer recalculates formulas locally
             const fieldMap: Record<number, "heightFt" | "widthFt" | "quantity"> = { 7: "heightFt", 8: "widthFt", 11: "quantity" };
             const field = fieldMap[col];
             if (field) {
                 const numValue = typeof value === "number" ? value : (parseFloat(String(value)) || 0);
-                skipNextRebuild();
                 const updated = { ...answers };
                 updated.displays = [...updated.displays];
                 updated.displays[displayIndex] = { ...updated.displays[displayIndex], [field]: numValue };
@@ -630,7 +628,7 @@ export default function EstimatorStudio({
             }
             return;
         }
-    }, [answers, displayRowMap, availableProducts, skipNextRebuild, handleWorkbookPricingEdit, handleWorkbookMarginAnalysisEdit]);
+    }, [answers, displayRowMap, availableProducts, handleWorkbookPricingEdit, handleWorkbookMarginAnalysisEdit]);
 
     const handleVenueServicesEdit = useCallback((field: string, value: number) => {
         setAnswers((prev) => {
@@ -1099,7 +1097,6 @@ export default function EstimatorStudio({
                             onProductSelect: async (displayIdx, productId) => {
                                 const product = availableProducts.find((p) => p.id === productId);
                                 if (!product) return;
-                                skipNextRebuild();
 
                                 // Fetch product spec directly — can't rely on cached productSpecs (timing)
                                 let extSpecs: any = null;
@@ -1128,7 +1125,7 @@ export default function EstimatorStudio({
 
                                 setAnswers((prev) => {
                                     const displays = [...prev.displays];
-                                    const update: Record<string, any> = {
+                                    const update: DisplayAnswers = {
                                         ...displays[displayIdx],
                                         productId: product.id,
                                         productName: product.name,
@@ -1161,7 +1158,6 @@ export default function EstimatorStudio({
                                         if (isNaN(numValue) || numValue <= 0) return;
                                         const displayIdx = rowIndex; // buildEstimatorWorkbook skips header rows
                                         if (displayIdx < 0 || displayIdx >= answers.displays.length) return;
-                                        skipNextRebuild();
                                         setAnswers((prev) => {
                                             const displays = [...prev.displays];
                                             displays[displayIdx] = { ...displays[displayIdx], [field]: numValue };
