@@ -762,6 +762,10 @@ export default function RfpAnalyzerClient() {
     });
   }, [availableProducts, pricingPreview, editableSpecs, result?.screens]);
 
+  // Stable ref so useMemo doesn't depend on the callback identity
+  const handleProductSelectRef = useRef(handleProductSelect);
+  handleProductSelectRef.current = handleProductSelect;
+
   // ========================================================================
   // Add custom line item to Margin Analysis
   // ========================================================================
@@ -2241,6 +2245,16 @@ export default function RfpAnalyzerClient() {
   const memoizedWorkbookData = useMemo(() => {
     if (!serverWorkbookData || availableProducts.length === 0) return null;
     const specsArr = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
+    if (pricingPreview?.displays?.[0]) {
+      const d0 = pricingPreview.displays[0];
+      const s0 = specsArr[0] as any;
+      console.error('[CALCS_DEBUG] display0:', JSON.stringify({
+        hw: d0.hardwareCost, pitch: d0.pixelPitch, margin: d0.blendedMarginPct,
+        matchedProd: d0.matchedProduct ? { w: d0.matchedProduct.activeWidthFt, h: d0.matchedProduct.activeHeightFt } : null,
+        specActiveH: s0?.activeHeightFt, specActiveW: s0?.activeWidthFt, specPitch: s0?.pixelPitchMm,
+        selectedProduct: s0?.selectedProductId?.substring(0, 8),
+      }));
+    }
     const rfpCalcs = pricingPreview?.displays?.map((d, i) => {
       const spec = specsArr[i] as any;
       if (!spec || !d) return null;
@@ -2276,10 +2290,11 @@ export default function RfpAnalyzerClient() {
     return buildEstimatorWorkbook(serverWorkbookData, {
       products: availableProducts,
       displayProductIds: specsArr.map((s: any) => s.selectedProductId || ""),
-      onProductSelect: handleProductSelect,
+      onProductSelect: handleProductSelectRef.current,
       calcs: rfpCalcs.length > 0 ? rfpCalcs : undefined,
     });
-  }, [serverWorkbookData, editableSpecs, result?.screens, pricingPreview, availableProducts, handleProductSelect]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverWorkbookData, editableSpecs, result?.screens, pricingPreview, availableProducts]);
 
   return (
     <div className={`flex-1 min-w-0 bg-background relative ${isSpreadsheetVisible ? "flex flex-col h-screen overflow-hidden" : "min-h-screen pb-24"}`}>
