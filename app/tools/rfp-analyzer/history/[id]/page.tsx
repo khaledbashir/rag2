@@ -119,6 +119,7 @@ export default function AnalysisDetailPage() {
   const [downloading, setDownloading] = useState<string | null>(null);
   const [pricingPreview, setPricingPreview] = useState<any>(null);
   const [loadingPricing, setLoadingPricing] = useState(false);
+  const [activeWorkbookTab, setActiveWorkbookTab] = useState(0);
   const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string; widthMm?: number; heightMm?: number; moduleWidthMm?: number; moduleHeightMm?: number; manufacturer?: string; nits?: number; weightKg?: number; maxPowerWatts?: number; environment?: string }>>([]);
   const [pdfAvailable, setPdfAvailable] = useState<boolean | null>(null);
   const [filledBidFormBlob, setFilledBidFormBlob] = useState<Blob | null>(null);
@@ -810,7 +811,15 @@ export default function AnalysisDetailPage() {
                     displayProductIds: specs.map((s: any) => s.selectedProductId || ""),
                     onProductSelect: handleHistoryProductSelect,
                   } : undefined);
-                  return <WorkbookShell data={wbData} editable onCellEdit={handleHistoryCellEdit} />;
+                  return (
+                    <WorkbookShell
+                      data={wbData}
+                      editable
+                      onCellEdit={handleHistoryCellEdit}
+                      activeTab={activeWorkbookTab}
+                      onTabChange={setActiveWorkbookTab}
+                    />
+                  );
                 })() : null}
               </div>
               {autoSaveStatus !== "idle" && (
@@ -954,7 +963,15 @@ export default function AnalysisDetailPage() {
                     displayProductIds: specs.map((s: any) => s.selectedProductId || ""),
                     onProductSelect: handleHistoryProductSelect,
                   } : undefined);
-                  return <WorkbookShell data={wbData} editable onCellEdit={handleHistoryCellEdit} />;
+                  return (
+                    <WorkbookShell
+                      data={wbData}
+                      editable
+                      onCellEdit={handleHistoryCellEdit}
+                      activeTab={activeWorkbookTab}
+                      onTabChange={setActiveWorkbookTab}
+                    />
+                  );
                 })() : null}
               </div>
               {autoSaveStatus !== "idle" && (

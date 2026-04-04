@@ -286,6 +286,7 @@ export default function RfpAnalyzerClient() {
   const [pricingPreview, setPricingPreview] = useState<PricingPreview | null>(null);
   const [loadingPricing, setLoadingPricing] = useState(false);
   const [availableProducts, setAvailableProducts] = useState<Array<{ id: string; label: string; pitch: number; name: string; widthMm?: number; heightMm?: number; moduleWidthMm?: number; moduleHeightMm?: number; manufacturer?: string; nits?: number; weightKg?: number; maxPowerWatts?: number; environment?: string }>>([]);
+  const [activeWorkbookTab, setActiveWorkbookTab] = useState(0);
   const [resultsTab, setResultsTab] = useState<string>("displays");
   const [customTabs, setCustomTabs] = useState<Array<{ id: string; name: string; content: string }>>([]);
   const [drawingUpload, setDrawingUpload] = useState<{ uploading: boolean; results: Array<{ filename: string; pages: number }> }>({ uploading: false, results: [] });
@@ -2816,7 +2817,13 @@ export default function RfpAnalyzerClient() {
                   } : undefined);
                   return (
                     <div className="h-full overflow-auto rounded-lg bg-white">
-                      <WorkbookShell data={wbData} editable onCellEdit={handleRfpCellEdit} />
+                      <WorkbookShell
+                        data={wbData}
+                        editable
+                        onCellEdit={handleRfpCellEdit}
+                        activeTab={activeWorkbookTab}
+                        onTabChange={setActiveWorkbookTab}
+                      />
                     </div>
                   );
                 })() : useServerWorkbook && serverWorkbookError ? (

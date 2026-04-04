@@ -7,7 +7,7 @@
  * Extracted from EstimatorStudio's ExcelPreview so both tools share one UI.
  */
 
-import React, { useState, ReactNode } from "react";
+import React, { useState, ReactNode, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { FileSpreadsheet, Plus, Download } from "lucide-react";
 import type { WorkbookData, SheetTab, SheetRow, SheetCell } from "./workbookTypes";
@@ -57,6 +57,12 @@ export default function WorkbookShell({
   const [internalTab, setInternalTab] = useState(0);
   const activeTab = controlledTab ?? internalTab;
   const setActiveTab = onTabChange ?? setInternalTab;
+  useEffect(() => {
+    const lastTabIndex = Math.max(0, data.sheets.filter(Boolean).length - 1);
+    if (activeTab > lastTabIndex) {
+      setActiveTab(lastTabIndex);
+    }
+  }, [activeTab, data.sheets, setActiveTab]);
 
   const [editingCell, setEditingCell] = useState<{ row: number; col: number } | null>(null);
 
