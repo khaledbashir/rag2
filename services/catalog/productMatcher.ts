@@ -46,8 +46,9 @@ export interface MatchedSolution {
 
 /**
  * Snap a dimension (mm) to the nearest combination of cabinets + modules.
- * Floor cabinets, then fill the remaining gap with modules.
- * Picks the combination closest to the target; slightly over preferred.
+ * Always rounds up to the smallest valid cabinet/module grid that meets or exceeds
+ * the requested size. Natalia's requirement is "meet or exceed" the RFP size,
+ * never snap under it just because the undersized option is numerically closer.
  */
 export function snapDimension(
     targetMm: number,
@@ -66,42 +67,19 @@ export function snapDimension(
         : null;
 
     if (!effModuleMm) {
-        // No module data — round to nearest cabinet count, prefer ceil for meet-or-exceed
-        const exact = targetMm / cabinetMm;
-        const floor = Math.floor(exact);
-        const ceil = Math.ceil(exact);
-        // Pick whichever is closer; tie goes to ceil (slightly over preferred)
-        const cabs = (exact - floor <= ceil - exact) && floor > 0 ? floor : Math.max(1, ceil);
+        // No module data — use the smallest whole-cabinet count that meets/exceeds target.
+        const cabs = Math.max(1, Math.ceil(targetMm / cabinetMm));
         return { cabinets: cabs, modules: 0, units: cabs, totalMm: cabs * cabinetMm };
     }
 
     // How many modules fit in one cabinet
     const modulesPerCab = Math.round(cabinetMm / effModuleMm);
-
-    // Full cabinets that fit within the target
-    const fullCabs = Math.floor(targetMm / cabinetMm);
-    const remainderMm = targetMm - (fullCabs * cabinetMm);
-
-    // Fill remainder with individual modules
-    // Try both floor and ceil module counts to find closest to target
-    const modFloor = Math.floor(remainderMm / effModuleMm);
-    const modCeil = Math.ceil(remainderMm / effModuleMm);
-
-    const totalFloor = (fullCabs * cabinetMm) + (modFloor * effModuleMm);
-    const totalCeil = (fullCabs * cabinetMm) + (modCeil * effModuleMm);
-
-    const gapFloor = targetMm - totalFloor; // positive = under target
-    const gapCeil = totalCeil - targetMm;   // positive = over target
-
-    // Pick closer; if equal, prefer ceil (slightly over)
-    const useFloor = gapFloor < gapCeil && (fullCabs > 0 || modFloor > 0);
-    const fillModules = useFloor ? modFloor : modCeil;
-
-    // Convert fill modules to cabinet equivalents if they add up
-    const totalModulesInUnits = fullCabs * modulesPerCab + fillModules;
+    // Use the smallest whole-module count that meets/exceeds target, then reduce it
+    // back into full cabinets + remainder modules for downstream reporting.
+    const totalModulesInUnits = Math.max(1, Math.ceil(targetMm / effModuleMm));
     const finalCabs = Math.floor(totalModulesInUnits / modulesPerCab);
     const finalMods = totalModulesInUnits % modulesPerCab;
-    const totalMm = (fullCabs * cabinetMm) + (fillModules * effModuleMm);
+    const totalMm = totalModulesInUnits * effModuleMm;
 
     // Ensure at least 1 unit
     if (finalCabs === 0 && finalMods === 0) {
