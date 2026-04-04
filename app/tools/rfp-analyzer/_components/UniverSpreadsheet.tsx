@@ -157,7 +157,7 @@ function guardedSellingFormula(costRef: string, marginRef: string, decimals = 2)
 // ---------------------------------------------------------------------------
 
 function buildWorkbookData(props: UniverSpreadsheetProps) {
-  const { screens, pricingDisplays, pricingDocument, projectInfo, internalAudit, manualAdditions = [], venueServices } = props;
+  const { screens = [], pricingDisplays = [], pricingDocument, projectInfo, internalAudit, manualAdditions = [], venueServices } = props;
   const styles: Record<string, any> = {
     header: HEADER_STYLE,
     bold: BOLD_STYLE,
@@ -199,8 +199,8 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     ["Location", projectInfo?.location || "—"],
     ["Document Type", (projectInfo?.documentMode || "BUDGET").replace(/_/g, " ")],
     ["Number of Displays", screens.length],
-    ["Created", projectInfo?.createdAt || new Date().toLocaleDateString()],
-    ["Revision Date", projectInfo?.updatedAt || new Date().toLocaleDateString()],
+    ["Created", projectInfo?.createdAt || ""],
+    ["Revision Date", projectInfo?.updatedAt || ""],
     ["Revised By", "ANC Studio"],
   ];
   
@@ -328,9 +328,11 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     console.log("[UniverSpreadsheet] screen names:", screens.map(s => s.name));
   }
 
+  const safePricingDisplays = pricingDisplays || [];
+
   screens.forEach((spec, si) => {
     const row = si + 1;
-    const pd = pricingDisplays.find((d) => d.name === spec.name);
+    const pd = safePricingDisplays.find((d) => d.name === spec.name);
     const mp = pd?.matchedProduct;
     const audit = internalAudit?.perScreen?.[si];
 

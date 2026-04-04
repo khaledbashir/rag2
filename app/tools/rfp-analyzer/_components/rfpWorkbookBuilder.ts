@@ -328,8 +328,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const q = spec.quantity || 1;
     const sqFt = h * w * q;
     const pricingSqFt = pd?.areaSqFt ?? 0;
-    const pricingTotalSqFt = pricingSqFt * q;
-    const rate = pricingTotalSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingTotalSqFt : 0;
+    const rate = pricingSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingSqFt : 0;
     totalDisplayCost += rate * sqFt;
     totalProcessorCost += pd?.processorCost ?? 0;
     totalShippingCost += pd?.shippingCost ?? 0;
@@ -347,8 +346,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
     const q = spec.quantity || 1;
     const sqFt = h * w * q;
     const pricingSqFt = pd?.areaSqFt ?? 0;
-    const pricingTotalSqFt = pricingSqFt * q;
-    const rate = pricingTotalSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingTotalSqFt : 0;
+    const rate = pricingSqFt > 0 ? (pd?.hardwareCost ?? 0) / pricingSqFt : 0;
     const dc = rate * sqFt;
     const pc = pd?.processorCost ?? 0;
     const sc = pd?.shippingCost ?? 0;

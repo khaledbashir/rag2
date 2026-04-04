@@ -70,6 +70,7 @@ Before saying you're done, confirm: "I verified that no RFP-protected or shared 
 - Grand Total "None" fix (2026-04-03)
 - LED Cost Sheet TOTAL row matching (2026-04-03)
 - RFP Analyzer TOTAL row fix (2026-04-03)
+- RFP Analyzer Univer preview double-quantity rate bug & hydration mismatch fix (2026-04-04)
 
 ## ABSOLUTE RULE: NO SHORTCUTS
 
