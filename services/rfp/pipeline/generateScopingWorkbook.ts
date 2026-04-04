@@ -340,6 +340,18 @@ export async function generateScopingWorkbook(
     ? (includeAlternatesInBase ? allPricedDisplays : allPricedDisplays.filter((pd) => !pd.spec.isAlternate))
     : undefined;
 
+  // Populate cabinet-snapped dims from product matches onto specs
+  // computeDisplayCosts uses spec.activeWidthFt for area — without this it uses raw RFP dims
+  if (basePricedDisplays) {
+    for (let i = 0; i < baseSpecs.length; i++) {
+      const match = basePricedDisplays[i]?.match;
+      if (match?.activeWidthFt && match?.activeHeightFt) {
+        if (!baseSpecs[i].activeWidthFt) baseSpecs[i].activeWidthFt = match.activeWidthFt;
+        if (!baseSpecs[i].activeHeightFt) baseSpecs[i].activeHeightFt = match.activeHeightFt;
+      }
+    }
+  }
+
   // Compute base bid display data (used by all budget sheets)
   const displays = computeDisplays(baseSpecs, basePricedDisplays, installComplexity, resolveProduct, ov);
 

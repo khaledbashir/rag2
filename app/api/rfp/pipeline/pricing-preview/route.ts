@@ -95,7 +95,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 3: Compute authoritative costs using the SAME logic as the Excel export
+    // Step 3: Populate cabinet-snapped dims from product matches onto specs
+    // computeDisplayCosts uses spec.activeWidthFt/activeHeightFt for area calculations.
+    // Without this, it falls back to raw RFP dims and costs/SqFt diverge from the preview.
+    for (let i = 0; i < specs.length; i++) {
+      const pd = pricedDisplays[i];
+      const match = pd?.match;
+      if (match?.activeWidthFt && match?.activeHeightFt) {
+        if (!specs[i].activeWidthFt) specs[i].activeWidthFt = match.activeWidthFt;
+        if (!specs[i].activeHeightFt) specs[i].activeHeightFt = match.activeHeightFt;
+      }
+    }
+
+    // Step 4: Compute authoritative costs using the SAME logic as the Excel export
     // This ensures web $/SqFt, Total Cost, and Selling Price match Excel exactly.
     await preloadRateCard();
     const resolveProduct: ProductResolver = (id) => {
