@@ -21,7 +21,7 @@ DO NOT TOUCH. Behavior must remain IDENTICAL. No "quick fixes" or "improvements"
 ## 🚀 What's Live
 - Auto-populated courtside/stanchion wizard, Premium SOW default DOCX (2026-04-03)
 - Cost sheet row/formula/TOTAL row fixes (2026-04-03)
-- RFP Analyzer Univer preview $/SqFt rate & hydration fixes (2026-04-04)
+- RFP Analyzer Univer preview migrated to unified server generator to match export exactly (2026-04-04)
 
 ## 🛑 ABSOLUTE RULE: NO SHORTCUTS
 - Build it RIGHT, not fast. Fix the ROOT CAUSE, not the symptom.
