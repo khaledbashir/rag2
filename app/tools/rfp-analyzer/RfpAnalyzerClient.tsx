@@ -2815,6 +2815,10 @@ export default function RfpAnalyzerClient() {
                     displayProductIds: specsArr.map((s: any) => s.selectedProductId || ""),
                     onProductSelect: handleProductSelect,
                   } : undefined);
+                  const ledCostSheet = wbData.sheets.find((sheet) => sheet.name === "LED Cost Sheet");
+                  if (ledCostSheet?.editableColumns) {
+                    ledCostSheet.editableColumns = ledCostSheet.editableColumns.filter((col) => col !== 21);
+                  }
                   return (
                     <div className="h-full overflow-auto rounded-lg bg-white">
                       <WorkbookShell

@@ -811,6 +811,10 @@ export default function AnalysisDetailPage() {
                     displayProductIds: specs.map((s: any) => s.selectedProductId || ""),
                     onProductSelect: handleHistoryProductSelect,
                   } : undefined);
+                  const ledCostSheet = wbData.sheets.find((sheet) => sheet.name === "LED Cost Sheet");
+                  if (ledCostSheet?.editableColumns) {
+                    ledCostSheet.editableColumns = ledCostSheet.editableColumns.filter((col) => col !== 21);
+                  }
                   return (
                     <WorkbookShell
                       data={wbData}
