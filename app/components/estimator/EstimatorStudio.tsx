@@ -1097,16 +1097,36 @@ export default function EstimatorStudio({
                             products: availableProducts,
                             displayProductIds: answers.displays.map((d) => d.productId || ""),
                             calcs,
-                            onProductSelect: (displayIdx, productId) => {
+                            onProductSelect: async (displayIdx, productId) => {
                                 const product = availableProducts.find((p) => p.id === productId);
                                 if (!product) return;
-                                // Skip server rebuild — calcs recalculate client-side via useMemo
                                 skipNextRebuild();
-                                // Auto-fill dimensions from product specs for standard-size products
-                                // (stanchions, courtside tables, etc. have fixed cabinet dimensions)
-                                const spec = productSpecs[productId];
-                                const autoWidth = spec?.cabinetWidthMm ? Math.round(spec.cabinetWidthMm / 304.8 * 100) / 100 : 0;
-                                const autoHeight = spec?.cabinetHeightMm ? Math.round(spec.cabinetHeightMm / 304.8 * 100) / 100 : 0;
+
+                                // Fetch product spec directly — can't rely on cached productSpecs (timing)
+                                let extSpecs: any = null;
+                                let productType: string | undefined;
+                                let autoWidth = 0;
+                                let autoHeight = 0;
+                                try {
+                                    const res = await fetch(`/api/products/${productId}`);
+                                    if (res.ok) {
+                                        const data = await res.json();
+                                        const p = data.product;
+                                        if (p) {
+                                            extSpecs = p.extendedSpecs;
+                                            productType = p.productType;
+                                            // Courtside/stanchion: use display dimensions from extendedSpecs
+                                            if ((productType === "courtside" || productType === "stanchion") && extSpecs) {
+                                                autoWidth = extSpecs.displayWidthFt || 0;
+                                                autoHeight = extSpecs.displayHeightFt || 0;
+                                            } else if (p.cabinetWidthMm && p.cabinetHeightMm) {
+                                                autoWidth = Math.round(p.cabinetWidthMm / 304.8 * 100) / 100;
+                                                autoHeight = Math.round(p.cabinetHeightMm / 304.8 * 100) / 100;
+                                            }
+                                        }
+                                    }
+                                } catch { /* use defaults */ }
+
                                 setAnswers((prev) => {
                                     const displays = [...prev.displays];
                                     const update: Record<string, any> = {
@@ -1115,10 +1135,12 @@ export default function EstimatorStudio({
                                         productName: product.name,
                                         pixelPitch: String(product.pitch),
                                     };
-                                    // Only auto-fill dims if the product has them and user hasn't set custom values
-                                    if (autoWidth > 0 && autoHeight > 0) {
+                                    // Courtside/stanchion: lock dimensions + pixel specs from product
+                                    if ((productType === "courtside" || productType === "stanchion") && autoWidth > 0 && autoHeight > 0) {
                                         update.widthFt = autoWidth;
                                         update.heightFt = autoHeight;
+                                        update.fixedWidthPx = extSpecs?.displayWidthPx || undefined;
+                                        update.fixedHeightPx = extSpecs?.displayHeightPx || undefined;
                                     }
                                     displays[displayIdx] = update;
                                     return { ...prev, displays };
