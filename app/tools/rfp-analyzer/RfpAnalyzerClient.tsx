@@ -991,6 +991,55 @@ export default function RfpAnalyzerClient() {
     });
   }, [availableProducts, autoSaveSpecs]);
 
+  // Handle qty change from WorkbookShell Qty dropdown
+  const handleRfpQtyChange = useCallback((displayIndex: number, qty: number) => {
+    setResult(prev => {
+      if (!prev) return prev;
+      if (displayIndex < 0 || displayIndex >= prev.screens.length) return prev;
+      const spec = { ...prev.screens[displayIndex] };
+      spec.quantity = qty;
+      const updated = [...prev.screens];
+      updated[displayIndex] = spec;
+      setEditableSpecs(updated);
+      autoSaveSpecs(updated, prev.id);
+      return { ...prev, screens: updated };
+    });
+  }, [autoSaveSpecs]);
+
+  // Handle inline H/W/Qty edits from WorkbookShell (editable cells on LED Cost Sheet)
+  // LED Cost Sheet columns: 7=H(ft), 8=W(ft), 11=Qty
+  const handleRfpCellEdit = useCallback((sheetIndex: number, rowIndex: number, colIndex: number, newValue: string) => {
+    const displayIndex = rowIndex;
+
+    const numValue = parseFloat(newValue);
+    if (isNaN(numValue) || numValue <= 0) return;
+
+    // Qty edit (col 11) — delegate to existing handler
+    if (colIndex === 11) {
+      handleRfpQtyChange(displayIndex, Math.max(1, Math.round(numValue)));
+      return;
+    }
+
+    let field: string | null = null;
+    if (colIndex === 7) field = "heightFt";
+    else if (colIndex === 8) field = "widthFt";
+    if (!field) return;
+
+    setResult(prev => {
+      if (!prev) return prev;
+      if (displayIndex < 0 || displayIndex >= prev.screens.length) return prev;
+      const spec = { ...prev.screens[displayIndex] };
+      (spec as any)[field!] = numValue;
+      if (field === "heightFt") spec.activeHeightFt = null;
+      if (field === "widthFt") spec.activeWidthFt = null;
+      const updated = [...prev.screens];
+      updated[displayIndex] = spec;
+      setEditableSpecs(updated);
+      autoSaveSpecs(updated, prev.id);
+      return { ...prev, screens: updated };
+    });
+  }, [autoSaveSpecs, handleRfpQtyChange]);
+
   // ========================================================================
   // Auto-run pricing when extraction completes (no manual step needed)
   // ========================================================================
@@ -2753,10 +2802,15 @@ export default function RfpAnalyzerClient() {
                     products: availableProducts,
                     displayProductIds: specsArr.map((s: any) => s.selectedProductId || ""),
                     onProductSelect: handleRfpProductSelect,
+                    // No onQtyChange — Qty is free-type editable via onCellEdit + editableColumns
                   } : undefined);
                   return (
                     <div className="h-full overflow-auto rounded-lg bg-white">
-                      <WorkbookShell data={wbData} />
+                      <WorkbookShell
+                        data={wbData}
+                        editable
+                        onCellEdit={handleRfpCellEdit}
+                      />
                     </div>
                   );
                 })() : useServerWorkbook && serverWorkbookError ? (

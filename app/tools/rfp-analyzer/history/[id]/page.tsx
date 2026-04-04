@@ -450,6 +450,50 @@ export default function AnalysisDetailPage() {
     });
   }, [availableProducts, autoSaveSpecs]);
 
+  // Qty dropdown callback
+  const handleHistoryQtyChange = useCallback((displayIndex: number, qty: number) => {
+    setAnalysis(prev => {
+      if (!prev) return prev;
+      if (displayIndex < 0 || displayIndex >= prev.screens.length) return prev;
+      const spec = { ...prev.screens[displayIndex] };
+      spec.quantity = qty;
+      const updated = [...prev.screens];
+      updated[displayIndex] = spec;
+      autoSaveSpecs(updated, prev.id);
+      return { ...prev, screens: updated };
+    });
+  }, [autoSaveSpecs]);
+
+  // H/W/Qty inline edit callback
+  const handleHistoryCellEdit = useCallback((sheetIndex: number, rowIndex: number, colIndex: number, newValue: string) => {
+    const numValue = parseFloat(newValue);
+    if (isNaN(numValue) || numValue <= 0) return;
+
+    // Qty edit (col 11) — delegate to existing handler
+    if (colIndex === 11) {
+      handleHistoryQtyChange(rowIndex, Math.max(1, Math.round(numValue)));
+      return;
+    }
+
+    let field: string | null = null;
+    if (colIndex === 7) field = "heightFt";
+    else if (colIndex === 8) field = "widthFt";
+    if (!field) return;
+
+    setAnalysis(prev => {
+      if (!prev) return prev;
+      if (rowIndex < 0 || rowIndex >= prev.screens.length) return prev;
+      const spec = { ...prev.screens[rowIndex] };
+      (spec as any)[field!] = numValue;
+      if (field === "heightFt") spec.activeHeightFt = null;
+      if (field === "widthFt") spec.activeWidthFt = null;
+      const updated = [...prev.screens];
+      updated[rowIndex] = spec;
+      autoSaveSpecs(updated, prev.id);
+      return { ...prev, screens: updated };
+    });
+  }, [autoSaveSpecs, handleHistoryQtyChange]);
+
   // Download helper
   const downloadBlob = async (url: string, body: object, fallbackName: string) => {
     const res = await fetch(url, {
@@ -765,8 +809,9 @@ export default function AnalysisDetailPage() {
                     products: availableProducts,
                     displayProductIds: specs.map((s: any) => s.selectedProductId || ""),
                     onProductSelect: handleHistoryProductSelect,
+                    // No onQtyChange — Qty is free-type editable via onCellEdit + editableColumns
                   } : undefined);
-                  return <WorkbookShell data={wbData} />;
+                  return <WorkbookShell data={wbData} editable onCellEdit={handleHistoryCellEdit} />;
                 })() : null}
               </div>
               {autoSaveStatus !== "idle" && (
@@ -909,8 +954,9 @@ export default function AnalysisDetailPage() {
                     products: availableProducts,
                     displayProductIds: specs.map((s: any) => s.selectedProductId || ""),
                     onProductSelect: handleHistoryProductSelect,
+                    // No onQtyChange — Qty is free-type editable via onCellEdit + editableColumns
                   } : undefined);
-                  return <WorkbookShell data={wbData} />;
+                  return <WorkbookShell data={wbData} editable onCellEdit={handleHistoryCellEdit} />;
                 })() : null}
               </div>
               {autoSaveStatus !== "idle" && (

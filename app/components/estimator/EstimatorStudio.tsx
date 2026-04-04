@@ -1145,10 +1145,30 @@ export default function EstimatorStudio({
                                     return { ...prev, displays };
                                 });
                             },
+                            // No onQtyChange — Qty is free-type editable via onCellEdit + editableColumns
                         } : undefined);
                         return (
                             <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-border bg-white">
-                                <WorkbookShell data={wbData} />
+                                <WorkbookShell
+                                    data={wbData}
+                                    editable
+                                    onCellEdit={(_sheetIndex: number, rowIndex: number, colIndex: number, newValue: string) => {
+                                        // LED Cost Sheet: H(ft)=7, W(ft)=8, Qty=11
+                                        const fieldMap: Record<number, "heightFt" | "widthFt" | "quantity"> = { 7: "heightFt", 8: "widthFt", 11: "quantity" };
+                                        const field = fieldMap[colIndex];
+                                        if (!field) return;
+                                        const numValue = parseFloat(newValue);
+                                        if (isNaN(numValue) || numValue <= 0) return;
+                                        const displayIdx = rowIndex; // buildEstimatorWorkbook skips header rows
+                                        if (displayIdx < 0 || displayIdx >= answers.displays.length) return;
+                                        skipNextRebuild();
+                                        setAnswers((prev) => {
+                                            const displays = [...prev.displays];
+                                            displays[displayIdx] = { ...displays[displayIdx], [field]: numValue };
+                                            return { ...prev, displays };
+                                        });
+                                    }}
+                                />
                             </div>
                         );
                     })()}

@@ -149,6 +149,8 @@ export function buildEstimatorWorkbook(
     ? [...options.products].sort((a, b) => a.label.localeCompare(b.label)).map((p) => ({ value: p.id, label: p.label }))
     : [];
 
+  // Qty is free-type editable via editableColumns — no dropdown
+
   for (const sheetId of data.sheetOrder) {
     const sheet = data.sheets[sheetId];
     if (!sheet || sheet.name.startsWith("_")) continue;
@@ -182,7 +184,8 @@ export function buildEstimatorWorkbook(
 
     // Is this the LED Cost Sheet? (for product dropdown injection)
     const isLedCostSheet = sheet.name === "LED Cost Sheet";
-    // LED Cost Sheet data starts at 0-based row 3 (Excel row 4), Product is col 5 (F)
+    // LED Cost Sheet data starts at 0-based row 3 (Excel row 4)
+    // Product is col 5 (F), Qty is col 11 (L)
     const LED_DATA_START = 3;
     const LED_PRODUCT_COL = 5;
 
@@ -227,6 +230,8 @@ export function buildEstimatorWorkbook(
               sc.dropdown = dropdownOpts;
               sc.onDropdownChange = (val: string) => options.onProductSelect(displayIdx, val);
             }
+
+            // Qty (col 11 = L) — free-type editable via editableColumns
 
             // Overlay client-side calcs for instant update (no server round-trip)
             const calc = options.calcs?.[displayIdx];
@@ -307,12 +312,17 @@ export function buildEstimatorWorkbook(
       rows.push({ cells, isHeader: isHdr, isTotal });
     }
 
-    sheets.push({
+    const tab: SheetTab = {
       name: sheet.name,
       color: sheet.tabColor || "#666",
       columns,
       rows,
-    });
+    };
+    // LED Cost Sheet: only H(ft)=7, W(ft)=8, Qty=11 are editable
+    if (isLedCostSheet) {
+      tab.editableColumns = [7, 8, 11];
+    }
+    sheets.push(tab);
   }
 
   return { fileName: "Cost Analysis", sheets };
