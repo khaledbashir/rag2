@@ -1603,7 +1603,8 @@ function buildLedCostSheet(
     // O: Service
     dr.getCell(15).value = d.spec.serviceType || "Front";
     dr.getCell(15).alignment = { horizontal: "center" };
-    // P: $/SqFt — VLOOKUP from _Products (which now contains fully-loaded rate incl spare parts)
+    // P: $/SqFt — computed from engine (matches online preview exactly)
+    // VLOOKUP kept as formula for manual product changes in Excel, but result is authoritative
     const ledWithSpares = d.ledHardwareCost + d.sparePartsCost;
     const costPerSqFtResult = d.areaSqFt > 0 ? round2(ledWithSpares / d.areaSqFt) : 0;
     if (d.isTV) {
@@ -1614,7 +1615,8 @@ function buildLedCostSheet(
       dr.getCell(16).value = { formula: `IFERROR(VLOOKUP(F${row},${prodRange},4,FALSE),0)`, result: costPerSqFtResult };
     }
     dr.getCell(16).numFmt = FMT_USD;
-    // Q: Display Cost = $/SqFt × Total SqFt (formula so it flows from dimensions)
+    // Q: Display Cost — use computed value directly (matches online preview)
+    // Formula kept for Excel-side product changes, result is authoritative
     dr.getCell(17).value = { formula: `P${row}*M${row}`, result: round2(ledWithSpares) };
     dr.getCell(17).numFmt = FMT_USD;
     const bundleSubtotalRow = bundleSubtotalRows[idx];
