@@ -2276,10 +2276,10 @@ export default function RfpAnalyzerClient() {
     return buildEstimatorWorkbook(serverWorkbookData, {
       products: availableProducts,
       displayProductIds: specsArr.map((s: any) => s.selectedProductId || ""),
-      onProductSelect: handleRfpProductSelect,
+      onProductSelect: handleProductSelect,
       calcs: rfpCalcs.length > 0 ? rfpCalcs : undefined,
     });
-  }, [serverWorkbookData, editableSpecs, result?.screens, pricingPreview, availableProducts, handleRfpProductSelect]);
+  }, [serverWorkbookData, editableSpecs, result?.screens, pricingPreview, availableProducts, handleProductSelect]);
 
   return (
     <div className={`flex-1 min-w-0 bg-background relative ${isSpreadsheetVisible ? "flex flex-col h-screen overflow-hidden" : "min-h-screen pb-24"}`}>
