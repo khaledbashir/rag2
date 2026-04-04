@@ -321,10 +321,10 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   let totalWeightLbsAll = 0;
   let totalPowerWAll = 0;
 
-  const totalAreaFromServer = input.screens.reduce((sum, s) => sum + (input.pricingDisplays.find((d) => d.name === s.name)?.areaSqFt ?? 0), 0);
-  console.error('TOTAL_SQFT_FROM_SERVER', totalAreaFromServer);
+  const baseScreens = input.screens.filter((s) => !s.isAlternate);
+  const baseQtyTotal = baseScreens.reduce((sum, s) => sum + (s.quantity || 1), 0);
 
-  input.screens.forEach((spec) => {
+  baseScreens.forEach((spec) => {
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
 
     const processorCost = pd?.processorCost ?? 0;
@@ -345,7 +345,7 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   });
   const totalLedCost = totalDisplayCost + totalProcessorCost + totalShippingCost;
   // Blended margin for total
-  const totalLedSell = input.screens.reduce((s, spec) => {
+  const totalLedSell = baseScreens.reduce((s, spec) => {
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
     const tc = pd?.totalCost ?? 0;
     const m = pd?.blendedMarginPct ?? 0;
@@ -355,8 +355,8 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   const blendedMarginTotal = totalLedSell > 0 ? (totalLedSell - totalLedCost) / totalLedSell : 0;
 
   const totalBtuPerHr = totalPowerWAll > 0 ? Math.round(totalPowerWAll * 3.412) : null;
-  // Sum circuits across all displays (each display has its own cab/circuit ratio)
-  const totalCircuits208V = input.screens.reduce((sum, spec) => {
+  // Sum circuits across all base displays
+  const totalCircuits208V = baseScreens.reduce((sum, spec) => {
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
     const mp = pd?.matchedProduct;
     if (!mp?.totalModules || !mp?.maxPowerWPerCab) return sum;
@@ -365,12 +365,12 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   }, 0);
   const totalRow: SheetRow = {
     cells: [
-      c(`TOTAL (${input.screens.reduce((sum, s) => sum + (s.quantity || 1), 0)} screens)`, { bold: true }),
+      c(`TOTAL (${baseQtyTotal} base screens)`, { bold: true }),
       c(""), c(""), c(""),                                               // RFP H, RFP W, RFP NITs
       c(""), c(""), c(""),                                               // Vendor, Product, Pitch
       c(""), c(""), c(""), c(""),                                        // H, W, H(px), W(px)
       c(""),                                                              // SqFt/Screen
-      c(String(input.screens.reduce((sum, s) => sum + (s.quantity || 1), 0)), { bold: true }), // Qty total
+      c(String(baseQtyTotal), { bold: true }),                           // Qty total
       num(Math.round(totalSqFtAll * 100) / 100, { bold: true }),         // Total SqFt
       c(""),                                                                // NITs
       ...(input.showSpecMatch ? [c("")] : []),                               // Spec Match (if shown)
