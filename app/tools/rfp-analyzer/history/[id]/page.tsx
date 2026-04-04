@@ -791,6 +791,18 @@ export default function AnalysisDetailPage() {
                   workbookData={workbookData}
                   loading={serverWorkbookLoading}
                   onCellEdit={handlePreviewCellEdit}
+                  dropdowns={{
+                    "LED Cost Sheet": [
+                      {
+                        col: 5, // Product
+                        options: availableProducts.map((p: any) => ({ label: p.label || p.name, value: p.name }))
+                      },
+                      {
+                        col: 11, // Qty
+                        options: Array.from({ length: 50 }, (_, i) => ({ label: String(i + 1), value: String(i + 1) }))
+                      }
+                    ]
+                  }}
                 />
               </div>
               {autoSaveStatus !== "idle" && (
@@ -927,6 +939,18 @@ export default function AnalysisDetailPage() {
                   workbookData={workbookData}
                   loading={serverWorkbookLoading}
                   onCellEdit={handlePreviewCellEdit}
+                  dropdowns={{
+                    "LED Cost Sheet": [
+                      {
+                        col: 5, // Product
+                        options: availableProducts.map((p: any) => ({ label: p.label || p.name, value: p.name }))
+                      },
+                      {
+                        col: 11, // Qty
+                        options: Array.from({ length: 50 }, (_, i) => ({ label: String(i + 1), value: String(i + 1) }))
+                      }
+                    ]
+                  }}
                 />
               </div>
               {autoSaveStatus !== "idle" && (

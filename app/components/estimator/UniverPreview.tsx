@@ -13,21 +13,40 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
 import { Loader2, AlertCircle } from "lucide-react";
 
-interface UniverPreviewProps {
+export interface UniverPreviewDropdown {
+  col: number;
+  options: { label: string; value: string }[];
+}
+
+export interface UniverPreviewProps {
   workbookData: any;
   loading?: boolean;
   error?: string | null;
   /** Called when user edits a cell: (sheetName, row0based, col0based, newValue) */
   onCellEdit?: (sheetName: string, row: number, col: number, value: number | string) => void;
+  dropdowns?: Record<string, UniverPreviewDropdown[]>;
 }
 
-export default function UniverPreview({ workbookData, loading, error, onCellEdit }: UniverPreviewProps) {
+export default function UniverPreview({ workbookData, loading, error, onCellEdit, dropdowns }: UniverPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<any>(null);
   const [mounted, setMounted] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
+  const [activeDropdown, setActiveDropdown] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+    sheetName: string;
+    row: number;
+    col: number;
+    value: string;
+    options: { label: string; value: string }[];
+  } | null>(null);
   const workbookDataRef = useRef(workbookData);
   workbookDataRef.current = workbookData;
+  const dropdownsRef = useRef(dropdowns);
+  dropdownsRef.current = dropdowns;
   /** Preserve active sheet tab across workbook re-renders */
   const lastActiveSheetRef = useRef<string | null>(null);
   const onCellEditRef = useRef(onCellEdit);
@@ -187,6 +206,56 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
           console.warn("[UniverPreview] Could not attach edit listener:", e);
         }
 
+        // Listen for cell selection to show dropdown overlays
+        try {
+          const selectionEvent = univerAPI.Event.SelectionChanged || univerAPI.Event.SheetSelectionChanged;
+          if (selectionEvent) {
+            univerAPI.addEvent(selectionEvent, () => {
+              const wb = univerAPI.getActiveWorkbook?.();
+              if (!wb) return setActiveDropdown(null);
+
+              const sheet = wb.getActiveSheet?.();
+              if (!sheet) return setActiveDropdown(null);
+
+              const sheetName = sheet.getSheetName?.();
+              if (!sheetName || !dropdownsRef.current?.[sheetName]) return setActiveDropdown(null);
+
+              const range = sheet.getActiveRange?.();
+              if (!range) return setActiveDropdown(null);
+
+              const row = range.getRow?.();
+              const col = range.getColumn?.();
+
+              const dropdownConfig = dropdownsRef.current[sheetName].find(d => d.col === col);
+              if (!dropdownConfig) return setActiveDropdown(null);
+
+              try {
+                const rect = range.getCellRect?.();
+                if (rect) {
+                  const rawValue = range.getValue?.();
+                  setActiveDropdown({
+                    top: rect.top,
+                    left: rect.left,
+                    width: rect.width,
+                    height: rect.height,
+                    sheetName,
+                    row,
+                    col,
+                    value: rawValue != null ? String(rawValue) : "",
+                    options: dropdownConfig.options,
+                  });
+                  return;
+                }
+              } catch (err) {
+                console.warn("[UniverPreview] Error getting cell rect", err);
+              }
+              setActiveDropdown(null);
+            });
+          }
+        } catch (e) {
+          console.warn("[UniverPreview] Could not attach selection listener:", e);
+        }
+
         setInitError(null);
       } catch (err: any) {
         console.error("[UniverPreview] init error:", err);
@@ -234,9 +303,55 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="flex-1 w-full h-full min-h-0 rounded-lg border border-border bg-white"
-    />
+    <div className="relative flex-1 w-full h-full min-h-0">
+      <div
+        ref={containerRef}
+        className="absolute inset-0 rounded-lg border border-border bg-white overflow-hidden"
+        onWheel={() => setActiveDropdown(null)}
+      />
+      {activeDropdown && (
+        <select
+          autoFocus
+          className="absolute z-50 bg-white border border-[#0A52EF] shadow-sm text-xs p-0.5 outline-none focus:ring-2 focus:ring-[#0A52EF]/20 font-sans"
+          style={{
+            top: activeDropdown.top,
+            left: activeDropdown.left,
+            width: Math.max(activeDropdown.width, 100),
+            height: activeDropdown.height,
+          }}
+          value={activeDropdown.value}
+          onChange={(e) => {
+            const val = e.target.value;
+            setActiveDropdown(prev => prev ? { ...prev, value: val } : null);
+            if (onCellEdit) {
+              onCellEdit(activeDropdown.sheetName, activeDropdown.row, activeDropdown.col, val);
+            }
+            // Manually update Univer so it reflects immediately without waiting for server rebuild
+            try {
+              if (apiRef.current) {
+                const wb = apiRef.current.getActiveWorkbook?.();
+                const sheet = wb?.getActiveSheet?.();
+                if (sheet) {
+                  const range = sheet.getRange?.(activeDropdown.row, activeDropdown.col);
+                  range?.setValue?.(val);
+                }
+              }
+            } catch (err) {
+              console.warn("[UniverPreview] Failed to set cell value locally", err);
+            }
+            setActiveDropdown(null);
+          }}
+          onBlur={() => setActiveDropdown(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" || e.key === "Enter") setActiveDropdown(null);
+          }}
+        >
+          <option value="" disabled>Select...</option>
+          {activeDropdown.options.map(opt => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+      )}
+    </div>
   );
 }

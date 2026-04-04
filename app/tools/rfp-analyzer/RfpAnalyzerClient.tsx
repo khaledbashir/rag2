@@ -2797,6 +2797,18 @@ export default function RfpAnalyzerClient() {
                     loading={serverWorkbookLoading}
                     error={serverWorkbookError}
                     onCellEdit={handlePreviewCellEdit}
+                    dropdowns={{
+                      "LED Cost Sheet": [
+                        {
+                          col: 5, // Product
+                          options: availableProducts.map(p => ({ label: p.label || p.name, value: p.name }))
+                        },
+                        {
+                          col: 11, // Qty
+                          options: Array.from({ length: 50 }, (_, i) => ({ label: String(i + 1), value: String(i + 1) }))
+                        }
+                      ]
+                    }}
                   />
                 ) : useServerWorkbook && serverWorkbookError ? (
                   <div className="flex items-center justify-center h-full gap-2 text-sm text-destructive">
