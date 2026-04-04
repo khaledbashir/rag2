@@ -1588,9 +1588,9 @@ function buildLedCostSheet(
     // L: Qty
     const qty = Number(d.spec.quantity) || 1;
     dr.getCell(12).value = qty; dr.getCell(12).alignment = { horizontal: "center" };
-    // M: Total SqFt = H(ft)*W(ft)*Qty
-    const sqFtResult = Number(d.areaSqFt) || 0;
-    dr.getCell(13).value = { formula: `H${row}*I${row}*L${row}`, result: isFinite(sqFtResult) ? sqFtResult : 0 };
+    // M: Total SqFt = H(ft)*W(ft)*Qty — result uses snapped dims to match H/I cells
+    const snappedSqFt = round2(cellH * cellW * qty);
+    dr.getCell(13).value = { formula: `H${row}*I${row}*L${row}`, result: isFinite(snappedSqFt) ? snappedSqFt : 0 };
     dr.getCell(13).numFmt = "#,##0";
     // N: Product NITs — VLOOKUP from _Products col 5
     const nitsResult = isClockLike ? 0 : (catalogProduct?.brightnessNits ?? d.match?.module?.nits ?? d.spec.brightnessNits ?? 0);
@@ -1601,10 +1601,9 @@ function buildLedCostSheet(
     // O: Service
     dr.getCell(15).value = d.spec.serviceType || "Front";
     dr.getCell(15).alignment = { horizontal: "center" };
-    // P: $/SqFt — computed from engine (matches online preview exactly)
-    // VLOOKUP kept as formula for manual product changes in Excel, but result is authoritative
+    // P: $/SqFt — computed from snapped area (matches H/I cells and online preview)
     const ledWithSpares = d.ledHardwareCost + d.sparePartsCost;
-    const costPerSqFtResult = d.areaSqFt > 0 ? round2(ledWithSpares / d.areaSqFt) : 0;
+    const costPerSqFtResult = snappedSqFt > 0 ? round2(ledWithSpares / snappedSqFt) : 0;
     if (d.isTV) {
       const tvQty = Number(d.spec.quantity) || 1;
       const unitCost = tvQty > 0 ? round2(ledWithSpares / tvQty) : 0;
@@ -1833,14 +1832,15 @@ function buildLedCostSheet(
       // L: Qty
       dr.getCell(12).value = d.spec.quantity || 1; dr.getCell(12).alignment = { horizontal: "center" };
       // M: Total SqFt — formula: H × W × Qty
-      dr.getCell(13).value = { formula: `H${rowNum}*I${rowNum}*L${rowNum}`, result: d.areaSqFt };
+      const altSnappedSqFt = round2(altCellH * altCellW * (d.spec.quantity || 1));
+      dr.getCell(13).value = { formula: `H${rowNum}*I${rowNum}*L${rowNum}`, result: altSnappedSqFt };
       dr.getCell(13).numFmt = "#,##0";
       // N: Environment
       dr.getCell(14).value = d.spec.environment || "indoor";
       dr.getCell(14).alignment = { horizontal: "center" };
-      // P: $/SqFt — VLOOKUP from _Products col 4 (same as base displays)
+      // P: $/SqFt — from snapped area
       const altLedWithSpares = round2(d.ledHardwareCost + d.sparePartsCost);
-      const altCostPerSqFtResult = d.areaSqFt > 0 ? round2(altLedWithSpares / d.areaSqFt) : 0;
+      const altCostPerSqFtResult = altSnappedSqFt > 0 ? round2(altLedWithSpares / altSnappedSqFt) : 0;
       dr.getCell(16).value = { formula: `IFERROR(VLOOKUP(F${rowNum},${prodRange},4,FALSE),0)`, result: altCostPerSqFtResult };
       dr.getCell(16).numFmt = FMT_USD;
       // Q: Display Cost = $/SqFt × Total SqFt (formula)
@@ -3335,8 +3335,9 @@ function buildTechSpecsSheet(
     r.getCell(5).value = { formula: `'LED Cost Sheet'!I${ledRow}`, result: tsCellW };
     r.getCell(6).value = { formula: `'LED Cost Sheet'!J${ledRow}`, result: hPx };
     r.getCell(7).value = { formula: `'LED Cost Sheet'!K${ledRow}`, result: wPx };
-    // Sq Ft: =D*E*B (height × width × qty)
-    r.getCell(8).value = { formula: `D${row}*E${row}*B${row}`, result: d.areaSqFt };
+    // Sq Ft: =D*E*B (height × width × qty) — result uses snapped dims
+    const tsSqFt = round2(tsCellH * tsCellW * qty);
+    r.getCell(8).value = { formula: `D${row}*E${row}*B${row}`, result: tsSqFt };
     r.getCell(8).numFmt = "#,##0";
     r.getCell(9).value = { formula: `'LED Cost Sheet'!N${ledRow}`, result: isClockLike ? "" : (d.spec.brightnessNits ?? "") };
     r.getCell(10).value = { formula: `'LED Cost Sheet'!O${ledRow}`, result: d.spec.serviceType || "Front" };
