@@ -623,8 +623,10 @@ export default function RfpAnalyzerClient() {
   }
 
   const handleProductSelect = useCallback((displayIndex: number, productId: string) => {
+    console.error(`[PRODUCT_SELECT] displayIndex=${displayIndex}, productId=${productId.substring(0, 8)}`);
     const product = availableProducts.find((p) => p.id === productId);
-    if (!product) return;
+    if (!product) { console.error('[PRODUCT_SELECT] product NOT FOUND in availableProducts'); return; }
+    console.error(`[PRODUCT_SELECT] found: ${product.name}, pitch=${product.pitch}, widthMm=${product.widthMm}, heightMm=${product.heightMm}`);
 
     // If pricingPreview doesn't exist yet (e.g., pricing API failed or hasn't loaded),
     // create a minimal one so product selection still works
@@ -721,6 +723,8 @@ export default function RfpAnalyzerClient() {
           }
         : s
     );
+    const updatedSpec = updatedSpecs[displayIndex];
+    console.error(`[PRODUCT_SELECT] spec updated: activeW=${updatedSpec?.activeWidthFt}, activeH=${updatedSpec?.activeHeightFt}, pitch=${updatedSpec?.pixelPitchMm}, productId=${updatedSpec?.selectedProductId?.substring(0, 8)}`);
     setEditableSpecs(updatedSpecs);
     // Persist product selection + updated dimensions to DB so Excel export picks them up
     if (result?.id) autoSaveSpecs(updatedSpecs, result.id);
