@@ -31,8 +31,8 @@ import SpecsTable from "../../_components/SpecsTable";
 import RequirementsTable from "../../_components/RequirementsTable";
 import { useRfpServerPreview } from "@/hooks/useRfpServerPreview";
 import { snapDimension } from "@/services/catalog/productMatcher";
-import dynamic from "next/dynamic";
-const UniverPreview = dynamic(() => import("@/app/components/estimator/UniverPreview"), { ssr: false });
+import WorkbookShell from "@/app/components/reusables/WorkbookShell";
+import { buildEstimatorWorkbook } from "@/app/components/estimator/buildEstimatorWorkbook";
 import type { ExtractedLEDSpec, ExtractedRequirement } from "@/services/rfp/unified/types";
 
 // ============================================================================
@@ -430,57 +430,25 @@ export default function AnalysisDetailPage() {
 
   const workbookData = serverWorkbookData || { fileName: "RFP Analysis", sheets: [] };
 
-  const handlePreviewCellEdit = useCallback((sheetName: string, row: number, col: number, value: number | string) => {
-    if (sheetName !== "LED Cost Sheet") return;
-    const oneBasedRow = row + 1;
-    const specIdx = displayRowMap[oneBasedRow];
-    if (specIdx == null) return;
-
-    if (col === 5) {
-      const productName = String(value).trim();
-      const product = availableProducts.find((p) => p.name === productName || p.label === productName);
-      if (product) {
-        setAnalysis(prev => {
-          if (!prev) return prev;
-          if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
-          const spec = { ...prev.screens[specIdx] };
-          spec.selectedProductId = product.id;
-          spec.selectedProductName = product.name;
-          spec.activeWidthFt = null;
-          spec.activeHeightFt = null;
-          const updated = [...prev.screens];
-          updated[specIdx] = spec;
-          autoSaveSpecs(updated, prev.id);
-          return { ...prev, screens: updated };
-        });
-      }
-      return;
-    }
-
-    let field: string | null = null;
-    if (col === 7) field = "heightFt";
-    else if (col === 8) field = "widthFt";
-    else if (col === 11) field = "quantity";
-    if (!field) return;
-
-    const numValue = typeof value === "number" ? value : parseFloat(String(value));
-    if (isNaN(numValue) || numValue <= 0) return;
-
-    skipNextRebuild();
+  // Product dropdown callback from WorkbookShell (receives displayIndex + productId)
+  const handleHistoryProductSelect = useCallback((displayIndex: number, productId: string) => {
+    const product = availableProducts.find((p: any) => p.id === productId);
+    if (!product) return;
 
     setAnalysis(prev => {
       if (!prev) return prev;
-      if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
-      const spec = { ...prev.screens[specIdx] };
-      (spec as any)[field!] = numValue;
-      if (field === "heightFt") spec.activeHeightFt = null;
-      if (field === "widthFt") spec.activeWidthFt = null;
+      if (displayIndex < 0 || displayIndex >= prev.screens.length) return prev;
+      const spec = { ...prev.screens[displayIndex] };
+      spec.selectedProductId = product.id;
+      spec.selectedProductName = product.name;
+      spec.activeWidthFt = null;
+      spec.activeHeightFt = null;
       const updated = [...prev.screens];
-      updated[specIdx] = spec;
+      updated[displayIndex] = spec;
       autoSaveSpecs(updated, prev.id);
       return { ...prev, screens: updated };
     });
-  }, [displayRowMap, autoSaveSpecs, availableProducts, skipNextRebuild]);
+  }, [availableProducts, autoSaveSpecs]);
 
   // Download helper
   const downloadBlob = async (url: string, body: object, fallbackName: string) => {
@@ -786,24 +754,20 @@ export default function AnalysisDetailPage() {
               </div>
             )}
             <div className="h-[calc(100vh-120px)] flex flex-col relative border border-border rounded-xl overflow-hidden bg-white">
-              <div className="flex-1 min-h-0 relative">
-                <UniverPreview
-                  workbookData={workbookData}
-                  loading={serverWorkbookLoading}
-                  onCellEdit={handlePreviewCellEdit}
-                  dropdowns={{
-                    "LED Cost Sheet": [
-                      {
-                        col: 5, // Product
-                        options: availableProducts.map((p: any) => ({ label: p.label || p.name, value: p.name }))
-                      },
-                      {
-                        col: 11, // Qty
-                        options: Array.from({ length: 50 }, (_, i) => ({ label: String(i + 1), value: String(i + 1) }))
-                      }
-                    ]
-                  }}
-                />
+              <div className="flex-1 min-h-0 overflow-auto">
+                {serverWorkbookLoading && !serverWorkbookData ? (
+                  <div className="flex items-center justify-center h-full">
+                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : serverWorkbookData ? (() => {
+                  const specs = analysis?.screens || [];
+                  const wbData = buildEstimatorWorkbook(serverWorkbookData, availableProducts.length > 0 ? {
+                    products: availableProducts,
+                    displayProductIds: specs.map((s: any) => s.selectedProductId || ""),
+                    onProductSelect: handleHistoryProductSelect,
+                  } : undefined);
+                  return <WorkbookShell data={wbData} />;
+                })() : null}
               </div>
               {autoSaveStatus !== "idle" && (
                 <div className="shrink-0 px-4 py-2 flex items-center gap-1.5 text-[10px] text-muted-foreground bg-card border-t border-border">
@@ -934,24 +898,20 @@ export default function AnalysisDetailPage() {
                   Export Excel
                 </button>
               </div>
-              <div className="flex-1 min-h-0 relative">
-                <UniverPreview
-                  workbookData={workbookData}
-                  loading={serverWorkbookLoading}
-                  onCellEdit={handlePreviewCellEdit}
-                  dropdowns={{
-                    "LED Cost Sheet": [
-                      {
-                        col: 5, // Product
-                        options: availableProducts.map((p: any) => ({ label: p.label || p.name, value: p.name }))
-                      },
-                      {
-                        col: 11, // Qty
-                        options: Array.from({ length: 50 }, (_, i) => ({ label: String(i + 1), value: String(i + 1) }))
-                      }
-                    ]
-                  }}
-                />
+              <div className="flex-1 min-h-0 overflow-auto">
+                {serverWorkbookLoading && !serverWorkbookData ? (
+                  <div className="flex items-center justify-center h-full">
+                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : serverWorkbookData ? (() => {
+                  const specs = analysis?.screens || [];
+                  const wbData = buildEstimatorWorkbook(serverWorkbookData, availableProducts.length > 0 ? {
+                    products: availableProducts,
+                    displayProductIds: specs.map((s: any) => s.selectedProductId || ""),
+                    onProductSelect: handleHistoryProductSelect,
+                  } : undefined);
+                  return <WorkbookShell data={wbData} />;
+                })() : null}
               </div>
               {autoSaveStatus !== "idle" && (
                 <div className="shrink-0 px-4 py-2 flex items-center gap-1.5 text-[10px] text-muted-foreground bg-card border-t border-border">

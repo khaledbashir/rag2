@@ -48,8 +48,9 @@ Last updated: 2026-04-01
 - [ ] No "Number stored as text" warnings on any cell
 
 ### Exported Excel — Accuracy
-- [ ] Every row's numbers match what's shown on the online platform
+- [ ] Every row's numbers match what's shown on the online platformno s
 - [ ] TOTAL row matches online platform TOTAL row
+
 - [ ] Margin Analysis grand total matches LED Cost Sheet grand total (adjusted for services/tax/bond)
 - [ ] All products have non-zero $/SqFt (no $0 rows)
 - [ ] _Products hidden sheet has all 23+ catalog products with 7 columns (Name, Vendor, Pitch, $/SqFt, NITs, Weight, Power)

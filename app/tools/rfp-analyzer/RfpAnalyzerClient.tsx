@@ -13,7 +13,8 @@ import type { PricingDocument } from "@/types/pricing";
 import dynamic from "next/dynamic";
 
 const PdfSplitPanel = dynamic(() => import("./_components/PdfSplitPanel"), { ssr: false });
-const UniverPreview = dynamic(() => import("@/app/components/estimator/UniverPreview"), { ssr: false });
+import WorkbookShell from "@/app/components/reusables/WorkbookShell";
+import { buildEstimatorWorkbook } from "@/app/components/estimator/buildEstimatorWorkbook";
 const LuxWidget = dynamic(() => import("./_components/LuxWidget"), { ssr: false });
 const ProductMatchPanel = dynamic(() => import("./_components/ProductMatchPanel"), { ssr: false });
 import type { ExtractedLEDSpec, ExtractedRequirement } from "@/services/rfp/unified/types";
@@ -966,74 +967,29 @@ export default function RfpAnalyzerClient() {
     includeBond: result?.project?.bondRequired || false,
   });
 
-  // Handle cell edits from the server-rendered UniverPreview.
-  // Maps row/col → spec field, updates editableSpecs → triggers server rebuild.
-  const handlePreviewCellEdit = useCallback((sheetName: string, row: number, col: number, value: number | string) => {
-    // Only handle LED Cost Sheet edits (row is 0-based from UniverPreview)
-    if (sheetName !== "LED Cost Sheet") return;
-
-    // displayRowMap maps 1-based row → spec index. Convert Univer's 0-based row.
-    const oneBasedRow = row + 1;
-    const specIdx = displayRowMap[oneBasedRow];
-    if (specIdx == null) return;
-
-    // Handle Product Dropdown edit (col 5)
-    if (col === 5) {
-      const productName = String(value).trim();
-      const product = availableProducts.find((p) => p.name === productName || p.label === productName);
-      if (product) {
-        setResult(prev => {
-          if (!prev) return prev;
-          if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
-          const spec = { ...prev.screens[specIdx] };
-          spec.selectedProductId = product.id;
-          spec.selectedProductName = product.name;
-
-          // Clear active dimensions so server can resnap them using new product specs
-          spec.activeWidthFt = null;
-          spec.activeHeightFt = null;
-
-          const updated = [...prev.screens];
-          updated[specIdx] = spec;
-          setEditableSpecs(updated);
-          autoSaveSpecs(updated, prev.id);
-          return { ...prev, screens: updated };
-        });
-      }
-      return;
-    }
-
-    // Column mapping (0-based): H(7)=Height, I(8)=Width, L(11)=Qty
-    let field: string | null = null;
-    if (col === 7) field = "heightFt";
-    else if (col === 8) field = "widthFt";
-    else if (col === 11) field = "quantity";
-
-    if (!field) return; // Only handle editable spec fields for now
-
-    const numValue = typeof value === "number" ? value : parseFloat(String(value));
-    if (isNaN(numValue) || numValue <= 0) return;
-
-    // Skip server rebuild for dimension edits, Univer handles formulas locally
-    skipNextRebuild();
+  // Handle product selection from WorkbookShell dropdown (receives displayIndex + productId)
+  const handleRfpProductSelect = useCallback((displayIndex: number, productId: string) => {
+    const product = availableProducts.find((p) => p.id === productId);
+    if (!product) return;
 
     setResult(prev => {
       if (!prev) return prev;
-      if (specIdx < 0 || specIdx >= prev.screens.length) return prev;
-      const spec = { ...prev.screens[specIdx] };
-      (spec as any)[field!] = numValue;
+      if (displayIndex < 0 || displayIndex >= prev.screens.length) return prev;
+      const spec = { ...prev.screens[displayIndex] };
+      spec.selectedProductId = product.id;
+      spec.selectedProductName = product.name;
 
-      // Also reset active dimensions so they resnap based on the new H/W
-      if (field === "heightFt") spec.activeHeightFt = null;
-      if (field === "widthFt") spec.activeWidthFt = null;
+      // Clear active dimensions so server can resnap them using new product specs
+      spec.activeWidthFt = null;
+      spec.activeHeightFt = null;
 
       const updated = [...prev.screens];
-      updated[specIdx] = spec;
+      updated[displayIndex] = spec;
       setEditableSpecs(updated);
       autoSaveSpecs(updated, prev.id);
       return { ...prev, screens: updated };
     });
-  }, [displayRowMap, autoSaveSpecs, availableProducts, skipNextRebuild]);
+  }, [availableProducts, autoSaveSpecs]);
 
   // ========================================================================
   // Auto-run pricing when extraction completes (no manual step needed)
@@ -2785,32 +2741,25 @@ export default function RfpAnalyzerClient() {
                 )}
               </div>
 
-              {/* ---- Univer Spreadsheet — FILLS REMAINING SPACE ---- */}
+              {/* ---- Workbook — FILLS REMAINING SPACE ---- */}
               <div
-                className={`flex-1 min-h-0 overflow-hidden relative ${spreadsheetMode ? "border-x border-gray-200 dark:border-gray-700" : "border border-t-0 border-gray-200 dark:border-gray-700"}`}
+                className={`flex-1 min-h-0 overflow-auto relative ${spreadsheetMode ? "border-x border-gray-200 dark:border-gray-700" : "border border-t-0 border-gray-200 dark:border-gray-700"}`}
                 style={{ minHeight: 200 }}
               >
                 {/* Server-generated workbook: same generator as export = same numbers */}
-                {useServerWorkbook && serverWorkbookData ? (
-                  <UniverPreview
-                    workbookData={serverWorkbookData}
-                    loading={serverWorkbookLoading}
-                    error={serverWorkbookError}
-                    onCellEdit={handlePreviewCellEdit}
-                    dropdowns={{
-                      "LED Cost Sheet": [
-                        {
-                          col: 5, // Product
-                          options: availableProducts.map(p => ({ label: p.label || p.name, value: p.name }))
-                        },
-                        {
-                          col: 11, // Qty
-                          options: Array.from({ length: 50 }, (_, i) => ({ label: String(i + 1), value: String(i + 1) }))
-                        }
-                      ]
-                    }}
-                  />
-                ) : useServerWorkbook && serverWorkbookError ? (
+                {useServerWorkbook && serverWorkbookData ? (() => {
+                  const specsArr = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
+                  const wbData = buildEstimatorWorkbook(serverWorkbookData, availableProducts.length > 0 ? {
+                    products: availableProducts,
+                    displayProductIds: specsArr.map((s: any) => s.selectedProductId || ""),
+                    onProductSelect: handleRfpProductSelect,
+                  } : undefined);
+                  return (
+                    <div className="h-full overflow-auto rounded-lg bg-white">
+                      <WorkbookShell data={wbData} />
+                    </div>
+                  );
+                })() : useServerWorkbook && serverWorkbookError ? (
                   <div className="flex items-center justify-center h-full gap-2 text-sm text-destructive">
                     <AlertCircle className="w-4 h-4" />
                     <span>Server preview failed: {serverWorkbookError}</span>

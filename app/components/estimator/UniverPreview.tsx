@@ -13,46 +13,25 @@
 import React, { useRef, useEffect, useState } from "react";
 import { Loader2, AlertCircle } from "lucide-react";
 
-export interface UniverPreviewDropdown {
-  col: number;
-  options: { label: string; value: string }[];
-}
-
 export interface UniverPreviewProps {
   workbookData: any;
   loading?: boolean;
   error?: string | null;
   /** Called when user edits a cell: (sheetName, row0based, col0based, newValue) */
   onCellEdit?: (sheetName: string, row: number, col: number, value: number | string) => void;
-  dropdowns?: Record<string, UniverPreviewDropdown[]>;
 }
 
-export default function UniverPreview({ workbookData, loading, error, onCellEdit, dropdowns }: UniverPreviewProps) {
+export default function UniverPreview({ workbookData, loading, error, onCellEdit }: UniverPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<any>(null);
   const [mounted, setMounted] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
-  const [activeDropdown, setActiveDropdown] = useState<{
-    top: number;
-    left: number;
-    width: number;
-    height: number;
-    sheetName: string;
-    row: number;
-    col: number;
-    value: string;
-    options: { label: string; value: string }[];
-  } | null>(null);
   const workbookDataRef = useRef(workbookData);
   workbookDataRef.current = workbookData;
-  const dropdownsRef = useRef(dropdowns);
-  dropdownsRef.current = dropdowns;
   /** Preserve active sheet tab across workbook re-renders */
   const lastActiveSheetRef = useRef<string | null>(null);
   const onCellEditRef = useRef(onCellEdit);
   onCellEditRef.current = onCellEdit;
-  /** Track last mousedown position (container-relative) for dropdown positioning */
-  const lastClickPosRef = useRef<{ x: number; y: number } | null>(null);
 
   // Track mount for SSR safety
   useEffect(() => {
@@ -205,53 +184,6 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
           console.warn("[UniverPreview] Could not attach edit listener:", e);
         }
 
-        // Listen for cell selection to show dropdown overlays
-        // We use mousedown position (container-relative) because getCellRect()
-        // returns sheet-space coordinates that don't account for scroll/viewport offset.
-        try {
-          const selectionEvent = univerAPI.Event.SelectionChanged;
-          if (selectionEvent) {
-            univerAPI.addEvent(selectionEvent, () => {
-              const wb = univerAPI.getActiveWorkbook?.();
-              if (!wb) return setActiveDropdown(null);
-
-              const sheet = wb.getActiveSheet?.();
-              if (!sheet) return setActiveDropdown(null);
-
-              const sheetName = sheet.getSheetName?.();
-              if (!sheetName || !dropdownsRef.current?.[sheetName]) return setActiveDropdown(null);
-
-              const range = sheet.getActiveRange?.();
-              if (!range) return setActiveDropdown(null);
-
-              const row = range.getRow?.();
-              const col = range.getColumn?.();
-
-              const dropdownConfig = dropdownsRef.current[sheetName].find(d => d.col === col);
-              if (!dropdownConfig) return setActiveDropdown(null);
-
-              // Use the tracked mousedown position (container-relative)
-              const clickPos = lastClickPosRef.current;
-              if (!clickPos) return setActiveDropdown(null);
-
-              const rawValue = range.getValue?.();
-              setActiveDropdown({
-                top: clickPos.y,
-                left: clickPos.x,
-                width: 140,
-                height: 24,
-                sheetName,
-                row,
-                col,
-                value: rawValue != null ? String(rawValue) : "",
-                options: dropdownConfig.options,
-              });
-            });
-          }
-        } catch (e) {
-          console.warn("[UniverPreview] Could not attach selection listener:", e);
-        }
-
         setInitError(null);
       } catch (err: any) {
         console.error("[UniverPreview] init error:", err);
@@ -299,67 +231,9 @@ export default function UniverPreview({ workbookData, loading, error, onCellEdit
   }
 
   return (
-    <div className="relative flex-1 w-full h-full min-h-0">
-      <div
-        ref={containerRef}
-        className="absolute inset-0 rounded-lg border border-border bg-white overflow-hidden"
-        onMouseDown={(e) => {
-          // Track click position relative to the outer wrapper (position:relative)
-          // so the dropdown overlay aligns exactly where the user clicked.
-          const wrapper = e.currentTarget.parentElement;
-          if (wrapper) {
-            const rect = wrapper.getBoundingClientRect();
-            lastClickPosRef.current = {
-              x: e.clientX - rect.left,
-              y: e.clientY - rect.top,
-            };
-          }
-        }}
-        onWheel={() => setActiveDropdown(null)}
-      />
-      {activeDropdown && (
-        <select
-          autoFocus
-          className="absolute z-50 bg-white border border-[#0A52EF] shadow-sm text-xs p-0.5 outline-none focus:ring-2 focus:ring-[#0A52EF]/20 font-sans"
-          style={{
-            top: activeDropdown.top,
-            left: activeDropdown.left,
-            width: Math.max(activeDropdown.width, 100),
-            height: activeDropdown.height,
-          }}
-          value={activeDropdown.value}
-          onChange={(e) => {
-            const val = e.target.value;
-            setActiveDropdown(prev => prev ? { ...prev, value: val } : null);
-            if (onCellEdit) {
-              onCellEdit(activeDropdown.sheetName, activeDropdown.row, activeDropdown.col, val);
-            }
-            // Manually update Univer so it reflects immediately without waiting for server rebuild
-            try {
-              if (apiRef.current) {
-                const wb = apiRef.current.getActiveWorkbook?.();
-                const sheet = wb?.getActiveSheet?.();
-                if (sheet) {
-                  const range = sheet.getRange?.(activeDropdown.row, activeDropdown.col);
-                  range?.setValue?.(val);
-                }
-              }
-            } catch (err) {
-              console.warn("[UniverPreview] Failed to set cell value locally", err);
-            }
-            setActiveDropdown(null);
-          }}
-          onBlur={() => setActiveDropdown(null)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape" || e.key === "Enter") setActiveDropdown(null);
-          }}
-        >
-          <option value="" disabled>Select...</option>
-          {activeDropdown.options.map(opt => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      )}
-    </div>
+    <div
+      ref={containerRef}
+      className="flex-1 w-full h-full min-h-0 rounded-lg border border-border bg-white"
+    />
   );
 }
