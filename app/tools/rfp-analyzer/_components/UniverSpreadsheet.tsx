@@ -358,7 +358,7 @@ function buildWorkbookData(props: UniverSpreadsheetProps) {
     const hardwareCost = pd?.hardwareCost ?? 0;
     const areaSqFt = pd?.areaSqFt ?? 0;
     const ratePerSqFt = snappedTotalSqFt > 0 ? hardwareCost / snappedTotalSqFt : 0;
-    console.error('SQFT_DEBUG', JSON.stringify({ name: spec.name, hardwareCost, areaSqFt, qty, h, w, snappedTotalSqFt, ratePerSqFt }));
+    console.error('SQFT_DEBUG', spec.name, 'hw=', h, w, 'qty=', qty, 'sqft=', snappedTotalSqFt, 'rate=', ratePerSqFt, 'hwCost=', hardwareCost);
     const weight = audit?.estimatedWeightLbs ?? mp?.totalWeightLbs ?? 0;
     const power = audit?.totalMaxPowerW ?? mp?.totalMaxPowerW ?? 0;
     
