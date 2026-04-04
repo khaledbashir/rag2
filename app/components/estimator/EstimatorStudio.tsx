@@ -75,6 +75,7 @@ export default function EstimatorStudio({
     const [venueOpen, setVenueOpen] = useState(false);
     const [toolbarOpen, setToolbarOpen] = useState(false);
     const [activityOpen, setActivityOpen] = useState(false);
+    const [activeWorkbookTab, setActiveWorkbookTab] = useState(0);
     const [workbookSyncMessage, setWorkbookSyncMessage] = useState<string>("");
     const [uiFeedback, setUiFeedback] = useState<{ tone: "info" | "success" | "error"; message: string } | null>(null);
     const [questionResumeTarget, setQuestionResumeTarget] = useState<{
@@ -1093,6 +1094,7 @@ export default function EstimatorStudio({
                         const wbData = buildEstimatorWorkbook(serverPreview, availableProducts.length > 0 ? {
                             products: availableProducts,
                             displayProductIds: answers.displays.map((d) => d.productId || ""),
+                            displayRowMap,
                             calcs,
                             onProductSelect: async (displayIdx, productId) => {
                                 const product = availableProducts.find((p) => p.id === productId);
@@ -1149,6 +1151,8 @@ export default function EstimatorStudio({
                                 <WorkbookShell
                                     data={wbData}
                                     editable
+                                    activeTab={activeWorkbookTab}
+                                    onTabChange={setActiveWorkbookTab}
                                     onCellEdit={(_sheetIndex: number, rowIndex: number, colIndex: number, newValue: string) => {
                                         // LED Cost Sheet: H(ft)=7, W(ft)=8, Qty=11
                                         const fieldMap: Record<number, "heightFt" | "widthFt" | "quantity"> = { 7: "heightFt", 8: "widthFt", 11: "quantity" };
@@ -1156,7 +1160,7 @@ export default function EstimatorStudio({
                                         if (!field) return;
                                         const numValue = parseFloat(newValue);
                                         if (isNaN(numValue) || numValue <= 0) return;
-                                        const displayIdx = rowIndex; // buildEstimatorWorkbook skips header rows
+                                        const displayIdx = displayRowMap[rowIndex] ?? rowIndex;
                                         if (displayIdx < 0 || displayIdx >= answers.displays.length) return;
                                         setAnswers((prev) => {
                                             const displays = [...prev.displays];

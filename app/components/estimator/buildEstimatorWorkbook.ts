@@ -71,6 +71,8 @@ export interface EstimatorWorkbookOptions {
   products: ProductOption[];
   /** Current product ID per display (indexed by display order) */
   displayProductIds: string[];
+  /** Maps LED Cost Sheet row index (0-based, workbook view) to display index */
+  displayRowMap?: Record<number, number>;
   /** Called when user picks a product from the dropdown */
   onProductSelect: (displayIndex: number, productId: string) => void;
   /** Client-side cost calculations — used to update LED Cost Sheet instantly */
@@ -255,7 +257,7 @@ export function buildEstimatorWorkbook(
         // LED Cost Sheet data rows: inject product dropdown only.
         // All displayed numbers should come from the server-generated workbook.
         if (isLedCostSheet && r >= LED_DATA_START && options) {
-          const displayIdx = r - LED_DATA_START;
+          const displayIdx = options.displayRowMap?.[r] ?? (r - LED_DATA_START);
           if (displayIdx >= 0 && displayIdx < options.displayProductIds.length) {
             // Product dropdown (col 5 = F)
             if (c === LED_PRODUCT_COL && dropdownOpts.length > 0) {
