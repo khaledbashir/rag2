@@ -2259,7 +2259,7 @@ export default function RfpAnalyzerClient() {
     return buildEstimatorWorkbook(serverWorkbookData, {
       products: availableProducts,
       displayProductIds: specsArr.map((s: any) => s.selectedProductId || ""),
-      onProductSelect: handleProductSelectRef.current,
+      onProductSelect: (displayIndex: number, productId: string) => handleProductSelectRef.current(displayIndex, productId),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverWorkbookData, editableSpecs, result?.screens, availableProducts]);
