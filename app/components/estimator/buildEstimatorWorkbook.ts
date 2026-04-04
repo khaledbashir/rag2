@@ -201,8 +201,33 @@ export function buildEstimatorWorkbook(
       const rowData = sheet.cellData[r];
       if (!rowData) continue;
 
-      // Skip rows before header (title rows)
-      if (headerRowIdx >= 0 && r <= headerRowIdx) continue;
+      // Skip rows before header (title rows) — except rows with yellow cells (margin override)
+      if (headerRowIdx >= 0 && r <= headerRowIdx) {
+        if (r < headerRowIdx) {
+          let hasYellow = false;
+          for (const c of Object.values(rowData)) {
+            if (c && hasYellowBg(c)) { hasYellow = true; break; }
+          }
+          if (hasYellow) {
+            // Render this pre-header row but mark it as a special non-data row
+            const specialCells: SheetCell[] = [];
+            for (let c = 0; c <= maxCol; c++) {
+              const cell = rowData[c];
+              if (!cell) { specialCells.push({ value: "" }); continue; }
+              specialCells.push({
+                value: cellValue(cell),
+                bold: isBold(cell),
+                currency: hasCurrencyFormat(cell),
+                percent: hasPercentFormat(cell),
+                align: getCellAlign(cell),
+                highlight: hasYellowBg(cell),
+              });
+            }
+            rows.push({ cells: specialCells, isHeader: true });
+          }
+        }
+        continue;
+      }
 
       const isHdr = isHeaderRow(rowData);
       const isTotal = isTotalRow(rowData);
@@ -325,9 +350,9 @@ export function buildEstimatorWorkbook(
       columns,
       rows,
     };
-    // LED Cost Sheet: only H(ft)=7, W(ft)=8, Qty=11 are editable
+    // LED Cost Sheet: H(ft)=7, W(ft)=8, Qty=11, Margin Override=21
     if (isLedCostSheet) {
-      tab.editableColumns = [7, 8, 11];
+      tab.editableColumns = [7, 8, 11, 21];
     }
     sheets.push(tab);
   }
