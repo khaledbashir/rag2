@@ -320,6 +320,10 @@ function buildLedCostSheet(input: RfpWorkbookInput): SheetTab {
   let totalModulesAll = 0;
   let totalWeightLbsAll = 0;
   let totalPowerWAll = 0;
+
+  const totalAreaFromServer = input.screens.reduce((sum, s) => sum + (input.pricingDisplays.find((d) => d.name === s.name)?.areaSqFt ?? 0), 0);
+  console.error('TOTAL_SQFT_FROM_SERVER', totalAreaFromServer);
+
   input.screens.forEach((spec) => {
     const pd = input.pricingDisplays.find((d) => d.name === spec.name);
 
