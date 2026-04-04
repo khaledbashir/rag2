@@ -57,6 +57,13 @@ interface DisplayCalc {
   marginPct: number;
   ledMarginPct: number;
   sellPrice: number;
+  cabinetLayout?: {
+    actualWidthFt: number;
+    actualHeightFt: number;
+    actualAreaSqFt: number;
+    actualResolutionW: number;
+    actualResolutionH: number;
+  } | null;
 }
 
 export interface EstimatorWorkbookOptions {
@@ -238,13 +245,14 @@ export function buildEstimatorWorkbook(
               const ledTotalCost = ledDisplayCost + ledProcessorCost + calc.shippingCost;
               const ledMargin = calc.ledMarginPct;
               const ledSellPrice = ledMargin < 1 ? fmt(ledTotalCost / (1 - ledMargin)) : ledTotalCost;
+              const cab = calc.cabinetLayout;
               if (c === 4 && product) sc.value = product.manufacturer || "";
               if (c === 6 && product) sc.value = product.pitch;
-              if (c === 7) sc.value = fmt(calc.heightFt);
-              if (c === 8) sc.value = fmt(calc.widthFt);
-              if (c === 9) sc.value = calc.pixelsH;
-              if (c === 10) sc.value = calc.pixelsW;
-              if (c === 12) sc.value = Math.round(calc.areaSqFt);
+              if (c === 7) sc.value = fmt(cab?.actualHeightFt ?? calc.heightFt);
+              if (c === 8) sc.value = fmt(cab?.actualWidthFt ?? calc.widthFt);
+              if (c === 9) sc.value = cab?.actualResolutionH ?? calc.pixelsH;
+              if (c === 10) sc.value = cab?.actualResolutionW ?? calc.pixelsW;
+              if (c === 12) sc.value = Math.round(cab?.actualAreaSqFt ?? calc.areaSqFt);
               if (c === 13 && product) sc.value = product.nits || 0;
               if (c === 15) { sc.value = fmt(calc.costPerSqFt); sc.currency = true; }
               if (c === 16) { sc.value = fmt(ledDisplayCost); sc.currency = true; }
