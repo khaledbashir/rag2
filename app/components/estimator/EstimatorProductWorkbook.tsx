@@ -17,6 +17,7 @@ interface ProductOption {
   heightMm?: number;
   moduleWidthMm?: number;
   moduleHeightMm?: number;
+  supportsHalfModule?: boolean;
 }
 
 interface EstimatorProductWorkbookProps {
@@ -61,11 +62,15 @@ export default function EstimatorProductWorkbook({
             const product = products.find((p) => p.id === selectedProductId);
             const requestedWidthFt = display.widthFt || 0;
             const requestedHeightFt = display.heightFt || 0;
+            const effectiveModuleWidthMm = product?.moduleWidthMm
+              ?? (product?.supportsHalfModule && product?.widthMm ? product.widthMm / 2 : undefined);
+            const effectiveModuleHeightMm = product?.moduleHeightMm
+              ?? (product?.supportsHalfModule && product?.heightMm ? product.heightMm / 2 : undefined);
             const snappedWidthMm = product?.widthMm && requestedWidthFt > 0
-              ? snapDimension(requestedWidthFt * 304.8, product.widthMm, product.moduleWidthMm).totalMm
+              ? snapDimension(requestedWidthFt * 304.8, product.widthMm, effectiveModuleWidthMm).totalMm
               : requestedWidthFt * 304.8;
             const snappedHeightMm = product?.heightMm && requestedHeightFt > 0
-              ? snapDimension(requestedHeightFt * 304.8, product.heightMm, product.moduleHeightMm).totalMm
+              ? snapDimension(requestedHeightFt * 304.8, product.heightMm, effectiveModuleHeightMm).totalMm
               : requestedHeightFt * 304.8;
             const widthFt = snappedWidthMm / 304.8;
             const heightFt = snappedHeightMm / 304.8;
