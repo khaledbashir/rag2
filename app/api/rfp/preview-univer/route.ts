@@ -71,10 +71,34 @@ export async function POST(request: NextRequest) {
 
     const projectTotal = displays.reduce((s, d) => s + (d.sellingPrice || 0), 0);
 
-    // Row map for inline editing
+    // Row map for inline editing — derive from the actual generated LED Cost Sheet
+    // instead of assuming preview row order always matches raw specs order.
     const displayRowMap: Record<number, number> = {};
-    for (let i = 0; i < specs.length; i++) {
-      displayRowMap[3 + i] = i;
+    const ledSheet = wb.getWorksheet("LED Cost Sheet");
+    if (ledSheet) {
+      const baseDisplays = displays.filter((display) => !display.spec.isAlternate);
+      const expectedRows = baseDisplays.map((display, idx) => ({
+        idx,
+        label: `${display.spec.name || `Display ${idx + 1}`}${display.spec.location ? ` — ${display.spec.location}` : ""}`.trim().toLowerCase(),
+      }));
+
+      for (let row = 4; row <= ledSheet.rowCount; row++) {
+        const rawValue = ledSheet.getRow(row).getCell(1).value;
+        const rowLabel = String(
+          typeof rawValue === "object" && rawValue && "richText" in rawValue
+            ? (rawValue as any).richText.map((r: any) => r.text).join("")
+            : rawValue ?? ""
+        ).trim();
+
+        if (!rowLabel || /^TOTAL\b/i.test(rowLabel) || /^ALTERNATES\b/i.test(rowLabel) || /^Alt \d+:/i.test(rowLabel)) {
+          continue;
+        }
+
+        const matched = expectedRows.find((entry) => entry.label === rowLabel.toLowerCase());
+        if (matched) {
+          displayRowMap[row - 1] = matched.idx;
+        }
+      }
     }
 
     return NextResponse.json({ ...workbookData, projectTotal, displayRowMap, displayCount: specs.length });

@@ -288,15 +288,35 @@ export async function POST(req: NextRequest) {
     // Compute project total for list page display
     const projectTotal = computedDisplays.reduce((s, d) => s + (d.sellingPrice || 0), 0);
 
-    // Build row-to-display-index map for inline editing
-    // LED Cost Sheet: header at row 2 (0-based), data starts at row 3 (0-based)
-    // Specs are ordered: base[0], alts[0], base[1], alts[1], ...
+    // Build row-to-display-index map from the actual generated LED Cost Sheet so inline
+    // edits always target the correct display even if row order diverges from raw index math.
     const displayRowMap: Record<number, number> = {};
-    let specIdx = 0;
-    for (let di = 0; di < answers.displays.length; di++) {
-      displayRowMap[3 + specIdx] = di; // 0-based row 3 = Excel row 4
-      specIdx++; // base display
-      specIdx += (answers.displays[di].altPitches?.length || 0); // alt pitch variants
+    const ledSheet = wb.getWorksheet("LED Cost Sheet");
+    if (ledSheet) {
+      const baseDisplays = computedDisplays.filter((display) => !display.spec.isAlternate);
+      const expectedRows = answers.displays.map((display, idx) => {
+        const location = baseDisplays[idx]?.spec.location || "";
+        const label = `${display.displayName || `Display ${idx + 1}`}${location ? ` — ${location}` : ""}`;
+        return { idx, label: label.trim().toLowerCase() };
+      });
+
+      for (let row = 4; row <= ledSheet.rowCount; row++) {
+        const rawValue = ledSheet.getRow(row).getCell(1).value;
+        const rowLabel = String(
+          typeof rawValue === "object" && rawValue && "richText" in rawValue
+            ? (rawValue as any).richText.map((r: any) => r.text).join("")
+            : rawValue ?? ""
+        ).trim();
+
+        if (!rowLabel || /^TOTAL\b/i.test(rowLabel) || /^ALTERNATES\b/i.test(rowLabel) || /^Alt \d+:/i.test(rowLabel)) {
+          continue;
+        }
+
+        const matched = expectedRows.find((entry) => entry.label === rowLabel.toLowerCase());
+        if (matched) {
+          displayRowMap[row - 1] = matched.idx; // workbook rows are 0-based in preview
+        }
+      }
     }
 
     // Convert each worksheet to Univer format
