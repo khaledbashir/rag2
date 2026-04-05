@@ -403,7 +403,11 @@ export async function generateScopingWorkbook(
   const effectiveIncludeBond = includeBond && !supplyOnlyProject;
 
   const populateActiveDims = async (spec: ExtractedLEDSpec) => {
-    if (!spec.widthFt || !spec.heightFt || (spec.activeWidthFt && spec.activeHeightFt)) return;
+    const hasExplicitSelection = Boolean(spec.selectedProductId);
+    const targetWidthFt = Number(spec.activeWidthFt) || Number(spec.widthFt) || 0;
+    const targetHeightFt = Number(spec.activeHeightFt) || Number(spec.heightFt) || 0;
+    if (!targetWidthFt || !targetHeightFt) return;
+    if (spec.activeWidthFt && spec.activeHeightFt && !hasExplicitSelection) return;
 
     const selectedProduct = spec.selectedProductId ? resolveProduct(spec.selectedProductId) as any : null;
     const cabinetWidthMm =
@@ -424,8 +428,8 @@ export async function generateScopingWorkbook(
       ?? null;
 
     if (selectedProduct && cabinetWidthMm && cabinetHeightMm) {
-      const snapW = snapDimension(spec.widthFt * 304.8, cabinetWidthMm, moduleWidthMm ?? undefined);
-      const snapH = snapDimension(spec.heightFt * 304.8, cabinetHeightMm, moduleHeightMm ?? undefined);
+      const snapW = snapDimension(targetWidthFt * 304.8, cabinetWidthMm, moduleWidthMm ?? undefined);
+      const snapH = snapDimension(targetHeightFt * 304.8, cabinetHeightMm, moduleHeightMm ?? undefined);
       spec.activeWidthFt = snapW.totalMm / 304.8;
       spec.activeHeightFt = snapH.totalMm / 304.8;
       return;
@@ -433,8 +437,8 @@ export async function generateScopingWorkbook(
 
     try {
       const match = await ProductMatcher.matchProduct({
-        widthFt: spec.widthFt,
-        heightFt: spec.heightFt,
+        widthFt: targetWidthFt,
+        heightFt: targetHeightFt,
         pixelPitch: parsePitchFromProductName(spec.selectedProductName) ?? spec.pixelPitchMm ?? undefined,
         brightnessNits: spec.brightnessNits ?? undefined,
         isOutdoor: spec.environment === "outdoor",

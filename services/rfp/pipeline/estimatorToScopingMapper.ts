@@ -55,10 +55,12 @@ function mapDisplay(d: DisplayAnswers, env: "indoor" | "outdoor"): ExtractedLEDS
   const workingHeightFt = d.heightFt || null;
   let activeWidthFt = workingWidthFt;
   let activeHeightFt = workingHeightFt;
+  let canPreSnap = false;
 
   if (workingWidthFt && workingHeightFt && d.productId) {
     const prod = getProduct(d.productId);
     if (prod?.defaultCabinet) {
+      canPreSnap = true;
       const snapW = snapDimension(
         workingWidthFt * 304.8,
         prod.defaultCabinet.widthMm,
@@ -75,8 +77,16 @@ function mapDisplay(d: DisplayAnswers, env: "indoor" | "outdoor"): ExtractedLEDS
   }
 
   // Courtside/stanchion: use fixed pixel specs stored on display answers; LED: formula
-  const widthPx = d.fixedWidthPx || (pitch && activeWidthFt ? Math.round((activeWidthFt * 304.8) / pitch) : null);
-  const heightPx = d.fixedHeightPx || (pitch && activeHeightFt ? Math.round((activeHeightFt * 304.8) / pitch) : null);
+  // For DB-backed selected products, leave px blank here and let the shared workbook
+  // generator derive them from the snapped active dims after product resolution.
+  const widthPx = d.fixedWidthPx
+    ?? ((!d.productId || canPreSnap) && pitch && activeWidthFt
+      ? Math.round((activeWidthFt * 304.8) / pitch)
+      : null);
+  const heightPx = d.fixedHeightPx
+    ?? ((!d.productId || canPreSnap) && pitch && activeHeightFt
+      ? Math.round((activeHeightFt * 304.8) / pitch)
+      : null);
   const displayLabel = d.displayName?.trim() || humanizeType(d.displayType) || "Unnamed Display";
   const mountingLabel = humanizeType(d.locationType);
 
