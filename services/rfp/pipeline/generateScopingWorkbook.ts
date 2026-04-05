@@ -104,7 +104,7 @@ import {
   type ZoneClass,
   type InstallComplexity,
 } from "@/services/rfp/productCatalog";
-import { ProductMatcher, type MatchedSolution } from "@/services/catalog/productMatcher";
+import { ProductMatcher, snapDimension, type MatchedSolution } from "@/services/catalog/productMatcher";
 import { preloadRateCard, getRateSync } from "@/services/rfp/rateCardLoader";
 import {
   computeDisplays,
@@ -339,7 +339,20 @@ export async function generateScopingWorkbook(
   const selectedProductIds = allSpecs
     .map((s) => s.selectedProductId)
     .filter((id): id is string => !!id && !getProduct(id)); // only IDs not in hardcoded catalog
-  let dbProductMap = new Map<string, { manufacturer: string; name: string; pitch: number; nits: number; weightDensityLbm2: number; powerDensityWm2: number; productType?: string; extendedSpecs?: any }>();
+  let dbProductMap = new Map<string, {
+    manufacturer: string;
+    name: string;
+    pitch: number;
+    nits: number;
+    weightDensityLbm2: number;
+    powerDensityWm2: number;
+    productType?: string;
+    extendedSpecs?: any;
+    cabinetWidthMm?: number;
+    cabinetHeightMm?: number;
+    moduleWidthMm?: number;
+    moduleHeightMm?: number;
+  }>();
   if (selectedProductIds.length > 0) {
     try {
       const { prisma } = await import("@/lib/prisma");
@@ -356,6 +369,10 @@ export async function generateScopingWorkbook(
           powerDensityWm2: p.maxPowerWattsPerCab / ((p.cabinetWidthMm * p.cabinetHeightMm) / 1e6),
           productType: p.productType,
           extendedSpecs: p.extendedSpecs,
+          cabinetWidthMm: (p as any).cabinetWidthMm,
+          cabinetHeightMm: (p as any).cabinetHeightMm,
+          moduleWidthMm: (p as any).moduleWidthMm,
+          moduleHeightMm: (p as any).moduleHeightMm,
         });
       }
       console.log(`[ScopingWorkbook] Loaded ${dbProductMap.size} user-selected DB products`);
@@ -385,11 +402,61 @@ export async function generateScopingWorkbook(
   const supplyOnlyProject = ov?.servicesMarginPct === 0;
   const effectiveIncludeBond = includeBond && !supplyOnlyProject;
 
+  const populateActiveDims = async (spec: ExtractedLEDSpec) => {
+    if (!spec.widthFt || !spec.heightFt || (spec.activeWidthFt && spec.activeHeightFt)) return;
+
+    const selectedProduct = spec.selectedProductId ? resolveProduct(spec.selectedProductId) as any : null;
+    const cabinetWidthMm =
+      selectedProduct?.defaultCabinet?.widthMm
+      ?? selectedProduct?.cabinetWidthMm
+      ?? null;
+    const cabinetHeightMm =
+      selectedProduct?.defaultCabinet?.heightMm
+      ?? selectedProduct?.cabinetHeightMm
+      ?? null;
+    const moduleWidthMm =
+      selectedProduct?.moduleWidthMm
+      ?? selectedProduct?.smallCabinet?.widthMm
+      ?? null;
+    const moduleHeightMm =
+      selectedProduct?.moduleHeightMm
+      ?? selectedProduct?.smallCabinet?.heightMm
+      ?? null;
+
+    if (selectedProduct && cabinetWidthMm && cabinetHeightMm) {
+      const snapW = snapDimension(spec.widthFt * 304.8, cabinetWidthMm, moduleWidthMm ?? undefined);
+      const snapH = snapDimension(spec.heightFt * 304.8, cabinetHeightMm, moduleHeightMm ?? undefined);
+      spec.activeWidthFt = snapW.totalMm / 304.8;
+      spec.activeHeightFt = snapH.totalMm / 304.8;
+      return;
+    }
+
+    try {
+      const match = await ProductMatcher.matchProduct({
+        widthFt: spec.widthFt,
+        heightFt: spec.heightFt,
+        pixelPitch: parsePitchFromProductName(spec.selectedProductName) ?? spec.pixelPitchMm ?? undefined,
+        brightnessNits: spec.brightnessNits ?? undefined,
+        isOutdoor: spec.environment === "outdoor",
+        manufacturer: selectedProduct?.manufacturer,
+      });
+      if (match.activeWidthFt && match.activeHeightFt) {
+        spec.activeWidthFt = match.activeWidthFt;
+        spec.activeHeightFt = match.activeHeightFt;
+      }
+    } catch (err) {
+      console.warn(`[ScopingWorkbook] Active dimension match failed for "${spec.name}":`, err);
+    }
+  };
+
   // Split base bid vs alternates.
   // Analyzer export can include alternates directly in the main workbook so the
   // exported LED Cost Sheet matches the interactive analyzer view.
   const baseSpecs = includeAlternatesInBase ? allSpecs : allSpecs.filter((s) => !s.isAlternate);
   const altSpecs = includeAlternatesInBase ? [] : allSpecs.filter((s) => s.isAlternate);
+
+  await Promise.all(baseSpecs.map(populateActiveDims));
+  await Promise.all(altSpecs.map(populateActiveDims));
 
   // Match pricedDisplays to base specs only
   const basePricedDisplays = allPricedDisplays
