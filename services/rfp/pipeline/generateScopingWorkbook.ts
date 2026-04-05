@@ -1518,7 +1518,9 @@ function buildLedCostSheet(
 
   // Master LED Margin Override (yellow cell) — changing this overrides all display margins
   const masterMarginRow = 2;
-  const masterMarginLabel = ws.getCell(masterMarginRow, 21); // column U
+  ws.mergeCells(masterMarginRow, 19, masterMarginRow, 21); // S:U
+  ws.getRow(masterMarginRow).height = 22;
+  const masterMarginLabel = ws.getCell(masterMarginRow, 19); // merged S:U
   masterMarginLabel.value = "LED Margin Override →";
   masterMarginLabel.font = { bold: true, name: "Calibri", size: 11 };
   masterMarginLabel.alignment = { horizontal: "right", vertical: "middle" };
