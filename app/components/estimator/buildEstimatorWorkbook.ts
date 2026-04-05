@@ -261,7 +261,17 @@ export function buildEstimatorWorkbook(
           if (displayIdx >= 0 && displayIdx < options.displayProductIds.length) {
             // Product dropdown (col 5 = F)
             if (c === LED_PRODUCT_COL && dropdownOpts.length > 0) {
-              sc.value = options.displayProductIds[displayIdx] || "";
+              const currentProductId = options.displayProductIds[displayIdx] || "";
+              if (currentProductId) {
+                sc.value = currentProductId;
+              } else {
+                const workbookProductName = String(cellValue(cell) || "").trim();
+                const resolvedOption = options.products.find((p) =>
+                  p.name.trim().toLowerCase() === workbookProductName.toLowerCase()
+                  || p.label.trim().toLowerCase() === workbookProductName.toLowerCase()
+                );
+                sc.value = resolvedOption?.id || "";
+              }
               sc.dropdown = dropdownOpts;
               sc.onDropdownChange = (val: string) => options.onProductSelect(displayIdx, val);
             }
