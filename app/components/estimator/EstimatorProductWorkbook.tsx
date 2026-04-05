@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import WorkbookShell from "@/app/components/reusables/WorkbookShell";
 import type { WorkbookData } from "@/app/components/reusables/workbookTypes";
 import type { EstimatorAnswers } from "./questions";
+import { snapDimension } from "@/services/catalog/productMatcher";
 
 interface ProductOption {
   id: string;
@@ -14,6 +15,8 @@ interface ProductOption {
   nits?: number;
   widthMm?: number;
   heightMm?: number;
+  moduleWidthMm?: number;
+  moduleHeightMm?: number;
 }
 
 interface EstimatorProductWorkbookProps {
@@ -56,8 +59,16 @@ export default function EstimatorProductWorkbook({
           rows: answers.displays.map((display, idx) => {
             const selectedProductId = display.productId || "";
             const product = products.find((p) => p.id === selectedProductId);
-            const widthFt = display.widthFt || 0;
-            const heightFt = display.heightFt || 0;
+            const requestedWidthFt = display.widthFt || 0;
+            const requestedHeightFt = display.heightFt || 0;
+            const snappedWidthMm = product?.widthMm && requestedWidthFt > 0
+              ? snapDimension(requestedWidthFt * 304.8, product.widthMm, product.moduleWidthMm).totalMm
+              : requestedWidthFt * 304.8;
+            const snappedHeightMm = product?.heightMm && requestedHeightFt > 0
+              ? snapDimension(requestedHeightFt * 304.8, product.heightMm, product.moduleHeightMm).totalMm
+              : requestedHeightFt * 304.8;
+            const widthFt = snappedWidthMm / 304.8;
+            const heightFt = snappedHeightMm / 304.8;
             const qty = 1;
             const pitch = product?.pitch ?? (parseFloat(display.pixelPitch || "0") || 0);
             const widthPx = pitch > 0 ? Math.round(widthFt * 304.8 / pitch) : 0;
