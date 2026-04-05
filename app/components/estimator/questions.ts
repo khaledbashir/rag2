@@ -809,6 +809,8 @@ export interface DisplayAnswers {
     displayType: string;       // Preset key or "custom"
     displayName: string;
     locationType: string;
+    rfpWidthFt?: number;
+    rfpHeightFt?: number;
     widthFt: number;
     heightFt: number;
     quantity: number;
@@ -881,6 +883,8 @@ export function getDefaultDisplayAnswers(): DisplayAnswers {
         displayType: "",
         displayName: "",
         locationType: "wall",
+        rfpWidthFt: 0,
+        rfpHeightFt: 0,
         widthFt: 0,
         heightFt: 0,
         quantity: 1,

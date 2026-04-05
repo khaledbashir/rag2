@@ -191,6 +191,8 @@ export default function QuestionFlow({
                 displayName: d.displayName || "",
                 displayType: d.displayType || "custom",
                 locationType: d.locationType || "wall",
+                rfpWidthFt: d.rfpWidthFt || d.widthFt || 0,
+                rfpHeightFt: d.rfpHeightFt || d.heightFt || 0,
                 widthFt: d.widthFt || 0,
                 heightFt: d.heightFt || 0,
                 quantity: d.quantity || 1,

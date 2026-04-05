@@ -9,6 +9,7 @@ import type { EstimatorAnswers, DisplayAnswers } from "@/app/components/estimato
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "@/services/rfp/unified/types";
 import type { ScopingWorkbookOptions, FinancialOverrides } from "./generateScopingWorkbook";
 import { type InstallComplexity, getProduct } from "@/services/rfp/productCatalog";
+import { snapDimension } from "@/services/catalog/productMatcher";
 
 const DISPLAY_TYPE_LABELS: Record<string, string> = {
   "main-scoreboard": "Main Scoreboard",
@@ -48,35 +49,42 @@ function humanizeType(value: string | null | undefined): string | null {
 
 function mapDisplay(d: DisplayAnswers, env: "indoor" | "outdoor"): ExtractedLEDSpec {
   const pitch = parseFloat(d.pixelPitch) || null;
-  let widthFt = d.widthFt || null;
-  let heightFt = d.heightFt || null;
+  const rfpWidthFt = d.rfpWidthFt || d.widthFt || null;
+  const rfpHeightFt = d.rfpHeightFt || d.heightFt || null;
+  const workingWidthFt = d.widthFt || null;
+  const workingHeightFt = d.heightFt || null;
+  let activeWidthFt = workingWidthFt;
+  let activeHeightFt = workingHeightFt;
 
-  // Snap dimensions to actual cabinet sizes when a product is selected
-  // LED cabinets come in fixed sizes — actual display dimensions are always
-  // multiples of the cabinet (or module) size, not the user's round numbers.
-  if (widthFt && heightFt && d.productId) {
+  if (workingWidthFt && workingHeightFt && d.productId) {
     const prod = getProduct(d.productId);
     if (prod?.defaultCabinet) {
-      const unitW = prod.defaultCabinet.widthMm;
-      const unitH = prod.defaultCabinet.heightMm;
-      const cols = Math.max(1, Math.round((widthFt * 304.8) / unitW));
-      const rows = Math.max(1, Math.round((heightFt * 304.8) / unitH));
-      widthFt = Math.round((cols * unitW) / 304.8 * 10000) / 10000;
-      heightFt = Math.round((rows * unitH) / 304.8 * 10000) / 10000;
+      const snapW = snapDimension(
+        workingWidthFt * 304.8,
+        prod.defaultCabinet.widthMm,
+        prod.smallCabinet?.widthMm,
+      );
+      const snapH = snapDimension(
+        workingHeightFt * 304.8,
+        prod.defaultCabinet.heightMm,
+        prod.smallCabinet?.heightMm,
+      );
+      activeWidthFt = Math.round((snapW.totalMm / 304.8) * 10000) / 10000;
+      activeHeightFt = Math.round((snapH.totalMm / 304.8) * 10000) / 10000;
     }
   }
 
   // Courtside/stanchion: use fixed pixel specs stored on display answers; LED: formula
-  const widthPx = d.fixedWidthPx || (pitch && widthFt ? Math.round((widthFt * 304.8) / pitch) : null);
-  const heightPx = d.fixedHeightPx || (pitch && heightFt ? Math.round((heightFt * 304.8) / pitch) : null);
+  const widthPx = d.fixedWidthPx || (pitch && activeWidthFt ? Math.round((activeWidthFt * 304.8) / pitch) : null);
+  const heightPx = d.fixedHeightPx || (pitch && activeHeightFt ? Math.round((activeHeightFt * 304.8) / pitch) : null);
   const displayLabel = d.displayName?.trim() || humanizeType(d.displayType) || "Unnamed Display";
   const mountingLabel = humanizeType(d.locationType);
 
   return {
     name: displayLabel,
     location: d.locationType || "",
-    widthFt,
-    heightFt,
+    widthFt: rfpWidthFt,
+    heightFt: rfpHeightFt,
     widthPx,
     heightPx,
     pixelPitchMm: pitch,
@@ -94,6 +102,8 @@ function mapDisplay(d: DisplayAnswers, env: "indoor" | "outdoor"): ExtractedLEDS
     citation: "Budget Estimator",
     notes: null,
     isAlternate: false,
+    activeWidthFt,
+    activeHeightFt,
     selectedProductId: d.productId || null,
     selectedProductName: d.productName || null,
   };

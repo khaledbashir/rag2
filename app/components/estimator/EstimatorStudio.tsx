@@ -258,6 +258,27 @@ export default function EstimatorStudio({
         });
     }, [availableProducts, resolveDisplayToLedProduct]);
 
+    useEffect(() => {
+        setAnswers((prev) => {
+            let changed = false;
+            const displays = prev.displays.map((display) => {
+                const nextDisplay = {
+                    ...display,
+                    rfpWidthFt: display.rfpWidthFt || display.widthFt || 0,
+                    rfpHeightFt: display.rfpHeightFt || display.heightFt || 0,
+                };
+                if (
+                    nextDisplay.rfpWidthFt !== display.rfpWidthFt
+                    || nextDisplay.rfpHeightFt !== display.rfpHeightFt
+                ) {
+                    changed = true;
+                }
+                return nextDisplay;
+            });
+            return changed ? { ...prev, displays } : prev;
+        });
+    }, []);
+
     // Calculate per-display cost breakdowns (used by copilot for query responses)
     const calcs = useMemo(() => {
         return answers.displays.map((d) => {
