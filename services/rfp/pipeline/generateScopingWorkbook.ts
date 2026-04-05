@@ -1583,11 +1583,13 @@ function buildLedCostSheet(
   const productListRef = `'_Products'!$A$1:$A$${productNames.length}`;
   const prodRange = `'_Products'!$A$1:$G$${productNames.length}`;
 
-  // Master LED Margin Override (yellow cell) — changing this overrides all display margins
+  // Master LED Margin Override (yellow cell) — keep the label in a single cell
+  // so both the web preview and exported Excel avoid duplicated merged-cell text.
   const masterMarginRow = 2;
-  ws.mergeCells(masterMarginRow, 19, masterMarginRow, 21); // S:U
   ws.getRow(masterMarginRow).height = 22;
-  const masterMarginLabel = ws.getCell(masterMarginRow, 19); // merged S:U
+  ws.getCell(masterMarginRow, 19).value = null; // S
+  ws.getCell(masterMarginRow, 20).value = null; // T
+  const masterMarginLabel = ws.getCell(masterMarginRow, 21); // U
   masterMarginLabel.value = "LED Margin Override →";
   masterMarginLabel.font = { bold: true, name: "Calibri", size: 11 };
   masterMarginLabel.alignment = { horizontal: "right", vertical: "middle" };
