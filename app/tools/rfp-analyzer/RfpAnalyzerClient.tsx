@@ -2820,7 +2820,20 @@ export default function RfpAnalyzerClient() {
                     ledCostSheet.editableColumns = ledCostSheet.editableColumns.filter((col) => col !== 21);
                   }
                   return (
-                    <div className="h-full overflow-auto rounded-lg bg-white">
+                    <div className="relative h-full overflow-auto rounded-lg bg-white">
+                      {serverWorkbookLoading && (
+                        <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-full border border-border bg-background/95 px-2.5 py-1 shadow-sm backdrop-blur-sm">
+                          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                            <Loader2 className="w-3 h-3 animate-spin text-[#0A52EF]" />
+                            Updating…
+                          </div>
+                        </div>
+                      )}
+                      {serverWorkbookError && !serverWorkbookLoading && (
+                        <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-md border border-red-200 bg-red-50/95 px-2.5 py-1.5 text-[10px] text-red-600 shadow-sm backdrop-blur-sm dark:border-red-900/40 dark:bg-red-950/80 dark:text-red-300">
+                          Preview refresh failed
+                        </div>
+                      )}
                       <WorkbookShell
                         data={wbData}
                         editable

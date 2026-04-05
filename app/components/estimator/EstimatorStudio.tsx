@@ -698,9 +698,42 @@ export default function EstimatorStudio({
     }, [projectId, converting, router, confirm, showAlert]);
 
     const handleAutoRfpApply = useCallback((rfpAnswers: EstimatorAnswers) => {
-        setAnswers(rfpAnswers);
+        const resolvedDisplays = rfpAnswers.displays.map((display) => {
+            const currentPitch = parseFloat(display.pixelPitch || "0") || 0;
+            const currentName = (display.productName || "").trim().toLowerCase();
+
+            // Auto-RFP can return legacy/static catalog product IDs. Reconcile them to the
+            // live estimator dropdown catalog so the selected product actually appears.
+            const resolvedProduct = availableProducts.find((p) => p.id === display.productId)
+                || availableProducts.find((p) => p.name.trim().toLowerCase() === currentName)
+                || availableProducts.find((p) =>
+                    currentPitch > 0
+                    && Math.abs((p.pitch || 0) - currentPitch) < 0.05
+                    && (!display.productName || p.name.toLowerCase().includes(currentName) || currentName.includes(p.name.toLowerCase()))
+                )
+                || availableProducts.find((p) => currentPitch > 0 && Math.abs((p.pitch || 0) - currentPitch) < 0.05);
+
+            if (!resolvedProduct) {
+                return {
+                    ...display,
+                    productId: "",
+                };
+            }
+
+            return {
+                ...display,
+                productId: resolvedProduct.id,
+                productName: resolvedProduct.name,
+                pixelPitch: resolvedProduct.pitch ? String(resolvedProduct.pitch) : display.pixelPitch,
+            };
+        });
+
+        setAnswers({
+            ...rfpAnswers,
+            displays: resolvedDisplays,
+        });
         setAutoRfpOpen(false);
-    }, []);
+    }, [availableProducts]);
 
     const handleDuplicate = useCallback(async () => {
         if (!projectId || duplicating) return;
@@ -1077,7 +1110,7 @@ export default function EstimatorStudio({
 
                 {/* Center/Right: Excel Preview */}
                 <section className="relative min-w-0 min-h-0 bg-zinc-100 dark:bg-zinc-950 flex flex-col p-3 pb-0">
-                    {serverPreviewLoading && (
+                    {serverPreviewLoading && !serverPreview && (
                         <div className="flex-1 flex items-center justify-center">
                             <div className="flex flex-col items-center gap-3">
                                 <Loader2 className="w-6 h-6 animate-spin text-[#0A52EF]" />
@@ -1085,12 +1118,12 @@ export default function EstimatorStudio({
                             </div>
                         </div>
                     )}
-                    {serverPreviewError && !serverPreviewLoading && (
+                    {serverPreviewError && !serverPreviewLoading && !serverPreview && (
                         <div className="flex-1 flex items-center justify-center">
                             <p className="text-xs text-destructive">{serverPreviewError}</p>
                         </div>
                     )}
-                    {serverPreview && !serverPreviewLoading && (() => {
+                    {serverPreview && (() => {
                         const wbData = buildEstimatorWorkbook(serverPreview, availableProducts.length > 0 ? {
                             products: availableProducts,
                             displayProductIds: answers.displays.map((d) => d.productId || ""),
@@ -1147,7 +1180,20 @@ export default function EstimatorStudio({
                             // No onQtyChange — Qty is free-type editable via onCellEdit + editableColumns
                         } : undefined);
                         return (
-                            <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-border bg-white">
+                            <div className="relative flex-1 min-h-0 overflow-auto rounded-lg border border-border bg-white">
+                                {serverPreviewLoading && (
+                                    <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-full border border-border bg-background/95 px-2.5 py-1 shadow-sm backdrop-blur-sm">
+                                        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                                            <Loader2 className="h-3 w-3 animate-spin text-[#0A52EF]" />
+                                            Updating…
+                                        </div>
+                                    </div>
+                                )}
+                                {serverPreviewError && !serverPreviewLoading && (
+                                    <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-md border border-red-200 bg-red-50/95 px-2.5 py-1.5 text-[10px] text-red-600 shadow-sm backdrop-blur-sm dark:border-red-900/40 dark:bg-red-950/80 dark:text-red-300">
+                                        Preview refresh failed
+                                    </div>
+                                )}
                                 <WorkbookShell
                                     data={wbData}
                                     editable

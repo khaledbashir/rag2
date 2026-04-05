@@ -816,13 +816,23 @@ export default function AnalysisDetailPage() {
                     ledCostSheet.editableColumns = ledCostSheet.editableColumns.filter((col) => col !== 21);
                   }
                   return (
-                    <WorkbookShell
-                      data={wbData}
-                      editable
-                      onCellEdit={handleHistoryCellEdit}
-                      activeTab={activeWorkbookTab}
-                      onTabChange={setActiveWorkbookTab}
-                    />
+                    <div className="relative h-full">
+                      {serverWorkbookLoading && (
+                        <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-full border border-border bg-background/95 px-2.5 py-1 shadow-sm backdrop-blur-sm">
+                          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                            <Loader2 className="w-3 h-3 animate-spin text-[#0A52EF]" />
+                            Updating…
+                          </div>
+                        </div>
+                      )}
+                      <WorkbookShell
+                        data={wbData}
+                        editable
+                        onCellEdit={handleHistoryCellEdit}
+                        activeTab={activeWorkbookTab}
+                        onTabChange={setActiveWorkbookTab}
+                      />
+                    </div>
                   );
                 })() : null}
               </div>
