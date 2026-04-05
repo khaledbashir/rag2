@@ -144,6 +144,19 @@ function cellValue(cell: UniverCell): string | number {
   return cell.v;
 }
 
+function collapseAdjacentDuplicateLabels(cells: SheetCell[]): SheetCell[] {
+  let lastVisibleText = "";
+  return cells.map((cell) => {
+    const text = String(cell.value || "").trim();
+    const isDuplicateLabel = !cell.highlight && !!text && text === lastVisibleText;
+    if (isDuplicateLabel) {
+      return { ...cell, value: "" };
+    }
+    if (text) lastVisibleText = text;
+    return cell;
+  });
+}
+
 // ─── Builder ────────────────────────────────────────────────────────────────
 
 export function buildEstimatorWorkbook(
@@ -225,7 +238,7 @@ export function buildEstimatorWorkbook(
                 highlight: hasYellowBg(cell),
               });
             }
-            rows.push({ cells: specialCells, isHeader: true, sourceRow: r });
+            rows.push({ cells: collapseAdjacentDuplicateLabels(specialCells), isHeader: true, sourceRow: r });
           }
         }
         continue;
