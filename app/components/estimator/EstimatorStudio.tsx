@@ -206,6 +206,58 @@ export default function EstimatorStudio({
         };
     }, []);
 
+    const resolveDisplayToLedProduct = useCallback((display: DisplayAnswers) => {
+        const currentPitch = parseFloat(display.pixelPitch || "0") || 0;
+        const currentName = (display.productName || "").trim().toLowerCase();
+
+        const resolvedProduct = availableProducts.find((p) => p.id === display.productId)
+            || availableProducts.find((p) => p.name.trim().toLowerCase() === currentName)
+            || availableProducts.find((p) =>
+                currentPitch > 0
+                && Math.abs((p.pitch || 0) - currentPitch) < 0.05
+                && (!currentName || p.name.toLowerCase().includes(currentName) || currentName.includes(p.name.toLowerCase()))
+            )
+            || availableProducts.find((p) => currentPitch > 0 && Math.abs((p.pitch || 0) - currentPitch) < 0.05);
+
+        if (!resolvedProduct) {
+            return display.productId || display.productName
+                ? {
+                    ...display,
+                    productId: "",
+                    productName: "",
+                }
+                : display;
+        }
+
+        if (
+            display.productId === resolvedProduct.id
+            && display.productName === resolvedProduct.name
+            && String(display.pixelPitch || "") === String(resolvedProduct.pitch || "")
+        ) {
+            return display;
+        }
+
+        return {
+            ...display,
+            productId: resolvedProduct.id,
+            productName: resolvedProduct.name,
+            pixelPitch: resolvedProduct.pitch ? String(resolvedProduct.pitch) : display.pixelPitch,
+        };
+    }, [availableProducts]);
+
+    useEffect(() => {
+        if (availableProducts.length === 0) return;
+        setAnswers((prev) => {
+            let changed = false;
+            const displays = prev.displays.map((display) => {
+                const resolved = resolveDisplayToLedProduct(display);
+                if (resolved !== display) changed = true;
+                return resolved;
+            });
+            return changed ? { ...prev, displays } : prev;
+        });
+    }, [availableProducts, resolveDisplayToLedProduct]);
+
     // Calculate per-display cost breakdowns (used by copilot for query responses)
     const calcs = useMemo(() => {
         return answers.displays.map((d) => {
@@ -698,42 +750,14 @@ export default function EstimatorStudio({
     }, [projectId, converting, router, confirm, showAlert]);
 
     const handleAutoRfpApply = useCallback((rfpAnswers: EstimatorAnswers) => {
-        const resolvedDisplays = rfpAnswers.displays.map((display) => {
-            const currentPitch = parseFloat(display.pixelPitch || "0") || 0;
-            const currentName = (display.productName || "").trim().toLowerCase();
-
-            // Auto-RFP can return legacy/static catalog product IDs. Reconcile them to the
-            // live estimator dropdown catalog so the selected product actually appears.
-            const resolvedProduct = availableProducts.find((p) => p.id === display.productId)
-                || availableProducts.find((p) => p.name.trim().toLowerCase() === currentName)
-                || availableProducts.find((p) =>
-                    currentPitch > 0
-                    && Math.abs((p.pitch || 0) - currentPitch) < 0.05
-                    && (!display.productName || p.name.toLowerCase().includes(currentName) || currentName.includes(p.name.toLowerCase()))
-                )
-                || availableProducts.find((p) => currentPitch > 0 && Math.abs((p.pitch || 0) - currentPitch) < 0.05);
-
-            if (!resolvedProduct) {
-                return {
-                    ...display,
-                    productId: "",
-                };
-            }
-
-            return {
-                ...display,
-                productId: resolvedProduct.id,
-                productName: resolvedProduct.name,
-                pixelPitch: resolvedProduct.pitch ? String(resolvedProduct.pitch) : display.pixelPitch,
-            };
-        });
+        const resolvedDisplays = rfpAnswers.displays.map(resolveDisplayToLedProduct);
 
         setAnswers({
             ...rfpAnswers,
             displays: resolvedDisplays,
         });
         setAutoRfpOpen(false);
-    }, [availableProducts]);
+    }, [resolveDisplayToLedProduct]);
 
     const handleDuplicate = useCallback(async () => {
         if (!projectId || duplicating) return;

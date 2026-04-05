@@ -115,6 +115,7 @@ export class ProductMatcher {
             const dbProducts = await prisma.manufacturerProduct.findMany({
                 where: {
                     isActive: true,
+                    productType: "led",
                     ...(spec.manufacturer ? { manufacturer: { equals: spec.manufacturer, mode: "insensitive" as const } } : {}),
                 },
                 orderBy: { pixelPitch: "asc" },
@@ -259,7 +260,10 @@ export class ProductMatcher {
     static async listProducts(environment?: "indoor" | "outdoor"): Promise<MatchedProduct[]> {
         try {
             const dbProducts = await prisma.manufacturerProduct.findMany({
-                where: { isActive: true },
+                where: {
+                    isActive: true,
+                    productType: "led",
+                },
                 orderBy: { pixelPitch: "asc" },
             });
 
