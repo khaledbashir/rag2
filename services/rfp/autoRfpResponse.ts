@@ -276,6 +276,35 @@ interface ProductMatch {
     pitchDelta: number;
 }
 
+function scoreCatalogCandidate(screen: ExtractedScreen, product: ProductType, targetPitch: number): number {
+    const text = `${screen.name} ${screen.location}`.toLowerCase();
+    const productText = `${product.name} ${product.hardware} ${product.manufacturer}`.toLowerCase();
+    const wantsMesh = /mesh|transparent|see.?through/.test(text);
+    const ribbonLike = /ribbon|fascia|perimeter|banner/.test(text);
+    const scoreboardLike = /scoreboard|video\s*board|videoboard|center.?hung|main/.test(text);
+    const pitchPenalty = Math.abs(product.pitchMm - targetPitch) * 20;
+    const nitsPenalty = screen.brightness && product.brightnessNits < screen.brightness
+        ? 1000 + ((screen.brightness - product.brightnessNits) / Math.max(screen.brightness, 1)) * 100
+        : 0;
+
+    let contextualPenalty = 0;
+    if (/mesh|transparent|see.?through/.test(productText) && !wantsMesh) contextualPenalty += 500;
+    if (wantsMesh && !/mesh|transparent|see.?through/.test(productText)) contextualPenalty += 80;
+
+    if (scoreboardLike) {
+        if (/fascia|halo|perimeter|aura/.test(productText)) contextualPenalty += 120;
+        if (/mesh|transparent|see.?through/.test(productText)) contextualPenalty += 250;
+    }
+
+    if (ribbonLike) {
+        if (/radiance|corona/.test(productText)) contextualPenalty += 80;
+        if (/fascia|halo|perimeter|aura/.test(productText)) contextualPenalty -= 20;
+    }
+
+    const manufacturerBias = /yaham/i.test(product.manufacturer) ? -3 : /\blg\b/i.test(product.manufacturer) ? 1 : 0;
+    return pitchPenalty + nitsPenalty + contextualPenalty + manufacturerBias;
+}
+
 function matchScreenToProduct(screen: ExtractedScreen, catalog: ProductType[]): ProductMatch {
     const isOutdoor = screen.environment === "outdoor";
     const targetPitch = screen.pixelPitchMm;
@@ -288,7 +317,7 @@ function matchScreenToProduct(screen: ExtractedScreen, catalog: ProductType[]): 
     if (candidates.length === 0) candidates = catalog;
 
     if (targetPitch && targetPitch > 0) {
-        candidates.sort((a, b) => Math.abs(a.pitchMm - targetPitch) - Math.abs(b.pitchMm - targetPitch));
+        candidates.sort((a, b) => scoreCatalogCandidate(screen, a, targetPitch) - scoreCatalogCandidate(screen, b, targetPitch));
         const best = candidates[0];
         const pitchDiff = Math.abs(best.pitchMm - targetPitch);
         const fitScore = Math.max(0, Math.round(100 - (pitchDiff / targetPitch) * 100));
@@ -306,7 +335,7 @@ function matchScreenToProduct(screen: ExtractedScreen, catalog: ProductType[]): 
         defaultPitch = area > 500 ? 10 : area > 100 ? 4 : 2.5;
     }
 
-    candidates.sort((a, b) => Math.abs(a.pitchMm - defaultPitch) - Math.abs(b.pitchMm - defaultPitch));
+    candidates.sort((a, b) => scoreCatalogCandidate(screen, a, defaultPitch) - scoreCatalogCandidate(screen, b, defaultPitch));
     const best = candidates[0];
     const pitchDiff = Math.abs(best.pitchMm - defaultPitch);
     return { product: best, fitScore: 50, matchConfidence: "low", pitchDelta: pitchDiff };

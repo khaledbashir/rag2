@@ -8,6 +8,62 @@ function parsePitchFromProductName(name: string | null | undefined): number | nu
   return m ? parseFloat(m[1]) : null;
 }
 
+function chooseContextualFallbackProduct(
+  products: Array<{ name: string; manufacturer: string; pitchMm: number; environment: "Indoor" | "Outdoor" | "Both" }>,
+  pitch: number,
+  environment: string,
+  contextText: string,
+) {
+  const loweredContext = contextText.toLowerCase();
+  const wantsMesh = /mesh|transparent|see.?through/.test(loweredContext);
+  const ribbonLike = /ribbon|fascia|perimeter|banner/.test(loweredContext);
+  const scoreboardLike = /scoreboard|video\s*board|videoboard|center.?hung|main/.test(loweredContext);
+
+  const envProducts = products.filter((p) =>
+    p.environment === "Both" || p.environment.toLowerCase() === environment.toLowerCase()
+  );
+
+  return envProducts.reduce<typeof envProducts[number] | undefined>((best, product) => {
+    const text = `${product.name} ${product.manufacturer}`.toLowerCase();
+    let score = Math.abs(product.pitchMm - pitch) * 20;
+
+    if (/mesh|transparent|see.?through/.test(text) && !wantsMesh) score += 500;
+    if (wantsMesh && !/mesh|transparent|see.?through/.test(text)) score += 80;
+
+    if (scoreboardLike) {
+      if (/fascia|halo|perimeter|aura/.test(text)) score += 120;
+      if (/mesh|transparent|see.?through/.test(text)) score += 250;
+    }
+
+    if (ribbonLike) {
+      if (/radiance|corona/.test(text)) score += 80;
+      if (/fascia|halo|perimeter|aura/.test(text)) score -= 20;
+    }
+
+    if (/yaham/i.test(product.manufacturer)) score -= 3;
+    else if (/\blg\b/i.test(product.manufacturer)) score += 1;
+
+    if (!best) return product;
+
+    const bestText = `${best.name} ${best.manufacturer}`.toLowerCase();
+    let bestScore = Math.abs(best.pitchMm - pitch) * 20;
+    if (/mesh|transparent|see.?through/.test(bestText) && !wantsMesh) bestScore += 500;
+    if (wantsMesh && !/mesh|transparent|see.?through/.test(bestText)) bestScore += 80;
+    if (scoreboardLike) {
+      if (/fascia|halo|perimeter|aura/.test(bestText)) bestScore += 120;
+      if (/mesh|transparent|see.?through/.test(bestText)) bestScore += 250;
+    }
+    if (ribbonLike) {
+      if (/radiance|corona/.test(bestText)) bestScore += 80;
+      if (/fascia|halo|perimeter|aura/.test(bestText)) bestScore -= 20;
+    }
+    if (/yaham/i.test(best.manufacturer)) bestScore -= 3;
+    else if (/\blg\b/i.test(best.manufacturer)) bestScore += 1;
+
+    return score < bestScore ? product : best;
+  }, envProducts[0]);
+}
+
 /**
  * Full Scoping Workbook Generator
  *
@@ -1546,12 +1602,12 @@ function buildLedCostSheet(
       const pitch = effectivePitch || d.spec.pixelPitchMm || 0;
       const env = d.spec.environment || "indoor";
       if (pitch > 0) {
-        const envProducts = sortedProducts.filter((p) =>
-          p.environment === "Both" || p.environment.toLowerCase() === env.toLowerCase()
+        const bestMatch = chooseContextualFallbackProduct(
+          sortedProducts,
+          pitch,
+          env,
+          `${d.spec.name} ${d.spec.location || ""} ${d.spec.mountingType || ""}`,
         );
-        const bestMatch = envProducts.reduce((best, p) =>
-          Math.abs(p.pitchMm - pitch) < Math.abs((best?.pitchMm ?? 999) - pitch) ? p : best
-        , envProducts[0]);
         if (bestMatch) productNameForF = getProductName(bestMatch);
       }
     }
@@ -1801,12 +1857,12 @@ function buildLedCostSheet(
         altProductName = d.spec.selectedProductName;
       } else if (altPitch && altPitch > 0) {
         const env = d.spec.environment || "indoor";
-        const envProducts = sortedProducts.filter((p) =>
-          p.environment === "Both" || p.environment.toLowerCase() === env.toLowerCase()
+        const bestMatch = chooseContextualFallbackProduct(
+          sortedProducts,
+          altPitch,
+          env,
+          `${d.spec.name} ${d.spec.location || ""} ${d.spec.mountingType || ""}`,
         );
-        const bestMatch = envProducts.reduce((best, p) =>
-          Math.abs(p.pitchMm - altPitch) < Math.abs((best?.pitchMm ?? 999) - altPitch) ? p : best
-        , envProducts[0]);
         if (bestMatch) altProductName = getProductName(bestMatch);
       }
       const altCatalogProduct = sortedProducts.find((p) => getProductName(p) === altProductName);
