@@ -15,33 +15,18 @@ import type { EstimatorAnswers } from "@/app/components/estimator/questions";
 import { log } from "@/lib/logger";
 import { logActivity } from "@/services/proposal/server/activityLogService";
 import ExcelJS from "exceljs";
-import { preloadRateCard, getRateSync } from "@/services/rfp/rateCardLoader";
-import { calculateDisplay, type RateCard } from "@/app/components/estimator/EstimatorBridge";
+type ExcelFormulaValue = { formula?: string; result?: unknown };
 
-function round2(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-function createLiveRateCard(): RateCard {
-  return new Proxy({} as RateCard, {
-    get(_target, prop) {
-      if (typeof prop !== "string") return undefined;
-      try {
-        return getRateSync(prop);
-      } catch {
-        return undefined;
-      }
-    },
-  });
+function cellNumber(cell: ExcelJS.Cell): number {
+  const value = cell.value as ExcelFormulaValue | number | null;
+  if (typeof value === "number") return value;
+  if (value && typeof value === "object" && typeof value.result === "number") return value.result;
+  return 0;
 }
 
 async function alignEstimatorSqFtRate(
   buffer: Buffer | Uint8Array | ArrayBuffer,
-  answers: EstimatorAnswers,
 ): Promise<Buffer> {
-  await preloadRateCard();
-  const liveRateCard = createLiveRateCard();
-
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer));
 
@@ -50,13 +35,21 @@ async function alignEstimatorSqFtRate(
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
-  answers.displays.forEach((display, index) => {
-    const calc = calculateDisplay(display, answers, liveRateCard);
-    const row = 4 + index; // LED Cost Sheet data starts at row 4 for base displays
+  for (let row = 4; row <= ledSheet.rowCount; row++) {
+    const label = String(ledSheet.getCell(row, 1).value ?? "").trim().toUpperCase();
+    if (!label) continue;
+    if (label.startsWith("TOTAL")) break;
+
+    const totalSqFt = cellNumber(ledSheet.getCell(row, 13)); // M
+    const displayCost = cellNumber(ledSheet.getCell(row, 17)); // Q
     const rateCell = ledSheet.getCell(row, 16); // P = $/SqFt
-    rateCell.value = round2(calc.costPerSqFt);
-    rateCell.numFmt = '"$"#,##0.00';
-  });
+    const rateResult = totalSqFt > 0 ? displayCost / totalSqFt : 0;
+    rateCell.value = {
+      formula: `IFERROR(Q${row}/M${row},0)`,
+      result: rateResult,
+    };
+    rateCell.numFmt = '"$"#,##0';
+  }
 
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
@@ -78,7 +71,7 @@ export async function POST(req: NextRequest) {
 
     // Generate using the same generator as RFP path
     const { buffer } = await generateScopingWorkbook(options);
-    const patchedBuffer = await alignEstimatorSqFtRate(buffer, answers);
+    const patchedBuffer = await alignEstimatorSqFtRate(buffer);
 
     const safeName = (answers.projectName || answers.clientName || "Budget")
       .replace(/\s+/g, "_")
