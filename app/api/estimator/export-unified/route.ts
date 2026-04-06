@@ -16,55 +16,47 @@ import { log } from "@/lib/logger";
 import { logActivity } from "@/services/proposal/server/activityLogService";
 import ExcelJS from "exceljs";
 import { preloadRateCard, getRateSync } from "@/services/rfp/rateCardLoader";
+import { calculateDisplay, type RateCard } from "@/app/components/estimator/EstimatorBridge";
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-async function alignEstimatorSqFtRate(buffer: Buffer | Uint8Array | ArrayBuffer): Promise<Buffer> {
+function createLiveRateCard(): RateCard {
+  return new Proxy({} as RateCard, {
+    get(_target, prop) {
+      if (typeof prop !== "string") return undefined;
+      try {
+        return getRateSync(prop);
+      } catch {
+        return undefined;
+      }
+    },
+  });
+}
+
+async function alignEstimatorSqFtRate(
+  buffer: Buffer | Uint8Array | ArrayBuffer,
+  answers: EstimatorAnswers,
+): Promise<Buffer> {
   await preloadRateCard();
-  const sparePartsPct = getRateSync("spare_parts.led_pct", 0.05);
-  const spareMultiplier = 1 + sparePartsPct;
+  const liveRateCard = createLiveRateCard();
 
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer));
 
-  const productSheet = workbook.getWorksheet("_Products");
   const ledSheet = workbook.getWorksheet("LED Cost Sheet");
-  if (!productSheet || !ledSheet) {
+  if (!ledSheet) {
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
-  const baseRateByProduct = new Map<string, number>();
-  for (let row = 1; row <= productSheet.rowCount; row++) {
-    const name = String(productSheet.getCell(row, 1).value ?? "").trim();
-    if (!name) continue;
-
-    const loadedRate = Number(productSheet.getCell(row, 4).value ?? 0);
-    const baseRate = loadedRate > 0 ? round2(loadedRate / spareMultiplier) : 0;
-    productSheet.getCell(row, 4).value = baseRate;
-    baseRateByProduct.set(name, baseRate);
-  }
-
-  for (let row = 4; row <= ledSheet.rowCount; row++) {
-    const label = String(ledSheet.getCell(row, 1).value ?? "").trim().toUpperCase();
-    if (!label) continue;
-    if (label.startsWith("TOTAL")) break;
-
-    const productName = String(ledSheet.getCell(row, 6).value ?? "").trim();
-    const sqft = Number(ledSheet.getCell(row, 13).value ?? 0);
-    const currentRateCell = ledSheet.getCell(row, 16);
-    const currentRate = Number(currentRateCell.value ?? 0);
-    const baseRate = baseRateByProduct.get(productName);
-
-    // TV/LCD rows store per-unit pricing here, not $/sqft.
-    if (!baseRate || sqft <= 0 || !Number.isFinite(currentRate) || currentRate <= 0) continue;
-
-    currentRateCell.value = {
-      formula: `IFERROR(VLOOKUP(F${row},'_Products'!$A$1:$G$${productSheet.rowCount},4,FALSE),0)`,
-      result: baseRate,
-    };
-  }
+  answers.displays.forEach((display, index) => {
+    const calc = calculateDisplay(display, answers, liveRateCard);
+    const row = 4 + index; // LED Cost Sheet data starts at row 4 for base displays
+    const rateCell = ledSheet.getCell(row, 16); // P = $/SqFt
+    rateCell.value = round2(calc.costPerSqFt);
+    rateCell.numFmt = '"$"#,##0.00';
+  });
 
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
@@ -86,7 +78,7 @@ export async function POST(req: NextRequest) {
 
     // Generate using the same generator as RFP path
     const { buffer } = await generateScopingWorkbook(options);
-    const patchedBuffer = await alignEstimatorSqFtRate(buffer);
+    const patchedBuffer = await alignEstimatorSqFtRate(buffer, answers);
 
     const safeName = (answers.projectName || answers.clientName || "Budget")
       .replace(/\s+/g, "_")
