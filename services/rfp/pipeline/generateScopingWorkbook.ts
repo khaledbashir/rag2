@@ -1673,7 +1673,10 @@ function buildLedCostSheet(
     // When user changes F (product), all dependent cells auto-recalculate.
     const selectedProduct = d.spec.selectedProductId ? resolveProduct(d.spec.selectedProductId) : null;
     const selectedPitch = (selectedProduct as any)?.pitchMm ?? (selectedProduct as any)?.pitch;
-    const effectivePitch = selectedPitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.match?.module?.pitch ?? d.spec.pixelPitchMm;
+    const effectivePitch = selectedPitch
+      ?? d.match?.module?.pitch
+      ?? parsePitchFromProductName(d.spec.selectedProductName)
+      ?? d.spec.pixelPitchMm;
 
     const selProdName = selectedProduct ? getProductName(selectedProduct) : null;
     
@@ -1925,7 +1928,12 @@ function buildLedCostSheet(
       const dr = ws.getRow(row);
       const rowNum = dr.number;
       const altLabel = d.spec.alternateId || `Alt ${idx + 1}`;
-      const altPitch = d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm;
+      const altSelectedProduct = d.spec.selectedProductId ? resolveProduct(d.spec.selectedProductId) : null;
+      const altSelectedPitch = (altSelectedProduct as any)?.pitchMm ?? (altSelectedProduct as any)?.pitch;
+      const altPitch = altSelectedPitch
+        ?? d.match?.module?.pitch
+        ?? parsePitchFromProductName(d.spec.selectedProductName)
+        ?? d.spec.pixelPitchMm;
 
       // Find the base display this alternate belongs to (for Bundle Equipment reference)
       const altBaseName = (d.spec.name || "").toLowerCase().replace(/\s*—\s*alt.*$/i, "").trim();
@@ -1952,7 +1960,6 @@ function buildLedCostSheet(
         if (bestMatch) altProductName = getProductName(bestMatch);
       }
       const altCatalogProduct = sortedProducts.find((p) => getProductName(p) === altProductName);
-      const altSelectedProduct = d.spec.selectedProductId ? resolveProduct(d.spec.selectedProductId) : null;
 
       // A: Display name with Alt prefix
       dr.getCell(1).value = `${altLabel}: ${d.spec.name}`;
@@ -3475,7 +3482,10 @@ function buildTechSpecsSheet(
     // Resolve product first so we can get correct pitch
     const tsSelectedProduct = d.spec.selectedProductId ? resolveProduct(d.spec.selectedProductId) : null;
     const tsPitch = (tsSelectedProduct as any)?.pitchMm ?? (tsSelectedProduct as any)?.pitch;
-    const effPitch = tsPitch ?? d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm;
+    const effPitch = tsPitch
+      ?? d.match?.module?.pitch
+      ?? parsePitchFromProductName(d.spec.selectedProductName)
+      ?? d.spec.pixelPitchMm;
     const pitchLabel = effPitch ? `${effPitch}mm` : "—";
     const tsFixedPx = getFixedPixelSpecs(tsSelectedProduct);
     const tsCellH = Number(d.match?.activeHeightFt) || Number(d.heightFt) || 0;
