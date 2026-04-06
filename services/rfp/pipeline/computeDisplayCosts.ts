@@ -252,11 +252,10 @@ export function computeDisplays(
   return specs.map((spec, idx) => {
     const priced = pricedDisplays?.[idx] ?? null;
     // Standard LCD fallback: if no dimensions extracted, use known LCD panel sizes.
-    // Costing must stay anchored to the original/user-entered display dimensions.
-    // Product-snapped active dimensions are still allowed for internal matching,
-    // but they must not become the SQFT source for LED Cost Sheet totals.
-    let widthFt = Number(spec.widthFt) || 0;
-    let heightFt = Number(spec.heightFt) || 0;
+    // When cabinet-snapped active dimensions exist, they are the source of truth
+    // for LED sizing and sqft calculations on the cost sheet.
+    let widthFt = Number(spec.activeWidthFt) || Number(spec.widthFt) || 0;
+    let heightFt = Number(spec.activeHeightFt) || Number(spec.heightFt) || 0;
     if (!widthFt || !heightFt) {
       const lcdSize = extractLcdSizeInches(spec);
       if (lcdSize) {
@@ -265,8 +264,8 @@ export function computeDisplays(
         if (!heightFt) heightFt = dims.heightFt;
       }
     }
-    const activeWidthFt = Number(spec.activeWidthFt) || widthFt;
-    const activeHeightFt = Number(spec.activeHeightFt) || heightFt;
+    const activeWidthFt = widthFt;
+    const activeHeightFt = heightFt;
     const areaSqFt = round2(widthFt * heightFt * (Number(spec.quantity) || 1));
 
     // Per-display install complexity: override > per-display array > global

@@ -1729,11 +1729,10 @@ function buildLedCostSheet(
     dr.getCell(7).value = { formula: `IFERROR(VLOOKUP(F${row},${prodRange},3,FALSE),0)`, result: pitchResult };
     dr.getCell(7).numFmt = '0.0##"mm"';
     dr.getCell(7).alignment = { horizontal: "center" };
-    // H-I: H(ft), W(ft) — keep the editable working dimensions on the sheet.
-    // Do not replace them with snapped product dimensions; Natalia's SQFT basis
-    // must stay on the original/user-entered dimensions.
-    const cellH = Number(d.heightFt) || 0;
-    const cellW = Number(d.widthFt) || 0;
+    // H-I: H(ft), W(ft) — use cabinet-snapped dims when available so the
+    // visible sheet matches product-specific sizing.
+    const cellH = Number(d.match?.activeHeightFt) || Number(d.heightFt) || 0;
+    const cellW = Number(d.match?.activeWidthFt) || Number(d.widthFt) || 0;
     dr.getCell(8).value = cellH; dr.getCell(8).numFmt = "0.00";
     dr.getCell(9).value = cellW; dr.getCell(9).numFmt = "0.00";
     // J-K: H(px), W(px) — courtside/stanchion use fixed product specs; LED uses formula
@@ -1750,7 +1749,7 @@ function buildLedCostSheet(
     // L: Qty
     const qty = Number(d.spec.quantity) || 1;
     dr.getCell(12).value = qty; dr.getCell(12).alignment = { horizontal: "center" };
-    // M: Total SqFt = H(ft)*W(ft)*Qty using the original/user-entered dimensions.
+    // M: Total SqFt = H(ft)*W(ft)*Qty using the rendered cabinet-snapped dims.
     const snappedSqFt = round2(cellH * cellW * qty);
     dr.getCell(13).value = { formula: `H${row}*I${row}*L${row}`, result: isFinite(snappedSqFt) ? snappedSqFt : 0 };
     dr.getCell(13).numFmt = "#,##0";
@@ -1969,13 +1968,13 @@ function buildLedCostSheet(
       dr.getCell(7).value = { formula: `IFERROR(VLOOKUP(F${rowNum},${prodRange},3,FALSE),0)`, result: altPitchResult };
       dr.getCell(7).numFmt = '0.0##"mm"';
       dr.getCell(7).alignment = { horizontal: "center" };
-      // H-I: Keep alternates on their original/user-entered dimensions as well.
-      dr.getCell(8).value = d.heightFt || 0; dr.getCell(8).numFmt = "0.00";
-      dr.getCell(9).value = d.widthFt || 0; dr.getCell(9).numFmt = "0.00";
+      // H-I: Use cabinet-snapped dims for alternates too when a product match exists.
+      dr.getCell(8).value = Number(d.match?.activeHeightFt) || d.heightFt || 0; dr.getCell(8).numFmt = "0.00";
+      dr.getCell(9).value = Number(d.match?.activeWidthFt) || d.widthFt || 0; dr.getCell(9).numFmt = "0.00";
       // J-K: Pixels — courtside/stanchion use fixed product specs; LED uses formula
       const altFixedPx = getFixedPixelSpecs(altSelectedProduct);
-      const altCellH = d.heightFt || 0;
-      const altCellW = d.widthFt || 0;
+      const altCellH = Number(d.match?.activeHeightFt) || d.heightFt || 0;
+      const altCellW = Number(d.match?.activeWidthFt) || d.widthFt || 0;
       const altHPx = altFixedPx?.hPx ?? (altPitch && altCellH ? Math.round(altCellH * 304.8 / altPitch) : 0);
       const altWPx = altFixedPx?.wPx ?? (altPitch && altCellW ? Math.round(altCellW * 304.8 / altPitch) : 0);
       if (altFixedPx) {
@@ -3479,8 +3478,8 @@ function buildTechSpecsSheet(
     const effPitch = tsPitch ?? d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm;
     const pitchLabel = effPitch ? `${effPitch}mm` : "—";
     const tsFixedPx = getFixedPixelSpecs(tsSelectedProduct);
-    const tsCellH = Number(d.heightFt) || 0;
-    const tsCellW = Number(d.widthFt) || 0;
+    const tsCellH = Number(d.match?.activeHeightFt) || Number(d.heightFt) || 0;
+    const tsCellW = Number(d.match?.activeWidthFt) || Number(d.widthFt) || 0;
     const hPx = tsFixedPx?.hPx ?? (d.spec.heightPx || (effPitch && tsCellH ? Math.round(tsCellH * 304.8 / effPitch) : 0));
     const wPx = tsFixedPx?.wPx ?? (d.spec.widthPx || (effPitch && tsCellW ? Math.round(tsCellW * 304.8 / effPitch) : 0));
 
