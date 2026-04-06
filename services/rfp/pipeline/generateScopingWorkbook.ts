@@ -1633,6 +1633,23 @@ function buildLedCostSheet(
 
   const dataStartRow = row;
 
+  // Accumulators for TOTAL row — track the exact per-row values written into
+  // the sheet so cached preview results can never drift from visible rows.
+  // This avoids a dual-truth bug where formula cells sum one thing while the
+  // cached `result` values shown in preview are recomputed from a different
+  // backend object graph.
+  let accQtyTotal = 0;
+  let accSqFtTotal = 0;
+  let accDisplayCostTotal = 0;
+  let accProcessorTotal = 0;
+  let accShippingTotal = 0;
+  let accTotalCostTotal = 0;
+  let accSellingTotal = 0;
+  let accMarginTotal = 0;
+  let accWeightTotal = 0;
+  let accPowerTotal = 0;
+  let accBtuTotal = 0;
+
   // Data rows — one per display
   // Column layout (1-indexed): A=Display, B=RFP H, C=RFP W, D=RFP NITs,
   // E=Vendor, F=Product, G=Pitch, H=H(ft), I=W(ft), J=H(px), K=W(px),
@@ -1712,9 +1729,11 @@ function buildLedCostSheet(
     dr.getCell(7).value = { formula: `IFERROR(VLOOKUP(F${row},${prodRange},3,FALSE),0)`, result: pitchResult };
     dr.getCell(7).numFmt = '0.0##"mm"';
     dr.getCell(7).alignment = { horizontal: "center" };
-    // H-I: H(ft), W(ft) — cabinet-snapped when a product match exists, raw RFP dims otherwise
-    const cellH = Number(d.match?.activeHeightFt) || Number(d.heightFt) || 0;
-    const cellW = Number(d.match?.activeWidthFt) || Number(d.widthFt) || 0;
+    // H-I: H(ft), W(ft) — keep the editable working dimensions on the sheet.
+    // Do not replace them with snapped product dimensions; Natalia's SQFT basis
+    // must stay on the original/user-entered dimensions.
+    const cellH = Number(d.heightFt) || 0;
+    const cellW = Number(d.widthFt) || 0;
     dr.getCell(8).value = cellH; dr.getCell(8).numFmt = "0.00";
     dr.getCell(9).value = cellW; dr.getCell(9).numFmt = "0.00";
     // J-K: H(px), W(px) — courtside/stanchion use fixed product specs; LED uses formula
@@ -1731,7 +1750,7 @@ function buildLedCostSheet(
     // L: Qty
     const qty = Number(d.spec.quantity) || 1;
     dr.getCell(12).value = qty; dr.getCell(12).alignment = { horizontal: "center" };
-    // M: Total SqFt = H(ft)*W(ft)*Qty — result uses snapped dims to match H/I cells
+    // M: Total SqFt = H(ft)*W(ft)*Qty using the original/user-entered dimensions.
     const snappedSqFt = round2(cellH * cellW * qty);
     dr.getCell(13).value = { formula: `H${row}*I${row}*L${row}`, result: isFinite(snappedSqFt) ? snappedSqFt : 0 };
     dr.getCell(13).numFmt = "#,##0";
@@ -1806,6 +1825,19 @@ function buildLedCostSheet(
     dr.getCell(26).value = { formula: `Y${row}*3.412`, result: Math.round(powerResult * 3.412) };
     dr.getCell(26).numFmt = "#,##0";
 
+    // Accumulate the exact rendered row values for TOTAL row consistency.
+    accQtyTotal += qty;
+    accSqFtTotal += snappedSqFt;
+    accDisplayCostTotal += round2(ledWithSpares);
+    accProcessorTotal += bundleEquipmentCost || 0;
+    accShippingTotal += d.shippingCost;
+    accTotalCostTotal += totalLedCost;
+    accSellingTotal += ledOnlySellingPrice;
+    accMarginTotal += round2(ledOnlySellingPrice - totalLedCost);
+    accWeightTotal += weightResult;
+    accPowerTotal += powerResult;
+    accBtuTotal += Math.round(powerResult * 3.412);
+
     stripe(dr, COLS, idx % 2 === 0);
 
     // Re-apply number formats AFTER stripe
@@ -1823,13 +1855,12 @@ function buildLedCostSheet(
   // Total row — include all displays in the workbook.
   // When includeAlternatesInBase is true (RFP analyzer export), alternates are
   // real displays that should be counted. Use simple SUM over all data rows.
-  const baseDisplays = displays;
   const lastDataRow = dataStartRow + displays.length - 1;
   const baseSumFormula = (col: string) => `SUM(${col}${dataStartRow}:${col}${lastDataRow})`;
 
   row++;
   const gtR = ws.getRow(row);
-  const totalQty = baseDisplays.reduce((s, d) => s + (Number(d.spec.quantity) || 1), 0);
+  const totalQty = accQtyTotal;
   gtR.getCell(1).value = `TOTAL (${totalQty} screens)`;
   gtR.getCell(1).font = { bold: true, name: "Calibri" };
   // L: Total Qty
@@ -1837,57 +1868,38 @@ function buildLedCostSheet(
   gtR.getCell(12).alignment = { horizontal: "center" };
   gtR.getCell(12).font = { bold: true, name: "Calibri" };
   // M: Total SqFt
-  gtR.getCell(13).value = { formula: baseSumFormula("M"), result: baseDisplays.reduce((s, d) => s + d.areaSqFt, 0) };
+  gtR.getCell(13).value = { formula: baseSumFormula("M"), result: round2(accSqFtTotal) };
   gtR.getCell(13).numFmt = "#,##0";
   // Q: Display Cost
-  gtR.getCell(17).value = { formula: baseSumFormula("Q"), result: baseDisplays.reduce((s, d) => s + d.ledHardwareCost + d.sparePartsCost, 0) };
+  gtR.getCell(17).value = { formula: baseSumFormula("Q"), result: round2(accDisplayCostTotal) };
   gtR.getCell(17).numFmt = FMT_USD;
   // R: Processor
-  gtR.getCell(18).value = { formula: baseSumFormula("R"), result: baseDisplays.reduce((s, d) => s + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost, 0) };
+  gtR.getCell(18).value = { formula: baseSumFormula("R"), result: round2(accProcessorTotal) };
   gtR.getCell(18).numFmt = FMT_USD;
   // S: Shipping
-  gtR.getCell(19).value = { formula: baseSumFormula("S"), result: baseDisplays.reduce((s, d) => s + d.shippingCost, 0) };
+  gtR.getCell(19).value = { formula: baseSumFormula("S"), result: round2(accShippingTotal) };
   gtR.getCell(19).numFmt = FMT_USD;
   // T: Total Cost
-  gtR.getCell(20).value = { formula: baseSumFormula("T"), result: baseDisplays.reduce((s, d) => s + d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost, 0) };
+  gtR.getCell(20).value = { formula: baseSumFormula("T"), result: round2(accTotalCostTotal) };
   gtR.getCell(20).numFmt = FMT_USD;
   // U: Blended Margin %
-  const totalCostResult = baseDisplays.reduce((s, d) => s + d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost, 0);
-  const totalSellingResult = baseDisplays.reduce((s, d) => {
-    const tc = d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost;
-    const m = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
-    return s + (m < 1 ? round2(tc / (1 - m)) : tc);
-  }, 0);
+  const totalCostResult = round2(accTotalCostTotal);
+  const totalSellingResult = round2(accSellingTotal);
   const blendedMarginResult = totalSellingResult > 0 ? round2(1 - totalCostResult / totalSellingResult) : 0;
   gtR.getCell(21).value = { formula: `IFERROR(1-T${row}/V${row},0)`, result: blendedMarginResult };
   gtR.getCell(21).numFmt = FMT_PCT;
   // V: Total Selling Price
-  gtR.getCell(22).value = { formula: baseSumFormula("V"), result: baseDisplays.reduce((s, d) => {
-    const totalLedCost = d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost;
-    const ledMargin = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
-    return s + (ledMargin < 1 ? round2(totalLedCost / (1 - ledMargin)) : totalLedCost);
-  }, 0) };
+  gtR.getCell(22).value = { formula: baseSumFormula("V"), result: round2(accSellingTotal) };
   gtR.getCell(22).numFmt = FMT_USD;
   // W: ANC Margin
-  gtR.getCell(23).value = { formula: baseSumFormula("W"), result: baseDisplays.reduce((s, d) => {
-    const totalLedCost = d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost;
-    const ledMargin = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
-    const selling = ledMargin < 1 ? round2(totalLedCost / (1 - ledMargin)) : totalLedCost;
-    return s + (selling - totalLedCost);
-  }, 0) };
+  gtR.getCell(23).value = { formula: baseSumFormula("W"), result: round2(accMarginTotal) };
   gtR.getCell(23).numFmt = FMT_USD;
-  // X-Z: Weight, Power, BTU
-  const baseWeightTotal = baseDisplays.reduce((s, d) => {
-    const matchWeight = d.match ? Math.round(d.match.module.weightKg * 2.205 * d.match.totalModules) : 0;
-    const w = d.spec.weightLbs || matchWeight || 0;
-    return s + (Number(w) || 0);
-  }, 0);
-  const basePowerTotal = baseDisplays.reduce((s, d) => {
-    const matchPower = d.match ? Math.round(d.match.module.maxPowerWatts * d.match.totalModules) : 0;
-    const p = d.spec.maxPowerW || matchPower || 0;
-    return s + (Number(p) || 0);
-  }, 0);
-  const baseBtuTotal = basePowerTotal > 0 ? Math.round(basePowerTotal * 3.412) : 0;
+  // X-Z: Weight, Power, BTU — use accumulated per-row values so the TOTAL
+  // result matches the sum of individual row results (area × density formula),
+  // not the old module-count-based formula that produced different numbers.
+  const baseWeightTotal = accWeightTotal;
+  const basePowerTotal = accPowerTotal;
+  const baseBtuTotal = accBtuTotal;
   gtR.getCell(24).value = { formula: baseSumFormula("X"), result: baseWeightTotal };
   gtR.getCell(24).numFmt = "#,##0";
   gtR.getCell(25).value = { formula: baseSumFormula("Y"), result: basePowerTotal };
@@ -1957,13 +1969,13 @@ function buildLedCostSheet(
       dr.getCell(7).value = { formula: `IFERROR(VLOOKUP(F${rowNum},${prodRange},3,FALSE),0)`, result: altPitchResult };
       dr.getCell(7).numFmt = '0.0##"mm"';
       dr.getCell(7).alignment = { horizontal: "center" };
-      // H-I: Dimensions — cabinet-snapped when match exists
-      dr.getCell(8).value = Number(d.match?.activeHeightFt) || d.heightFt || 0; dr.getCell(8).numFmt = "0.00";
-      dr.getCell(9).value = Number(d.match?.activeWidthFt) || d.widthFt || 0; dr.getCell(9).numFmt = "0.00";
+      // H-I: Keep alternates on their original/user-entered dimensions as well.
+      dr.getCell(8).value = d.heightFt || 0; dr.getCell(8).numFmt = "0.00";
+      dr.getCell(9).value = d.widthFt || 0; dr.getCell(9).numFmt = "0.00";
       // J-K: Pixels — courtside/stanchion use fixed product specs; LED uses formula
       const altFixedPx = getFixedPixelSpecs(altSelectedProduct);
-      const altCellH = Number(d.match?.activeHeightFt) || d.heightFt || 0;
-      const altCellW = Number(d.match?.activeWidthFt) || d.widthFt || 0;
+      const altCellH = d.heightFt || 0;
+      const altCellW = d.widthFt || 0;
       const altHPx = altFixedPx?.hPx ?? (altPitch && altCellH ? Math.round(altCellH * 304.8 / altPitch) : 0);
       const altWPx = altFixedPx?.wPx ?? (altPitch && altCellW ? Math.round(altCellW * 304.8 / altPitch) : 0);
       if (altFixedPx) {
@@ -3467,8 +3479,8 @@ function buildTechSpecsSheet(
     const effPitch = tsPitch ?? d.match?.module?.pitch ?? parsePitchFromProductName(d.spec.selectedProductName) ?? d.spec.pixelPitchMm;
     const pitchLabel = effPitch ? `${effPitch}mm` : "—";
     const tsFixedPx = getFixedPixelSpecs(tsSelectedProduct);
-    const tsCellH = Number(d.match?.activeHeightFt) || d.heightFt || 0;
-    const tsCellW = Number(d.match?.activeWidthFt) || d.widthFt || 0;
+    const tsCellH = Number(d.heightFt) || 0;
+    const tsCellW = Number(d.widthFt) || 0;
     const hPx = tsFixedPx?.hPx ?? (d.spec.heightPx || (effPitch && tsCellH ? Math.round(tsCellH * 304.8 / effPitch) : 0));
     const wPx = tsFixedPx?.wPx ?? (d.spec.widthPx || (effPitch && tsCellW ? Math.round(tsCellW * 304.8 / effPitch) : 0));
 

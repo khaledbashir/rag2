@@ -251,10 +251,12 @@ export function computeDisplays(
 ): ComputedDisplay[] {
   return specs.map((spec, idx) => {
     const priced = pricedDisplays?.[idx] ?? null;
-    // Standard LCD fallback: if no dimensions extracted, use known LCD panel sizes
-    // Use product-snapped dimensions when available, fall back to RFP extracted
-    let widthFt = Number(spec.activeWidthFt) || Number(spec.widthFt) || 0;
-    let heightFt = Number(spec.activeHeightFt) || Number(spec.heightFt) || 0;
+    // Standard LCD fallback: if no dimensions extracted, use known LCD panel sizes.
+    // Costing must stay anchored to the original/user-entered display dimensions.
+    // Product-snapped active dimensions are still allowed for internal matching,
+    // but they must not become the SQFT source for LED Cost Sheet totals.
+    let widthFt = Number(spec.widthFt) || 0;
+    let heightFt = Number(spec.heightFt) || 0;
     if (!widthFt || !heightFt) {
       const lcdSize = extractLcdSizeInches(spec);
       if (lcdSize) {
@@ -263,6 +265,8 @@ export function computeDisplays(
         if (!heightFt) heightFt = dims.heightFt;
       }
     }
+    const activeWidthFt = Number(spec.activeWidthFt) || widthFt;
+    const activeHeightFt = Number(spec.activeHeightFt) || heightFt;
     const areaSqFt = round2(widthFt * heightFt * (Number(spec.quantity) || 1));
 
     // Per-display install complexity: override > per-display array > global
@@ -386,8 +390,8 @@ export function computeDisplays(
     // Processor cost — calculated from pixel count, not a single sending card
     // NovaStar 660 Pro: 650K pixels per port, 8 ports per unit, ~$450/unit
     // MCTRL4K: 650K pixels per port, 16 ports per unit, ~$8,400/unit
-    const pWidthPx = spec.widthPx || (spec.pixelPitchMm && widthFt ? Math.round(widthFt * 304.8 / spec.pixelPitchMm) : 0);
-    const pHeightPx = spec.heightPx || (spec.pixelPitchMm && heightFt ? Math.round(heightFt * 304.8 / spec.pixelPitchMm) : 0);
+    const pWidthPx = spec.widthPx || (spec.pixelPitchMm && activeWidthFt ? Math.round(activeWidthFt * 304.8 / spec.pixelPitchMm) : 0);
+    const pHeightPx = spec.heightPx || (spec.pixelPitchMm && activeHeightFt ? Math.round(activeHeightFt * 304.8 / spec.pixelPitchMm) : 0);
     const pTotalPixels = pWidthPx * pHeightPx * (spec.quantity || 1);
     const pPixelsPerPort = 650000;
     const pPortsNeeded = pTotalPixels > 0 ? Math.ceil(pTotalPixels / pPixelsPerPort) : 0;
@@ -438,8 +442,8 @@ export function computeDisplays(
     const marginPct = sellingPrice > 0 ? round2((1 - totalCost / sellingPrice) * 10000) / 10000 : 0;
 
     // Processor math
-    const widthPx = spec.widthPx || (spec.pixelPitchMm && widthFt ? Math.round(widthFt * 304.8 / spec.pixelPitchMm) : 0);
-    const heightPx = spec.heightPx || (spec.pixelPitchMm && heightFt ? Math.round(heightFt * 304.8 / spec.pixelPitchMm) : 0);
+    const widthPx = spec.widthPx || (spec.pixelPitchMm && activeWidthFt ? Math.round(activeWidthFt * 304.8 / spec.pixelPitchMm) : 0);
+    const heightPx = spec.heightPx || (spec.pixelPitchMm && activeHeightFt ? Math.round(activeHeightFt * 304.8 / spec.pixelPitchMm) : 0);
     const totalPixels = widthPx * heightPx * (spec.quantity || 1);
     // NovaStar 660 Pro: 650K pixels per port at 8-bit, 8 ports = 5.2M pixels
     const pixelsPerPort = 650000;
