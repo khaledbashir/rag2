@@ -1211,12 +1211,18 @@ export default function EstimatorStudio({
                                         productName: product.name,
                                         pixelPitch: String(product.pitch),
                                     };
-                                    // Courtside/stanchion: lock dimensions + pixel specs from product
-                                    if ((productType === "courtside" || productType === "stanchion") && autoWidth > 0 && autoHeight > 0) {
+                                    // Product changes should always snap H/W to the selected product's specs.
+                                    // Courtside/stanchion additionally carry fixed pixel dimensions from catalog.
+                                    if (autoWidth > 0 && autoHeight > 0) {
                                         update.widthFt = autoWidth;
                                         update.heightFt = autoHeight;
+                                    }
+                                    if (productType === "courtside" || productType === "stanchion") {
                                         update.fixedWidthPx = extSpecs?.displayWidthPx || undefined;
                                         update.fixedHeightPx = extSpecs?.displayHeightPx || undefined;
+                                    } else {
+                                        update.fixedWidthPx = undefined;
+                                        update.fixedHeightPx = undefined;
                                     }
                                     displays[displayIdx] = update;
                                     return { ...prev, displays };
