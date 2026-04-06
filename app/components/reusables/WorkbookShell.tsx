@@ -417,31 +417,29 @@ function CellView({ cell, editable, isEditing, onClick, onChange, onBlur }: Cell
       title={cell.formula || undefined}
     >
       {(cell.onRemove || cell.onRepair) ? (
-        <span className="flex items-center justify-between gap-2 w-full">
+        <span className="flex items-start gap-2 w-full">
+          {cell.onRemove && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); cell.onRemove!(); }}
+              className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-600 hover:border-red-300 hover:bg-red-100 transition-colors shrink-0 font-semibold leading-none"
+              title="Remove display"
+              aria-label="Remove display"
+            >
+              ×
+            </button>
+          )}
           <span className="min-w-0 flex-1">{formatCellValue(cell)}</span>
-          <span className="flex items-center gap-1 shrink-0">
-            {cell.onRepair && (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); cell.onRepair!(); }}
-                className="opacity-0 group-hover/cell:opacity-100 text-[#0A52EF] hover:text-[#0A52EF]/80 transition-opacity shrink-0 ml-1 text-[10px]"
-                title="AI repair — fix this row"
-              >
-                fix
-              </button>
-            )}
-            {cell.onRemove && (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); cell.onRemove!(); }}
-                className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-600 hover:border-red-300 hover:bg-red-100 transition-colors shrink-0 font-semibold leading-none"
-                title="Remove display"
-                aria-label="Remove display"
-              >
-                ×
-              </button>
-            )}
-          </span>
+          {cell.onRepair && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); cell.onRepair!(); }}
+              className="opacity-0 group-hover/cell:opacity-100 text-[#0A52EF] hover:text-[#0A52EF]/80 transition-opacity shrink-0 text-[10px]"
+              title="AI repair — fix this row"
+            >
+              fix
+            </button>
+          )}
         </span>
       ) : (
         formatCellValue(cell)
