@@ -1018,7 +1018,7 @@ export default function RfpAnalyzerClient() {
   // Handle inline H/W/Qty edits from WorkbookShell (editable cells on LED Cost Sheet)
   // LED Cost Sheet columns: 7=H(ft), 8=W(ft), 11=Qty
   const handleRfpCellEdit = useCallback((sheetIndex: number, rowIndex: number, colIndex: number, newValue: string) => {
-    const displayIndex = rowIndex;
+    const displayIndex = displayRowMap[rowIndex] ?? rowIndex;
 
     const numValue = parseFloat(newValue);
     if (isNaN(numValue) || numValue <= 0) return;
@@ -1047,7 +1047,7 @@ export default function RfpAnalyzerClient() {
       autoSaveSpecs(updated, prev.id);
       return { ...prev, screens: updated };
     });
-  }, [autoSaveSpecs, handleRfpQtyChange]);
+  }, [autoSaveSpecs, displayRowMap, handleRfpQtyChange]);
 
   // ========================================================================
   // Auto-run pricing when extraction completes (no manual step needed)
@@ -2810,11 +2810,13 @@ export default function RfpAnalyzerClient() {
                 {/* Server-generated workbook — built inline, no useMemo */}
                 {useServerWorkbook && serverWorkbookData ? (() => {
                   const specsArr = editableSpecs.length > 0 ? editableSpecs : (result?.screens || []);
-                  const wbData = buildEstimatorWorkbook(serverWorkbookData, availableProducts.length > 0 ? {
+                  const wbData = buildEstimatorWorkbook(serverWorkbookData, {
                     products: availableProducts,
                     displayProductIds: specsArr.map((s: any) => s.selectedProductId || ""),
+                    displayRowMap,
                     onProductSelect: handleProductSelect,
-                  } : undefined);
+                    onRemoveDisplay: handleRemoveScreen,
+                  });
                   const ledCostSheet = wbData.sheets.find((sheet) => sheet.name === "LED Cost Sheet");
                   if (ledCostSheet?.editableColumns) {
                     ledCostSheet.editableColumns = ledCostSheet.editableColumns.filter((col) => col !== 21);

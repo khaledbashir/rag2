@@ -75,6 +75,8 @@ export interface EstimatorWorkbookOptions {
   displayRowMap?: Record<number, number>;
   /** Called when user picks a product from the dropdown */
   onProductSelect: (displayIndex: number, productId: string) => void;
+  /** Called when user removes a display row from the workbook */
+  onRemoveDisplay?: (displayIndex: number) => void;
   /** Client-side cost calculations — used to update LED Cost Sheet instantly */
   calcs?: DisplayCalc[];
 }
@@ -208,6 +210,7 @@ export function buildEstimatorWorkbook(
     // LED Cost Sheet data starts at 0-based row 3 (Excel row 4)
     // Product is col 5 (F), Qty is col 11 (L)
     const LED_DATA_START = 3;
+    const LED_DISPLAY_COL = 1;
     const LED_PRODUCT_COL = 5;
 
     // Build rows
@@ -272,6 +275,10 @@ export function buildEstimatorWorkbook(
         if (isLedCostSheet && r >= LED_DATA_START && options) {
           const displayIdx = options.displayRowMap?.[r] ?? (r - LED_DATA_START);
           if (displayIdx >= 0 && displayIdx < options.displayProductIds.length) {
+            if (c === LED_DISPLAY_COL && options.onRemoveDisplay) {
+              sc.onRemove = () => options.onRemoveDisplay?.(displayIdx);
+            }
+
             // Product dropdown (col 5 = F)
             if (c === LED_PRODUCT_COL && dropdownOpts.length > 0) {
               const currentProductId = options.displayProductIds[displayIdx] || "";

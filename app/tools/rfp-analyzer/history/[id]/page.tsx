@@ -467,12 +467,13 @@ export default function AnalysisDetailPage() {
 
   // H/W/Qty inline edit callback
   const handleHistoryCellEdit = useCallback((sheetIndex: number, rowIndex: number, colIndex: number, newValue: string) => {
+    const displayIndex = displayRowMap[rowIndex] ?? rowIndex;
     const numValue = parseFloat(newValue);
     if (isNaN(numValue) || numValue <= 0) return;
 
     // Qty edit (col 11) — delegate to existing handler
     if (colIndex === 11) {
-      handleHistoryQtyChange(rowIndex, Math.max(1, Math.round(numValue)));
+      handleHistoryQtyChange(displayIndex, Math.max(1, Math.round(numValue)));
       return;
     }
 
@@ -483,17 +484,17 @@ export default function AnalysisDetailPage() {
 
     setAnalysis(prev => {
       if (!prev) return prev;
-      if (rowIndex < 0 || rowIndex >= prev.screens.length) return prev;
-      const spec = { ...prev.screens[rowIndex] };
+      if (displayIndex < 0 || displayIndex >= prev.screens.length) return prev;
+      const spec = { ...prev.screens[displayIndex] };
       (spec as any)[field!] = numValue;
       if (field === "heightFt") spec.activeHeightFt = null;
       if (field === "widthFt") spec.activeWidthFt = null;
       const updated = [...prev.screens];
-      updated[rowIndex] = spec;
+      updated[displayIndex] = spec;
       autoSaveSpecs(updated, prev.id);
       return { ...prev, screens: updated };
     });
-  }, [autoSaveSpecs, handleHistoryQtyChange]);
+  }, [autoSaveSpecs, displayRowMap, handleHistoryQtyChange]);
 
   // Download helper
   const downloadBlob = async (url: string, body: object, fallbackName: string) => {
@@ -806,11 +807,13 @@ export default function AnalysisDetailPage() {
                   </div>
                 ) : serverWorkbookData ? (() => {
                   const specs = analysis?.screens || [];
-                  const wbData = buildEstimatorWorkbook(serverWorkbookData, availableProducts.length > 0 ? {
+                  const wbData = buildEstimatorWorkbook(serverWorkbookData, {
                     products: availableProducts,
                     displayProductIds: specs.map((s: any) => s.selectedProductId || ""),
+                    displayRowMap,
                     onProductSelect: handleHistoryProductSelect,
-                  } : undefined);
+                    onRemoveDisplay: handleRemoveScreen,
+                  });
                   const ledCostSheet = wbData.sheets.find((sheet) => sheet.name === "LED Cost Sheet");
                   if (ledCostSheet?.editableColumns) {
                     ledCostSheet.editableColumns = ledCostSheet.editableColumns.filter((col) => col !== 21);
@@ -972,11 +975,13 @@ export default function AnalysisDetailPage() {
                   </div>
                 ) : serverWorkbookData ? (() => {
                   const specs = analysis?.screens || [];
-                  const wbData = buildEstimatorWorkbook(serverWorkbookData, availableProducts.length > 0 ? {
+                  const wbData = buildEstimatorWorkbook(serverWorkbookData, {
                     products: availableProducts,
                     displayProductIds: specs.map((s: any) => s.selectedProductId || ""),
+                    displayRowMap,
                     onProductSelect: handleHistoryProductSelect,
-                  } : undefined);
+                    onRemoveDisplay: handleRemoveScreen,
+                  });
                   return (
                     <WorkbookShell
                       data={wbData}
