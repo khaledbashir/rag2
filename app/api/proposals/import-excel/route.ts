@@ -60,6 +60,11 @@ export async function POST(req: NextRequest) {
                 (data.formData.details as any).parserStrictVersion = PRICING_PARSER_STRICT_VERSION;
                 (data.formData.details as any).sourceWorkbookHash = sourceWorkbookHash;
 
+                // Sync currency from pricingDocument so exports use the correct symbol (£, €, C$)
+                if (pricingDocument.currency && pricingDocument.currency !== "USD") {
+                    (data.formData.details as any).currency = pricingDocument.currency;
+                }
+
                 // REQ-127: Backfill screen.group if missing by correlating with Pricing Tables
                 const screens = (data.formData.details.screens as any[]) || [];
                 const tables = pricingDocument.tables;
@@ -130,6 +135,8 @@ export async function POST(req: NextRequest) {
                         sourceWorkbookHash,
                         calculationMode: "MIRROR",
                         mirrorMode: true,
+                        // Sync currency from pricingDocument so exports use the correct symbol
+                        ...(pricingDocument.currency ? { currency: pricingDocument.currency } : {}),
                     },
                     receiver: {
                         name: pricingDocument.projectName || "",

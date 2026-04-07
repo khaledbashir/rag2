@@ -11,6 +11,7 @@
  */
 
 import * as XLSX from 'xlsx';
+import { detectCurrency } from '@/types/pricing';
 
 interface StandardProposal {
   clientName: string;
@@ -337,8 +338,9 @@ export function parseStandardFormat(workbook: XLSX.WorkBook): StandardProposal {
   const clientName = projectInfo.split('-')[0]?.trim() || 'Unknown Client';
   const projectName = projectInfo || 'Unknown Project';
   
-  // Detect currency from sheet name
-  const currency = marginSheetName?.includes('CAD') ? 'CAD' : 'USD';
+  // Detect currency from sheet name (supports USD, CAD, GBP, EUR)
+  const cellSample = data.slice(0, 20).flat().map((c: any) => String(c || "")).join(" ");
+  const currency = detectCurrency(marginSheetName || "", cellSample);
   
   const screens: StandardProposal['screens'] = [];
   const lineItems: StandardProposal['lineItems'] = [];

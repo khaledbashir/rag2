@@ -14,7 +14,10 @@ export async function POST(req: NextRequest) {
     const bodyInternalAudit = body.internalAudit;
     const bodyScreens = Array.isArray(body.screens) ? body.screens : null;
     const bodyMode = typeof body.calculationMode === "string" ? body.calculationMode : undefined;
-    const currency = typeof body.currency === "string" ? body.currency : "USD";
+    const bodyCurrency = typeof body.currency === "string" ? body.currency : null;
+    const pricingDocCurrency = body.pricingDocument?.currency as string | undefined;
+    // Prefer explicit form currency, but fall back to pricingDocument's detected currency
+    const currency = bodyCurrency || pricingDocCurrency || "USD";
     const bodyMirrorMode = typeof body.mirrorMode === "boolean" ? body.mirrorMode : undefined;
 
     if (!proposalId && !bodyScreens) {
