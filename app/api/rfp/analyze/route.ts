@@ -30,6 +30,7 @@ import { extractWithGLM5, isGLM5Available } from "@/services/rfp/unified/glmExtr
 import { extractWithAnythingLLM, isAnythingLLMAvailable } from "@/services/rfp/unified/anythingllmExtractor";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
+import { syncToTwenty } from "@/lib/twenty-crm";
 
 /** OpenClaw is primary for ALL PDFs. Mistral/Gemini only as fallback. */
 const OPENCLAW_PAGE_THRESHOLD = 1;
@@ -282,6 +283,15 @@ export async function POST(request: NextRequest) {
                 },
               });
               analysisId = analysis.id;
+
+              // Sync to Twenty CRM (fire-and-forget)
+              syncToTwenty({
+                action: 'rfp_analyzed',
+                companyName: finalProject.clientName || '',
+                venueName: finalProject.venue || '',
+                dealName: `${finalProject.projectName || finalProject.clientName || 'Untitled'} - RFP`,
+                ledSqFt: screens.reduce((sum: number, s: any) => sum + ((s.widthFt || 0) * (s.heightFt || 0) * (s.quantity || 1)), 0) || undefined,
+              }).catch(() => {});
             } catch (dbErr: any) {
               log.error("[Pipeline] GLM5 DB save failed (non-fatal):", dbErr.message?.slice(0, 200));
             }
@@ -920,6 +930,15 @@ export async function POST(request: NextRequest) {
             },
           });
           analysisId = saved.id;
+
+          // Sync to Twenty CRM (fire-and-forget)
+          syncToTwenty({
+            action: 'rfp_analyzed',
+            companyName: finalProject.clientName || '',
+            venueName: finalProject.venue || '',
+            dealName: `${finalProject.projectName || finalProject.clientName || 'Untitled'} - RFP`,
+            ledSqFt: screens.reduce((sum: number, s: any) => sum + ((s.widthFt || 0) * (s.heightFt || 0) * (s.quantity || 1)), 0) || undefined,
+          }).catch(() => {});
         } catch (dbErr: any) {
           log.error("[Pipeline] Failed to save to DB:", dbErr.message);
         }

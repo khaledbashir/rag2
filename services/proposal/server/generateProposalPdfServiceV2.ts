@@ -7,6 +7,7 @@ import { ENV, TAILWIND_CDN } from "@/lib/variables";
 import { ProposalType } from "@/types";
 import { sanitizeForClient } from "@/lib/security/sanitizeForClient";
 import { PRICING_PARSER_STRICT_VERSION } from "@/services/pricing/pricingTableParser";
+import { syncToTwenty } from "@/lib/twenty-crm";
 
 function safeErrorMessage(err: unknown) {
 	const msg = err instanceof Error ? err.message : String(err);
@@ -308,6 +309,22 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 
 		// Post-process: inject PDF viewer preferences (Single Page layout, Fit Page zoom)
 		const pdf = setPdfViewerPreferences(rawPdf);
+
+		// Sync to Twenty CRM (fire-and-forget — never blocks PDF return)
+		const details = body.details as any;
+		const proposalClientName = details?.clientName || details?.proposalName || '';
+		const proposalVenue = details?.venue || '';
+		const proposalTotal = audit?.internalAudit?.totals?.finalClientTotal;
+		if (proposalClientName) {
+			syncToTwenty({
+				action: 'proposal_generated',
+				companyName: proposalClientName,
+				venueName: proposalVenue,
+				dealName: `${proposalClientName}${proposalVenue ? ' - ' + proposalVenue : ''} Proposal`,
+				amount: proposalTotal > 0 ? proposalTotal : undefined,
+				proposalUrl: `https://proposals.anc.com/proposals`,
+			}).catch(() => {});
+		}
 
 		return new NextResponse(new Blob([pdf as any], { type: "application/pdf" }), {
 			headers: {
