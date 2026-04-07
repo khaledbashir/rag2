@@ -35,6 +35,25 @@ export interface ParsePricingResult {
   validation: PricingValidationReport;
 }
 
+function buildCurrencyDetectionSample(sheet: any, data: any[][]): string {
+  const textRows = data
+    .slice(0, 100)
+    .flat()
+    .map((cell) => String(cell ?? ""))
+    .join(" ");
+
+  const formattedCells: string[] = [];
+  const cellKeys = Object.keys(sheet ?? {}).filter((key) => /^[A-Z]+[0-9]+$/.test(key)).slice(0, 400);
+  for (const key of cellKeys) {
+    const cell = sheet[key];
+    if (!cell) continue;
+    if (cell.w) formattedCells.push(String(cell.w));
+    if (cell.z) formattedCells.push(String(cell.z));
+  }
+
+  return `${textRows} ${formattedCells.join(" ")}`.trim();
+}
+
 // ============================================================================
 // MAIN PARSER
 // ============================================================================
@@ -118,8 +137,8 @@ function parsePricingTablesInner(
   }
 
   // 3. Detect currency from sheet name + cell content (first 20 rows)
-  const cellSample = data.slice(0, 20).flat().map(c => String(c || "")).join(" ");
-  const currency = detectCurrency(sheetName, cellSample);
+  const currencySample = buildCurrencyDetectionSample(sheet, data);
+  const currency = detectCurrency(sheetName, currencySample);
   console.log(`[PRICING PARSER] Detected currency: ${currency}`);
 
   // 4. Find column headers

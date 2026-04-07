@@ -142,6 +142,49 @@ describe("Sheet Detection", () => {
     expect(resultCad.document!.currency).toBe("CAD");
     expect(resultUsd.document!.currency).toBe("USD");
   });
+
+  it("detects GBP from a versioned margin analysis sheet name", () => {
+    const wb = buildMockWorkbook("Margin Analysis (GBP)(v2)", [
+      STD_HEADER,
+      lineItem("Item A", 100, 200),
+      grandTotal(100, 200),
+    ]);
+    const result = parsePricingTablesWithValidation(wb, "test.xlsx");
+    expect(result.document).not.toBeNull();
+    expect(result.document!.sourceSheet).toBe("Margin Analysis (GBP)(v2)");
+    expect(result.document!.currency).toBe("GBP");
+  });
+
+  it("prefers a populated margin analysis sheet over an earlier empty match", () => {
+    const wb = buildMultiSheetWorkbook([
+      { name: "Margin Analysis (USD)", rows: [STD_HEADER] },
+      {
+        name: "Margin Analysis (GBP)(v1)",
+        rows: [STD_HEADER, lineItem("Item A", 100, 200), grandTotal(100, 200)],
+      },
+    ]);
+    const result = parsePricingTablesWithValidation(wb, "test.xlsx");
+    expect(result.document).not.toBeNull();
+    expect(result.document!.sourceSheet).toBe("Margin Analysis (GBP)(v1)");
+    expect(result.document!.currency).toBe("GBP");
+  });
+
+  it("detects GBP from Excel currency formatting when the sheet name is generic", () => {
+    const wb = buildMockWorkbook("Margin Analysis", [
+      STD_HEADER,
+      lineItem("Item A", 100, 200),
+      grandTotal(100, 200),
+    ]);
+    const ws = wb.Sheets["Margin Analysis"] as XLSX.WorkSheet & Record<string, any>;
+    ws.B2.z = '"£"#,##0';
+    ws.B2.w = "£100";
+    ws.C2.z = '"£"#,##0';
+    ws.C2.w = "£200";
+
+    const result = parsePricingTablesWithValidation(wb, "test.xlsx");
+    expect(result.document).not.toBeNull();
+    expect(result.document!.currency).toBe("GBP");
+  });
 });
 
 // ============================================================================

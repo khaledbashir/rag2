@@ -5,6 +5,7 @@
  */
 
 export type WorkbookSheets = Record<string, { [key: string]: unknown }>;
+const CELL_REF_RE = /^[A-Z]+[0-9]+$/;
 
 /**
  * Normalize a sheet name for matching: lowercase, collapse spaces/dashes/underscores.
@@ -93,27 +94,67 @@ export function findSheetByKeywords(
 
 /** Find "Margin Analysis" type sheet (Margin, Analysis, Total, etc.) */
 export function findMarginAnalysisSheet(workbook: { SheetNames?: string[]; Sheets?: WorkbookSheets }): string | null {
-  // Tier 1: Exact patterns (highest confidence)
-  // Tier 2: Require both keywords
-  // Tier 3: Require any keyword pair
-  const result = findSheetByKeywords(workbook, {
-    exactPatterns: [
-      /^margin\s*analysis\s*\(cad\)$/i,
-      /^margin\s*analysis\s*\(usd\)$/i,
-      /^margin\s*analysis$/i,
-    ],
-    requireAll: ["margin", "analysis"],
-    requireAnySet: [["margin", "total"], ["margin", "analysis"], ["analysis", "total"]],
-  });
-  if (result) return result;
-
-  // Tier 4: Fallback — any sheet containing "margin" or "pricing" alone
   const names = workbook.SheetNames ?? Object.keys(workbook.Sheets ?? {});
-  const fallback = names.find((n) => {
-    const norm = n.toLowerCase().replace(/[\s\-_]+/g, " ").trim();
-    return norm.includes("margin") || norm.includes("pricing") || norm.includes("bid form");
-  });
-  return fallback ?? null;
+  if (!names.length) return null;
+
+  const getSheetSignal = (sheetName: string) => {
+    const sheet = workbook.Sheets?.[sheetName] as Record<string, any> | undefined;
+    if (!sheet) return { populatedCells: 0, numericCells: 0 };
+
+    let populatedCells = 0;
+    let numericCells = 0;
+
+    for (const [cellRef, cell] of Object.entries(sheet)) {
+      if (!CELL_REF_RE.test(cellRef) || !cell) continue;
+
+      const rendered = String(cell.w ?? cell.v ?? "").trim();
+      if (rendered) populatedCells++;
+      if (typeof cell.v === "number") numericCells++;
+    }
+
+    return { populatedCells, numericCells };
+  };
+
+  const scoreCandidate = (sheetName: string, index: number) => {
+    const norm = normalize(sheetName);
+    const signal = getSheetSignal(sheetName);
+    let score = 0;
+    let matchedByName = false;
+
+    if (/^margin\s*analysis(?:\s*\((usd|cad|gbp|eur)\))?(?:\s*\(v\d+\))?$/i.test(sheetName)) {
+      score += 120;
+      matchedByName = true;
+    } else if (scoreSheet(sheetName, ["margin", "analysis"]) === 2) {
+      score += 90;
+      matchedByName = true;
+    } else if (scoreSheet(sheetName, ["margin", "total"]) === 2) {
+      score += 60;
+      matchedByName = true;
+    } else if (norm.includes("margin") || norm.includes("pricing") || norm.includes("bid form")) {
+      score += 25;
+      matchedByName = true;
+    }
+
+    if (!matchedByName) return { sheetName, score: 0, index };
+
+    if (/^margin\s*analysis$/i.test(sheetName)) score += 15;
+    if (/\((usd|cad|gbp|eur)\)/i.test(sheetName)) score += 10;
+    if (/\bcms\b/.test(norm) || norm.includes("cms only")) score -= 80;
+    if (/\bold\b/.test(norm) || /\barchive(d)?\b/.test(norm)) score -= 20;
+    if (signal.populatedCells === 0) score -= 100;
+
+    score += Math.min(signal.populatedCells, 25);
+    score += Math.min(signal.numericCells, 10);
+
+    return { sheetName, score, index };
+  };
+
+  const candidates = names
+    .map((sheetName, index) => scoreCandidate(sheetName, index))
+    .filter((candidate) => candidate.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+
+  return candidates[0]?.sheetName ?? null;
 }
 
 /** Find "LED Sheet" / "LED Cost Sheet" type sheet */
