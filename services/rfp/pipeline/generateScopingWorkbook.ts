@@ -66,6 +66,30 @@ function chooseContextualFallbackProduct(
   }, envProducts[0]);
 }
 
+function getLoadedCostPerSqFtForProduct(product: any): number {
+  const SPARE_PARTS_MULT = 1 + rc("spare_parts.led_pct", 0.05);
+  const costPerSqm = HARDWARE_COST_PER_SQM[product.id];
+  let baseCostPerSqFt = costPerSqm
+    ? round2(costPerSqm / 10.7639)
+    : (LED_COST_PER_SQFT_BY_PITCH[String(product.pitchMm)] ?? 0);
+
+  if (!baseCostPerSqFt && product.pitchMm) {
+    const knownPitches = Object.keys(LED_COST_PER_SQFT_BY_PITCH).map(Number).filter(Number.isFinite);
+    let bestDelta = Infinity;
+    let bestKey = "";
+    for (const kp of knownPitches) {
+      const delta = Math.abs(kp - product.pitchMm);
+      if (delta < bestDelta && delta / product.pitchMm < 0.05) {
+        bestDelta = delta;
+        bestKey = String(kp);
+      }
+    }
+    if (bestKey) baseCostPerSqFt = LED_COST_PER_SQFT_BY_PITCH[bestKey];
+  }
+
+  return round2(baseCostPerSqFt * SPARE_PARTS_MULT);
+}
+
 /**
  * Full Scoping Workbook Generator
  *
@@ -1558,7 +1582,6 @@ function buildLedCostSheet(
   let productSheet = wb.getWorksheet("_Products");
   if (!productSheet) {
     productSheet = wb.addWorksheet("_Products", { state: "veryHidden" });
-    const SPARE_PARTS_MULT = 1 + rc("spare_parts.led_pct", 0.05); // 1.05 = catalog + 5% spares
     sortedProducts.forEach((p, i) => {
       const r = i + 1;
       productSheet!.getCell(r, 1).value = p.name;                       // A: Name
@@ -1579,7 +1602,7 @@ function buildLedCostSheet(
         }
         if (bestKey) baseCostPerSqFt = LED_COST_PER_SQFT_BY_PITCH[bestKey];
       }
-      const costPerSqFt = round2(baseCostPerSqFt * SPARE_PARTS_MULT);
+      const costPerSqFt = getLoadedCostPerSqFtForProduct(p);
       productSheet!.getCell(r, 4).value = costPerSqFt;                  // D: $/SqFt (loaded)
       productSheet!.getCell(r, 5).value = p.brightnessNits;             // E: NITs
       productSheet!.getCell(r, 6).value = round2(p.weightDensityLbm2);  // F: Weight (lbs/m²)
@@ -1767,9 +1790,11 @@ function buildLedCostSheet(
     // O: Service
     dr.getCell(15).value = d.spec.serviceType || "Front";
     dr.getCell(15).alignment = { horizontal: "center" };
-    // P: $/SqFt — computed from snapped area (matches H/I cells and online preview)
+    // P/Q/T cached results must match the live formula chain so browser preview
+    // shows the same numbers Excel recalculates after opening the file.
     const ledWithSpares = d.ledHardwareCost + d.sparePartsCost;
-    const costPerSqFtResult = snappedSqFt > 0 ? round2(ledWithSpares / snappedSqFt) : 0;
+    const lookedUpCostPerSqFt = catalogProduct ? getLoadedCostPerSqFtForProduct(catalogProduct) : 0;
+    const costPerSqFtResult = lookedUpCostPerSqFt || (snappedSqFt > 0 ? round2(ledWithSpares / snappedSqFt) : 0);
     if (d.isTV) {
       const tvQty = Number(d.spec.quantity) || 1;
       const unitCost = tvQty > 0 ? round2(ledWithSpares / tvQty) : 0;
@@ -1779,7 +1804,8 @@ function buildLedCostSheet(
     }
     dr.getCell(16).numFmt = FMT_USD;
     // Q: Display Cost = $/SqFt × Total SqFt
-    dr.getCell(17).value = { formula: `P${row}*M${row}`, result: round2(ledWithSpares) };
+    const displayCostResult = d.isTV ? round2(ledWithSpares) : round2(costPerSqFtResult * snappedSqFt);
+    dr.getCell(17).value = { formula: `P${row}*M${row}`, result: displayCostResult };
     dr.getCell(17).numFmt = FMT_USD;
     const bundleSubtotalRow = bundleSubtotalRows[idx];
     // R: Processor — cross-sheet formula to Bundle Equipment
@@ -1792,7 +1818,7 @@ function buildLedCostSheet(
     dr.getCell(19).value = { formula: `MAX(M${row}*10,500)`, result: d.shippingCost };
     dr.getCell(19).numFmt = FMT_USD;
     // T: Total Cost = Display Cost + Processor + Shipping
-    const totalLedCost = round2(ledWithSpares + bundleEquipmentCost + d.shippingCost);
+    const totalLedCost = round2(displayCostResult + bundleEquipmentCost + d.shippingCost);
     dr.getCell(20).value = { formula: `Q${row}+R${row}+S${row}`, result: totalLedCost };
     dr.getCell(20).numFmt = FMT_USD;
     dr.getCell(20).font = { bold: true, name: "Calibri" };
@@ -2003,11 +2029,13 @@ function buildLedCostSheet(
       dr.getCell(14).alignment = { horizontal: "center" };
       // P: $/SqFt — from snapped area
       const altLedWithSpares = round2(d.ledHardwareCost + d.sparePartsCost);
-      const altCostPerSqFtResult = altSnappedSqFt > 0 ? round2(altLedWithSpares / altSnappedSqFt) : 0;
+      const altLookedUpCostPerSqFt = altCatalogProduct ? getLoadedCostPerSqFtForProduct(altCatalogProduct) : 0;
+      const altCostPerSqFtResult = altLookedUpCostPerSqFt || (altSnappedSqFt > 0 ? round2(altLedWithSpares / altSnappedSqFt) : 0);
       dr.getCell(16).value = { formula: `IFERROR(VLOOKUP(F${rowNum},${prodRange},4,FALSE),0)`, result: altCostPerSqFtResult };
       dr.getCell(16).numFmt = FMT_USD;
       // Q: Display Cost = $/SqFt × Total SqFt
-      dr.getCell(17).value = { formula: `P${rowNum}*M${rowNum}`, result: altLedWithSpares };
+      const altDisplayCostResult = round2(altCostPerSqFtResult * altSnappedSqFt);
+      dr.getCell(17).value = { formula: `P${rowNum}*M${rowNum}`, result: altDisplayCostResult };
       dr.getCell(17).numFmt = FMT_USD;
       // R: Processor — cross-sheet formula to Bundle Equipment (same config as base display)
       const altEquipCost = d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost;
@@ -2019,7 +2047,7 @@ function buildLedCostSheet(
       dr.getCell(19).value = { formula: `MAX(M${rowNum}*10,500)`, result: d.shippingCost };
       dr.getCell(19).numFmt = FMT_USD;
       // T: Total Cost = Q + R + S (formula)
-      const altLedTotal = round2(altLedWithSpares + altEquipCost + d.shippingCost);
+      const altLedTotal = round2(altDisplayCostResult + altEquipCost + d.shippingCost);
       dr.getCell(20).value = { formula: `Q${rowNum}+R${rowNum}+S${rowNum}`, result: altLedTotal };
       dr.getCell(20).numFmt = FMT_USD;
       dr.getCell(20).font = { bold: true, name: "Calibri" };
