@@ -44,4 +44,26 @@ describe("normalizeEstimatorAnswers", () => {
         expect(normalized.displays[0].widthFt).toBe(33);
         expect(normalized.displays[0].heightFt).toBe(3);
     });
+
+    it("realigns stale working dimensions when a board shrinks below the requested RFP size", () => {
+        const answers = getDefaultAnswers();
+        answers.displays = [
+            {
+                ...getDefaultDisplayAnswers(),
+                displayType: "main-scoreboard",
+                displayName: "Main Scoreboard",
+                rfpWidthFt: 40.157,
+                rfpHeightFt: 30.709,
+                widthFt: 3.937,
+                heightFt: 3.937,
+            },
+        ];
+
+        const normalized = normalizeEstimatorAnswers(answers);
+
+        expect(normalized.displays[0].rfpWidthFt).toBe(40.157);
+        expect(normalized.displays[0].rfpHeightFt).toBe(30.709);
+        expect(normalized.displays[0].widthFt).toBe(40.157);
+        expect(normalized.displays[0].heightFt).toBe(30.709);
+    });
 });

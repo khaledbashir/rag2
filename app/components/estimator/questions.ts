@@ -929,6 +929,25 @@ function ratiosDriftSeverely(display: DisplayAnswers): boolean {
     return ratioDelta >= 2.5;
 }
 
+function workingDimsShrinkBelowRfp(display: DisplayAnswers): boolean {
+    if (
+        !hasPositiveNumber(display.rfpWidthFt)
+        || !hasPositiveNumber(display.rfpHeightFt)
+        || !hasPositiveNumber(display.widthFt)
+        || !hasPositiveNumber(display.heightFt)
+    ) {
+        return false;
+    }
+
+    // Cabinet snapping should meet or exceed the requested board size.
+    // If the working size is materially smaller than the RFP size, a stale
+    // one-cabinet overwrite slipped in somewhere and we should recover.
+    return (
+        display.widthFt < (display.rfpWidthFt * 0.98)
+        || display.heightFt < (display.rfpHeightFt * 0.98)
+    );
+}
+
 export function normalizeDisplayAnswerDimensions(display: DisplayAnswers): DisplayAnswers {
     const next = { ...display };
     let changed = false;
@@ -947,6 +966,11 @@ export function normalizeDisplayAnswerDimensions(display: DisplayAnswers): Displ
     }
     if (!hasPositiveNumber(next.heightFt) && hasPositiveNumber(next.rfpHeightFt)) {
         next.heightFt = next.rfpHeightFt;
+        changed = true;
+    }
+    if (workingDimsShrinkBelowRfp(next)) {
+        next.widthFt = next.rfpWidthFt!;
+        next.heightFt = next.rfpHeightFt!;
         changed = true;
     }
     // Old estimator states could keep a freshly edited RFP size while the
