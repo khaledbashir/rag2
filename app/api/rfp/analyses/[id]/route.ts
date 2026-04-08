@@ -17,8 +17,36 @@ export async function GET(
 ) {
   const { id } = await params;
 
+  const analysisSelect = {
+    id: true,
+    projectName: true,
+    clientName: true,
+    venue: true,
+    location: true,
+    filename: true,
+    fileSize: true,
+    pageCount: true,
+    relevantPages: true,
+    noisePages: true,
+    drawingPages: true,
+    specsFound: true,
+    processingTimeMs: true,
+    visionPages: true,
+    screens: true,
+    requirements: true,
+    incompleteSpecs: true,
+    project: true,
+    triage: true,
+    aiWorkspaceSlug: true,
+    status: true,
+    createdAt: true,
+    updatedAt: true,
+    pdfFilePath: true,
+  } as const;
+
   const analysis = await prisma.rfpAnalysis.findUnique({
     where: { id },
+    select: analysisSelect,
   });
 
   if (!analysis) {
@@ -44,6 +72,7 @@ export async function GET(
           project: JSON.parse(JSON.stringify(project)),
           specsFound: preservedSpecs.length,
         },
+        select: analysisSelect,
       });
       return NextResponse.json(updated);
     } catch {
@@ -72,6 +101,32 @@ export async function PATCH(
 ) {
   const { id } = await params;
   const body = await request.json();
+  const analysisSelect = {
+    id: true,
+    projectName: true,
+    clientName: true,
+    venue: true,
+    location: true,
+    filename: true,
+    fileSize: true,
+    pageCount: true,
+    relevantPages: true,
+    noisePages: true,
+    drawingPages: true,
+    specsFound: true,
+    processingTimeMs: true,
+    visionPages: true,
+    screens: true,
+    requirements: true,
+    incompleteSpecs: true,
+    project: true,
+    triage: true,
+    aiWorkspaceSlug: true,
+    status: true,
+    createdAt: true,
+    updatedAt: true,
+    pdfFilePath: true,
+  } as const;
 
   // Allow updating safe fields
   const stringFields = ["projectName", "clientName", "venue", "location"];
@@ -102,6 +157,7 @@ export async function PATCH(
   const updated = await prisma.rfpAnalysis.update({
     where: { id },
     data,
+    select: analysisSelect,
   });
 
   return NextResponse.json(updated);
