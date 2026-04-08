@@ -249,6 +249,14 @@ export function computeDisplays(
   resolveProduct: ProductResolver,
   ov?: FinancialOverrides,
 ): ComputedDisplay[] {
+  const identicalBundleCosts = new Map<string, {
+    sendingCardCost: number;
+    signalCableCost: number;
+    upsCost: number;
+    backupProcessorCost: number;
+    weatherproofCost: number;
+  }>();
+
   return specs.map((spec, idx) => {
     const priced = pricedDisplays?.[idx] ?? null;
     // Standard LCD fallback: if no dimensions extracted, use known LCD panel sizes.
@@ -398,13 +406,46 @@ export function computeDisplays(
     const processorUnitCost = pPortsNeeded > 8 ? 8400 : BUNDLES.sendingCard;
     const portsPerUnit = pPortsNeeded > 8 ? 16 : 8;
     const processorsNeeded = pPortsNeeded > 0 ? Math.ceil(pPortsNeeded / portsPerUnit) : (hasDimensions ? 1 : 0);
-    const sendingCardCost = co?.processor != null ? co.processor : round2(processorsNeeded * processorUnitCost);
+    let sendingCardCost = co?.processor != null ? co.processor : round2(processorsNeeded * processorUnitCost);
     const sparePartsCost = round2(ledHardwareCost * BUNDLES.sparePartsPct);
-    const signalCableCost = round2(BUNDLES.signalCablePerSqFt25 * (areaSqFt / 25));
+    let signalCableCost = round2(BUNDLES.signalCablePerSqFt25 * (areaSqFt / 25));
     const isScoreboard = isCeiling;
-    const upsCost = isScoreboard ? BUNDLES.upsBattery : 0;
-    const backupProcessorCost = areaSqFt > 300 ? BUNDLES.backupProcessor : 0;
-    const weatherproofCost = spec.environment === "outdoor" ? round2(areaSqFt * BUNDLES.weatherproofPerSqFt) : 0;
+    let upsCost = isScoreboard ? BUNDLES.upsBattery : 0;
+    let backupProcessorCost = areaSqFt > 300 ? BUNDLES.backupProcessor : 0;
+    let weatherproofCost = spec.environment === "outdoor" ? round2(areaSqFt * BUNDLES.weatherproofPerSqFt) : 0;
+
+    // Identical screens must carry identical bundle equipment even when their
+    // free-text names classify differently. Key off the actual physical/product
+    // configuration instead of display labels.
+    const bundleIdentity = [
+      spec.selectedProductId || spec.selectedProductName || "",
+      spec.environment || "",
+      round2(activeWidthFt),
+      round2(activeHeightFt),
+      Number(spec.quantity) || 1,
+      spec.pixelPitchMm || 0,
+      pWidthPx,
+      pHeightPx,
+      pTotalPixels,
+      isTV ? "tv" : "led",
+      co?.processor != null ? `processor:${co.processor}` : "",
+    ].join("|");
+    const canonicalBundle = identicalBundleCosts.get(bundleIdentity);
+    if (canonicalBundle) {
+      sendingCardCost = canonicalBundle.sendingCardCost;
+      signalCableCost = canonicalBundle.signalCableCost;
+      upsCost = canonicalBundle.upsCost;
+      backupProcessorCost = canonicalBundle.backupProcessorCost;
+      weatherproofCost = canonicalBundle.weatherproofCost;
+    } else {
+      identicalBundleCosts.set(bundleIdentity, {
+        sendingCardCost,
+        signalCableCost,
+        upsCost,
+        backupProcessorCost,
+        weatherproofCost,
+      });
+    }
 
     // Shipping — override from cell edit or default $10/sqft (minimum $500 for any real display)
     const rawShipping = hasDimensions ? round2(areaSqFt * 10) : 0;

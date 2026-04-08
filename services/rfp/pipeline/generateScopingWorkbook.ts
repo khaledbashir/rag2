@@ -1776,9 +1776,8 @@ function buildLedCostSheet(
       dr.getCell(16).value = { formula: `IFERROR(VLOOKUP(F${row},${prodRange},4,FALSE),0)`, result: costPerSqFtResult };
     }
     dr.getCell(16).numFmt = FMT_USD;
-    // Q: Display Cost — precise API value, derived backward: TotalCost - Processor - Shipping
-    // NOT forward-calculated from $/SqFt × SqFt (causes floating-point drift vs API)
-    dr.getCell(17).value = round2(ledWithSpares);
+    // Q: Display Cost = $/SqFt × Total SqFt
+    dr.getCell(17).value = { formula: `P${row}*M${row}`, result: round2(ledWithSpares) };
     dr.getCell(17).numFmt = FMT_USD;
     const bundleSubtotalRow = bundleSubtotalRows[idx];
     // R: Processor — cross-sheet formula to Bundle Equipment
@@ -2005,8 +2004,8 @@ function buildLedCostSheet(
       const altCostPerSqFtResult = altSnappedSqFt > 0 ? round2(altLedWithSpares / altSnappedSqFt) : 0;
       dr.getCell(16).value = { formula: `IFERROR(VLOOKUP(F${rowNum},${prodRange},4,FALSE),0)`, result: altCostPerSqFtResult };
       dr.getCell(16).numFmt = FMT_USD;
-      // Q: Display Cost — use the exact computed value to avoid forward-calculation drift
-      dr.getCell(17).value = altLedWithSpares;
+      // Q: Display Cost = $/SqFt × Total SqFt
+      dr.getCell(17).value = { formula: `P${rowNum}*M${rowNum}`, result: altLedWithSpares };
       dr.getCell(17).numFmt = FMT_USD;
       // R: Processor — cross-sheet formula to Bundle Equipment (same config as base display)
       const altEquipCost = d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost;
