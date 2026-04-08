@@ -4,8 +4,10 @@
  */
 function parsePitchFromProductName(name: string | null | undefined): number | null {
   if (!name) return null;
-  const m = name.match(/(\d+\.?\d*)\s*mm/i);
-  return m ? parseFloat(m[1]) : null;
+  const mmMatch = name.match(/(\d+\.?\d*)\s*mm/i);
+  if (mmMatch) return parseFloat(mmMatch[1]);
+  const seriesMatch = name.match(/(?:^|[\s-])(?:r|c|a|p)(\d+\.?\d*)(?=[-\s]|$)/i);
+  return seriesMatch ? parseFloat(seriesMatch[1]) : null;
 }
 
 function chooseContextualFallbackProduct(

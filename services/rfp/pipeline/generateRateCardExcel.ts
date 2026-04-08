@@ -198,8 +198,10 @@ function computeProcessorAndShipping(spec: ExtractedLEDSpec, areaSqFt: number): 
 /** Parse pitch from product name like "C2.5-MIP 2.5mm Indoor (Alt)" → 2.5 */
 function parsePitchFromProductName(name: string | null | undefined): number | null {
   if (!name) return null;
-  const m = name.match(/(\d+\.?\d*)\s*mm/i);
-  return m ? parseFloat(m[1]) : null;
+  const mmMatch = name.match(/(\d+\.?\d*)\s*mm/i);
+  if (mmMatch) return parseFloat(mmMatch[1]);
+  const seriesMatch = name.match(/(?:^|[\s-])(?:r|c|a|p)(\d+\.?\d*)(?=[-\s]|$)/i);
+  return seriesMatch ? parseFloat(seriesMatch[1]) : null;
 }
 
 // ─── Core: Price Each Display ───────────────────────────────────────────────
@@ -229,7 +231,10 @@ async function priceDisplay(
 
   // Always compute rate card estimate for delta comparison.
   // Exact key match first, then nearest pitch within 0.5mm tolerance.
-  const pitchVal = spec.pixelPitchMm;
+  const selectedProduct = spec.selectedProductId ? getProduct(spec.selectedProductId) : null;
+  const pitchVal = selectedProduct?.pitchMm
+    ?? parsePitchFromProductName(spec.selectedProductName)
+    ?? spec.pixelPitchMm;
   let ratePerSqFt: number | null = null;
   if (pitchVal != null) {
     const exactKey = String(pitchVal);
