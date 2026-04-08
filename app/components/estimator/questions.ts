@@ -905,6 +905,78 @@ export function getDefaultDisplayAnswers(): DisplayAnswers {
     };
 }
 
+function hasPositiveNumber(value: number | undefined): value is number {
+    return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function ratiosDriftSeverely(display: DisplayAnswers): boolean {
+    if (
+        !hasPositiveNumber(display.rfpWidthFt)
+        || !hasPositiveNumber(display.rfpHeightFt)
+        || !hasPositiveNumber(display.widthFt)
+        || !hasPositiveNumber(display.heightFt)
+    ) {
+        return false;
+    }
+
+    const rfpRatio = display.rfpWidthFt / display.rfpHeightFt;
+    const workingRatio = display.widthFt / display.heightFt;
+    if (!Number.isFinite(rfpRatio) || !Number.isFinite(workingRatio) || rfpRatio <= 0 || workingRatio <= 0) {
+        return false;
+    }
+
+    const ratioDelta = Math.max(rfpRatio, workingRatio) / Math.min(rfpRatio, workingRatio);
+    return ratioDelta >= 2.5;
+}
+
+export function normalizeDisplayAnswerDimensions(display: DisplayAnswers): DisplayAnswers {
+    const next = { ...display };
+    let changed = false;
+
+    if (!hasPositiveNumber(next.rfpWidthFt) && hasPositiveNumber(next.widthFt)) {
+        next.rfpWidthFt = next.widthFt;
+        changed = true;
+    }
+    if (!hasPositiveNumber(next.rfpHeightFt) && hasPositiveNumber(next.heightFt)) {
+        next.rfpHeightFt = next.heightFt;
+        changed = true;
+    }
+    if (!hasPositiveNumber(next.widthFt) && hasPositiveNumber(next.rfpWidthFt)) {
+        next.widthFt = next.rfpWidthFt;
+        changed = true;
+    }
+    if (!hasPositiveNumber(next.heightFt) && hasPositiveNumber(next.rfpHeightFt)) {
+        next.heightFt = next.rfpHeightFt;
+        changed = true;
+    }
+    // Old estimator states could keep a freshly edited RFP size while the
+    // working dimensions stayed on a stale square/default cabinet size.
+    // When the aspect ratios diverge this much, prefer the edited RFP size
+    // so preview and export stay aligned until the product is re-snapped.
+    if (ratiosDriftSeverely(next)) {
+        next.widthFt = next.rfpWidthFt!;
+        next.heightFt = next.rfpHeightFt!;
+        changed = true;
+    }
+
+    return changed ? next : display;
+}
+
+export function normalizeEstimatorAnswers(answers: EstimatorAnswers): EstimatorAnswers {
+    if (!Array.isArray(answers.displays) || answers.displays.length === 0) {
+        return answers;
+    }
+
+    let changed = false;
+    const displays = answers.displays.map((display) => {
+        const normalized = normalizeDisplayAnswerDimensions(display);
+        if (normalized !== display) changed = true;
+        return normalized;
+    });
+
+    return changed ? { ...answers, displays } : answers;
+}
+
 /**
  * Get all questions for the current flow state.
  * Returns a flat list with display questions expanded per display.

@@ -18,7 +18,7 @@ import { useRouter } from "next/navigation";
 import QuestionFlow from "./QuestionFlow";
 import EstimatorCopilot from "./EstimatorCopilot";
 import { calculateDisplay, type SheetTab, type ProductSpec } from "./EstimatorBridge";
-import { getDefaultAnswers, type EstimatorAnswers, type DisplayAnswers } from "./questions";
+import { getDefaultAnswers, normalizeDisplayAnswerDimensions, normalizeEstimatorAnswers, type EstimatorAnswers, type DisplayAnswers } from "./questions";
 import WorkbookShell from "@/app/components/reusables/WorkbookShell";
 import { buildEstimatorWorkbook } from "./buildEstimatorWorkbook";
 import VendorDropZone from "./VendorDropZone";
@@ -57,7 +57,7 @@ export default function EstimatorStudio({
 }: EstimatorStudioProps = {}) {
     const ADDITIONAL_ITEM_MARGIN = 0.15;
     const router = useRouter();
-    const [answers, setAnswers] = useState<EstimatorAnswers>(initialAnswers || getDefaultAnswers());
+    const [answers, setAnswers] = useState<EstimatorAnswers>(() => normalizeEstimatorAnswers(initialAnswers || getDefaultAnswers()));
     const [exporting, setExporting] = useState(false);
     const [questionsComplete, setQuestionsComplete] = useState(!!initialAnswers);
     const [editingAnswers, setEditingAnswers] = useState(!initialAnswers);
@@ -259,24 +259,7 @@ export default function EstimatorStudio({
     }, [availableProducts, resolveDisplayToLedProduct]);
 
     useEffect(() => {
-        setAnswers((prev) => {
-            let changed = false;
-            const displays = prev.displays.map((display) => {
-                const nextDisplay = {
-                    ...display,
-                    rfpWidthFt: display.rfpWidthFt || display.widthFt || 0,
-                    rfpHeightFt: display.rfpHeightFt || display.heightFt || 0,
-                };
-                if (
-                    nextDisplay.rfpWidthFt !== display.rfpWidthFt
-                    || nextDisplay.rfpHeightFt !== display.rfpHeightFt
-                ) {
-                    changed = true;
-                }
-                return nextDisplay;
-            });
-            return changed ? { ...prev, displays } : prev;
-        });
+        setAnswers((prev) => normalizeEstimatorAnswers(prev));
     }, []);
 
     // Calculate per-display cost breakdowns (used by copilot for query responses)
@@ -428,7 +411,7 @@ export default function EstimatorStudio({
         if (next.includeScoring && !next.scoringAllocation) {
             next = { ...next, scoringAllocation: Math.max(1, next.displays?.length || 1) * 15000 };
         }
-        setAnswers(next);
+        setAnswers(normalizeEstimatorAnswers(next));
     }, []);
 
     const handleExport = useCallback(async () => {
@@ -1216,6 +1199,8 @@ export default function EstimatorStudio({
                                     if (autoWidth > 0 && autoHeight > 0) {
                                         update.widthFt = autoWidth;
                                         update.heightFt = autoHeight;
+                                        if (!(update.rfpWidthFt && update.rfpWidthFt > 0)) update.rfpWidthFt = autoWidth;
+                                        if (!(update.rfpHeightFt && update.rfpHeightFt > 0)) update.rfpHeightFt = autoHeight;
                                     }
                                     if (productType === "courtside" || productType === "stanchion") {
                                         update.fixedWidthPx = extSpecs?.displayWidthPx || undefined;
@@ -1224,7 +1209,7 @@ export default function EstimatorStudio({
                                         update.fixedWidthPx = undefined;
                                         update.fixedHeightPx = undefined;
                                     }
-                                    displays[displayIdx] = update;
+                                    displays[displayIdx] = normalizeDisplayAnswerDimensions(update);
                                     return { ...prev, displays };
                                 });
                             },
@@ -1274,7 +1259,13 @@ export default function EstimatorStudio({
                                         if (displayIdx < 0 || displayIdx >= answers.displays.length) return;
                                         setAnswers((prev) => {
                                             const displays = [...prev.displays];
-                                            displays[displayIdx] = { ...displays[displayIdx], [field]: numValue };
+                                            const update = { ...displays[displayIdx], [field]: numValue } as DisplayAnswers;
+                                            if (field === "heightFt") {
+                                                update.rfpHeightFt = numValue;
+                                            } else if (field === "widthFt") {
+                                                update.rfpWidthFt = numValue;
+                                            }
+                                            displays[displayIdx] = normalizeDisplayAnswerDimensions(update);
                                             return { ...prev, displays };
                                         });
                                     }}

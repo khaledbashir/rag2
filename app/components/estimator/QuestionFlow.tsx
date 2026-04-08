@@ -349,6 +349,8 @@ export default function QuestionFlow({
             if (currentQ.id === "dimensions") {
                 d.widthFt = val.widthFt;
                 d.heightFt = val.heightFt;
+                d.rfpWidthFt = val.widthFt;
+                d.rfpHeightFt = val.heightFt;
             } else {
                 (d as any)[currentQ.id] = val;
             }

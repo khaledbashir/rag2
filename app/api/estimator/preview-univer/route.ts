@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { mapEstimatorToScoping } from "@/services/rfp/pipeline/estimatorToScopingMapper";
 import { generateScopingWorkbook } from "@/services/rfp/pipeline/generateScopingWorkbook";
-import type { EstimatorAnswers } from "@/app/components/estimator/questions";
+import { normalizeEstimatorAnswers, type EstimatorAnswers } from "@/app/components/estimator/questions";
 import { log } from "@/lib/logger";
 import ExcelJS from "exceljs";
 
@@ -270,7 +270,7 @@ function convertWorksheet(ws: ExcelJS.Worksheet, sheetId: string): UniverSheet {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const answers: EstimatorAnswers = body.answers;
+    const answers: EstimatorAnswers = normalizeEstimatorAnswers(body.answers);
 
     if (!answers || !answers.displays?.length) {
       return NextResponse.json(
