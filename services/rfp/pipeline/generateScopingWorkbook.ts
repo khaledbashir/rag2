@@ -1545,7 +1545,9 @@ function buildLedCostSheet(
   setTitle(ws, "W", `${projectName} — LED Cost Sheet`);
 
   // Build product data sheet for dropdown + VLOOKUP formulas on LED Cost Sheet
-  // Columns: A=Name, B=Vendor, C=Pitch(mm), D=$/SqFt, E=NITs, F=Weight(lbs/m²), G=Power(W/m²)
+  // Columns:
+  // A=Name, B=Vendor, C=Pitch(mm), D=$/SqFt, E=NITs, F=Weight(lbs/m²), G=Power(W/m²),
+  // H=Cab W(mm), I=Cab H(mm), J=Module W(mm), K=Module H(mm)
   // Helper to normalize product names (handles Prisma vs Catalog interface differences)
   const getProductName = (p: any) => p?.name || p?.displayName || p?.model || "—";
 
@@ -1607,10 +1609,24 @@ function buildLedCostSheet(
       productSheet!.getCell(r, 5).value = p.brightnessNits;             // E: NITs
       productSheet!.getCell(r, 6).value = round2(p.weightDensityLbm2);  // F: Weight (lbs/m²)
       productSheet!.getCell(r, 7).value = round2(p.powerDensityWm2);    // G: Power (W/m²)
+      productSheet!.getCell(r, 8).value = p.defaultCabinet?.widthMm ?? (p as any).cabinetWidthMm ?? 0;   // H: Cabinet W (mm)
+      productSheet!.getCell(r, 9).value = p.defaultCabinet?.heightMm ?? (p as any).cabinetHeightMm ?? 0; // I: Cabinet H (mm)
+      productSheet!.getCell(r, 10).value = (p as any).moduleWidthMm ?? p.smallCabinet?.widthMm ?? 0;     // J: Module W (mm)
+      productSheet!.getCell(r, 11).value = (p as any).moduleHeightMm ?? p.smallCabinet?.heightMm ?? 0;   // K: Module H (mm)
     });
   }
   const productListRef = `'_Products'!$A$1:$A$${productNames.length}`;
-  const prodRange = `'_Products'!$A$1:$G$${productNames.length}`;
+  const prodRange = `'_Products'!$A$1:$K$${productNames.length}`;
+
+  const productSnapUnitFormula = (rowNum: number, axis: "width" | "height") => {
+    const cabinetCol = axis === "width" ? 8 : 9;
+    const moduleCol = axis === "width" ? 10 : 11;
+    return `IF(AND(VLOOKUP(F${rowNum},${prodRange},${moduleCol},FALSE)>0,VLOOKUP(F${rowNum},${prodRange},${moduleCol},FALSE)<VLOOKUP(F${rowNum},${prodRange},${cabinetCol},FALSE)),VLOOKUP(F${rowNum},${prodRange},${moduleCol},FALSE),VLOOKUP(F${rowNum},${prodRange},${cabinetCol},FALSE))`;
+  };
+  const snappedFeetFormula = (rowNum: number, rfpCol: string, axis: "width" | "height") => {
+    const snapUnit = productSnapUnitFormula(rowNum, axis);
+    return `IFERROR(CEILING(${rfpCol}${rowNum}*304.8/${snapUnit},1)*${snapUnit}/304.8,${rfpCol}${rowNum})`;
+  };
 
   // Master LED Margin Override (yellow cell) — keep the label in a single cell
   // so both the web preview and exported Excel avoid duplicated merged-cell text.
@@ -1761,8 +1777,15 @@ function buildLedCostSheet(
     // visible sheet matches product-specific sizing.
     const cellH = Number(d.match?.activeHeightFt) || Number(d.heightFt) || 0;
     const cellW = Number(d.match?.activeWidthFt) || Number(d.widthFt) || 0;
-    dr.getCell(8).value = cellH; dr.getCell(8).numFmt = "0.00";
-    dr.getCell(9).value = cellW; dr.getCell(9).numFmt = "0.00";
+    if (isClockLike) {
+      dr.getCell(8).value = cellH;
+      dr.getCell(9).value = cellW;
+    } else {
+      dr.getCell(8).value = { formula: snappedFeetFormula(row, "B", "height"), result: cellH };
+      dr.getCell(9).value = { formula: snappedFeetFormula(row, "C", "width"), result: cellW };
+    }
+    dr.getCell(8).numFmt = "0.00";
+    dr.getCell(9).numFmt = "0.00";
     // J-K: H(px), W(px) — courtside/stanchion use fixed product specs; LED uses formula
     const fixedPx = getFixedPixelSpecs(selectedProduct);
     const hPx = fixedPx?.hPx ?? (effectivePitch && cellH ? Math.round(cellH * 304.8 / effectivePitch) : (d.spec.heightPx || 0));
@@ -2003,12 +2026,16 @@ function buildLedCostSheet(
       dr.getCell(7).numFmt = '0.0##"mm"';
       dr.getCell(7).alignment = { horizontal: "center" };
       // H-I: Use cabinet-snapped dims for alternates too when a product match exists.
-      dr.getCell(8).value = Number(d.match?.activeHeightFt) || d.heightFt || 0; dr.getCell(8).numFmt = "0.00";
-      dr.getCell(9).value = Number(d.match?.activeWidthFt) || d.widthFt || 0; dr.getCell(9).numFmt = "0.00";
+      const altCellHFormulaResult = Number(d.match?.activeHeightFt) || d.heightFt || 0;
+      const altCellWFormulaResult = Number(d.match?.activeWidthFt) || d.widthFt || 0;
+      dr.getCell(8).value = { formula: snappedFeetFormula(rowNum, "B", "height"), result: altCellHFormulaResult };
+      dr.getCell(9).value = { formula: snappedFeetFormula(rowNum, "C", "width"), result: altCellWFormulaResult };
+      dr.getCell(8).numFmt = "0.00";
+      dr.getCell(9).numFmt = "0.00";
       // J-K: Pixels — courtside/stanchion use fixed product specs; LED uses formula
       const altFixedPx = getFixedPixelSpecs(altSelectedProduct);
-      const altCellH = Number(d.match?.activeHeightFt) || d.heightFt || 0;
-      const altCellW = Number(d.match?.activeWidthFt) || d.widthFt || 0;
+      const altCellH = altCellHFormulaResult;
+      const altCellW = altCellWFormulaResult;
       const altHPx = altFixedPx?.hPx ?? (altPitch && altCellH ? Math.round(altCellH * 304.8 / altPitch) : 0);
       const altWPx = altFixedPx?.wPx ?? (altPitch && altCellW ? Math.round(altCellW * 304.8 / altPitch) : 0);
       if (altFixedPx) {
