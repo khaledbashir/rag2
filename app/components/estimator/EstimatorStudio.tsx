@@ -1178,9 +1178,6 @@ export default function EstimatorStudio({
                                             if ((productType === "courtside" || productType === "stanchion") && extSpecs) {
                                                 autoWidth = extSpecs.displayWidthFt || 0;
                                                 autoHeight = extSpecs.displayHeightFt || 0;
-                                            } else if (p.cabinetWidthMm && p.cabinetHeightMm) {
-                                                autoWidth = Math.round(p.cabinetWidthMm / 304.8 * 100) / 100;
-                                                autoHeight = Math.round(p.cabinetHeightMm / 304.8 * 100) / 100;
                                             }
                                         }
                                     }
@@ -1194,9 +1191,10 @@ export default function EstimatorStudio({
                                         productName: product.name,
                                         pixelPitch: String(product.pitch),
                                     };
-                                    // Product changes should always snap H/W to the selected product's specs.
-                                    // Courtside/stanchion additionally carry fixed pixel dimensions from catalog.
-                                    if (autoWidth > 0 && autoHeight > 0) {
+                                    // Standard LED products should preserve the requested screen size and let
+                                    // the workbook snap to the selected cabinet grid. Only specialty fixed-size
+                                    // products like courtside/stanchion should overwrite the display dimensions.
+                                    if ((productType === "courtside" || productType === "stanchion") && autoWidth > 0 && autoHeight > 0) {
                                         update.widthFt = autoWidth;
                                         update.heightFt = autoHeight;
                                         if (!(update.rfpWidthFt && update.rfpWidthFt > 0)) update.rfpWidthFt = autoWidth;
