@@ -1557,28 +1557,34 @@ function buildLedCostSheet(
     .sort((a, b) => a.name.localeCompare(b.name));
   
   // Inject any DB-resolved products into the sortedProducts array so they appear in _Products sheet
-  // and pass the productNames.includes() check later!
+  // and pass the productNames.includes() check later.
+  // If a DB product shares a name with a hardcoded catalog product, prefer the DB
+  // version because it can carry richer module/cabinet geometry used by the live app.
   for (const d of displays) {
     if (d.spec.selectedProductId) {
       const dbProd = resolveProduct(d.spec.selectedProductId);
       if (dbProd) {
         const dbProdName = getProductName(dbProd);
-        if (!sortedProducts.some(p => getProductName(p) === dbProdName)) {
-           // We cast to any to inject it into the _Products array
-           sortedProducts.push({
-             ...dbProd,
-             name: dbProdName, // force 'name' property for the VLOOKUP
-             pitchMm: (dbProd as any).pitch || (dbProd as any).pixelPitch || (dbProd as any).pitchMm || d.match?.module?.pitch || d.spec.pixelPitchMm || 2.5,
-             manufacturer: dbProd.manufacturer || d.match?.module?.manufacturer || "Generic",
-             environment: (dbProd as any).environment || d.spec.environment || "Indoor",
-             brightnessNits: (dbProd as any).nits || (dbProd as any).maxNits || (dbProd as any).brightnessNits || d.match?.module?.nits || d.spec.brightnessNits || 0,
-             maxPowerWattsPerCab: (dbProd as any).maxPowerWattsPerCab || (dbProd as any).maxPowerWatts || 0,
-             dimensionsMm: (dbProd as any).dimensionsMm || "Custom"
-           } as any);
+        const normalizedDbProduct = {
+          ...dbProd,
+          name: dbProdName, // force 'name' property for the VLOOKUP
+          pitchMm: (dbProd as any).pitch || (dbProd as any).pixelPitch || (dbProd as any).pitchMm || d.match?.module?.pitch || d.spec.pixelPitchMm || 2.5,
+          manufacturer: dbProd.manufacturer || d.match?.module?.manufacturer || "Generic",
+          environment: (dbProd as any).environment || d.spec.environment || "Indoor",
+          brightnessNits: (dbProd as any).nits || (dbProd as any).maxNits || (dbProd as any).brightnessNits || d.match?.module?.nits || d.spec.brightnessNits || 0,
+          maxPowerWattsPerCab: (dbProd as any).maxPowerWattsPerCab || (dbProd as any).maxPowerWatts || 0,
+          dimensionsMm: (dbProd as any).dimensionsMm || "Custom"
+        } as any;
+        const existingIdx = sortedProducts.findIndex((p) => getProductName(p) === dbProdName);
+        if (existingIdx >= 0) {
+          sortedProducts[existingIdx] = normalizedDbProduct;
+        } else {
+          sortedProducts.push(normalizedDbProduct);
         }
       }
     }
   }
+  sortedProducts.sort((a, b) => getProductName(a).localeCompare(getProductName(b)));
 
   const productNames = sortedProducts.map((p) => getProductName(p));
   let productSheet = wb.getWorksheet("_Products");
