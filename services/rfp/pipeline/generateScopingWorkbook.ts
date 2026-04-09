@@ -480,10 +480,10 @@ export async function generateScopingWorkbook(
       nits: p.maxNits,
       weightDensityLbm2: (p.weightKgPerCabinet * 2.205) / ((p.cabinetWidthMm * p.cabinetHeightMm) / 1e6),
       powerDensityWm2: p.maxPowerWattsPerCab / ((p.cabinetWidthMm * p.cabinetHeightMm) / 1e6),
-      cabinetWidthMm: p.cabinetWidthMm,
-      cabinetHeightMm: p.cabinetHeightMm,
-      moduleWidthMm: p.moduleWidthMm ?? undefined,
-      moduleHeightMm: p.moduleHeightMm ?? undefined,
+      cabinetWidthMm: (p as any).cabinetWidthMm,
+      cabinetHeightMm: (p as any).cabinetHeightMm,
+      moduleWidthMm: (p as any).moduleWidthMm ?? undefined,
+      moduleHeightMm: (p as any).moduleHeightMm ?? undefined,
       environment: p.environment,
       productType: p.productType,
       maxPowerWattsPerCab: p.maxPowerWattsPerCab,
@@ -1725,11 +1725,26 @@ function buildLedCostSheet(
   sortedProducts.sort((a, b) => getProductName(a).localeCompare(getProductName(b)));
 
   const productNames = sortedProducts.map((p) => getProductName(p));
+
+  // DB name → product map so the _Products hidden sheet always writes the
+  // authoritative cabinet/module geometry. Without this override, if any code
+  // path lets a hardcoded-catalog entry reach sortedProducts without being
+  // replaced by its DB twin, VLOOKUP in Excel would read module=0 and the
+  // snapping formula would fall back to cabinet — producing oversized displays
+  // after the workbook recalculates on open. DB is the single source of truth.
+  const dbGeometryByName = new Map<string, any>();
+  for (const rawProduct of allResolvedProducts) {
+    const name = getProductName(rawProduct);
+    if (!name || name === "—") continue;
+    dbGeometryByName.set(name.toLowerCase().trim(), rawProduct);
+  }
+
   let productSheet = wb.getWorksheet("_Products");
   if (!productSheet) {
     productSheet = wb.addWorksheet("_Products", { state: "veryHidden" });
     sortedProducts.forEach((p, i) => {
       const r = i + 1;
+      const dbMatch = dbGeometryByName.get(getProductName(p).toLowerCase().trim());
       productSheet!.getCell(r, 1).value = p.name;                       // A: Name
       productSheet!.getCell(r, 2).value = p.manufacturer || "";          // B: Vendor
       productSheet!.getCell(r, 3).value = p.pitchMm;                    // C: Pitch (mm)
@@ -1753,10 +1768,16 @@ function buildLedCostSheet(
       productSheet!.getCell(r, 5).value = p.brightnessNits;             // E: NITs
       productSheet!.getCell(r, 6).value = round2(p.weightDensityLbm2);  // F: Weight (lbs/m²)
       productSheet!.getCell(r, 7).value = round2(p.powerDensityWm2);    // G: Power (W/m²)
-      productSheet!.getCell(r, 8).value = p.defaultCabinet?.widthMm ?? (p as any).cabinetWidthMm ?? 0;   // H: Cabinet W (mm)
-      productSheet!.getCell(r, 9).value = p.defaultCabinet?.heightMm ?? (p as any).cabinetHeightMm ?? 0; // I: Cabinet H (mm)
-      productSheet!.getCell(r, 10).value = (p as any).moduleWidthMm ?? p.smallCabinet?.widthMm ?? 0;     // J: Module W (mm)
-      productSheet!.getCell(r, 11).value = (p as any).moduleHeightMm ?? p.smallCabinet?.heightMm ?? 0;   // K: Module H (mm)
+      // Cabinet + module dims: DB match wins over catalog shape. Final fall-back
+      // to 0 is only reached when neither DB nor catalog carry geometry.
+      const cabinetW = dbMatch?.cabinetWidthMm ?? p.defaultCabinet?.widthMm ?? (p as any).cabinetWidthMm ?? 0;
+      const cabinetH = dbMatch?.cabinetHeightMm ?? p.defaultCabinet?.heightMm ?? (p as any).cabinetHeightMm ?? 0;
+      const moduleW = dbMatch?.moduleWidthMm ?? (p as any).moduleWidthMm ?? p.smallCabinet?.widthMm ?? 0;
+      const moduleH = dbMatch?.moduleHeightMm ?? (p as any).moduleHeightMm ?? p.smallCabinet?.heightMm ?? 0;
+      productSheet!.getCell(r, 8).value = cabinetW;   // H: Cabinet W (mm)
+      productSheet!.getCell(r, 9).value = cabinetH;   // I: Cabinet H (mm)
+      productSheet!.getCell(r, 10).value = moduleW;   // J: Module W (mm)
+      productSheet!.getCell(r, 11).value = moduleH;   // K: Module H (mm)
     });
   }
   const productListRef = `'_Products'!$A$1:$A$${productNames.length}`;
@@ -2160,6 +2181,17 @@ function buildLedCostSheet(
       // A: Display name with Alt prefix
       dr.getCell(1).value = `${altLabel}: ${d.spec.name}`;
       dr.getCell(1).font = { bold: true, name: "Calibri" };
+      // B-D: RFP reference dims — must be populated on alternate rows too
+      // because the H/I snap formulas at cells 8/9 below reference B${rowNum}
+      // and C${rowNum}. Leaving them blank causes the formula to compute
+      // CEILING(0/snap,1)*snap = 0 after Excel recalculates (e.g. when the
+      // user edits the base row), collapsing the alternate to H=0.00 W=0.00.
+      const altRfpH = Number(d.spec.heightFt) || 0;
+      const altRfpW = Number(d.spec.widthFt) || 0;
+      const altRfpNits = Number(d.spec.brightnessNits) || 0;
+      dr.getCell(2).value = altRfpH > 0 ? altRfpH : ""; dr.getCell(2).numFmt = "0.00";
+      dr.getCell(3).value = altRfpW > 0 ? altRfpW : ""; dr.getCell(3).numFmt = "0.00";
+      dr.getCell(4).value = altRfpNits > 0 ? altRfpNits : "";
       // E: Vendor — VLOOKUP from _Products
       const altVendorResult = altCatalogProduct?.manufacturer || d.match?.module?.manufacturer || "";
       dr.getCell(5).value = { formula: `IFERROR(VLOOKUP(F${rowNum},${prodRange},2,FALSE),"")`, result: altVendorResult };
