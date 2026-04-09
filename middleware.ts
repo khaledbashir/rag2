@@ -61,6 +61,11 @@ export default auth((req) => {
     pathname.startsWith("/api/agent-skill") ||
     pathname.startsWith("/api/mcp") ||
     pathname.startsWith("/api/performance/seed") ||
+    // Twenty CRM bridge — Twenty AI skills link users here with a narrow,
+    // read-only view (estimate → xlsx export). The inbound request carries
+    // only a Twenty estimate UUID, which we validate against Twenty's REST
+    // API before returning anything.
+    pathname.startsWith("/api/twenty-bridge") ||
     pathname.startsWith("/share/performance/") ||
     pathname.startsWith("/auth/")
   ) {
