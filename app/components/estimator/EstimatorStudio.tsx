@@ -12,13 +12,13 @@
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { useConfirm } from "@/hooks/useConfirm";
 import dynamic from "next/dynamic";
-import { FileSpreadsheet, ArrowLeft, Download, Loader2, MessageSquare, Copy, ArrowRightLeft, Package, Boxes, Search, Shield, Send, GitCompare, FileText, Box, Zap, ChevronDown, PenLine, Activity } from "lucide-react";
+import { FileSpreadsheet, ArrowLeft, Download, Loader2, MessageSquare, Copy, ArrowRightLeft, Package, Boxes, Search, Shield, Send, GitCompare, FileText, Box, Zap, ChevronDown, PenLine, Activity, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import QuestionFlow from "./QuestionFlow";
 import EstimatorCopilot from "./EstimatorCopilot";
 import { calculateDisplay, type SheetTab, type ProductSpec } from "./EstimatorBridge";
-import { getDefaultAnswers, normalizeDisplayAnswerDimensions, normalizeEstimatorAnswers, type EstimatorAnswers, type DisplayAnswers } from "./questions";
+import { getDefaultAnswers, getDefaultDisplayAnswers, normalizeDisplayAnswerDimensions, normalizeEstimatorAnswers, type EstimatorAnswers, type DisplayAnswers } from "./questions";
 import WorkbookShell from "@/app/components/reusables/WorkbookShell";
 import { buildEstimatorWorkbook } from "./buildEstimatorWorkbook";
 import VendorDropZone from "./VendorDropZone";
@@ -106,6 +106,16 @@ export default function EstimatorStudio({
 
     const noteWorkbookSync = useCallback((message: string) => {
         setWorkbookSyncMessage(message);
+    }, []);
+
+    // Append a blank display to the cost sheet — mirrors QuestionFlow's addDisplay
+    // so Natalia can insert a new row straight from the LED Cost Sheet preview
+    // without having to reopen the wizard.
+    const handleAddDisplayFromPreview = useCallback(() => {
+        setAnswers((prev) => ({
+            ...prev,
+            displays: [...prev.displays, getDefaultDisplayAnswers()],
+        }));
     }, []);
 
     useEffect(() => {
@@ -1213,6 +1223,8 @@ export default function EstimatorStudio({
                             },
                             // No onQtyChange — Qty is free-type editable via onCellEdit + editableColumns
                         } : undefined);
+                        const ledCostSheetIdxLocal = wbData.sheets.findIndex((s: any) => s?.name === "LED Cost Sheet");
+                        const onLedCostSheetLocal = ledCostSheetIdxLocal >= 0 && activeWorkbookTab === ledCostSheetIdxLocal;
                         return (
                             <div className="relative flex-1 min-h-0 overflow-auto rounded-lg border border-border bg-white">
                                 {serverPreviewLoading && (
@@ -1233,6 +1245,16 @@ export default function EstimatorStudio({
                                     editable
                                     activeTab={activeWorkbookTab}
                                     onTabChange={setActiveWorkbookTab}
+                                    actions={onLedCostSheetLocal ? (
+                                        <button
+                                            onClick={handleAddDisplayFromPreview}
+                                            className="flex items-center gap-1 px-2.5 py-1 bg-white text-[#217346] hover:bg-white/90 rounded text-[10px] font-bold transition-colors shadow-sm"
+                                            title="Append a new blank display row to the LED Cost Sheet"
+                                        >
+                                            <Plus className="w-3 h-3" />
+                                            Add Display
+                                        </button>
+                                    ) : undefined}
                                     onCellEdit={(_sheetIndex: number, rowIndex: number, colIndex: number, newValue: string) => {
                                         // LED Cost Sheet master margin override: workbook row 1 (Excel row 2), col 21 (V)
                                         if (rowIndex === 1 && colIndex === 21) {

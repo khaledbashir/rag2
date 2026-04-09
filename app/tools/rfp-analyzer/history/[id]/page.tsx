@@ -802,6 +802,8 @@ export default function AnalysisDetailPage() {
                   if (ledCostSheet?.editableColumns) {
                     ledCostSheet.editableColumns = ledCostSheet.editableColumns.filter((col) => col !== 21);
                   }
+                  const ledCostSheetIdx = ledCostSheet ? wbData.sheets.indexOf(ledCostSheet) : -1;
+                  const onLedCostSheet = ledCostSheetIdx >= 0 && activeWorkbookTab === ledCostSheetIdx;
                   return (
                     <div className="relative h-full">
                       {serverWorkbookLoading && (
@@ -818,6 +820,16 @@ export default function AnalysisDetailPage() {
                         onCellEdit={handleHistoryCellEdit}
                         activeTab={activeWorkbookTab}
                         onTabChange={setActiveWorkbookTab}
+                        actions={onLedCostSheet ? (
+                          <button
+                            onClick={handleAddScreen}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-white text-[#217346] hover:bg-white/90 rounded text-[10px] font-bold transition-colors shadow-sm"
+                            title="Append a new blank display row to the LED Cost Sheet"
+                          >
+                            <Plus className="w-3 h-3" />
+                            Add Display
+                          </button>
+                        ) : undefined}
                       />
                     </div>
                   );
