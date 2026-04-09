@@ -428,14 +428,16 @@ export async function generateScopingWorkbook(
   const supplyOnlyProject = ov?.servicesMarginPct === 0;
   const effectiveIncludeBond = includeBond && !supplyOnlyProject;
 
-  const populateActiveDims = async (spec: ExtractedLEDSpec) => {
-    const hasExplicitSelection = Boolean(spec.selectedProductId);
-    const targetWidthFt = Number(spec.activeWidthFt) || Number(spec.widthFt) || 0;
-    const targetHeightFt = Number(spec.activeHeightFt) || Number(spec.heightFt) || 0;
-    if (!targetWidthFt || !targetHeightFt) return;
-    if (spec.activeWidthFt && spec.activeHeightFt && !hasExplicitSelection) return;
+  const resolveSelectedProductSnap = (
+    spec: ExtractedLEDSpec,
+    selectedProduct: any,
+  ): { widthFt: number; heightFt: number } | null => {
+    if (!selectedProduct) return null;
 
-    const selectedProduct = spec.selectedProductId ? resolveProduct(spec.selectedProductId) as any : null;
+    const requestedWidthFt = Number(spec.widthFt) || 0;
+    const requestedHeightFt = Number(spec.heightFt) || 0;
+    if (!requestedWidthFt || !requestedHeightFt) return null;
+
     const cabinetWidthMm =
       selectedProduct?.defaultCabinet?.widthMm
       ?? selectedProduct?.cabinetWidthMm
@@ -453,11 +455,29 @@ export async function generateScopingWorkbook(
       ?? selectedProduct?.smallCabinet?.heightMm
       ?? null;
 
-    if (selectedProduct && cabinetWidthMm && cabinetHeightMm) {
-      const snapW = snapDimension(targetWidthFt * 304.8, cabinetWidthMm, moduleWidthMm ?? undefined);
-      const snapH = snapDimension(targetHeightFt * 304.8, cabinetHeightMm, moduleHeightMm ?? undefined);
-      spec.activeWidthFt = snapW.totalMm / 304.8;
-      spec.activeHeightFt = snapH.totalMm / 304.8;
+    if (!cabinetWidthMm || !cabinetHeightMm) return null;
+
+    const snapW = snapDimension(requestedWidthFt * 304.8, cabinetWidthMm, moduleWidthMm ?? undefined);
+    const snapH = snapDimension(requestedHeightFt * 304.8, cabinetHeightMm, moduleHeightMm ?? undefined);
+
+    return {
+      widthFt: snapW.totalMm / 304.8,
+      heightFt: snapH.totalMm / 304.8,
+    };
+  };
+
+  const populateActiveDims = async (spec: ExtractedLEDSpec) => {
+    const hasExplicitSelection = Boolean(spec.selectedProductId);
+    const targetWidthFt = Number(spec.widthFt) || Number(spec.activeWidthFt) || 0;
+    const targetHeightFt = Number(spec.heightFt) || Number(spec.activeHeightFt) || 0;
+    if (!targetWidthFt || !targetHeightFt) return;
+    if (spec.activeWidthFt && spec.activeHeightFt && !hasExplicitSelection) return;
+
+    const selectedProduct = spec.selectedProductId ? resolveProduct(spec.selectedProductId) as any : null;
+    const explicitSnap = resolveSelectedProductSnap(spec, selectedProduct);
+    if (explicitSnap) {
+      spec.activeWidthFt = explicitSnap.widthFt;
+      spec.activeHeightFt = explicitSnap.heightFt;
       return;
     }
 
@@ -477,6 +497,20 @@ export async function generateScopingWorkbook(
     } catch (err) {
       console.warn(`[ScopingWorkbook] Active dimension match failed for "${spec.name}":`, err);
     }
+  };
+
+  const getDisplayDimsForPreview = (
+    spec: ExtractedLEDSpec,
+    selectedProduct: any,
+    match: ComputedDisplay["match"] | null | undefined,
+  ): { widthFt: number; heightFt: number } => {
+    const explicitSnap = resolveSelectedProductSnap(spec, selectedProduct);
+    if (explicitSnap) return explicitSnap;
+
+    return {
+      heightFt: Number(match?.activeHeightFt) || Number(spec.activeHeightFt) || Number(spec.heightFt) || 0,
+      widthFt: Number(match?.activeWidthFt) || Number(spec.activeWidthFt) || Number(spec.widthFt) || 0,
+    };
   };
 
   // Split base bid vs alternates.
@@ -1719,6 +1753,7 @@ function buildLedCostSheet(
     // ═══════ All data cells use VLOOKUP formulas tied to product dropdown (F) ═══════
     // When user changes F (product), all dependent cells auto-recalculate.
     const selectedProduct = d.spec.selectedProductId ? resolveProduct(d.spec.selectedProductId) : null;
+    const previewDims = getDisplayDimsForPreview(d.spec, selectedProduct, d.match);
     const selectedPitch = (selectedProduct as any)?.pitchMm ?? (selectedProduct as any)?.pitch;
     const effectivePitch = selectedPitch
       ?? d.match?.module?.pitch
@@ -1781,8 +1816,8 @@ function buildLedCostSheet(
     dr.getCell(7).alignment = { horizontal: "center" };
     // H-I: H(ft), W(ft) — use cabinet-snapped dims when available so the
     // visible sheet matches product-specific sizing.
-    const cellH = Number(d.match?.activeHeightFt) || Number(d.heightFt) || 0;
-    const cellW = Number(d.match?.activeWidthFt) || Number(d.widthFt) || 0;
+    const cellH = previewDims.heightFt;
+    const cellW = previewDims.widthFt;
     if (isClockLike) {
       dr.getCell(8).value = cellH;
       dr.getCell(9).value = cellW;
@@ -1985,6 +2020,7 @@ function buildLedCostSheet(
       const rowNum = dr.number;
       const altLabel = d.spec.alternateId || `Alt ${idx + 1}`;
       const altSelectedProduct = d.spec.selectedProductId ? resolveProduct(d.spec.selectedProductId) : null;
+      const altPreviewDims = getDisplayDimsForPreview(d.spec, altSelectedProduct, d.match);
       const altSelectedPitch = (altSelectedProduct as any)?.pitchMm ?? (altSelectedProduct as any)?.pitch;
       const altPitch = altSelectedPitch
         ?? d.match?.module?.pitch
@@ -2032,8 +2068,8 @@ function buildLedCostSheet(
       dr.getCell(7).numFmt = '0.0##"mm"';
       dr.getCell(7).alignment = { horizontal: "center" };
       // H-I: Use cabinet-snapped dims for alternates too when a product match exists.
-      const altCellHFormulaResult = Number(d.match?.activeHeightFt) || d.heightFt || 0;
-      const altCellWFormulaResult = Number(d.match?.activeWidthFt) || d.widthFt || 0;
+      const altCellHFormulaResult = altPreviewDims.heightFt;
+      const altCellWFormulaResult = altPreviewDims.widthFt;
       dr.getCell(8).value = { formula: snappedFeetFormula(rowNum, "B", "height"), result: altCellHFormulaResult };
       dr.getCell(9).value = { formula: snappedFeetFormula(rowNum, "C", "width"), result: altCellWFormulaResult };
       dr.getCell(8).numFmt = "0.00";
@@ -3543,6 +3579,7 @@ function buildTechSpecsSheet(
     const displayName = d.spec.name + (d.spec.location ? ` — ${d.spec.location}` : "");
     // Resolve product first so we can get correct pitch
     const tsSelectedProduct = d.spec.selectedProductId ? resolveProduct(d.spec.selectedProductId) : null;
+    const tsPreviewDims = getDisplayDimsForPreview(d.spec, tsSelectedProduct, d.match);
     const tsPitch = (tsSelectedProduct as any)?.pitchMm ?? (tsSelectedProduct as any)?.pitch;
     const effPitch = tsPitch
       ?? d.match?.module?.pitch
@@ -3550,8 +3587,8 @@ function buildTechSpecsSheet(
       ?? d.spec.pixelPitchMm;
     const pitchLabel = effPitch ? `${effPitch}mm` : "—";
     const tsFixedPx = getFixedPixelSpecs(tsSelectedProduct);
-    const tsCellH = Number(d.match?.activeHeightFt) || Number(d.heightFt) || 0;
-    const tsCellW = Number(d.match?.activeWidthFt) || Number(d.widthFt) || 0;
+    const tsCellH = tsPreviewDims.heightFt;
+    const tsCellW = tsPreviewDims.widthFt;
     const hPx = tsFixedPx?.hPx ?? (d.spec.heightPx || (effPitch && tsCellH ? Math.round(tsCellH * 304.8 / effPitch) : 0));
     const wPx = tsFixedPx?.wPx ?? (d.spec.widthPx || (effPitch && tsCellW ? Math.round(tsCellW * 304.8 / effPitch) : 0));
 
