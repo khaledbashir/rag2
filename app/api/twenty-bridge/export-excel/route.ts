@@ -35,11 +35,13 @@ const TWENTY_BASE = "https://abc-twenty.izcgmb.easypanel.host";
 const TWENTY_API_KEY = process.env.TWENTY_API_KEY
   || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkM2ZiYzI5YS1hNjM1LTQ4YjctOWQ2ZS0yNTA5NDE2NzdmZDAiLCJ0eXBlIjoiQVBJX0tFWSIsIndvcmtzcGFjZUlkIjoiZDNmYmMyOWEtYTYzNS00OGI3LTlkNmUtMjUwOTQxNjc3ZmQwIiwiaWF0IjoxNzc0ODEwNDkyLCJleHAiOjQ5Mjg0MTA0ODcsImp0aSI6IjYxMGEzMWEzLTJhMDgtNDM5MC1iMTU1LTFkN2M3NzY5Y2QxOSJ9.nzknS-bBNuf7y3LUCv2xEa5-9xuJNHBK3GalJwWK3eA";
 
-async function twentyFetch(path: string): Promise<any> {
+async function twentyFetch(path: string, init?: RequestInit): Promise<any> {
   const res = await fetch(`${TWENTY_BASE}/rest/${path}`, {
+    ...init,
     headers: {
       Authorization: `Bearer ${TWENTY_API_KEY}`,
       "Content-Type": "application/json",
+      ...(init?.headers || {}),
     },
   });
   if (!res.ok) {
@@ -47,6 +49,57 @@ async function twentyFetch(path: string): Promise<any> {
     throw new Error(`Twenty ${res.status}: ${body.slice(0, 300)}`);
   }
   return res.json();
+}
+
+/**
+ * The Twenty "Quick Estimate" AI skill currently creates estimateLine
+ * records without setting estimateId (broken — lines come out orphaned).
+ * Workaround: when an estimate has 0 linked lines, scan the most-recent
+ * estimateLines, pick any orphan created within 90 seconds of the estimate
+ * (and within 5 minutes of now, to avoid stealing much older orphans), and
+ * PATCH them onto the estimate. Returns the rescued lines or an empty array
+ * if none match.
+ */
+async function rescueOrphanLines(estimate: any): Promise<any[]> {
+  const estimateId = estimate.id;
+  const estCreatedAt = estimate.createdAt ? new Date(estimate.createdAt).getTime() : 0;
+  if (!estCreatedAt) return [];
+
+  const list = await twentyFetch(
+    `estimateLines?order_by=createdAt[DescNullsFirst]&limit=60`,
+  );
+  const lines: any[] = list?.data?.estimateLines || [];
+  const now = Date.now();
+
+  const rescuable = lines.filter((line) => {
+    if (line.estimateId) return false;
+    const ts = line.createdAt ? new Date(line.createdAt).getTime() : 0;
+    if (!ts) return false;
+    const dtFromEstimate = Math.abs(ts - estCreatedAt);
+    const dtFromNow = Math.abs(now - ts);
+    // orphan created within 90s of the estimate AND within the last 24h
+    return dtFromEstimate <= 90_000 && dtFromNow <= 24 * 60 * 60 * 1000;
+  });
+
+  if (rescuable.length === 0) return [];
+
+  // Patch each back onto the estimate. Fail-soft: skip lines that error.
+  const linked: any[] = [];
+  for (const line of rescuable) {
+    try {
+      await twentyFetch(`estimateLines/${encodeURIComponent(line.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ estimateId }),
+      });
+      linked.push({ ...line, estimateId });
+    } catch (err: any) {
+      log.warn(`[twenty-bridge] rescue PATCH failed for line ${line.id}: ${err?.message}`);
+    }
+  }
+  if (linked.length > 0) {
+    log.info(`[twenty-bridge] Rescued ${linked.length} orphan line(s) onto estimate ${estimateId}`);
+  }
+  return linked;
 }
 
 /** Resolve a Twenty currency money object → raw USD number. */
@@ -106,13 +159,26 @@ export async function GET(request: NextRequest) {
     const lineRes = await twentyFetch(
       `estimateLines?filter=estimateId[eq]:${estimateId}&limit=200`,
     );
-    const lines: any[] = lineRes?.data?.estimateLines || [];
+    let lines: any[] = lineRes?.data?.estimateLines || [];
+
+    // 2a) Orphan-rescue: Quick Estimate skill creates lines with null
+    // estimateId. Try to auto-link any orphan line created within 90s of
+    // this estimate. If we rescue any, re-fetch the linked list.
+    if (lines.length === 0) {
+      const rescued = await rescueOrphanLines(estimate);
+      if (rescued.length > 0) {
+        const refetched = await twentyFetch(
+          `estimateLines?filter=estimateId[eq]:${estimateId}&limit=200`,
+        );
+        lines = refetched?.data?.estimateLines || rescued;
+      }
+    }
 
     if (lines.length === 0) {
       return NextResponse.json(
         {
           error: "This estimate has no linked line items in Twenty",
-          hint: "The Quick Estimate skill may have created the lines without setting estimateId. Re-run the skill or manually link the lines to this estimate in Twenty.",
+          hint: "The Quick Estimate skill may have created the lines without setting estimateId. Re-run the skill, or wait a few seconds and refresh (orphan rescue only matches lines created within 90s of the estimate).",
           estimateId,
           estimateName: estimate.name,
         },
