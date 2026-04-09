@@ -412,6 +412,7 @@ export async function generateScopingWorkbook(
 
   await preloadRateCard();
 
+  let allDbProducts: any[] = [];
   // Pre-load DB products for user-selected product IDs (cuid keys)
   // getProduct() only searches the hardcoded catalog — DB products need a separate lookup
   const selectedProductIds = allSpecs
@@ -457,6 +458,38 @@ export async function generateScopingWorkbook(
     } catch (err) {
       console.warn("[ScopingWorkbook] DB product lookup failed:", err);
     }
+  }
+
+  // Load the full active DB product set so the exported workbook's hidden
+  // _Products sheet uses the same richer product geometry the live app uses
+  // when Natalia changes the product dropdown after export.
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const dbProducts = await prisma.manufacturerProduct.findMany({
+      where: { isActive: true },
+      orderBy: [{ manufacturer: "asc" }, { pixelPitch: "asc" }],
+    });
+    allDbProducts = dbProducts.map((p) => ({
+      id: p.id,
+      manufacturer: p.manufacturer,
+      name: p.displayName,
+      displayName: p.displayName,
+      pitchMm: p.pixelPitch,
+      pitch: p.pixelPitch,
+      brightnessNits: p.maxNits,
+      nits: p.maxNits,
+      weightDensityLbm2: (p.weightKgPerCabinet * 2.205) / ((p.cabinetWidthMm * p.cabinetHeightMm) / 1e6),
+      powerDensityWm2: p.maxPowerWattsPerCab / ((p.cabinetWidthMm * p.cabinetHeightMm) / 1e6),
+      cabinetWidthMm: p.cabinetWidthMm,
+      cabinetHeightMm: p.cabinetHeightMm,
+      moduleWidthMm: p.moduleWidthMm ?? undefined,
+      moduleHeightMm: p.moduleHeightMm ?? undefined,
+      environment: p.environment,
+      productType: p.productType,
+      maxPowerWattsPerCab: p.maxPowerWattsPerCab,
+    }));
+  } catch (err) {
+    console.warn("[ScopingWorkbook] Full DB product preload failed:", err);
   }
 
   // Helper: resolve product by ID from hardcoded catalog OR DB
@@ -647,7 +680,7 @@ export async function generateScopingWorkbook(
   // ═══════════════════════════════════════════════════════════════════════════
 
   // 4. LED Cost Sheet
-  buildLedCostSheet(wb, projectName, displays, resolveProduct, ov, getBundleEquipmentSubtotalRows(displays), altDisplays);
+  buildLedCostSheet(wb, projectName, displays, resolveProduct, ov, getBundleEquipmentSubtotalRows(displays), altDisplays, allDbProducts);
 
   // 5. Tech Specs (no pricing — for installers/subs)
   buildTechSpecsSheet(wb, projectName, displays, resolveProduct);
@@ -1618,6 +1651,7 @@ function buildLedCostSheet(
   ov?: FinancialOverrides,
   bundleSubtotalRows: number[] = [],
   altDisplays: ComputedDisplay[] = [],
+  allResolvedProducts: any[] = [],
 ): void {
   const ws = wb.addWorksheet("LED Cost Sheet", {
     properties: { tabColor: { argb: C.GREEN_TAB } },
@@ -1642,33 +1676,51 @@ function buildLedCostSheet(
     .filter((p) => p.name)
     .sort((a, b) => a.name.localeCompare(b.name));
   
-  // Inject any DB-resolved products into the sortedProducts array so they appear in _Products sheet
-  // and pass the productNames.includes() check later.
-  // If a DB product shares a name with a hardcoded catalog product, prefer the DB
-  // version because it can carry richer module/cabinet geometry used by the live app.
-  for (const d of displays) {
-    if (d.spec.selectedProductId) {
-      const dbProd = resolveProduct(d.spec.selectedProductId);
-      if (dbProd) {
-        const dbProdName = getProductName(dbProd);
-        const normalizedDbProduct = {
-          ...dbProd,
-          name: dbProdName, // force 'name' property for the VLOOKUP
-          pitchMm: (dbProd as any).pitch || (dbProd as any).pixelPitch || (dbProd as any).pitchMm || d.match?.module?.pitch || d.spec.pixelPitchMm || 2.5,
-          manufacturer: dbProd.manufacturer || d.match?.module?.manufacturer || "Generic",
-          environment: (dbProd as any).environment || d.spec.environment || "Indoor",
-          brightnessNits: (dbProd as any).nits || (dbProd as any).maxNits || (dbProd as any).brightnessNits || d.match?.module?.nits || d.spec.brightnessNits || 0,
-          maxPowerWattsPerCab: (dbProd as any).maxPowerWattsPerCab || (dbProd as any).maxPowerWatts || 0,
-          dimensionsMm: (dbProd as any).dimensionsMm || "Custom"
-        } as any;
-        const existingIdx = sortedProducts.findIndex((p) => getProductName(p) === dbProdName);
-        if (existingIdx >= 0) {
-          sortedProducts[existingIdx] = normalizedDbProduct;
-        } else {
-          sortedProducts.push(normalizedDbProduct);
-        }
-      }
+  // Inject the full DB-backed product set so Excel dropdown changes use the
+  // same cabinet/module geometry the app uses, not stale static fallbacks.
+  for (const rawProduct of allResolvedProducts) {
+    const dbProdName = getProductName(rawProduct);
+    if (!dbProdName || dbProdName === "—") continue;
+
+    const normalizedDbProduct = {
+      ...rawProduct,
+      name: dbProdName,
+      pitchMm: (rawProduct as any).pitch || (rawProduct as any).pixelPitch || (rawProduct as any).pitchMm || 0,
+      manufacturer: rawProduct.manufacturer || "Generic",
+      environment: (rawProduct as any).environment || "Indoor",
+      brightnessNits: (rawProduct as any).nits || (rawProduct as any).maxNits || (rawProduct as any).brightnessNits || 0,
+      maxPowerWattsPerCab: (rawProduct as any).maxPowerWattsPerCab || (rawProduct as any).maxPowerWatts || 0,
+      dimensionsMm: (rawProduct as any).dimensionsMm || "Custom",
+    } as any;
+
+    const existingIdx = sortedProducts.findIndex((p) => getProductName(p) === dbProdName);
+    if (existingIdx >= 0) {
+      sortedProducts[existingIdx] = normalizedDbProduct;
+    } else {
+      sortedProducts.push(normalizedDbProduct);
     }
+  }
+
+  // Still ensure any directly resolved current selections are present even if
+  // they were somehow absent from the full DB preload.
+  for (const d of displays) {
+    if (!d.spec.selectedProductId) continue;
+    const dbProd = resolveProduct(d.spec.selectedProductId);
+    if (!dbProd) continue;
+    const dbProdName = getProductName(dbProd);
+    if (!dbProdName || dbProdName === "—") continue;
+    if (sortedProducts.some((p) => getProductName(p) === dbProdName)) continue;
+
+    sortedProducts.push({
+      ...dbProd,
+      name: dbProdName,
+      pitchMm: (dbProd as any).pitch || (dbProd as any).pixelPitch || (dbProd as any).pitchMm || d.match?.module?.pitch || d.spec.pixelPitchMm || 0,
+      manufacturer: dbProd.manufacturer || d.match?.module?.manufacturer || "Generic",
+      environment: (dbProd as any).environment || d.spec.environment || "Indoor",
+      brightnessNits: (dbProd as any).nits || (dbProd as any).maxNits || (dbProd as any).brightnessNits || d.match?.module?.nits || d.spec.brightnessNits || 0,
+      maxPowerWattsPerCab: (dbProd as any).maxPowerWattsPerCab || (dbProd as any).maxPowerWatts || 0,
+      dimensionsMm: (dbProd as any).dimensionsMm || "Custom",
+    } as any);
   }
   sortedProducts.sort((a, b) => getProductName(a).localeCompare(getProductName(b)));
 
