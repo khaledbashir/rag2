@@ -284,14 +284,15 @@ export async function POST(request: NextRequest) {
               });
               analysisId = analysis.id;
 
-              // Sync to Twenty CRM (fire-and-forget)
+              // Sync to Twenty CRM — fire-and-forget, retries + persists state
+              // to the analysis row so a cold Twenty can be caught by replay.
               syncToTwenty({
                 action: 'rfp_analyzed',
                 companyName: finalProject.clientName || '',
                 venueName: finalProject.venue || '',
                 dealName: `${finalProject.projectName || finalProject.clientName || 'Untitled'} - RFP`,
                 ledSqFt: screens.reduce((sum: number, s: any) => sum + ((s.widthFt || 0) * (s.heightFt || 0) * (s.quantity || 1)), 0) || undefined,
-              }).catch(() => {});
+              }, { analysisId: analysis.id }).catch(() => {});
             } catch (dbErr: any) {
               log.error("[Pipeline] GLM5 DB save failed (non-fatal):", dbErr.message?.slice(0, 200));
             }
@@ -931,14 +932,15 @@ export async function POST(request: NextRequest) {
           });
           analysisId = saved.id;
 
-          // Sync to Twenty CRM (fire-and-forget)
+          // Sync to Twenty CRM — fire-and-forget, retries + persists state
+          // to the analysis row so a cold Twenty can be caught by replay.
           syncToTwenty({
             action: 'rfp_analyzed',
             companyName: finalProject.clientName || '',
             venueName: finalProject.venue || '',
             dealName: `${finalProject.projectName || finalProject.clientName || 'Untitled'} - RFP`,
             ledSqFt: screens.reduce((sum: number, s: any) => sum + ((s.widthFt || 0) * (s.heightFt || 0) * (s.quantity || 1)), 0) || undefined,
-          }).catch(() => {});
+          }, { analysisId: saved.id }).catch(() => {});
         } catch (dbErr: any) {
           log.error("[Pipeline] Failed to save to DB:", dbErr.message);
         }

@@ -987,6 +987,14 @@ model RfpAnalysis {
   // AnythingLLM workspace for verification chat
   aiWorkspaceSlug String?  // Slug of dedicated AnythingLLM workspace for this analysis
 
+  // Twenty CRM sync state — used for retry/manual replay when the Twenty
+  // workspace is unavailable at analysis time (e.g. mid-restart). A null
+  // twentySyncedAt with a non-null twentySyncError means the sync should be
+  // retried. twentyOpportunityId is set on the first successful sync.
+  twentySyncedAt       DateTime?  // Timestamp of last successful opportunity sync
+  twentyOpportunityId  String?    // Twenty opportunity UUID
+  twentySyncError      String?    // Last failure message (null when synced)
+
   // Ownership
   createdBy    String?  // User email
   createdAt    DateTime @default(now())
@@ -997,6 +1005,7 @@ model RfpAnalysis {
   @@index([createdAt])
   @@index([status])
   @@index([fileHash])
+  @@index([twentySyncedAt])
 }
 
 // SOW Generation History — tracks every SOW generated
