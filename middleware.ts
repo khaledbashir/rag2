@@ -5,6 +5,13 @@ import { auth } from "@/auth-middleware";
 const ROUTE_RULES: Array<{
   pattern: RegExp;
   roles: string[]; // allowed roles
+  /**
+   * Restrict only these HTTP methods. When omitted, ALL methods are restricted.
+   * Use this to allow read-only GET access to routes whose mutations are
+   * admin-only. Example: `/api/products` catalog — wizards/estimator UI need
+   * to read it, but only admins should create/update/delete.
+   */
+  methods?: string[];
 }> = [
     // Performance — accessible to more roles
     { pattern: /^\/admin\/performance/, roles: ["ADMIN", "ESTIMATOR", "PROPOSAL_LEAD"] },
@@ -12,7 +19,12 @@ const ROUTE_RULES: Array<{
     { pattern: /^\/admin/, roles: ["ADMIN"] },
     { pattern: /^\/api\/admin\//, roles: ["ADMIN"] },
     { pattern: /^\/api\/rate-card/, roles: ["ADMIN"] },
-    { pattern: /^\/api\/products/, roles: ["ADMIN", "PRODUCT_EXPERT"] },
+    // Product catalog: GET is open to any authed user (estimator courtside/
+    // stanchion wizard, product dropdowns, etc. all read it). Mutations stay
+    // admin-only. Before this rule was method-aware, any user with a stale
+    // JWT role would get a 403 on the wizard's product fetch and see a
+    // "Failed to fetch product" error.
+    { pattern: /^\/api\/products/, roles: ["ADMIN", "PRODUCT_EXPERT"], methods: ["POST", "PUT", "PATCH", "DELETE"] },
     { pattern: /^\/api\/pricing-logic/, roles: ["ADMIN"] },
 
     // Workspace creation
@@ -76,6 +88,11 @@ export default auth((req) => {
   // Check route rules
   for (const rule of ROUTE_RULES) {
     if (rule.pattern.test(pathname)) {
+      // Method-scoped rule: if the incoming method isn't in the rule's list,
+      // skip the role check (still matched the pattern, so no fall-through).
+      if (rule.methods && !rule.methods.includes(req.method)) {
+        break;
+      }
       if (!rule.roles.includes(userRole)) {
         if (pathname.startsWith("/api/")) {
           return NextResponse.json(
