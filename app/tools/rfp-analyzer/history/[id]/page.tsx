@@ -497,7 +497,11 @@ export default function AnalysisDetailPage() {
     if (!analysis) return;
     setDownloading("extraction");
     try {
-      await downloadBlob("/api/rfp/pipeline/extraction-excel", { analysisId: analysis.id }, `${analysis.projectName || "rfp-analysis"}.xlsx`);
+      await downloadBlob(
+        "/api/rfp/pipeline/extraction-excel",
+        { analysisId: analysis.id, clientSpecs: (analysis.screens as any[]) || undefined },
+        `${analysis.projectName || "rfp-analysis"}.xlsx`,
+      );
     } catch (err: any) {
       console.error("Export failed:", err);
     } finally {

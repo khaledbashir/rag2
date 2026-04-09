@@ -59,7 +59,7 @@ function stripeRow(row: ExcelJS.Row, colCount: number, isEven: boolean): void {
 
 export async function POST(request: NextRequest) {
   try {
-    const { analysisId } = await request.json();
+    const { analysisId, clientSpecs } = await request.json();
     if (!analysisId) {
       return NextResponse.json({ error: "analysisId is required" }, { status: 400 });
     }
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Analysis not found" }, { status: 404 });
     }
 
-    const specs = (analysis.screens as unknown as ExtractedLEDSpec[]) || [];
+    const specs = (clientSpecs || analysis.screens) as unknown as ExtractedLEDSpec[] || [];
     const project = (analysis.project as unknown as ExtractedProjectInfo) || {};
     const requirements = (analysis.requirements as unknown as ExtractedRequirement[]) || [];
     const projectName = project.projectName || project.venue || "RFP Analysis";
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
 
     // Headers
     const headerRow = 4;
-    const headers = ["#", "Display Name", "Location", "Width (ft)", "Height (ft)", "Pitch (mm)", "Nits", "Env", "Qty", "Service", "Mounting", "Special Requirements", "Type", "Alt ID"];
+    const headers = ["#", "Display Name", "Location", "RFP H (ft)", "RFP W (ft)", "Pitch (mm)", "Nits", "Env", "Qty", "Service", "Mounting", "Special Requirements", "Type", "Alt ID"];
     const hr = displaySheet.getRow(headerRow);
     headers.forEach((h, i) => {
       hr.getCell(i + 1).value = h;
@@ -141,8 +141,8 @@ export async function POST(request: NextRequest) {
       r.getCell(1).value = idx + 1;
       r.getCell(2).value = s.name;
       r.getCell(3).value = s.location;
-      r.getCell(4).value = s.widthFt != null ? s.widthFt : "TBD";
-      r.getCell(5).value = s.heightFt != null ? s.heightFt : "TBD";
+      r.getCell(4).value = s.heightFt != null ? s.heightFt : "TBD";
+      r.getCell(5).value = s.widthFt != null ? s.widthFt : "TBD";
       r.getCell(6).value = s.pixelPitchMm != null ? s.pixelPitchMm : "TBD";
       r.getCell(7).value = s.brightnessNits != null ? s.brightnessNits : "TBD";
       r.getCell(8).value = s.environment;
