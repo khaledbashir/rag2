@@ -431,26 +431,6 @@ export default function AnalysisDetailPage() {
 
   const workbookData = serverWorkbookData || { fileName: "RFP Analysis", sheets: [] };
 
-  // Product dropdown callback from WorkbookShell (receives displayIndex + productId)
-  const handleHistoryProductSelect = useCallback((displayIndex: number, productId: string) => {
-    const product = availableProducts.find((p: any) => p.id === productId);
-    if (!product) return;
-
-    setAnalysis(prev => {
-      if (!prev) return prev;
-      if (displayIndex < 0 || displayIndex >= prev.screens.length) return prev;
-      const spec = { ...prev.screens[displayIndex] };
-      spec.selectedProductId = product.id;
-      spec.selectedProductName = product.name;
-      spec.activeWidthFt = null;
-      spec.activeHeightFt = null;
-      const updated = [...prev.screens];
-      updated[displayIndex] = spec;
-      autoSaveSpecs(updated, prev.id);
-      return { ...prev, screens: updated };
-    });
-  }, [availableProducts, autoSaveSpecs]);
-
   // Qty dropdown callback
   const handleHistoryQtyChange = useCallback((displayIndex: number, qty: number) => {
     setAnalysis(prev => {
@@ -811,7 +791,7 @@ export default function AnalysisDetailPage() {
                     products: availableProducts,
                     displayProductIds: specs.map((s: any) => s.selectedProductId || ""),
                     displayRowMap,
-                    onProductSelect: handleHistoryProductSelect,
+                    onProductSelect: handleProductSelect,
                     onRemoveDisplay: handleRemoveScreen,
                   });
                   const ledCostSheet = wbData.sheets.find((sheet) => sheet.name === "LED Cost Sheet");
@@ -979,7 +959,7 @@ export default function AnalysisDetailPage() {
                     products: availableProducts,
                     displayProductIds: specs.map((s: any) => s.selectedProductId || ""),
                     displayRowMap,
-                    onProductSelect: handleHistoryProductSelect,
+                    onProductSelect: handleProductSelect,
                     onRemoveDisplay: handleRemoveScreen,
                   });
                   return (
