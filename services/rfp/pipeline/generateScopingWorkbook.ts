@@ -10,6 +10,58 @@ function parsePitchFromProductName(name: string | null | undefined): number | nu
   return seriesMatch ? parseFloat(seriesMatch[1]) : null;
 }
 
+function resolveSelectedProductSnap(
+  spec: ExtractedLEDSpec,
+  selectedProduct: any,
+): { widthFt: number; heightFt: number } | null {
+  if (!selectedProduct) return null;
+
+  const requestedWidthFt = Number(spec.widthFt) || 0;
+  const requestedHeightFt = Number(spec.heightFt) || 0;
+  if (!requestedWidthFt || !requestedHeightFt) return null;
+
+  const cabinetWidthMm =
+    selectedProduct?.defaultCabinet?.widthMm
+    ?? selectedProduct?.cabinetWidthMm
+    ?? null;
+  const cabinetHeightMm =
+    selectedProduct?.defaultCabinet?.heightMm
+    ?? selectedProduct?.cabinetHeightMm
+    ?? null;
+  const moduleWidthMm =
+    selectedProduct?.moduleWidthMm
+    ?? selectedProduct?.smallCabinet?.widthMm
+    ?? null;
+  const moduleHeightMm =
+    selectedProduct?.moduleHeightMm
+    ?? selectedProduct?.smallCabinet?.heightMm
+    ?? null;
+
+  if (!cabinetWidthMm || !cabinetHeightMm) return null;
+
+  const snapW = snapDimension(requestedWidthFt * 304.8, cabinetWidthMm, moduleWidthMm ?? undefined);
+  const snapH = snapDimension(requestedHeightFt * 304.8, cabinetHeightMm, moduleHeightMm ?? undefined);
+
+  return {
+    widthFt: snapW.totalMm / 304.8,
+    heightFt: snapH.totalMm / 304.8,
+  };
+}
+
+function getDisplayDimsForPreview(
+  spec: ExtractedLEDSpec,
+  selectedProduct: any,
+  match: MatchedSolution | null | undefined,
+): { widthFt: number; heightFt: number } {
+  const explicitSnap = resolveSelectedProductSnap(spec, selectedProduct);
+  if (explicitSnap) return explicitSnap;
+
+  return {
+    heightFt: Number(match?.activeHeightFt) || Number(spec.activeHeightFt) || Number(spec.heightFt) || 0,
+    widthFt: Number(match?.activeWidthFt) || Number(spec.activeWidthFt) || Number(spec.widthFt) || 0,
+  };
+}
+
 function chooseContextualFallbackProduct(
   products: Array<{ name: string; manufacturer: string; pitchMm: number; environment: "Indoor" | "Outdoor" | "Both" }>,
   pitch: number,
