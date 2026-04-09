@@ -259,10 +259,16 @@ export class ProductMatcher {
      */
     static async listProducts(environment?: "indoor" | "outdoor"): Promise<MatchedProduct[]> {
         try {
+            // Include LED + courtside + stanchion so the Estimator's LED Cost
+            // Sheet product dropdown can offer all Estimator-facing product
+            // types in one list. Without courtside/stanchion here, Natalia's
+            // courtside table rows couldn't select a product in Excel —
+            // only LED (and OES clocks which are stored under productType=led)
+            // were showing up.
             const dbProducts = await prisma.manufacturerProduct.findMany({
                 where: {
                     isActive: true,
-                    productType: "led",
+                    productType: { in: ["led", "courtside", "stanchion"] },
                 },
                 orderBy: { pixelPitch: "asc" },
             });
