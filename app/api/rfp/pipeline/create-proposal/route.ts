@@ -14,6 +14,7 @@ import { calculateProposalAudit, ScreenInput } from "@/lib/estimator";
 import { findClientLogo } from "@/lib/brand-discovery";
 import { provisionProjectWorkspace } from "@/lib/anything-llm";
 import { logActivity } from "@/services/proposal/server/activityLogService";
+import { postProposalCreatedNote } from "@/services/integrations/twenty/crmAutomation";
 import { log } from "@/lib/logger";
 
 export const maxDuration = 60;
@@ -247,6 +248,12 @@ export async function POST(request: NextRequest) {
       null,
       { source: "rfp_analysis", analysisId: body.analysisId, displayCount: screens.length },
     );
+
+    postProposalCreatedNote({
+      proposalId: proposal.id,
+      analysisId: body.analysisId,
+      workspaceMemberEmail: body.userEmail,
+    }).catch((e) => log.warn("[create-proposal] Twenty CRM note sync failed:", e?.message || e));
 
     // 10. Provision AnythingLLM workspace (non-blocking)
     if (!analysis.aiWorkspaceSlug) {

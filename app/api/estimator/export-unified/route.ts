@@ -14,6 +14,7 @@ import { generateScopingWorkbook } from "@/services/rfp/pipeline/generateScoping
 import { normalizeEstimatorAnswers, type EstimatorAnswers } from "@/app/components/estimator/questions";
 import { log } from "@/lib/logger";
 import { logActivity } from "@/services/proposal/server/activityLogService";
+import { postArtifactNote, saveCrmArtifact } from "@/services/integrations/twenty/crmAutomation";
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,17 +37,39 @@ export async function POST(req: NextRequest) {
     const safeName = (answers.projectName || answers.clientName || "Budget")
       .replace(/\s+/g, "_")
       .replace(/[^\w\-_.]/g, "");
+    const exportFilename = `${safeName}_Unified.xlsx`;
 
     // Log activity if projectId provided
     if (body.projectId) {
       logActivity(body.projectId, "excel_exported", "Exported Excel workbook", body.actorName || null);
+
+      saveCrmArtifact({
+        buffer,
+        preferredFilename: exportFilename,
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+        .then((artifact) =>
+          postArtifactNote({
+            proposalId: body.projectId,
+            title: "Proposal Engine: latest scoping workbook",
+            summary: "Latest scoping workbook exported from Proposal Engine.",
+            artifacts: [
+              {
+                label: "Scoping workbook",
+                url: artifact.downloadUrl,
+                filename: artifact.filename,
+              },
+            ],
+          }),
+        )
+        .catch((error) => log.warn("[export-unified] CRM artifact sync failed:", error?.message || error));
     }
 
     return new Response(buffer, {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="${safeName}_Unified.xlsx"`,
+        "Content-Disposition": `attachment; filename="${exportFilename}"`,
       },
     });
   } catch (err) {

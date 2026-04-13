@@ -4,6 +4,7 @@ export const maxDuration = 30;
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { log } from "@/lib/logger";
+import { postClientChangeRequestNote } from "@/services/integrations/twenty/crmAutomation";
 
 /**
  * Async AI triage — non-blocking.
@@ -140,6 +141,15 @@ export async function POST(
 				log.error
 			);
 
+			postClientChangeRequestNote({
+				proposalId: snapshot.proposalId,
+				requesterName,
+				requesterEmail: requesterEmail || null,
+				count: createdIds.length,
+			}).catch((err) =>
+				log.warn("[share/request] Twenty CRM note sync failed:", err?.message || err),
+			);
+
 			return NextResponse.json({
 				ok: true,
 				ids: createdIds,
@@ -180,6 +190,15 @@ export async function POST(
 				},
 			},
 		});
+
+		postClientChangeRequestNote({
+			proposalId: snapshot.proposalId,
+			requesterName,
+			requesterEmail: requesterEmail || null,
+			message,
+		}).catch((err) =>
+			log.warn("[share/request] Twenty CRM note sync failed:", err?.message || err),
+		);
 
 		return NextResponse.json({ ok: true, id: created.id });
 	} catch (error: any) {

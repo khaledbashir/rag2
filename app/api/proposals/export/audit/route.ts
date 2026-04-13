@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { generateScopingWorkbook } from "@/services/rfp/pipeline/generateScopingWorkbook";
 import { mapMirrorToScoping } from "@/services/rfp/pipeline/pricingDocumentToScopingMapper";
 import { mapIntelligenceToScoping } from "@/services/rfp/pipeline/screenAuditToScopingMapper";
+import { postArtifactNote, saveCrmArtifact } from "@/services/integrations/twenty/crmAutomation";
 import { log } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
@@ -97,6 +98,7 @@ export async function POST(req: NextRequest) {
 
     const proposalName = (body.projectName || proposal?.clientName || body.clientName || "Proposal").toString();
     const safeFilename = proposalName.replace(/\s+/g, "_").replace(/[^\w\-_.]/g, "") || "Proposal";
+    const exportFilename = `${safeFilename}_Audit.xlsx`;
     // Summary metadata available to both export paths
     // body.clientName = receiver/contact name (from frontend form receiver.name)
     // proposal.clientName = project name in DB (confusing legacy naming)
@@ -154,11 +156,34 @@ export async function POST(req: NextRequest) {
       buffer = result.buffer;
     }
 
+    if (proposalId && proposalId !== "new") {
+      saveCrmArtifact({
+        buffer,
+        preferredFilename: exportFilename,
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+        .then((artifact) =>
+          postArtifactNote({
+            proposalId,
+            title: "Proposal Engine: latest audit workbook",
+            summary: "Latest audit workbook exported from Proposal Engine.",
+            artifacts: [
+              {
+                label: "Audit workbook",
+                url: artifact.downloadUrl,
+                filename: artifact.filename,
+              },
+            ],
+          }),
+        )
+        .catch((error) => log.warn("[Audit Export] CRM artifact sync failed:", error?.message || error));
+    }
+
     return new Response(buffer as any, {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="${safeFilename}_Audit.xlsx"`,
+        "Content-Disposition": `attachment; filename="${exportFilename}"`,
       },
     });
   } catch (err) {

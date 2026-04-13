@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isImmutable, isFinancialLocked, LOCKED_FINANCIAL_FIELDS, validateApprovalTransition } from "@/lib/proposal-lifecycle";
 import { logActivity, detectMeaningfulChanges } from "@/services/proposal/server/activityLogService";
+import { postProposalStatusNote } from "@/services/integrations/twenty/crmAutomation";
 import { auth } from "@/auth";
 
 import { prisma } from "@/lib/prisma";
@@ -371,6 +372,12 @@ export async function PATCH(
 
         // Webhook: notify ANC Service Dashboard when proposal is signed/closed
         if (status === 'SIGNED' || status === 'CLOSED') {
+            postProposalStatusNote({
+                proposalId: id,
+                status,
+                workspaceMemberEmail: session?.user?.email || null,
+            }).catch((err) => log.warn("Twenty CRM status note sync failed:", err?.message || err));
+
             try {
                 const webhookUrl = process.env.ANC_SERVICES_WEBHOOK_URL || 'https://abc-anc-services.izcgmb.easypanel.host/api/webhooks/proposal'
                 const webhookSecret = process.env.ANC_SERVICES_WEBHOOK_SECRET || 'anc-services-webhook-2026'

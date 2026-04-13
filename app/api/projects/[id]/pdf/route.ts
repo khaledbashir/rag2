@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { mapDbProposalToFormSchema } from "@/lib/proposals/mapDbProposalToForm";
 import { generateProposalPdfServiceV2 } from "@/services/proposal/server/generateProposalPdfServiceV2";
+import { postArtifactNote, saveCrmArtifact } from "@/services/integrations/twenty/crmAutomation";
 import { log } from "@/lib/logger";
 
 function safeFilenamePart(value: string): string {
@@ -72,6 +73,27 @@ export async function POST(
         const datePart = `${now.getMonth() + 1}-${now.getDate()}-${now.getFullYear()}`;
         const clientPart = safeFilenamePart(project.clientName || "Project");
         const filename = `ANC_${clientPart}_${project.documentMode}_${datePart}.pdf`;
+
+        saveCrmArtifact({
+            buffer: Buffer.from(bytes),
+            preferredFilename: filename,
+            contentType: "application/pdf",
+        })
+            .then((artifact) =>
+                postArtifactNote({
+                    proposalId: project.id,
+                    title: "Proposal Engine: latest proposal PDF",
+                    summary: "Latest proposal PDF exported from Proposal Engine.",
+                    artifacts: [
+                        {
+                            label: "Proposal PDF",
+                            url: artifact.downloadUrl,
+                            filename: artifact.filename,
+                        },
+                    ],
+                }),
+            )
+            .catch((error) => log.warn("[projects/pdf] CRM artifact sync failed:", error?.message || error));
 
         return new NextResponse(bytes, {
             status: 200,

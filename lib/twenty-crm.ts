@@ -95,6 +95,11 @@ export async function syncToTwenty(
         await persistSuccess(options.analysisId, outcome.opportunityId).catch((e) =>
           console.warn('[Twenty CRM Sync] DB persist success failed:', e?.message),
         );
+        if (payload.action === 'rfp_analyzed' && outcome.opportunityId) {
+          import("@/services/integrations/twenty/crmAutomation")
+            .then(({ postRfpAnalyzedNote }) => postRfpAnalyzedNote(options.analysisId!, outcome.opportunityId))
+            .catch((e) => console.warn('[Twenty CRM Sync] CRM note sync failed:', e?.message));
+        }
       }
       return { ok: true, opportunityId: outcome.opportunityId, attempt: i + 1 };
     }
