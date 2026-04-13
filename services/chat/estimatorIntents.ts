@@ -10,7 +10,7 @@
  */
 
 import type { EstimatorAnswers, DisplayAnswers } from "@/app/components/estimator/questions";
-import { getDefaultDisplayAnswers } from "@/app/components/estimator/questions";
+import { createNewDisplayAnswers } from "@/app/components/estimator/questions";
 import type { ScreenCalc } from "@/app/components/estimator/EstimatorBridge";
 
 // ============================================================================
@@ -380,13 +380,13 @@ export function executeEstimatorIntent(
         case "add_display": {
             const p = intent.params;
             const display: DisplayAnswers = {
-                ...getDefaultDisplayAnswers(),
-                displayName: p.displayName || `Display ${answers.displays.length + 1}`,
+                ...createNewDisplayAnswers(answers.displays.length),
                 widthFt: p.widthFt || 0,
                 heightFt: p.heightFt || 0,
                 pixelPitch: p.pixelPitch || "4",
                 locationType: p.locationType || "wall",
             };
+            if (p.displayName) display.displayName = p.displayName;
             const updated = { ...answers, displays: [...answers.displays, display] };
             const parts: string[] = [`Added **${display.displayName}**`];
             if (display.widthFt && display.heightFt) {
@@ -656,7 +656,7 @@ export function executeEstimatorIntent(
             if (count > current) {
                 const newDisplays = [...answers.displays];
                 for (let i = current; i < count; i++) {
-                    newDisplays.push({ ...getDefaultDisplayAnswers(), displayName: `Display ${i + 1}` });
+                    newDisplays.push(createNewDisplayAnswers(i));
                 }
                 return {
                     success: true,

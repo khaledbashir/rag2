@@ -838,6 +838,20 @@ export interface DisplayAnswers {
     fixedHeightPx?: number;
 }
 
+const DISPLAY_TYPE_LABELS: Record<string, string> = {
+    "main-scoreboard": "Main Scoreboard",
+    "center-hung": "Center-Hung",
+    "ribbon-board": "Ribbon Board",
+    "fascia-board": "Fascia Board",
+    "concourse-display": "Concourse Display",
+    "end-zone": "End Zone Board",
+    marquee: "Marquee",
+    auxiliary: "Auxiliary Board",
+    "pitch-clock": "Pitch Clock",
+    "shot-clock": "Shot Clock",
+    custom: "Custom Display",
+};
+
 export function getDefaultAnswers(): EstimatorAnswers {
     return {
         clientName: "",
@@ -902,6 +916,30 @@ export function getDefaultDisplayAnswers(): DisplayAnswers {
         dataRunDistance: "copper",
         excludedBundleItems: [],
         altPitches: [],
+    };
+}
+
+export function humanizeEstimatorDisplayType(value: string | null | undefined): string | null {
+    if (!value) return null;
+    return DISPLAY_TYPE_LABELS[value] || value
+        .replace(/[-_]/g, " ")
+        .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+export function getEstimatorDisplayLabel(
+    display: DisplayAnswers,
+    index: number,
+    fallback: string = `Display ${index + 1}`,
+): string {
+    const explicitName = display.displayName?.trim();
+    if (explicitName) return explicitName;
+    return humanizeEstimatorDisplayType(display.displayType) || fallback;
+}
+
+export function createNewDisplayAnswers(index: number): DisplayAnswers {
+    return {
+        ...getDefaultDisplayAnswers(),
+        displayName: `New Display ${index + 1}`,
     };
 }
 

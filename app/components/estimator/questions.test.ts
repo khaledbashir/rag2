@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getDefaultAnswers, getDefaultDisplayAnswers, normalizeEstimatorAnswers } from "./questions";
+import { createNewDisplayAnswers, getDefaultAnswers, getDefaultDisplayAnswers, getEstimatorDisplayLabel, normalizeEstimatorAnswers } from "./questions";
 
 describe("normalizeEstimatorAnswers", () => {
     it("fills missing RFP dimensions from working dimensions", () => {
@@ -65,5 +65,31 @@ describe("normalizeEstimatorAnswers", () => {
         expect(normalized.displays[0].rfpHeightFt).toBe(30.709);
         expect(normalized.displays[0].widthFt).toBe(40.157);
         expect(normalized.displays[0].heightFt).toBe(30.709);
+    });
+});
+
+describe("estimator display labels", () => {
+    it("creates unique default names for newly added displays", () => {
+        expect(createNewDisplayAnswers(0).displayName).toBe("New Display 1");
+        expect(createNewDisplayAnswers(1).displayName).toBe("New Display 2");
+    });
+
+    it("creates independent bundle state for each new display", () => {
+        const first = createNewDisplayAnswers(0);
+        const second = createNewDisplayAnswers(1);
+
+        first.excludedBundleItems.push("processor");
+
+        expect(second.excludedBundleItems).toEqual([]);
+    });
+
+    it("matches workbook labels for unnamed typed displays", () => {
+        const display = {
+            ...getDefaultDisplayAnswers(),
+            displayType: "main-scoreboard",
+            displayName: "",
+        };
+
+        expect(getEstimatorDisplayLabel(display, 0)).toBe("Main Scoreboard");
     });
 });

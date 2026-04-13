@@ -18,7 +18,7 @@ import { useRouter } from "next/navigation";
 import QuestionFlow from "./QuestionFlow";
 import EstimatorCopilot from "./EstimatorCopilot";
 import { calculateDisplay, type SheetTab, type ProductSpec } from "./EstimatorBridge";
-import { getDefaultAnswers, getDefaultDisplayAnswers, normalizeDisplayAnswerDimensions, normalizeEstimatorAnswers, type EstimatorAnswers, type DisplayAnswers } from "./questions";
+import { createNewDisplayAnswers, getDefaultAnswers, normalizeDisplayAnswerDimensions, normalizeEstimatorAnswers, type EstimatorAnswers, type DisplayAnswers } from "./questions";
 import WorkbookShell from "@/app/components/reusables/WorkbookShell";
 import { buildEstimatorWorkbook } from "./buildEstimatorWorkbook";
 import VendorDropZone from "./VendorDropZone";
@@ -112,11 +112,21 @@ export default function EstimatorStudio({
     // so Natalia can insert a new row straight from the LED Cost Sheet preview
     // without having to reopen the wizard.
     const handleAddDisplayFromPreview = useCallback(() => {
-        setAnswers((prev) => ({
-            ...prev,
-            displays: [...prev.displays, getDefaultDisplayAnswers()],
-        }));
-    }, []);
+        setAnswers((prev) => {
+            const nextIndex = prev.displays.length;
+            return {
+                ...prev,
+                displays: [...prev.displays, createNewDisplayAnswers(nextIndex)],
+            };
+        });
+        setQuestionsComplete(false);
+        setEditingAnswers(true);
+        setQuestionResumeTarget({
+            phase: "display",
+            step: 0,
+            displayIndex: answers.displays.length,
+        });
+    }, [answers.displays.length]);
 
     useEffect(() => {
         if (!uiFeedback) return;

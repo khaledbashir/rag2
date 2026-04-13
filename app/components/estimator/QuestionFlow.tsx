@@ -23,6 +23,7 @@ import {
     type Question,
     type EstimatorAnswers,
     type DisplayAnswers,
+    createNewDisplayAnswers,
     getDefaultAnswers,
     getDefaultDisplayAnswers,
 } from "./questions";
@@ -343,7 +344,7 @@ export default function QuestionFlow({
         } else if (phase === "display") {
             // Ensure display exists
             while (next.displays.length <= displayIndex) {
-                next.displays.push(getDefaultDisplayAnswers());
+                next.displays.push(createNewDisplayAnswers(next.displays.length));
             }
             const d = { ...next.displays[displayIndex] };
             if (currentQ.id === "dimensions") {
@@ -363,7 +364,7 @@ export default function QuestionFlow({
     const setDisplayFields = useCallback((fields: Partial<DisplayAnswers>) => {
         const next = { ...answers };
         while (next.displays.length <= displayIndex) {
-            next.displays.push(getDefaultDisplayAnswers());
+            next.displays.push(createNewDisplayAnswers(next.displays.length));
         }
         next.displays[displayIndex] = { ...next.displays[displayIndex], ...fields };
         onChange(next);
@@ -383,7 +384,7 @@ export default function QuestionFlow({
             if (phase === "project") {
                 // Ensure at least one display
                 if (answers.displays.length === 0) {
-                    const next = { ...answers, displays: [getDefaultDisplayAnswers()] };
+                    const next = { ...answers, displays: [createNewDisplayAnswers(0)] };
                     onChange(next);
                 }
                 setPhase("display");
@@ -428,7 +429,7 @@ export default function QuestionFlow({
 
     const addDisplay = useCallback(() => {
         const next = { ...answers };
-        next.displays = [...next.displays, getDefaultDisplayAnswers()];
+        next.displays = [...next.displays, createNewDisplayAnswers(next.displays.length)];
         onChange(next);
         setDisplayIndex(next.displays.length - 1);
         setCurrentStep(0);
@@ -451,7 +452,7 @@ export default function QuestionFlow({
 
     const skipToFirstDisplay = useCallback(() => {
         if (answers.displays.length === 0) {
-            onChange({ ...answers, displays: [getDefaultDisplayAnswers()] });
+            onChange({ ...answers, displays: [createNewDisplayAnswers(0)] });
         }
         setPhase("display");
         setDisplayIndex(0);

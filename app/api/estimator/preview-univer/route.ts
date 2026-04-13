@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { mapEstimatorToScoping } from "@/services/rfp/pipeline/estimatorToScopingMapper";
 import { generateScopingWorkbook } from "@/services/rfp/pipeline/generateScopingWorkbook";
-import { normalizeEstimatorAnswers, type EstimatorAnswers } from "@/app/components/estimator/questions";
+import { getEstimatorDisplayLabel, normalizeEstimatorAnswers, type EstimatorAnswers } from "@/app/components/estimator/questions";
 import { log } from "@/lib/logger";
 import ExcelJS from "exceljs";
 
@@ -296,7 +296,7 @@ export async function POST(req: NextRequest) {
       const baseDisplays = computedDisplays.filter((display) => !display.spec.isAlternate);
       const expectedRows = answers.displays.map((display, idx) => {
         const location = baseDisplays[idx]?.spec.location || "";
-        const label = `${display.displayName || `Display ${idx + 1}`}${location ? ` — ${location}` : ""}`;
+        const label = `${getEstimatorDisplayLabel(display, idx, `Unnamed Display ${idx + 1}`)}${location ? ` — ${location}` : ""}`;
         return { idx, label: label.trim().toLowerCase() };
       });
 
