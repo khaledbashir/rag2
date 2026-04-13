@@ -310,9 +310,9 @@ export function buildEstimatorWorkbook(
       columns,
       rows,
     };
-    // LED Cost Sheet: H(ft)=7, W(ft)=8, Qty=11, Margin Override=21
+    // LED Cost Sheet: Display=1, H(ft)=7, W(ft)=8, Qty=11, Margin Override=21
     if (isLedCostSheet) {
-      tab.editableColumns = [7, 8, 11, 21];
+      tab.editableColumns = [1, 7, 8, 11, 21];
     }
     sheets.push(tab);
   }

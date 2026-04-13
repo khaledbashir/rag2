@@ -278,7 +278,6 @@ export const DISPLAY_QUESTIONS: Question[] = [
         label: "Display Name",
         subtitle: "Give this display a name for the estimate",
         placeholder: "Main Scoreboard",
-        showIf: (answers) => answers.displayType === "custom",
         required: true,
         affectsSheet: "Display Details",
     },

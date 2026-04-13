@@ -1279,14 +1279,30 @@ export default function EstimatorStudio({
                                             }));
                                             return;
                                         }
+                                        const displayIdx = displayRowMap[rowIndex] ?? rowIndex;
+                                        if (displayIdx < 0 || displayIdx >= answers.displays.length) return;
+
+                                        if (colIndex === 1) {
+                                            const nextName = String(newValue || "").trim();
+                                            if (!nextName) return;
+                                            setAnswers((prev) => {
+                                                const displays = [...prev.displays];
+                                                displays[displayIdx] = {
+                                                    ...displays[displayIdx],
+                                                    displayName: nextName,
+                                                };
+                                                return { ...prev, displays };
+                                            });
+                                            noteWorkbookSync(`Workbook edit synced: Display ${displayIdx + 1} name updated`);
+                                            return;
+                                        }
+
                                         // LED Cost Sheet: H(ft)=7, W(ft)=8, Qty=11
                                         const fieldMap: Record<number, "heightFt" | "widthFt" | "quantity"> = { 7: "heightFt", 8: "widthFt", 11: "quantity" };
                                         const field = fieldMap[colIndex];
                                         if (!field) return;
                                         const numValue = parseFloat(newValue);
                                         if (isNaN(numValue) || numValue <= 0) return;
-                                        const displayIdx = displayRowMap[rowIndex] ?? rowIndex;
-                                        if (displayIdx < 0 || displayIdx >= answers.displays.length) return;
                                         setAnswers((prev) => {
                                             const displays = [...prev.displays];
                                             const update = { ...displays[displayIdx], [field]: numValue } as DisplayAnswers;
