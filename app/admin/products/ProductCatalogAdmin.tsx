@@ -371,6 +371,16 @@ export default function ProductCatalogAdmin() {
                         Add Product
                     </button>
 
+                    {/* Export catalog */}
+                    <a
+                        href="/api/products/export"
+                        className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-border text-foreground rounded-lg hover:bg-muted transition-colors"
+                        title="Download every product in the catalog as .xlsx"
+                    >
+                        <Download className="w-4 h-4" />
+                        Export catalog
+                    </a>
+
                     {/* Download Template */}
                     <a
                         href="/api/products/template?type=all"
