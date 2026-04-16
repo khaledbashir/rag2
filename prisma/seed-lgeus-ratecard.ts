@@ -498,7 +498,7 @@ export async function seedLGEUSRateCard() {
       productLine: p.productLine,
       application: p.application,
       modelNumber: p.modelNumber,
-      displayName: p.displayName,
+      displayName: `${p.displayName} (${MANUFACTURER})`,
       productType: "led",
       pixelPitch: p.pixelPitch,
       cabinetWidthMm: p.cabinetWidthMm,
