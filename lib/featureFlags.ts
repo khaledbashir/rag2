@@ -13,4 +13,10 @@ export const FEATURES = {
   CLIENT_REQUESTS: false,
   /** Review step: Verification Studio (Excel vs PDF compare) */
   VERIFICATION_STUDIO: false,
+  /**
+   * Review step: Currency + USD→target exchange rate panel.
+   * Math/PDF/Excel plumbing is fully wired (see commits 95ee54bf, e2a5c654).
+   * Flip to true once the feature is paid/billable to expose the UI.
+   */
+  CURRENCY_EXCHANGE_RATE: false,
 } as const;

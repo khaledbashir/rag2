@@ -849,7 +849,7 @@ const Step4Export = () => {
                     </p>
                 </div>
 
-                <CurrencyAndRatePanel />
+                {FEATURES.CURRENCY_EXCHANGE_RATE && <CurrencyAndRatePanel />}
 
                 {Number(totalValue) === 0 && screens.length > 0 && (
                     <div className="mb-6 rounded-xl border border-amber-600/30 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-3 flex items-center gap-3">
