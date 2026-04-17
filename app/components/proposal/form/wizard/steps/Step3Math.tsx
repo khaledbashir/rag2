@@ -125,6 +125,14 @@ const Step3Math = () => {
         mirrorModeFlag === true || ((pricingDocument as any)?.tables?.length ?? 0) > 0;
     const mirrorMode = isMirrorMode;
 
+    // Selected output currency + USD-to-currency rate (default 1 = no conversion).
+    // The wizard works in USD-native rate cards; the display layer scales to the chosen currency.
+    const selectedCurrency: string = (useWatch({ name: "details.currency", control }) as any) || "USD";
+    const rawExchangeRate = useWatch({ name: "details.exchangeRate", control }) as any;
+    const fxRate: number = typeof rawExchangeRate === "number" && rawExchangeRate > 0 ? rawExchangeRate : 1;
+    const fmtMoney = (amount: number, placeholder?: string) =>
+        formatCurrency((amount || 0) * fxRate, placeholder, selectedCurrency as any);
+
     if (isMirrorMode) return null;
 
     // P58: Drag-to-reorder sensors
@@ -487,7 +495,7 @@ const Step3Math = () => {
                                 <span className="text-[10px] font-bold uppercase tracking-wider">Selling Price / SQFT</span>
                             </div>
                             <div className="text-xl font-bold text-foreground tracking-tight">
-                                {formatCurrency(sellPricePerSqFt, Math.abs(sellPricePerSqFt || 0) < 0.01 ? "—" : undefined)}
+                                {fmtMoney(sellPricePerSqFt, Math.abs(sellPricePerSqFt || 0) < 0.01 ? "—" : undefined)}
                             </div>
                         </div>
 
@@ -499,7 +507,7 @@ const Step3Math = () => {
                                 <span className="text-[10px] font-bold uppercase tracking-wider">Structural Labor (15%)</span>
                             </div>
                             <div className="text-xl font-bold text-foreground tracking-tight">
-                                {formatCurrency(structuralLabor)}
+                                {fmtMoney(structuralLabor)}
                             </div>
                         </div>
                         )}
@@ -512,7 +520,7 @@ const Step3Math = () => {
                                 <span className="text-[10px] font-bold uppercase tracking-wider">Shipping & Logistics</span>
                             </div>
                             <div className="text-xl font-bold text-foreground tracking-tight">
-                                {formatCurrency(shippingLogistics)}
+                                {fmtMoney(shippingLogistics)}
                             </div>
                         </div>
                         )}
@@ -524,7 +532,7 @@ const Step3Math = () => {
                                 <span className="text-[10px] font-bold uppercase tracking-wider">Final Client Total</span>
                             </div>
                             <div className="text-xl font-bold text-foreground tracking-tight">
-                                {formatCurrency(totalProjectValue, Math.abs(totalProjectValue || 0) < 0.01 ? "—" : undefined)}
+                                {fmtMoney(totalProjectValue, Math.abs(totalProjectValue || 0) < 0.01 ? "—" : undefined)}
                             </div>
                         </div>
                     </div>
@@ -557,31 +565,31 @@ const Step3Math = () => {
                                 <div className="rounded-xl border border-border bg-muted/20 p-3">
                                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Install Labor</div>
                                     <div className="text-base font-bold text-foreground mt-1">
-                                        {formatCurrency(romTotals.installCost)}
+                                        {fmtMoney(romTotals.installCost)}
                                     </div>
                                 </div>
                                 <div className="rounded-xl border border-border bg-muted/20 p-3">
                                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">PM Cost</div>
                                     <div className="text-base font-bold text-foreground mt-1">
-                                        {formatCurrency(romTotals.pmCost)}
+                                        {fmtMoney(romTotals.pmCost)}
                                     </div>
                                 </div>
                                 <div className="rounded-xl border border-border bg-muted/20 p-3">
                                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Engineering</div>
                                     <div className="text-base font-bold text-foreground mt-1">
-                                        {formatCurrency(romTotals.engCost)}
+                                        {fmtMoney(romTotals.engCost)}
                                     </div>
                                 </div>
                                 <div className="rounded-xl border border-border bg-muted/20 p-3">
                                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Hardware</div>
                                     <div className="text-base font-bold text-foreground mt-1">
-                                        {romTotals.hardwareCost > 0 ? formatCurrency(romTotals.hardwareCost) : "—"}
+                                        {romTotals.hardwareCost > 0 ? fmtMoney(romTotals.hardwareCost) : "—"}
                                     </div>
                                 </div>
                                 <div className="rounded-xl border border-brand-blue/30 bg-brand-blue/10 p-3">
                                     <div className="text-[10px] uppercase tracking-wider text-brand-blue font-bold">ROM Grand Total</div>
                                     <div className="text-lg font-bold text-foreground mt-1">
-                                        {formatCurrency(romGrandTotal)}
+                                        {fmtMoney(romGrandTotal)}
                                     </div>
                                 </div>
                             </div>
@@ -732,7 +740,7 @@ const Step3Math = () => {
                                             </div>
                                             <div className="text-right shrink-0">
                                                 <div className="text-sm font-bold text-foreground">
-                                                    {Math.abs(Number(displayTotal)) < 0.01 ? "—" : formatCurrency(displayTotal)}
+                                                    {Math.abs(Number(displayTotal)) < 0.01 ? "—" : fmtMoney(Number(displayTotal))}
                                                 </div>
                                                 <div className="text-[10px] text-muted-foreground">Client Total</div>
                                             </div>
@@ -744,7 +752,7 @@ const Step3Math = () => {
                                             Project Total
                                         </div>
                                         <div className="text-lg font-bold text-brand-blue">
-                                            {formatCurrency(internalAudit.totals?.finalClientTotal || 0, Math.abs(internalAudit.totals?.finalClientTotal || 0) < 0.01 ? "—" : undefined)}
+                                            {fmtMoney(internalAudit.totals?.finalClientTotal || 0, Math.abs(internalAudit.totals?.finalClientTotal || 0) < 0.01 ? "—" : undefined)}
                                         </div>
                                     </div>
                                 </div>

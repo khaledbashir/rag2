@@ -41,6 +41,7 @@ import FinalPdf from "./proposal/actions/FinalPdf";
 // * Reusable components
 // Form fields
 import CurrencySelector from "./reusables/form-fields/CurrencySelector";
+import ExchangeRateInput from "./reusables/form-fields/ExchangeRateInput";
 import FormInput from "./reusables/form-fields/FormInput";
 import FormTextarea from "./reusables/form-fields/FormTextarea";
 import DatePickerFormField from "./reusables/form-fields/DatePickerFormField";
@@ -123,6 +124,7 @@ export {
    PaymentInformation,
    ProposalSummary,
    CurrencySelector,
+   ExchangeRateInput,
    SavedProposalsList,
    PdfViewer,
    FinalPdf,

@@ -168,6 +168,7 @@ export const FORM_DEFAULT_VALUES = {
       },
     ],
     currency: "USD",
+    exchangeRate: 1,
     language: "English",
     taxDetails: {
       amount: 0,
@@ -284,6 +285,7 @@ export const FORM_FILL_VALUES = {
       },
     ],
     currency: "USD",
+    exchangeRate: 1,
     language: "English",
     taxDetails: {
       amount: 15,

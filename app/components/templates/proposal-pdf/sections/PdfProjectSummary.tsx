@@ -1,6 +1,6 @@
 import React from "react";
 import { formatCurrency } from "@/lib/helpers";
-import { computeTableTotals } from "@/lib/pricingMath";
+import { computeTableTotals, resolveExchangeRate } from "@/lib/pricingMath";
 import type { PricingTable } from "@/types/pricing";
 import type { PdfColors } from "./shared";
 
@@ -27,27 +27,32 @@ const SectionHeader = ({ title, subtitle, colors }: SectionHeaderProps) => (
 interface LOISummaryTableProps {
     colors: PdfColors;
     currency: "CAD" | "USD" | "GBP" | "EUR";
+    exchangeRate?: number;
     total: number;
 }
 
-export const LOISummaryTable = ({ colors, currency, total }: LOISummaryTableProps) => (
-    <div data-preview-section="pricing" className="px-6 mt-2 break-inside-avoid" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
-        <SectionHeader title="Project Summary" colors={colors} />
-        <div className="rounded-lg border overflow-hidden" style={{ borderColor: colors.border }}>
-            <div
-                className="grid grid-cols-12 px-4 py-1.5 break-inside-avoid"
-                style={{ borderColor: colors.primary, background: colors.primaryLight }}
-            >
-                <div className="col-span-8 font-bold text-[13px] uppercase tracking-wide" style={{ color: colors.primaryDark }}>
-                    Project Grand Total
-                </div>
-                <div className="col-span-4 text-right font-bold text-[15px]" style={{ color: colors.primaryDark }}>
-                    {formatCurrency(total, Math.abs(total) < 0.01 ? "—" : undefined, currency)}
+export const LOISummaryTable = ({ colors, currency, exchangeRate, total }: LOISummaryTableProps) => {
+    const fx = resolveExchangeRate(exchangeRate);
+    const converted = total * fx;
+    return (
+        <div data-preview-section="pricing" className="px-6 mt-2 break-inside-avoid" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+            <SectionHeader title="Project Summary" colors={colors} />
+            <div className="rounded-lg border overflow-hidden" style={{ borderColor: colors.border }}>
+                <div
+                    className="grid grid-cols-12 px-4 py-1.5 break-inside-avoid"
+                    style={{ borderColor: colors.primary, background: colors.primaryLight }}
+                >
+                    <div className="col-span-8 font-bold text-[13px] uppercase tracking-wide" style={{ color: colors.primaryDark }}>
+                        Project Grand Total
+                    </div>
+                    <div className="col-span-4 text-right font-bold text-[15px]" style={{ color: colors.primaryDark }}>
+                        {formatCurrency(converted, Math.abs(converted) < 0.01 ? "—" : undefined, currency)}
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
-);
+    );
+};
 
 // ============================================================================
 // Master Table Summary — renders the designated "Project Grand Total" table
@@ -56,6 +61,7 @@ export const LOISummaryTable = ({ colors, currency, total }: LOISummaryTableProp
 interface MasterTableSummaryProps {
     colors: PdfColors;
     currency: "CAD" | "USD" | "GBP" | "EUR";
+    exchangeRate?: number;
     masterTable: any;
     tableHeaderOverrides: Record<string, string>;
     screenNameMap: Record<string, string>;
@@ -66,10 +72,11 @@ interface MasterTableSummaryProps {
 }
 
 export const MasterTableSummary = ({
-    colors, currency, masterTable, tableHeaderOverrides, screenNameMap,
+    colors, currency, exchangeRate, masterTable, tableHeaderOverrides, screenNameMap,
     descriptionOverrides, priceOverrides, colHeaderLeft, colHeaderRight,
 }: MasterTableSummaryProps) => {
     if (!masterTable) return null;
+    const fx = resolveExchangeRate(exchangeRate);
 
     const tableName = (masterTable?.name ?? "").toString().trim();
     const tableId = masterTable?.id;
@@ -78,7 +85,7 @@ export const MasterTableSummary = ({
     const label = (override ?? tableName ?? "Project Total").toString().trim();
 
     const rows = (masterTable?.items || masterTable?.rows || []) as any[];
-    const masterTotals = computeTableTotals(masterTable as PricingTable, priceOverrides, descriptionOverrides);
+    const masterTotals = computeTableTotals(masterTable as PricingTable, priceOverrides, descriptionOverrides, fx);
     const { subtotal, tax, bond, grandTotal } = masterTotals;
 
     return (
@@ -102,7 +109,8 @@ export const MasterTableSummary = ({
                     const origDesc = (row?.description || row?.name || "Item").toString().trim();
                     const desc = (descriptionOverrides[`${tableId}:${idx}`] || origDesc);
                     const origPrice = Number(row?.sellingPrice ?? row?.price ?? row?.amount ?? 0);
-                    const price = priceOverrides[`${tableId}:${idx}`] !== undefined ? priceOverrides[`${tableId}:${idx}`] : origPrice;
+                    const rawPrice = priceOverrides[`${tableId}:${idx}`] !== undefined ? priceOverrides[`${tableId}:${idx}`] : origPrice;
+                    const price = rawPrice * fx;
                     return (
                         <div
                             key={`master-row-${idx}`}

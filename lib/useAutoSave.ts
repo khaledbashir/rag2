@@ -85,6 +85,8 @@ export function useAutoSave({
                     bondRateOverride: formData.details?.bondRateOverride,
                     documentMode: (formData.details as any)?.documentMode,
                     documentConfig: {
+                        currency: (formData.details as any)?.currency,
+                        exchangeRate: (formData.details as any)?.exchangeRate,
                         includePricingBreakdown: (formData.details as any)?.includePricingBreakdown,
                         showPricingTables: (formData.details as any)?.showPricingTables,
                         showIntroText: (formData.details as any)?.showIntroText,

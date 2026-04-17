@@ -6,6 +6,7 @@ import { useEffect, useMemo } from "react";
 import {
     BaseButton,
     CurrencySelector,
+    ExchangeRateInput,
     DatePickerFormField,
     FormInput,
     FormFile,
@@ -201,6 +202,8 @@ const ProposalDetails = () => {
                         label={_t("form.steps.proposalDetails.currency")}
                         placeholder="Select Currency"
                     />
+
+                    <ExchangeRateInput />
                 </div>
 
                 <div className="flex flex-col gap-2">

@@ -31,6 +31,15 @@ export function roundToDisplay(value: number): number {
     return Math.round(value * DISPLAY_SCALE) / DISPLAY_SCALE;
 }
 
+/**
+ * Resolve a usable exchange-rate multiplier. Falsy/non-positive values fall back
+ * to 1 so callers can pass `details.exchangeRate` directly without null checks.
+ * Source amounts are USD-native; multiplying by rate yields the selected currency.
+ */
+export function resolveExchangeRate(rate: number | null | undefined): number {
+    return typeof rate === "number" && Number.isFinite(rate) && rate > 0 ? rate : 1;
+}
+
 // ============================================================================
 // EFFECTIVE PRICE / DESCRIPTION WITH OVERRIDES
 // ============================================================================
@@ -109,7 +118,9 @@ export function computeTableTotals(
     table: PricingTable,
     priceOverrides: Record<string, number> = {},
     descriptionOverrides: Record<string, string> = {},
+    exchangeRate: number | null | undefined = 1,
 ): RenderedTableTotals {
+    const fx = resolveExchangeRate(exchangeRate);
     // Step 1: Build rendered items with rounded prices, filtering $0 rows
     const items: RenderedLineItem[] = [];
     let subtotal = 0;
@@ -117,7 +128,7 @@ export function computeTableTotals(
     for (let idx = 0; idx < (table.items || []).length; idx++) {
         const item = table.items[idx];
         const rawPrice = getEffectivePrice(priceOverrides, table.id, idx, item.sellingPrice);
-        const roundedPrice = roundToDisplay(rawPrice);
+        const roundedPrice = roundToDisplay(rawPrice * fx);
         const description = getEffectiveDescription(descriptionOverrides, table.id, idx, item.description);
 
         // Filter out $0 rows (e.g. "BOND $0") — but keep explicitly "INCLUDED", "EXCLUDED", or text-value items
@@ -149,26 +160,26 @@ export function computeTableTotals(
     if (table.tax) {
         taxLabel = table.tax.label || "Tax";
         if (typeof table.tax.amount === "number" && table.tax.amount !== 0) {
-            // Excel provided the tax amount — use it directly (Mirror Mode)
-            tax = roundToDisplay(table.tax.amount);
+            // Excel provided the tax amount — use it directly (Mirror Mode), then convert
+            tax = roundToDisplay(table.tax.amount * fx);
         } else if (table.tax.rate > 0 && table.tax.rate <= 1) {
-            // No amount but rate exists — calculate from rendered subtotal
+            // No amount but rate exists — calculate from already-converted subtotal
             tax = roundToDisplay(subtotal * table.tax.rate);
         }
     }
 
-    // Step 3: Bond — use Excel's bond amount directly
-    const bond = roundToDisplay(table.bond || 0);
+    // Step 3: Bond — convert from USD-native to selected currency
+    const bond = roundToDisplay((table.bond || 0) * fx);
 
-    // Step 3b: Tariff — use Excel's tariff amount directly
-    const tariff = roundToDisplay(table.tariff || 0);
+    // Step 3b: Tariff — convert from USD-native to selected currency
+    const tariff = roundToDisplay((table.tariff || 0) * fx);
 
     // Step 4: Grand total — Mirror Mode: always use Excel's grandTotal directly.
     // Natalia's rule: "whatever is here is what your engine will show" — no recalculation.
     // Excel's grandTotal was set from the actual total row in the spreadsheet.
     // Only fall back to calculated when Excel had no grand total row (grandTotal === 0).
     const grandTotal = (Number.isFinite(table.grandTotal) && table.grandTotal !== 0)
-        ? roundToDisplay(table.grandTotal)
+        ? roundToDisplay(table.grandTotal * fx)
         : (subtotal + tax + bond + tariff);
 
     // Step 5: When all modifiers (tax/bond/tariff) are $0, subtotal and grandTotal
@@ -195,16 +206,18 @@ export function computeDocumentTotal(
     document: PricingDocument,
     priceOverrides: Record<string, number> = {},
     descriptionOverrides: Record<string, string> = {},
+    exchangeRate: number | null | undefined = 1,
 ): number {
+    const fx = resolveExchangeRate(exchangeRate);
     // "Excel-Match" Strategy:
     // If the Excel parser found a total row, trust it implicitly.
     // Natalia prioritizes matching the source file over internal consistency.
     if (Number.isFinite(document.documentTotal) && document.documentTotal !== 0) {
-        return document.documentTotal;
+        return roundToDisplay(document.documentTotal * fx);
     }
 
     return document.tables.reduce(
-        (sum, table) => sum + computeTableTotals(table, priceOverrides, descriptionOverrides).grandTotal,
+        (sum, table) => sum + computeTableTotals(table, priceOverrides, descriptionOverrides, fx).grandTotal,
         0,
     );
 }
@@ -217,9 +230,11 @@ export function computeDocumentTotalFromTables(
     tables: PricingTable[],
     priceOverrides: Record<string, number> = {},
     descriptionOverrides: Record<string, string> = {},
+    exchangeRate: number | null | undefined = 1,
 ): number {
+    const fx = resolveExchangeRate(exchangeRate);
     return tables.reduce(
-        (sum, table) => sum + computeTableTotals(table, priceOverrides, descriptionOverrides).grandTotal,
+        (sum, table) => sum + computeTableTotals(table, priceOverrides, descriptionOverrides, fx).grandTotal,
         0,
     );
 }

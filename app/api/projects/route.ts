@@ -99,6 +99,7 @@ export async function GET(req: NextRequest) {
                     mirrorMode: true,
                     calculationMode: true,
                     pricingDocument: true,
+                    documentConfig: true,
                     clientLogo: true,
                     versions: {
                         orderBy: { createdAt: "desc" },
@@ -142,6 +143,7 @@ export async function GET(req: NextRequest) {
 
         let projects = projectsRaw.map((project) => {
             const pricingDocument = (project.pricingDocument as PricingDocumentLike | null) ?? null;
+            const documentConfig = ((project as any).documentConfig || {}) as { currency?: string; exchangeRate?: number };
             const pricingDocumentTotal = toFiniteNumber(pricingDocument?.documentTotal);
             const latestBidTotal = toFiniteNumber(project.versions?.[0]?.totalSellingPrice);
             const tables = pricingDocument?.tables;
@@ -152,6 +154,14 @@ export async function GET(req: NextRequest) {
                 totalAmount = pricingDocumentTotal;
             } else if (latestBidTotal !== null) {
                 totalAmount = latestBidTotal;
+            }
+
+            // Apply user-selected exchange rate so listing totals match what the client sees on the PDF.
+            const fxRate = typeof documentConfig.exchangeRate === "number" && documentConfig.exchangeRate > 0
+                ? documentConfig.exchangeRate
+                : 1;
+            if (fxRate !== 1) {
+                totalAmount = totalAmount * fxRate;
             }
 
             const sectionCount = pricingTables.length;
@@ -184,7 +194,7 @@ export async function GET(req: NextRequest) {
                 mirrorMode: project.mirrorMode ?? false,
                 calculationMode: derivedMode,
                 totalAmount,
-                currency: pricingDocument?.currency || "USD",
+                currency: documentConfig.currency || pricingDocument?.currency || "USD",
                 sectionCount,
                 hasExcel: sectionCount > 0,
                 screenCount: project.screens?.length

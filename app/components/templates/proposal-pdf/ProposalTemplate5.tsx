@@ -85,7 +85,12 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const pricingDocument = (details as any)?.pricingDocument || (data as any)?.pricingDocument;
     const mirrorMode =
         (details as any)?.mirrorMode === true || ((pricingDocument?.tables || []).length ?? 0) > 0;
-    const currency: "CAD" | "USD" | "GBP" | "EUR" = pricingDocument?.currency || "USD";
+    // Prefer the user-selected currency from the form. Fall back to native pricingDocument currency.
+    const currency: "CAD" | "USD" | "GBP" | "EUR" = (details as any)?.currency || pricingDocument?.currency || "USD";
+    // USD → currency multiplier. Defaults to 1 (no conversion).
+    const exchangeRate: number = typeof (details as any)?.exchangeRate === "number" && (details as any).exchangeRate > 0
+        ? (details as any).exchangeRate
+        : 1;
 
     // Prompt 51: Master table index — designates which pricing table is the "Project Grand Total"
     // -1 = user explicitly chose "None (no master table)" — NEVER override this.
@@ -270,7 +275,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     // LOI Master Table Summary - Shows BEFORE detailed pricing tables per Natalia requirement
     const LOISummaryTableSection = () => {
         const total = calculateProjectTotal();
-        return <LOISummaryTable colors={colors} currency={currency} total={total} />;
+        return <LOISummaryTable colors={colors} currency={currency} exchangeRate={exchangeRate} total={total} />;
     };
 
     // Prompt 51: Master Table Summary — renders the designated "Project Grand Total" table at top
@@ -283,6 +288,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
             <MasterTableSummary
                 colors={colors}
                 currency={currency}
+                exchangeRate={exchangeRate}
                 masterTable={masterTable}
                 tableHeaderOverrides={tableHeaderOverrides}
                 screenNameMap={screenNameMap}
@@ -300,6 +306,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
             colors={colors}
             spacing={templateSpacing}
             currency={currency}
+            exchangeRate={exchangeRate}
             isLandscape={isLandscape}
             isSharedView={isSharedView}
             mirrorMode={mirrorMode}

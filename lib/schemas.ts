@@ -220,6 +220,8 @@ const ProposalDetailsSchema = z.object({
     ntpDate: z.string().optional(),
     purchaseOrderNumber: fieldValidators.stringOptional,
     currency: fieldValidators.string,
+    // USD → selected-currency multiplier. 1 means no conversion (default for USD or Mirror Mode where source is already native).
+    exchangeRate: z.coerce.number().positive().optional(),
     language: fieldValidators.string,
     items: z.array(ItemSchema),
     // Screens (ANC-specific estimator inputs)

@@ -1,5 +1,5 @@
 import { ProposalType } from "@/types";
-import { computeTableTotals, computeDocumentTotalFromTables } from "@/lib/pricingMath";
+import { computeTableTotals, computeDocumentTotalFromTables, resolveExchangeRate } from "@/lib/pricingMath";
 import { normalizePitch } from "@/lib/helpers";
 import { resolveDocumentMode } from "@/lib/documentMode";
 import { DOCUMENT_MODES, DocumentMode as CatalogDocumentMode } from "@/services/rfp/productCatalog";
@@ -141,7 +141,8 @@ export function transformProposalToJsreport(
     const isLOI = documentMode === "LOI" || documentMode === "CONTRACT";
 
     const pricingDocument = details?.pricingDocument || (data as any)?.pricingDocument;
-    const currency: string = pricingDocument?.currency || "USD";
+    const currency: string = details?.currency || pricingDocument?.currency || "USD";
+    const exchangeRate: number = resolveExchangeRate(details?.exchangeRate);
     const priceOverrides = details?.priceOverrides || {};
     const descriptionOverrides = details?.descriptionOverrides || {};
     const tableHeaderOverrides = (details?.tableHeaderOverrides || {}) as Record<string, string>;
@@ -158,7 +159,7 @@ export function transformProposalToJsreport(
 
     // Helper to transform a single table
     const transformTable = (table: any): JsreportPricingTable => {
-        const totals = computeTableTotals(table, priceOverrides, descriptionOverrides);
+        const totals = computeTableTotals(table, priceOverrides, descriptionOverrides, exchangeRate);
         const tableName = (table?.name ?? "").toString().trim();
         const tableId = table?.id;
         const override = tableId ? tableHeaderOverrides[tableId] : undefined;
@@ -260,13 +261,18 @@ export function transformProposalToJsreport(
     const noteLines: string[] = customNotes
         ? customNotes.split("\n").map((l: string) => l.trim()).filter((l: string) => l.length > 0)
         : [
-            "All prices quoted in USD. Valid for 30 days from date of proposal.",
+            `All prices quoted in ${currency}. Valid for 30 days from date of proposal.`,
             "Payment terms: 50% upon signing, 40% upon delivery, 10% upon completion.",
         ];
 
+    // When converting from USD to a non-USD currency, surface the conversion rate to the client
+    if (exchangeRate !== 1 && currency !== "USD") {
+        noteLines.push(`Pricing converted from USD at 1 USD = ${exchangeRate} ${currency}.`);
+    }
+
     // Document Total
     const docTotal = rawTables.length > 0
-        ? computeDocumentTotalFromTables(rawTables, priceOverrides, descriptionOverrides)
+        ? computeDocumentTotalFromTables(rawTables, priceOverrides, descriptionOverrides, exchangeRate)
         : 0;
 
     // 5. Flags

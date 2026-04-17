@@ -1,6 +1,6 @@
 import React from "react";
 import { formatCurrency, sanitizeNitsForDisplay, stripDensityAndHDRFromSpecText, formatNumberWithCommas, normalizePitch } from "@/lib/helpers";
-import { computeTableTotals } from "@/lib/pricingMath";
+import { computeTableTotals, resolveExchangeRate } from "@/lib/pricingMath";
 import type { PricingTable } from "@/types/pricing";
 import type { PdfColors, PdfTemplateSpacing } from "./shared";
 
@@ -8,6 +8,7 @@ interface PdfPricingTablesProps {
     colors: PdfColors;
     spacing: PdfTemplateSpacing;
     currency: "CAD" | "USD" | "GBP" | "EUR";
+    exchangeRate?: number;
     isLandscape: boolean;
     isSharedView: boolean;
     mirrorMode: boolean;
@@ -81,10 +82,11 @@ const stripQtyFromDescription = (text: string): string => {
 // ============================================================================
 
 const PdfPricingTables = ({
-    colors, spacing, currency, isLandscape, isSharedView, mirrorMode,
+    colors, spacing, currency, exchangeRate, isLandscape, isSharedView, mirrorMode,
     masterTableIndex, pricingDocument, details, screens, internalAudit,
     descriptionOverrides, priceOverrides, screenNameMap, colHeaderLeft, colHeaderRight,
 }: PdfPricingTablesProps) => {
+    const fx = resolveExchangeRate(exchangeRate);
     const { pricingTableGap, tableRowHeight, rowPaddingY } = spacing;
     const softCostItems = internalAudit?.softCostItems || [];
     const pricingTables = (pricingDocument?.tables || []) as any[];
@@ -127,7 +129,7 @@ const PdfPricingTables = ({
                 return desc.length > 0 && Math.abs(price) >= 0.01;
             });
             // Centralized round-then-sum via pricingMath.ts
-            const detailTotals = computeTableTotals(table as PricingTable, priceOverrides, descriptionOverrides);
+            const detailTotals = computeTableTotals(table as PricingTable, priceOverrides, descriptionOverrides, fx);
             const { subtotal, taxLabel, tax: taxAmount, bond, grandTotal } = detailTotals;
 
             // Skip entire table if ALL items + alternates are hidden
@@ -240,7 +242,7 @@ const PdfPricingTables = ({
                                         {(alt?.description || "Alternate").toString()}
                                     </div>
                                     <div className="col-span-4 text-right font-semibold text-[14px] whitespace-nowrap" style={{ color: colors.primaryDark }}>
-                                        {formatCurrency(Number(alt?.priceDifference ?? 0), currency)}
+                                        {formatCurrency(Number(alt?.priceDifference ?? 0) * fx, currency)}
                                     </div>
                                 </div>
                             ))}
@@ -316,7 +318,7 @@ const PdfPricingTables = ({
                 key: it.id || `quote-${idx}`,
                 name: stripQtyFromDescription(sanitizeNitsForDisplay(normalizedHeader)).toUpperCase(),
                 description: combined,
-                price: Number(it.price || 0) || 0,
+                price: (Number(it.price || 0) || 0) * fx,
                 isAlternate: it.isAlternate || false,
             };
         }).filter((it: any) => it.isAlternate || Math.abs(it.price) >= 0.01)
@@ -325,7 +327,7 @@ const PdfPricingTables = ({
                 const auditRow = isSharedView
                     ? null
                     : internalAudit?.perScreen?.find((s: any) => s.id === screen.id || s.name === screen.name);
-                const price = auditRow?.breakdown?.sellPrice || auditRow?.breakdown?.finalClientTotal || 0;
+                const price = (auditRow?.breakdown?.sellPrice || auditRow?.breakdown?.finalClientTotal || 0) * fx;
                 const label = (screen?.externalName || screen?.customDisplayName || screen?.name || "Display").toString().trim();
                 const split = splitDisplayNameAndSpecs(label);
                 const rawDesc = split.specs || buildDescription(screen);
@@ -342,7 +344,7 @@ const PdfPricingTables = ({
                 key: `soft-${idx}`,
                 name: stripQtyFromDescription(sanitizeNitsForDisplay((item?.name || "Item").toString())).toUpperCase(),
                 description: stripQtyFromDescription(stripDensityAndHDRFromSpecText(sanitizeNitsForDisplay((item?.description || "").toString()))),
-                price: Number(item?.sell || 0),
+                price: Number(item?.sell || 0) * fx,
                 isAlternate: item?.isAlternate || false,
             })).filter((it: any) => it.isAlternate || Math.abs(it.price) >= 0.01),
         ];
