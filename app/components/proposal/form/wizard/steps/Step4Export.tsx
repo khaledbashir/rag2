@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import ExcelGridViewer from "@/app/components/ExcelGridViewer";
 import { FEATURES } from "@/lib/featureFlags";
 import type { ProposalType } from "@/types";
@@ -174,6 +175,85 @@ const normalizeVisualSnapshot = (config: Record<string, any>, defaults: VisualBu
         right: Number(config?.slash?.right ?? defaults.slash.right),
     },
 });
+
+/**
+ * Inline Currency + Exchange Rate control mounted at the top of Review & Export.
+ * Non-USD currency choices prompt for a USD→target multiplier that then propagates
+ * through pricingMath, the PDF templates, Excel exports, and project listing.
+ */
+const CURRENCY_CHOICES = [
+    { code: "USD", label: "US Dollar (USD)" },
+    { code: "CAD", label: "Canadian Dollar (CAD)" },
+    { code: "GBP", label: "British Pound (GBP)" },
+    { code: "EUR", label: "Euro (EUR)" },
+];
+
+const CurrencyAndRatePanel = () => {
+    const { watch, setValue } = useFormContext<ProposalType>();
+    const currency = (watch("details.currency" as any) as string) || "USD";
+    const pricingDocCurrency = (watch("details.pricingDocument" as any) as any)?.currency;
+    const rate = watch("details.exchangeRate" as any) as number | undefined;
+    const effectiveCurrency = currency || pricingDocCurrency || "USD";
+    const effectiveRate = typeof rate === "number" && rate > 0 ? rate : 1;
+
+    return (
+        <div className="mb-6 rounded-xl border border-border bg-card/40 p-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Currency & Exchange Rate</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                        All prices are stored in USD. For non-USD proposals, enter the rate to convert on the PDF.
+                    </div>
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex flex-col">
+                        <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Currency</Label>
+                        <Select
+                            value={effectiveCurrency}
+                            onValueChange={(val) => {
+                                setValue("details.currency" as any, val, { shouldDirty: true });
+                                if (val === "USD") {
+                                    setValue("details.exchangeRate" as any, 1, { shouldDirty: true });
+                                }
+                            }}
+                        >
+                            <SelectTrigger className="w-[12rem]">
+                                <SelectValue placeholder="Select currency" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {CURRENCY_CHOICES.map((c) => (
+                                    <SelectItem key={c.code} value={c.code}>{c.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    {effectiveCurrency !== "USD" && (
+                        <div className="flex flex-col">
+                            <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">{`1 USD = ? ${effectiveCurrency}`}</Label>
+                            <Input
+                                type="number"
+                                step="0.0001"
+                                min={0}
+                                className="w-[10rem]"
+                                placeholder="e.g. 0.79"
+                                value={typeof rate === "number" ? rate : ""}
+                                onChange={(e) => {
+                                    const v = e.target.value;
+                                    setValue("details.exchangeRate" as any, v === "" ? undefined : Number(v), { shouldDirty: true });
+                                }}
+                            />
+                        </div>
+                    )}
+                </div>
+            </div>
+            {effectiveCurrency !== "USD" && effectiveRate !== 1 && (
+                <div className="mt-3 text-[11px] text-muted-foreground">
+                    {`Totals and PDF will show ${effectiveCurrency} using 1 USD = ${effectiveRate} ${effectiveCurrency}.`}
+                </div>
+            )}
+        </div>
+    );
+};
 
 const Step4Export = () => {
     const {
@@ -768,6 +848,8 @@ const Step4Export = () => {
                         Final review of your proposal. Verify data accuracy and export professional documents.
                     </p>
                 </div>
+
+                <CurrencyAndRatePanel />
 
                 {Number(totalValue) === 0 && screens.length > 0 && (
                     <div className="mb-6 rounded-xl border border-amber-600/30 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-3 flex items-center gap-3">
