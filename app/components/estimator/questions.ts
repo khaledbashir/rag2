@@ -767,6 +767,14 @@ export interface EstimatorAnswers {
     docType: "budget" | "proposal" | "loi" | "contract";
     estimateDepth: "rom" | "detailed";
     currency: "USD" | "CAD" | "EUR" | "GBP";
+    /**
+     * USD → selected-currency multiplier. Set from the proposal form
+     * (`details.exchangeRate`) when the estimator runs inside a proposal,
+     * otherwise undefined. 1 and undefined both mean "no conversion".
+     * Source values throughout the estimator stay USD-native; this rate is
+     * applied at the display/export boundary only.
+     */
+    exchangeRate?: number;
     isIndoor: boolean;
     isNewInstall: boolean;
     isUnion: boolean;

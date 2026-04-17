@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { mapEstimatorToScoping } from "@/services/rfp/pipeline/estimatorToScopingMapper";
 import { generateScopingWorkbook } from "@/services/rfp/pipeline/generateScopingWorkbook";
 import { normalizeEstimatorAnswers, type EstimatorAnswers } from "@/app/components/estimator/questions";
+import { scaleWorkbookByFx } from "@/services/pricing/scaleWorkbookByFx";
 import { log } from "@/lib/logger";
 import { logActivity } from "@/services/proposal/server/activityLogService";
 import { postArtifactNote, saveCrmArtifact } from "@/services/integrations/twenty/crmAutomation";
@@ -32,7 +33,23 @@ export async function POST(req: NextRequest) {
     const options = mapEstimatorToScoping(answers);
 
     // Generate using the same generator as RFP path
-    const { buffer } = await generateScopingWorkbook(options);
+    const { buffer: rawBuffer, workbook: wb } = await generateScopingWorkbook(options);
+
+    // Apply user-entered USD→target exchange rate to every currency-formatted
+    // cell, then re-serialize. When the rate is 1 or absent, skip the rewrite
+    // and reuse the generator's buffer as-is.
+    const needsFxScale = typeof answers.exchangeRate === "number"
+        && Number.isFinite(answers.exchangeRate)
+        && answers.exchangeRate > 0
+        && answers.exchangeRate !== 1;
+
+    let buffer: Buffer;
+    if (needsFxScale) {
+      scaleWorkbookByFx(wb, answers.exchangeRate);
+      buffer = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
+    } else {
+      buffer = rawBuffer;
+    }
 
     const safeName = (answers.projectName || answers.clientName || "Budget")
       .replace(/\s+/g, "_")

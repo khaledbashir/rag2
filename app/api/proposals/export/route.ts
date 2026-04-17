@@ -4,6 +4,41 @@ import * as XLSX from "xlsx";
 import { Builder as XMLBuilder } from "xml2js";
 import { logActivity } from "@/services/proposal/server/activityLogService";
 import { log } from "@/lib/logger";
+import { resolveExchangeRate, roundToDisplay } from "@/lib/pricingMath";
+
+/**
+ * XLSX export is the only format that represents what the user sees on the
+ * PDF — JSON/CSV/XML are machine-facing and stay USD-native. Fields enumerated
+ * here are the numeric amounts on `details` and on each `item` that need to
+ * be scaled by the proposal's exchange rate when currency ≠ USD.
+ */
+const XLSX_SCALE_DETAILS_FIELDS = ["subTotal", "totalAmount"] as const;
+const XLSX_SCALE_ITEM_FIELDS = ["unitPrice", "total"] as const;
+
+function scaleDetailsAndItemsForXlsx(details: Record<string, any>, items: Record<string, any>[], fx: number): { details: Record<string, any>; items: Record<string, any>[] } {
+  if (fx === 1) return { details, items };
+
+  const scaledDetails = { ...details };
+  for (const field of XLSX_SCALE_DETAILS_FIELDS) {
+    const value = scaledDetails[field];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      scaledDetails[field] = roundToDisplay(value * fx);
+    }
+  }
+
+  const scaledItems = items.map((item) => {
+    const next = { ...item };
+    for (const field of XLSX_SCALE_ITEM_FIELDS) {
+      const value = next[field];
+      if (typeof value === "number" && Number.isFinite(value)) {
+        next[field] = roundToDisplay(value * fx);
+      }
+    }
+    return next;
+  });
+
+  return { details: scaledDetails, items: scaledItems };
+}
 
 // REQ-125: Sanitization Denylist - fields that must NEVER appear in client exports
 const SANITIZATION_DENYLIST = [
@@ -150,12 +185,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (format === "XLSX") {
+      const fx = resolveExchangeRate(details.exchangeRate);
+      const { details: xlsxDetails, items: xlsxItems } = scaleDetailsAndItemsForXlsx(details, items, fx);
+
       const wb = XLSX.utils.book_new();
-      const wsDetails = XLSX.utils.json_to_sheet([details]);
+      const wsDetails = XLSX.utils.json_to_sheet([xlsxDetails]);
       XLSX.utils.book_append_sheet(wb, wsDetails, "Details");
 
-      if (items.length > 0) {
-        const wsItems = XLSX.utils.json_to_sheet(items);
+      if (xlsxItems.length > 0) {
+        const wsItems = XLSX.utils.json_to_sheet(xlsxItems);
         XLSX.utils.book_append_sheet(wb, wsItems, "Items");
       }
 

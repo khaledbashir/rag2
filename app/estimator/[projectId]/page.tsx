@@ -22,6 +22,7 @@ export default async function EstimatorProjectPage({
             id: true,
             calculationMode: true,
             clientName: true,
+            documentConfig: true,
             estimatorAnswers: true,
             estimatorDisplays: true,
             estimatorDepth: true,
@@ -46,6 +47,20 @@ export default async function EstimatorProjectPage({
         || "Untitled Estimate"
     ).trim();
 
+    // Hydrate the proposal-level currency + exchange rate onto the estimator
+    // answers so the cost sheet, margin analysis, and Excel export scale the
+    // same way the proposal PDF does. The proposal wizard is the source of
+    // truth — `documentConfig.exchangeRate` is set on Step4Export.
+    const documentConfig = (project.documentConfig || {}) as { currency?: string; exchangeRate?: number };
+    const storedAnswers = (project.estimatorAnswers || {}) as Record<string, any>;
+    const initialAnswers = {
+        ...storedAnswers,
+        currency: documentConfig.currency ?? storedAnswers.currency ?? "USD",
+        exchangeRate: typeof documentConfig.exchangeRate === "number" && documentConfig.exchangeRate > 0
+            ? documentConfig.exchangeRate
+            : storedAnswers.exchangeRate,
+    };
+
     return (
         <div className="min-h-screen bg-background">
             <div className="px-4 sm:px-6 pt-3 pb-1">
@@ -56,7 +71,7 @@ export default async function EstimatorProjectPage({
             </div>
             <EstimatorStudio
                 projectId={project.id}
-                initialAnswers={project.estimatorAnswers as any}
+                initialAnswers={initialAnswers as any}
                 initialCellOverrides={project.estimatorCellOverrides as any}
                 initialCustomSheets={project.estimatorCustomSheets as any}
             />

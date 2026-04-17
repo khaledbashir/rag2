@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { mapEstimatorToScoping } from "@/services/rfp/pipeline/estimatorToScopingMapper";
 import { generateScopingWorkbook } from "@/services/rfp/pipeline/generateScopingWorkbook";
 import { getEstimatorDisplayLabel, normalizeEstimatorAnswers, type EstimatorAnswers } from "@/app/components/estimator/questions";
+import { scaleWorkbookByFx } from "@/services/pricing/scaleWorkbookByFx";
 import { log } from "@/lib/logger";
 import ExcelJS from "exceljs";
 
@@ -285,8 +286,16 @@ export async function POST(req: NextRequest) {
     // Generate the canonical workbook (returns workbook object directly)
     const { workbook: wb, displays: computedDisplays } = await generateScopingWorkbook(options);
 
-    // Compute project total for list page display
-    const projectTotal = computedDisplays.reduce((s, d) => s + (d.sellingPrice || 0), 0);
+    // Apply user-entered USD→target exchange rate to every currency-formatted
+    // cell (and any cached formula result). Values stay USD-native inside the
+    // generator; scaling happens here so the preview matches what the user
+    // will see on the PDF and in the download.
+    scaleWorkbookByFx(wb, answers.exchangeRate);
+
+    const fx = answers.exchangeRate && answers.exchangeRate > 0 ? answers.exchangeRate : 1;
+
+    // Compute project total for list page display (scaled to match the preview)
+    const projectTotal = computedDisplays.reduce((s, d) => s + (d.sellingPrice || 0), 0) * fx;
 
     // Build row-to-display-index map from the actual generated LED Cost Sheet so inline
     // edits always target the correct display even if row order diverges from raw index math.
