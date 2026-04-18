@@ -18,5 +18,5 @@ export const FEATURES = {
    * Math/PDF/Excel plumbing is fully wired (see commits 95ee54bf, e2a5c654).
    * Flip to true once the feature is paid/billable to expose the UI.
    */
-  CURRENCY_EXCHANGE_RATE: false,
+  CURRENCY_EXCHANGE_RATE: true,
 } as const;
