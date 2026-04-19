@@ -59,6 +59,9 @@ export default auth((req) => {
     pathname.startsWith("/api/bot") ||
     pathname.startsWith("/api/share") ||
     pathname.startsWith("/api/agent-skill") ||
+    pathname.startsWith("/api/sow") ||
+    pathname.startsWith("/api/specsheet") ||
+    pathname.startsWith("/api/rfp") ||
     pathname.startsWith("/api/mcp") ||
     pathname.startsWith("/api/performance/seed") ||
     // Twenty CRM bridge — Twenty AI skills link users here with a narrow,
