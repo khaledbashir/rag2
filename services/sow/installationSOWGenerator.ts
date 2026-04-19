@@ -77,6 +77,8 @@ export interface InstallSOWInput {
   sectionOverrides?: Record<string, string>;
   /** User-added custom sections */
   customSections?: { title: string; content: string; position: "before-scope" | "after-tasks" }[];
+  /** Proposal ID for CRM sync — passed from the workspace */
+  proposalId?: string;
 }
 
 /** Structured SOW data for the live preview UI */

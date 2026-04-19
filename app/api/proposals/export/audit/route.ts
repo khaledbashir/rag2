@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { generateScopingWorkbook } from "@/services/rfp/pipeline/generateScopingWorkbook";
 import { mapMirrorToScoping } from "@/services/rfp/pipeline/pricingDocumentToScopingMapper";
 import { mapIntelligenceToScoping } from "@/services/rfp/pipeline/screenAuditToScopingMapper";
-import { postArtifactNote, saveCrmArtifact } from "@/services/integrations/twenty/crmAutomation";
+import { universalCrmPush, saveCrmArtifact } from "@/services/integrations/twenty/crmAutomation";
 import { log } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
@@ -163,10 +163,11 @@ export async function POST(req: NextRequest) {
         contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       })
         .then((artifact) =>
-          postArtifactNote({
+          universalCrmPush({
             proposalId,
+            actionType: "excel_uploaded",
             title: "Proposal Engine: latest audit workbook",
-            summary: "Latest audit workbook exported from Proposal Engine.",
+            markdownText: "Latest audit workbook exported from Proposal Engine.",
             artifacts: [
               {
                 label: "Audit workbook",

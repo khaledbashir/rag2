@@ -662,3 +662,171 @@ export async function postArtifactNote(input: {
     },
   });
 }
+/**
+ * Universal CRM Push — the one function every rag2 action calls.
+ *
+ * 1. Resolves the Twenty opportunity for a proposal (looks at proposal.twentyOpportunityId,
+ *    then falls back to RfpAnalysis chain).
+ * 2. If NO opportunity exists yet, creates Company + Opportunity in Twenty and saves
+ *    the twentyOpportunityId back onto the Proposal row.
+ * 3. Posts a Note (with markdown text + artifact links) onto the Opportunity.
+ * 4. Fires a ProposalEngineActivity timeline event.
+ *
+ * Callers just pass their proposalId, a title, and whatever they have.
+ * Safe to call from Excel upload, PDF export, SOW generation, RFP analysis — anything.
+ */
+export async function universalCrmPush(input: {
+  proposalId: string;
+  actionType: "excel_uploaded" | "pdf_exported" | "sow_generated" | "rfp_analyzed";
+  title: string;
+  artifacts?: Array<{ label: string; url: string; filename?: string | null }>;
+  markdownText?: string;
+  workspaceMemberEmail?: string | null;
+}) {
+  // ── 1. Load proposal ────────────────────────────────────────────────
+  const proposal = await prisma.proposal.findUnique({
+    where: { id: input.proposalId },
+    select: {
+      id: true,
+      clientName: true,
+      venue: true,
+      shareHash: true,
+      twentyOpportunityId: true,
+      activityLogs: {
+        where: { action: "created" },
+        orderBy: { createdAt: "asc" },
+        select: { metadata: true },
+        take: 5,
+      },
+    },
+  });
+  if (!proposal) return;
+
+  // ── 2. Resolve opportunity (try Proposal field → RfpAnalysis chain → create) ──
+  let opportunityId = proposal.twentyOpportunityId || await resolveOpportunityIdForProposal(input.proposalId);
+
+  if (!opportunityId) {
+    // No existing opportunity — create Company + Opportunity in Twenty
+    try {
+      opportunityId = await ensureOpportunityForProposal(proposal);
+      if (opportunityId) {
+        // Persist on the Proposal row so next call is instant
+        await prisma.proposal.update({
+          where: { id: proposal.id },
+          data: { twentyOpportunityId: opportunityId },
+        });
+      }
+    } catch (err) {
+      console.error("[universalCrmPush] Failed to create Company/Opportunity:", err);
+      return; // Can't proceed without an opportunity
+    }
+  }
+
+  if (!opportunityId) return;
+
+  // ── 3. Build note body ──────────────────────────────────────────────
+  const workspaceUrl = buildWorkspaceUrl(proposal.id);
+  const artifacts = input.artifacts || [];
+
+  const noteLines: string[] = [
+    `**Action:** ${input.actionType.replace(/_/g, " ")}`,
+    `**Client:** ${proposal.clientName}`,
+    proposal.venue ? `**Venue:** ${proposal.venue}` : null,
+    `**Time:** ${new Date().toISOString()}`,
+    "",
+  ];
+  if (input.markdownText) {
+    noteLines.push(input.markdownText, "");
+  }
+  for (const a of artifacts) {
+    const suffix = a.filename ? ` (${a.filename})` : "";
+    noteLines.push(`- [${a.label}](${a.url})${suffix}`);
+  }
+  if (workspaceUrl) {
+    noteLines.push("", `Workspace: ${workspaceUrl}`);
+  }
+
+  // ── 4. Post note + activity ─────────────────────────────────────────
+  await createOpportunityNote(opportunityId, input.title, noteLines.filter(Boolean).join("\n"));
+
+  await postProposalEngineActivity({
+    name: `${input.title} — ${proposal.clientName}`,
+    eventType: `proposalEngine.${input.actionType}`,
+    message: `${input.actionType.replace(/_/g, " ")} for ${proposal.clientName}.`,
+    workspaceMemberEmail: input.workspaceMemberEmail,
+    targetOpportunityId: opportunityId,
+    proposalId: proposal.id,
+    workspaceUrl,
+    properties: {
+      proposalId: proposal.id,
+      actionType: input.actionType,
+      artifactCount: artifacts.length,
+    },
+  });
+
+  return { opportunityId };
+}
+
+/**
+ * Creates a Company + Opportunity in Twenty for a proposal that has none.
+ * Uses clientName as the Company name. Deduplicates by exact name match.
+ */
+async function ensureOpportunityForProposal(proposal: {
+  id: string;
+  clientName: string;
+  venue?: string | null;
+}): Promise<string | null> {
+  const companyName = proposal.clientName?.trim();
+  if (!companyName) return null;
+
+  // ── Find or create Company ──────────────────────────────────────────
+  const existingCompany = await twentyGraphql<{
+    companies: { edges: Array<{ node: { id: string } }> };
+  }>(
+    `query FindCompany($filter: CompanyFilterInput) {
+      companies(filter: $filter, first: 1) {
+        edges { node { id } }
+      }
+    }`,
+    { filter: { name: { eq: companyName } } },
+  );
+
+  const companyId = existingCompany.companies.edges[0]?.node.id || await createCompany(companyName);
+  if (!companyId) return null;
+
+  // ── Create Opportunity linked to that Company ───────────────────────
+  const oppName = proposal.venue
+    ? `${companyName} — ${proposal.venue}`
+    : companyName;
+
+  const opp = await twentyGraphql<{ createOpportunity: { id: string } }>(
+    `mutation CreateOpp($data: OpportunityCreateInput!) {
+      createOpportunity(data: $data) { id }
+    }`,
+    {
+      data: {
+        name: oppName,
+        companyId,
+        stage: "PROPOSAL",
+        bidStatus: "SCOPING",
+      },
+    },
+  );
+
+  return opp.createOpportunity.id;
+}
+
+async function createCompany(name: string): Promise<string | null> {
+  try {
+    const result = await twentyGraphql<{ createCompany: { id: string } }>(
+      `mutation CreateCompany($data: CompanyCreateInput!) {
+        createCompany(data: $data) { id }
+      }`,
+      { data: { name } },
+    );
+    return result.createCompany.id;
+  } catch (err) {
+    console.error("[ensureOpportunityForProposal] createCompany failed:", err);
+    return null;
+  }
+}

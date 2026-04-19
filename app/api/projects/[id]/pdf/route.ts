@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { mapDbProposalToFormSchema } from "@/lib/proposals/mapDbProposalToForm";
 import { generateProposalPdfServiceV2 } from "@/services/proposal/server/generateProposalPdfServiceV2";
-import { postArtifactNote, saveCrmArtifact } from "@/services/integrations/twenty/crmAutomation";
+import { universalCrmPush, saveCrmArtifact } from "@/services/integrations/twenty/crmAutomation";
 import { log } from "@/lib/logger";
 
 function safeFilenamePart(value: string): string {
@@ -80,10 +80,11 @@ export async function POST(
             contentType: "application/pdf",
         })
             .then((artifact) =>
-                postArtifactNote({
+                universalCrmPush({
                     proposalId: project.id,
+                    actionType: "pdf_exported",
                     title: "Proposal Engine: latest proposal PDF",
-                    summary: "Latest proposal PDF exported from Proposal Engine.",
+                    markdownText: "Latest proposal PDF exported from Proposal Engine.",
                     artifacts: [
                         {
                             label: "Proposal PDF",

@@ -15,7 +15,7 @@ import { normalizeEstimatorAnswers, type EstimatorAnswers } from "@/app/componen
 import { scaleWorkbookByFx } from "@/services/pricing/scaleWorkbookByFx";
 import { log } from "@/lib/logger";
 import { logActivity } from "@/services/proposal/server/activityLogService";
-import { postArtifactNote, saveCrmArtifact } from "@/services/integrations/twenty/crmAutomation";
+import { universalCrmPush, saveCrmArtifact } from "@/services/integrations/twenty/crmAutomation";
 
 export async function POST(req: NextRequest) {
   try {
@@ -66,10 +66,11 @@ export async function POST(req: NextRequest) {
         contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       })
         .then((artifact) =>
-          postArtifactNote({
+          universalCrmPush({
             proposalId: body.projectId,
+            actionType: "excel_uploaded",
             title: "Proposal Engine: latest scoping workbook",
-            summary: "Latest scoping workbook exported from Proposal Engine.",
+            markdownText: "Latest scoping workbook exported from Proposal Engine.",
             artifacts: [
               {
                 label: "Scoping workbook",
