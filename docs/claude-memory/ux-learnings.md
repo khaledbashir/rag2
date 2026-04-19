@@ -2,6 +2,7 @@
 
 ## Ahmad's Messaging Style (for drafting Slack messages)
 - **Chill, not eager** — never sound like an excited kid. Sound like a professional who's calm and appreciative.
+- **Speak plain English** — skip the technical jargon, code-speak, or git textbook definitions unless specifically asked. Be direct, conversational, and easy to understand.
 - **Short > long** — one or two sentences max for simple replies
 - **No exclamation marks** — standing rule, sounds weird
 - **"got it" > "that's amazing, thank you so much"** — understated appreciation
