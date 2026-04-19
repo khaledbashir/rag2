@@ -140,3 +140,45 @@ docs/salesforce-export/
 
 # Stray images in root
 /image*.png
+
+# ===== CRM session work lives outside rag2 (see /root/anc-crm-work/) =====
+# Stop these patterns from re-accumulating in the tree:
+
+# Verification screenshots (temp — deleted after stakeholder confirms)
+verify-*.png
+/verify-*.png
+/twenty-login-verified-*.png
+/jireh-monday-*.png
+
+# Python artifacts
+__pycache__/
+*.pyc
+
+# Batch operation outputs (CRM bulk ops)
+docs/*-batch-*.json
+docs/*-matches.json
+docs/twenty-batch-write.log
+docs/twenty-batch-write-state.json
+docs/twenty-batch-write-nohup.out
+*.nohup.out
+
+# One-off temp/working dirs
+/tmp/
+/.codex
+/.kilo/
+
+# CRM session docs (if they leak back in — they should live in /root/anc-crm-work/)
+docs/ANC-*.md
+docs/CRM-CUTOVER-*.md
+docs/CRM-REPORTS-*.md
+docs/JIREH-*.md
+docs/LIVE-CHECKLIST-*.md
+docs/MONDAY-PRODUCT-*.md
+docs/NATALIA-*.md
+docs/TECHNICIAN-*.md
+docs/TWENTY-BULK-*.md
+docs/TWENTY-WORKSPACE-*.md
+docs/codex-prompts/
+docs/env-ready/
+/codex-skills/
+/.codex-anc-master-SKILL.md

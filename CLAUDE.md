@@ -24,6 +24,17 @@ DO NOT TOUCH. Behavior must remain IDENTICAL. No "quick fixes" or "improvements"
 - RFP Analyzer Univer preview migrated to unified server generator to match export exactly (2026-04-04)
 - Native Univer dropdown overlays added for Product and Qty columns (2026-04-04)
 - Mirror Mode margin-sheet detection now prefers populated non-CMS tabs and preserves GBP via sheet names or Excel currency formatting (2026-04-07)
+- Currency FX threading across 6 surfaces (wizard/PDF/cost sheet/Excel/margin/rate card), behind `FEATURES.CURRENCY_EXCHANGE_RATE` flag (2026-04-17)
+
+## 🎯 ANC Twenty CRM — #1 priority (decision Mon-Tue 2026-04-21/22)
+- Live at `https://crm.ancsports.net` — replaces Salesforce
+- 8,360 opportunities · 3,730 companies · 5,160 revenue splits · 20K+ design requests
+- 17 new Opp fields added 2026-04-17: probability, proposalDueDate, substantialCompletionDate, paidAmount, percentPaid, accountExecutive, accountExecutiveEmail, margin, revenue2026, margin2026, revenue2027, margin2027, proposalStage, priority, pricingComplete, technologyVendorPartner, pricingCompleteDate
+- 11 new dashboard widgets on ANC 2026 Company Dashboard matching Jireh's SF layout
+- 2 new views: Proposal Pipeline + Estimation & Proposals (Natalia's daily)
+- Boyka custom agent with 30 ANC-specific skills
+- **Full state in `/root/.claude/skills/crm-knowledge/SKILL.md`** — read this for any CRM question; update after any CRM change.
+- **Read-only SF access:** `salesforce-crm` skill, creds at `/root/.sf-creds`
 
 ## 🛑 ABSOLUTE RULE: NO SHORTCUTS
 - Build it RIGHT, not fast. Fix the ROOT CAUSE, not the symptom.

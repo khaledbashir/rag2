@@ -19,6 +19,17 @@ Simple version:
 - users keep doing the work in the Proposal Engine
 - the CRM gets updated automatically when important milestones happen
 
+### Working Rule For Ahmad
+
+When Ahmad asks for CRM work, treat it as CRM-only by default.
+
+That means:
+- make the change directly in CRM when possible
+- use CRM APIs, CRM automation, or CRM-side skills/tools
+- do not change `rag2` application code
+- do not push GitHub code for CRM requests
+- only touch repo code if Ahmad explicitly asks for a code change
+
 ---
 
 ## What Users Can Do Now

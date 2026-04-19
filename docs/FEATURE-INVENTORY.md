@@ -1,9 +1,22 @@
 # ANC Proposal Engine — Feature Inventory
 
-## Date: 2026-03-10
-## Commit: 69c04cda
+## Date: 2026-04-17 (updated)
+## Commit: 90c0177d
 ## Branch: phase2/product-database
 ## Production: https://proposals.anc.com
+
+## Recently added (2026-04-17)
+
+**Currency/FX threading across all 6 export surfaces** (hidden behind `FEATURES.CURRENCY_EXCHANGE_RATE` feature flag — OFF by default):
+- `lib/pricingMath.ts` — `resolveExchangeRate()`, `computeTableTotals(..., fx)`, `computeDocumentTotal(..., fx)` accept optional rate
+- Wizard totals (`Step3Math.tsx`) — rate-scaled displayed amounts
+- PDF (`ProposalTemplate5.tsx`, `PdfPricingTables.tsx`, `PdfProjectSummary.tsx`, JSReport transform) — rate-scaled with "converted at X rate" footnote
+- Proposal listing API (`/api/projects`) — totalAmount multiplied by saved rate
+- **LED Cost Sheet + Margin Analysis preview** (`/api/estimator/preview-univer`) — `services/pricing/scaleWorkbookByFx.ts` walks ExcelJS workbook, scales every currency-formatted cell
+- **Estimator Excel download** (`/api/estimator/export-unified`) — same scaler, writes fresh buffer when fx ≠ 1
+- **Proposal XLSX export** (`/api/proposals/export`) — scales details.subTotal/totalAmount and item.unitPrice/total
+- UI panel: `CurrencyAndRatePanel` on Step4Export (only rendered when flag is on)
+- `EstimatorAnswers.exchangeRate` optional field, hydrated from `documentConfig.exchangeRate` on `/estimator/[projectId]` page
 
 ---
 
@@ -633,6 +646,7 @@ CalculationMode: MIRROR | INTELLIGENCE | ESTIMATE
 | productMatcher | `services/catalog/productMatcher.ts` | Product catalog matching engine |
 | rateCardLoader | `services/rfp/rateCardLoader.ts` | DB-first rate card with hardcoded fallback |
 | currencyService | `services/pricing/currencyService.ts` | USD/CAD/EUR/GBP formatting |
+| scaleWorkbookByFx | `services/pricing/scaleWorkbookByFx.ts` | Multiplies every currency-formatted cell + cached formula result in an ExcelJS workbook by the user-entered exchange rate. Used by estimator preview and exports. Added 2026-04-17 behind `FEATURES.CURRENCY_EXCHANGE_RATE`. |
 | intentParser | `services/chat/intentParser.ts` | Copilot NLP → structured intents |
 | actionExecutor | `services/chat/actionExecutor.ts` | Execute copilot actions on form |
 | rfpExtractor | `services/rfp/rfpExtractor.ts` | RFP PDF text extraction |
