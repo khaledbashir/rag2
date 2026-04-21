@@ -1032,18 +1032,35 @@ export function normalizeDisplayAnswerDimensions(display: DisplayAnswers): Displ
 }
 
 export function normalizeEstimatorAnswers(answers: EstimatorAnswers): EstimatorAnswers {
-    if (!Array.isArray(answers.displays) || answers.displays.length === 0) {
-        return answers;
+    const mergedAnswers: EstimatorAnswers = {
+        ...getDefaultAnswers(),
+        ...answers,
+        displays: Array.isArray(answers?.displays)
+            ? answers.displays.map((display) => ({
+                ...getDefaultDisplayAnswers(),
+                ...display,
+                excludedBundleItems: Array.isArray(display?.excludedBundleItems)
+                    ? [...display.excludedBundleItems]
+                    : [],
+                altPitches: Array.isArray(display?.altPitches)
+                    ? [...display.altPitches]
+                    : [],
+            }))
+            : [],
+    };
+
+    if (mergedAnswers.displays.length === 0) {
+        return mergedAnswers;
     }
 
     let changed = false;
-    const displays = answers.displays.map((display) => {
+    const displays = mergedAnswers.displays.map((display) => {
         const normalized = normalizeDisplayAnswerDimensions(display);
         if (normalized !== display) changed = true;
         return normalized;
     });
 
-    return changed ? { ...answers, displays } : answers;
+    return changed ? { ...mergedAnswers, displays } : mergedAnswers;
 }
 
 /**

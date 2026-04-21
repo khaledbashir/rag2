@@ -3,6 +3,19 @@ import { describe, expect, it } from "vitest";
 import { createNewDisplayAnswers, getDefaultAnswers, getDefaultDisplayAnswers, getEstimatorDisplayLabel, normalizeEstimatorAnswers } from "./questions";
 
 describe("normalizeEstimatorAnswers", () => {
+    it("hydrates missing estimator defaults for empty saved payloads", () => {
+        const normalized = normalizeEstimatorAnswers({} as any);
+
+        expect(normalized).toMatchObject({
+            clientName: "",
+            projectName: "",
+            currency: "USD",
+            displays: [],
+            includeCms: false,
+            includeScoring: false,
+        });
+    });
+
     it("fills missing RFP dimensions from working dimensions", () => {
         const answers = getDefaultAnswers();
         answers.displays = [

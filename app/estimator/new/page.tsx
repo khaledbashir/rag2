@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/services/proposal/server/activityLogService";
+import { getDefaultAnswers } from "@/app/components/estimator/questions";
 
 /**
  * /estimator/new — Auto-creates a new ESTIMATE project and redirects.
@@ -38,6 +39,7 @@ export default async function NewEstimatePage() {
             clientName: "New Estimate",
             calculationMode: "ESTIMATE",
             status: "DRAFT",
+            estimatorAnswers: getDefaultAnswers(),
             ...(user ? { createdByUserId: user.id } : {}),
         },
     });
