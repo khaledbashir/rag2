@@ -34,6 +34,8 @@ interface Estimate {
     createdByName: string | null;
     createdByImage: string | null;
     lastActivity: { action: string; description: string; actor: string | null; createdAt: string } | null;
+    cleanupStatus: "safe" | "review" | "keep";
+    cleanupReason: string;
 }
 
 const formatCurrency = (amount: number, currency: string = "USD") =>
@@ -54,6 +56,10 @@ export default function EstimatorListPage() {
     const [creating, setCreating] = useState(false);
     const [bulkDeleting, setBulkDeleting] = useState(false);
     const presence = useEstimatorPresence();
+
+    const safeEstimateIds = estimates
+        .filter((estimate) => estimate.cleanupStatus === "safe")
+        .map((estimate) => estimate.id);
 
     const fetchEstimates = useCallback(async () => {
         try {
@@ -111,6 +117,10 @@ export default function EstimatorListPage() {
     const toggleSelectAll = useCallback(() => {
         setSelectedIds((prev) => (prev.length === estimates.length ? [] : estimates.map((estimate) => estimate.id)));
     }, [estimates]);
+
+    const selectSafeToDelete = useCallback(() => {
+        setSelectedIds(safeEstimateIds);
+    }, [safeEstimateIds]);
 
     const handleBulkDelete = useCallback(async () => {
         if (selectedIds.length === 0 || bulkDeleting) return;
@@ -177,6 +187,14 @@ export default function EstimatorListPage() {
                     )}
                     {creating ? "Creating estimate..." : "New Estimate"}
                 </button>
+                {safeEstimateIds.length > 0 && (
+                    <button
+                        onClick={selectSafeToDelete}
+                        className="px-3.5 py-1.5 border border-border text-foreground rounded hover:bg-muted transition-colors text-xs font-medium"
+                    >
+                        Select Safe ({safeEstimateIds.length})
+                    </button>
+                )}
                 {selectedIds.length > 0 && (
                     <button
                         onClick={handleBulkDelete}
@@ -240,6 +258,7 @@ export default function EstimatorListPage() {
                                     />
                                 </div>
                                 <div className="flex-1 min-w-0">Name</div>
+                                <div className="hidden md:block w-28 shrink-0">Cleanup</div>
                                 <div className="hidden sm:block w-20 text-right shrink-0">Screens</div>
                                 <div className="w-28 text-right shrink-0">Value</div>
                                 <div className="hidden md:block w-24 shrink-0">Created by</div>
@@ -289,6 +308,24 @@ export default function EstimatorListPage() {
                                                     {[est.venue, est.clientCity].filter(Boolean).join(" · ")}
                                                 </div>
                                             )}
+                                        </div>
+
+                                        <div className="hidden md:flex w-28 shrink-0">
+                                            <div className="min-w-0">
+                                                <span
+                                                    className={cn(
+                                                        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
+                                                        est.cleanupStatus === "safe" && "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+                                                        est.cleanupStatus === "review" && "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+                                                        est.cleanupStatus === "keep" && "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300",
+                                                    )}
+                                                >
+                                                    {est.cleanupStatus === "safe" ? "Safe" : est.cleanupStatus === "review" ? "Review" : "Keep"}
+                                                </span>
+                                                <div className="text-[10px] text-muted-foreground truncate mt-1">
+                                                    {est.cleanupReason}
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div className="hidden sm:flex items-center justify-end gap-1 w-20 shrink-0 text-[11px] text-muted-foreground">

@@ -12,6 +12,71 @@ type PricingDocumentLike = {
     tables?: unknown[];
 };
 
+function hasMeaningfulEstimatorProgress(estimatorAnswers: any): boolean {
+    if (!estimatorAnswers || typeof estimatorAnswers !== "object") return false;
+
+    if (typeof estimatorAnswers.projectName === "string" && estimatorAnswers.projectName.trim()) return true;
+    if (typeof estimatorAnswers.clientName === "string" && estimatorAnswers.clientName.trim()) return true;
+    if (typeof estimatorAnswers.location === "string" && estimatorAnswers.location.trim()) return true;
+
+    if (!Array.isArray(estimatorAnswers.displays) || estimatorAnswers.displays.length === 0) {
+        return false;
+    }
+
+    return estimatorAnswers.displays.some((display: any, index: number) => {
+        if (!display || typeof display !== "object") return false;
+
+        const displayName = typeof display.displayName === "string" ? display.displayName.trim() : "";
+        const isPlaceholderDisplayName = displayName === "" || displayName === `New Display ${index + 1}`;
+
+        return (
+            (!isPlaceholderDisplayName && Boolean(displayName))
+            || (typeof display.productId === "string" && display.productId.trim().length > 0)
+            || (typeof display.productName === "string" && display.productName.trim().length > 0)
+            || (typeof display.displayType === "string" && display.displayType.trim().length > 0)
+            || (typeof display.widthFt === "number" && display.widthFt > 0)
+            || (typeof display.heightFt === "number" && display.heightFt > 0)
+            || (typeof display.rfpWidthFt === "number" && display.rfpWidthFt > 0)
+            || (typeof display.rfpHeightFt === "number" && display.rfpHeightFt > 0)
+        );
+    });
+}
+
+function getCleanupMeta(project: {
+    clientName?: string | null;
+    totalAmount: number;
+    screenCount: number;
+    estimatorAnswers?: any;
+}) {
+    const rawName = (project.clientName || "").trim().toLowerCase();
+    const isPlaceholderName = rawName === ""
+        || rawName === "new estimate"
+        || rawName === "untitled estimate"
+        || rawName === "untitled project";
+    const hasValue = project.totalAmount > 0;
+    const hasScreens = project.screenCount > 0;
+    const hasProgress = hasMeaningfulEstimatorProgress(project.estimatorAnswers);
+
+    if (!hasValue && !hasScreens && !hasProgress && isPlaceholderName) {
+        return {
+            cleanupStatus: "safe",
+            cleanupReason: "Empty draft",
+        };
+    }
+
+    if (!hasValue && !hasScreens) {
+        return {
+            cleanupStatus: "review",
+            cleanupReason: hasProgress ? "Some details only" : "Blank but renamed",
+        };
+    }
+
+    return {
+        cleanupStatus: "keep",
+        cleanupReason: hasValue ? "Has pricing" : "Has screens",
+    };
+}
+
 const toFiniteNumber = (value: unknown): number | null => {
     if (typeof value === "number") return Number.isFinite(value) ? value : null;
     if (typeof value === "string") {
@@ -179,6 +244,18 @@ export async function GET(req: NextRequest) {
                 derivedMode = "INTELLIGENCE";
             }
 
+            const screenCount = project.screens?.length
+                || ((project as any).estimatorAnswers as any)?.displays?.length
+                || ((project as any).estimatorDisplays as any[])?.length
+                || 0;
+
+            const cleanupMeta = getCleanupMeta({
+                clientName: project.clientName,
+                totalAmount,
+                screenCount,
+                estimatorAnswers: (project as any).estimatorAnswers,
+            });
+
             return {
                 id: project.id,
                 createdAt: project.createdAt,
@@ -197,14 +274,12 @@ export async function GET(req: NextRequest) {
                 currency: documentConfig.currency || pricingDocument?.currency || "USD",
                 sectionCount,
                 hasExcel: sectionCount > 0,
-                screenCount: project.screens?.length
-                    || ((project as any).estimatorAnswers as any)?.displays?.length
-                    || ((project as any).estimatorDisplays as any[])?.length
-                    || 0,
+                screenCount,
                 createdBy: (project as any).createdByUser?.name || (project as any).createdByUser?.email || null,
                 createdByName: (project as any).createdByUser?.name || (project as any).createdByUser?.email || null,
                 createdByImage: (project as any).createdByUser?.image || null,
                 lastActivity: (project as any).activityLogs?.[0] || null,
+                ...cleanupMeta,
             };
         });
 
