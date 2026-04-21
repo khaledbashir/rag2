@@ -51,16 +51,27 @@ interface EstimatorStudioProps {
     initialCustomSheets?: SheetTab[];
 }
 
+function hasMeaningfulEstimatorProgress(initialAnswers?: EstimatorAnswers): boolean {
+    if (!initialAnswers) return false;
+
+    if ((initialAnswers.projectName || "").trim()) return true;
+    if ((initialAnswers.location || "").trim()) return true;
+    if (Array.isArray(initialAnswers.displays) && initialAnswers.displays.length > 0) return true;
+
+    return false;
+}
+
 export default function EstimatorStudio({
     projectId,
     initialAnswers,
 }: EstimatorStudioProps = {}) {
     const ADDITIONAL_ITEM_MARGIN = 0.15;
     const router = useRouter();
+    const hasInitialProgress = hasMeaningfulEstimatorProgress(initialAnswers);
     const [answers, setAnswers] = useState<EstimatorAnswers>(() => normalizeEstimatorAnswers(initialAnswers || getDefaultAnswers()));
     const [exporting, setExporting] = useState(false);
-    const [questionsComplete, setQuestionsComplete] = useState(!!initialAnswers);
-    const [editingAnswers, setEditingAnswers] = useState(!initialAnswers);
+    const [questionsComplete, setQuestionsComplete] = useState(hasInitialProgress);
+    const [editingAnswers, setEditingAnswers] = useState(!hasInitialProgress);
     const [copilotOpen, setCopilotOpen] = useState(false);
     const [converting, setConverting] = useState(false);
     const [duplicating, setDuplicating] = useState(false);
