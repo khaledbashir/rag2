@@ -431,6 +431,12 @@ export default function EstimatorStudio({
         ];
     }, [ADDITIONAL_ITEM_MARGIN, answers.gameClockAllocation, answers.miscEquipmentAllocation, answers.oesAllocation, answers.pitchClocksAllocation]);
 
+    const hasDisplays = answers.displays.length > 0;
+    const hasDisplayDimensions = answers.displays.some((display) =>
+        ((Number(display.widthFt) || Number((display as any).activeWidthFt)) > 0)
+        && ((Number(display.heightFt) || Number((display as any).activeHeightFt)) > 0)
+    );
+
     // Univer handles all editing natively — no client-side cell override logic needed.
 
     const handleChange = useCallback((next: EstimatorAnswers) => {
@@ -1180,6 +1186,20 @@ export default function EstimatorStudio({
                     {serverPreviewError && !serverPreviewLoading && !serverPreview && (
                         <div className="flex-1 flex items-center justify-center">
                             <p className="text-xs text-destructive">{serverPreviewError}</p>
+                        </div>
+                    )}
+                    {!serverPreviewLoading && !serverPreviewError && !serverPreview && (
+                        <div className="flex-1 flex items-center justify-center">
+                            <div className="max-w-sm rounded-xl border border-dashed border-border bg-background/80 px-6 py-8 text-center shadow-sm">
+                                <div className="mb-2 text-sm font-semibold text-foreground">Preview Will Appear Here</div>
+                                <p className="text-xs leading-5 text-muted-foreground">
+                                    {!hasDisplays
+                                        ? "Start the questionnaire and add your first display to generate the workbook preview."
+                                        : !hasDisplayDimensions
+                                            ? "Finish entering width and height for at least one display to generate the workbook preview."
+                                            : "Complete the current estimator inputs and the workbook preview will generate automatically."}
+                                </p>
+                            </div>
                         </div>
                     )}
                     {serverPreview && (() => {
