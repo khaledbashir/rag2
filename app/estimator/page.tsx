@@ -48,9 +48,11 @@ export default function EstimatorListPage() {
     const router = useRouter();
     const { confirm } = useConfirm();
     const [estimates, setEstimates] = useState<Estimate[]>([]);
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [creating, setCreating] = useState(false);
+    const [bulkDeleting, setBulkDeleting] = useState(false);
     const presence = useEstimatorPresence();
 
     const fetchEstimates = useCallback(async () => {
@@ -61,7 +63,9 @@ export default function EstimatorListPage() {
             const res = await fetch(`/api/projects?${params.toString()}`, { cache: "no-store" });
             if (!res.ok) throw new Error("Failed to fetch");
             const data = await res.json();
-            setEstimates(data.projects || []);
+            const nextProjects = data.projects || [];
+            setEstimates(nextProjects);
+            setSelectedIds((prev) => prev.filter((id) => nextProjects.some((project: Estimate) => project.id === id)));
         } catch (err) {
             console.error("Error fetching estimates:", err);
         } finally {
@@ -93,6 +97,47 @@ export default function EstimatorListPage() {
             console.error("Delete failed:", err);
         }
     }, [confirm]);
+
+    const toggleSelected = useCallback((id: string) => {
+        setSelectedIds((prev) =>
+            prev.includes(id)
+                ? prev.filter((selectedId) => selectedId !== id)
+                : [...prev, id]
+        );
+    }, []);
+
+    const allVisibleSelected = estimates.length > 0 && selectedIds.length === estimates.length;
+
+    const toggleSelectAll = useCallback(() => {
+        setSelectedIds((prev) => (prev.length === estimates.length ? [] : estimates.map((estimate) => estimate.id)));
+    }, [estimates]);
+
+    const handleBulkDelete = useCallback(async () => {
+        if (selectedIds.length === 0 || bulkDeleting) return;
+
+        const selectedEstimates = estimates.filter((estimate) => selectedIds.includes(estimate.id));
+        const ok = await confirm({
+            title: "Delete Estimates",
+            description: `Delete ${selectedIds.length} estimate${selectedIds.length === 1 ? "" : "s"}? This cannot be undone.`,
+        });
+        if (!ok) return;
+
+        setBulkDeleting(true);
+        try {
+            await Promise.all(
+                selectedEstimates.map(async (estimate) => {
+                    const res = await fetch(`/api/projects/${estimate.id}`, { method: "DELETE" });
+                    if (!res.ok) throw new Error(`Failed to delete ${estimate.clientName}`);
+                })
+            );
+            setEstimates((prev) => prev.filter((estimate) => !selectedIds.includes(estimate.id)));
+            setSelectedIds([]);
+        } catch (err) {
+            console.error("Bulk delete failed:", err);
+        } finally {
+            setBulkDeleting(false);
+        }
+    }, [bulkDeleting, confirm, estimates, selectedIds]);
 
     const totalValue = estimates.reduce((sum, e) => sum + (e.totalAmount || 0), 0);
 
@@ -132,6 +177,16 @@ export default function EstimatorListPage() {
                     )}
                     {creating ? "Creating estimate..." : "New Estimate"}
                 </button>
+                {selectedIds.length > 0 && (
+                    <button
+                        onClick={handleBulkDelete}
+                        disabled={bulkDeleting}
+                        className="px-3.5 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-xs font-medium flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        {bulkDeleting ? "Deleting..." : `Delete ${selectedIds.length}`}
+                    </button>
+                )}
             </header>
 
             <main className="flex-1 px-6 sm:px-10 lg:px-12 py-6 overflow-y-auto">
@@ -175,6 +230,15 @@ export default function EstimatorListPage() {
                         <>
                             {/* Column headers */}
                             <div className="sticky top-0 z-10 bg-background flex items-center gap-3 px-3 py-1.5 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                                <div className="w-6 shrink-0 flex items-center justify-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={allVisibleSelected}
+                                        onChange={toggleSelectAll}
+                                        className="h-3.5 w-3.5 rounded border-border"
+                                        aria-label="Select all estimates"
+                                    />
+                                </div>
                                 <div className="flex-1 min-w-0">Name</div>
                                 <div className="hidden sm:block w-20 text-right shrink-0">Screens</div>
                                 <div className="w-28 text-right shrink-0">Value</div>
@@ -190,6 +254,18 @@ export default function EstimatorListPage() {
                                         className="group flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-muted/50 transition-colors cursor-pointer"
                                         onClick={() => router.push(`/estimator/${est.id}`)}
                                     >
+                                        <div
+                                            className="w-6 shrink-0 flex items-center justify-center"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedIds.includes(est.id)}
+                                                onChange={() => toggleSelected(est.id)}
+                                                className="h-3.5 w-3.5 rounded border-border"
+                                                aria-label={`Select ${est.clientName}`}
+                                            />
+                                        </div>
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2">
                                                 <span className="text-sm font-medium text-foreground truncate">
