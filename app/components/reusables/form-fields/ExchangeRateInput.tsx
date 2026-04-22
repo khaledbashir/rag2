@@ -20,7 +20,9 @@ import { Input } from "@/components/ui/input";
  */
 const ExchangeRateInput = () => {
     const { control, setValue, getValues } = useFormContext();
-    const currency: string = useWatch({ name: "details.currency", control }) || "USD";
+    const explicitCurrency = useWatch({ name: "details.currency", control }) as string | undefined;
+    const pricingDocCurrency = (useWatch({ name: "details.pricingDocument", control }) as any)?.currency as string | undefined;
+    const currency: string = (explicitCurrency && explicitCurrency !== "") ? explicitCurrency : (pricingDocCurrency || "USD");
     const rate = useWatch({ name: "details.exchangeRate", control });
 
     // When user switches to USD, lock rate to 1 (no conversion makes sense for USD→USD).

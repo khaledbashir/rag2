@@ -190,10 +190,14 @@ const CURRENCY_CHOICES = [
 
 const CurrencyAndRatePanel = () => {
     const { watch, setValue } = useFormContext<ProposalType>();
-    const currency = (watch("details.currency" as any) as string) || "USD";
-    const pricingDocCurrency = (watch("details.pricingDocument" as any) as any)?.currency;
+    const explicitCurrency = watch("details.currency" as any) as string | undefined;
+    const pricingDocCurrency = (watch("details.pricingDocument" as any) as any)?.currency as string | undefined;
     const rate = watch("details.exchangeRate" as any) as number | undefined;
-    const effectiveCurrency = currency || pricingDocCurrency || "USD";
+    // Mirror Mode: if the user has not explicitly chosen a currency, prefer what the
+    // parsed cost sheet detected (£, €, C$). Falling back to USD too early here caused
+    // GBP sheets to render as USD in Step 4 and PDF exports.
+    const effectiveCurrency = (explicitCurrency && explicitCurrency !== "") ? explicitCurrency : (pricingDocCurrency || "USD");
+    const currency = effectiveCurrency;
     const effectiveRate = typeof rate === "number" && rate > 0 ? rate : 1;
 
     return (

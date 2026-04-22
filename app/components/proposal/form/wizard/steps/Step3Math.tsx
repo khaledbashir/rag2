@@ -127,7 +127,11 @@ const Step3Math = () => {
 
     // Selected output currency + USD-to-currency rate (default 1 = no conversion).
     // The wizard works in USD-native rate cards; the display layer scales to the chosen currency.
-    const selectedCurrency: string = (useWatch({ name: "details.currency", control }) as any) || "USD";
+    // Fall back to the parsed cost sheet's detected currency before defaulting to USD so
+    // Mirror Mode GBP/EUR imports show the correct symbol without manual override.
+    const explicitCurrency = useWatch({ name: "details.currency", control }) as string | undefined;
+    const pricingDocCurrency = (pricingDocument as any)?.currency as string | undefined;
+    const selectedCurrency: string = (explicitCurrency && explicitCurrency !== "") ? explicitCurrency : (pricingDocCurrency || "USD");
     const rawExchangeRate = useWatch({ name: "details.exchangeRate", control }) as any;
     const fxRate: number = typeof rawExchangeRate === "number" && rawExchangeRate > 0 ? rawExchangeRate : 1;
     const fmtMoney = (amount: number, placeholder?: string) =>

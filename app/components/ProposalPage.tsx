@@ -89,10 +89,20 @@ const WizardWrapper = ({ projectId, initialData }: ProposalPageProps) => {
     // PROMPT 56: ONE function that sets EVERYTHING from database
     // Apply form data
     reset(initialData);
-    
+
     // Ensure proposalId is set
     if (normalizedProjectId) {
       setValue("details.proposalId" as any, normalizedProjectId);
+    }
+
+    // Mirror Mode currency carry-through: older proposals have the detected currency
+    // stored only on pricingDocument.currency. Sync it onto details.currency so every
+    // consumer (Step 3/4, PDF, Excel export) renders the correct symbol without the
+    // user having to re-pick it in Step 4.
+    const pricingDocCurrency = (initialData as any)?.details?.pricingDocument?.currency as string | undefined;
+    const explicitCurrency = (initialData as any)?.details?.currency as string | undefined;
+    if (pricingDocCurrency && pricingDocCurrency !== "USD" && (!explicitCurrency || explicitCurrency === "USD")) {
+      setValue("details.currency" as any, pricingDocCurrency, { shouldDirty: false });
     }
 
     // Mark as complete - prevents any other hydration paths from running
