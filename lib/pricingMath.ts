@@ -154,13 +154,14 @@ export function computeTableTotals(
 
     // Step 2: Tax — Mirror Mode: use Excel's tax amount directly.
     // Never recalculate tax from items — Natalia's rule is to trust Excel's numbers exactly.
-    // Only fall back to rate-based calculation when Excel provided no tax amount.
+    // An explicit 0 in the sheet means "no tax" and must be respected; only fall back to
+    // rate-based calculation when the parser produced no amount at all.
     let tax = 0;
     let taxLabel = "";
     if (table.tax) {
         taxLabel = table.tax.label || "Tax";
-        if (typeof table.tax.amount === "number" && table.tax.amount !== 0) {
-            // Excel provided the tax amount — use it directly (Mirror Mode), then convert
+        if (typeof table.tax.amount === "number") {
+            // Excel provided the tax amount (including 0) — use it directly (Mirror Mode), then convert
             tax = roundToDisplay(table.tax.amount * fx);
         } else if (table.tax.rate > 0 && table.tax.rate <= 1) {
             // No amount but rate exists — calculate from already-converted subtotal
