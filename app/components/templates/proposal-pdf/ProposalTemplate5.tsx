@@ -397,13 +397,19 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     );
 
     // Continuation page header — thin blue underline with client + project name
-    const ContinuationPageHeader = () => (
-        <div className="pb-2 mb-4 border-b-2" style={{ borderColor: colors.primary }}>
-            <div className="text-[14px] font-semibold" style={{ color: colors.textMuted }}>
-                {purchaserName} • {details?.proposalName || "Proposal"}
+    const ContinuationPageHeader = () => {
+        const proposalLabel = (details?.proposalName || "").trim();
+        const clientLabel = (purchaserName || "").trim();
+        const isSame = proposalLabel && clientLabel && proposalLabel.toLowerCase() === clientLabel.toLowerCase();
+        const label = isSame ? clientLabel : `${clientLabel} • ${proposalLabel || "Proposal"}`;
+        return (
+            <div className="pb-2 mb-4 border-b-2" style={{ borderColor: colors.primary }}>
+                <div className="text-[14px] font-semibold" style={{ color: colors.textMuted }}>
+                    {label}
+                </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     // Resp Matrix Statement of Work — from Excel "Resp Matrix" sheet OR Intelligence Mode explicit opt-in
     // Fix 10: Only use intelligence resp matrix if explicitly opted in (not just "not false")

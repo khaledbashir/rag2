@@ -42,7 +42,7 @@ const PdfResponsibilityMatrix = ({ colors, respMatrix }: PdfResponsibilityMatrix
     return (
         <div data-preview-section="exhibit-a" className="px-6">
             <SectionHeader title="Exhibit B — Statement of Work" colors={colors} />
-            <table className="w-full text-[14px] border-collapse" style={{ borderColor: colors.border, border: `1px solid ${colors.border}`, pageBreakInside: 'auto', fontFamily: "Arial, Helvetica, sans-serif" }}>
+            <table className="w-full text-[12px] border-collapse" style={{ borderColor: colors.border, border: `1px solid ${colors.border}`, pageBreakInside: 'auto', fontFamily: "Arial, Helvetica, sans-serif" }}>
                 <colgroup>
                     <col style={{ width: "66%" }} />
                     <col style={{ width: "17%" }} />
@@ -62,15 +62,15 @@ const PdfResponsibilityMatrix = ({ colors, respMatrix }: PdfResponsibilityMatrix
                                 <tr style={{ borderBottom: `2px solid ${colors.primary}`, pageBreakInside: 'avoid', breakInside: 'avoid' }}>
                                     <td
                                         colSpan={sectionType === "table" ? 1 : 3}
-                                        className="text-[14px] font-semibold uppercase tracking-wider"
+                                        className="text-[13px] font-semibold uppercase tracking-wider"
                                         style={{ padding: '4px 16px', color: colors.primaryDark, background: 'transparent' }}
                                     >
                                         {cat.name}
                                     </td>
                                     {sectionType === "table" && (
                                         <>
-                                            <td className="text-[14px] font-semibold uppercase tracking-wider text-center" style={{ padding: '4px 8px', color: colors.primaryDark }}>ANC</td>
-                                            <td className="text-[14px] font-semibold uppercase tracking-wider text-center" style={{ padding: '4px 8px', color: colors.primaryDark }}>PURCHASER</td>
+                                            <td className="text-[13px] font-semibold uppercase tracking-wider text-center" style={{ padding: '4px 8px', color: colors.primaryDark }}>ANC</td>
+                                            <td className="text-[13px] font-semibold uppercase tracking-wider text-center" style={{ padding: '4px 8px', color: colors.primaryDark }}>PURCHASER</td>
                                         </>
                                     )}
                                 </tr>
@@ -84,7 +84,9 @@ const PdfResponsibilityMatrix = ({ colors, respMatrix }: PdfResponsibilityMatrix
                                                 background: idx % 2 === 1 ? colors.surface : colors.white,
                                             }}
                                         >
-                                            <td className="leading-snug" style={{ padding: '2px 12px', color: colors.text }}>{item.description}</td>
+                                            <td className="leading-snug" style={{ padding: '2px 12px', color: colors.text }}>
+                                                <div style={{ orphans: 3, widows: 3 }}>{item.description}</div>
+                                            </td>
                                             <td className="text-center font-medium" style={{ padding: '2px 8px', color: colors.text }}>
                                                 {item.anc && !isIncludeStatement(item.anc) && item.anc.toUpperCase() !== "NA" ? item.anc : ""}
                                             </td>
@@ -104,7 +106,9 @@ const PdfResponsibilityMatrix = ({ colors, respMatrix }: PdfResponsibilityMatrix
                                                 breakInside: 'auto',
                                             }}
                                         >
-                                            <td colSpan={3} className="leading-snug" style={{ padding: '2px 12px', color: colors.text }}>{item.description}</td>
+                                            <td colSpan={3} className="leading-snug" style={{ padding: '2px 12px', color: colors.text }}>
+                                                <div style={{ orphans: 3, widows: 3 }}>{item.description}</div>
+                                            </td>
                                         </tr>
                                     ))
                                 )}
