@@ -110,10 +110,11 @@ _(none currently)_
 2. 19000000% margin display bug in exported Excel — FIXED (indirect, margin values now correct)
 3. Margin tier not syncing to individual fields — FIXED (c74133e0)
 4. Project Info showing hardcoded tier labels instead of actual values — FIXED (c74133e0)
+5. Pricing Line Items Amount editor rejected typed INCLUDED/EXCLUDED while changing proposal phase/document mode — FIXED
 
 ### Built (FREE)
-5. **Alt pitch system** — 2-3 pixel pitch alternates per display, only LED hardware cost changes. Multi-select question after pixel pitch, interleaved alt rows in Display Details + Budget Summary with yellow highlighting, totals exclude alts. — BUILT (5c2bd11b)
-6. **PDF download unblock** — Mirror mode PDF-only download no longer blocked by missing audit/verification. Download Bundle still requires full checks. — BUILT (0b393948)
+6. **Alt pitch system** — 2-3 pixel pitch alternates per display, only LED hardware cost changes. Multi-select question after pixel pitch, interleaved alt rows in Display Details + Budget Summary with yellow highlighting, totals exclude alts. — BUILT (5c2bd11b)
+7. **PDF download unblock** — Mirror mode PDF-only download no longer blocked by missing audit/verification. Download Bundle still requires full checks. — BUILT (0b393948)
 
 ### Requested / Discussed (QUEUED → BUILT)
 1. **Spec Generator Tool (Product Data Forms)** — Full platform tool at /tools/spec-generator. Upload blank template + cost analysis → auto-match from 14+ product DB → editable WorkbookShell preview → download formatted .xlsx. Includes LED Product KB (18 products, 4 vendors) + Gemini prompt for Natalia's "Product Form Genie" mini-app. — BUILT (c15dc104)

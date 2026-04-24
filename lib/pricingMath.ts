@@ -146,8 +146,8 @@ export function computeTableTotals(
             originalIndex: idx,
         });
 
-        // Only non-INCLUDED items contribute to subtotal
-        if (!item.isIncluded) {
+        // Text-only INCLUDED/EXCLUDED rows are labels, not priced rows.
+        if (!item.isIncluded && !item.isExcluded) {
             subtotal += roundedPrice;
         }
     }

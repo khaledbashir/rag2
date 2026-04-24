@@ -111,6 +111,13 @@ export const MasterTableSummary = ({
                     const origPrice = Number(row?.sellingPrice ?? row?.price ?? row?.amount ?? 0);
                     const rawPrice = priceOverrides[`${tableId}:${idx}`] !== undefined ? priceOverrides[`${tableId}:${idx}`] : origPrice;
                     const price = rawPrice * fx;
+                    const textValue = row?.textValue
+                        ? String(row.textValue).toUpperCase()
+                        : row?.isIncluded
+                            ? "INCLUDED"
+                            : row?.isExcluded
+                                ? "EXCLUDED"
+                                : null;
                     return (
                         <div
                             key={`master-row-${idx}`}
@@ -125,7 +132,7 @@ export const MasterTableSummary = ({
                                 {desc.toUpperCase()}
                             </div>
                             <div className="col-span-4 text-right font-bold text-[13px] whitespace-nowrap" style={{ color: colors.primaryDark }}>
-                                {formatCurrency(price, Math.abs(price) < 0.01 ? "—" : undefined, currency)}
+                                {textValue || formatCurrency(price, Math.abs(price) < 0.01 ? "—" : undefined, currency)}
                             </div>
                         </div>
                     );

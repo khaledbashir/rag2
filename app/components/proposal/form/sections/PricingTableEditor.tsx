@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { ProposalType } from "@/types";
 import { PricingDocument, PricingTable } from "@/types/pricing";
@@ -51,14 +51,18 @@ const DebouncedInput = ({
     );
 };
 
-const DebouncedNumberInput = ({
+const DebouncedAmountInput = ({
     value,
-    onChange,
+    status,
+    onNumberChange,
+    onStatusChange,
     placeholder,
     className
 }: {
     value: number;
-    onChange: (val: number) => void;
+    status?: "INCLUDED" | "EXCLUDED" | null;
+    onNumberChange: (val: number) => void;
+    onStatusChange: (status: "INCLUDED" | "EXCLUDED") => void;
     placeholder: string;
     className?: string;
 }) => {
@@ -67,19 +71,29 @@ const DebouncedNumberInput = ({
         return n.toFixed(2);
     };
 
-    const [localValue, setLocalValue] = useState(formatEditableNumber(value));
+    const displayValue = status || formatEditableNumber(value);
+    const [localValue, setLocalValue] = useState(displayValue);
 
     useEffect(() => {
-        setLocalValue(formatEditableNumber(value));
-    }, [value]);
+        setLocalValue(displayValue);
+    }, [displayValue]);
 
     const handleBlur = () => {
-        const parsed = parseFloat(localValue.replace(/[,$\s]/g, ""));
+        const text = localValue.trim();
+        if (/^included$/i.test(text)) {
+            onStatusChange("INCLUDED");
+            return;
+        }
+        if (/^excluded$/i.test(text)) {
+            onStatusChange("EXCLUDED");
+            return;
+        }
+
+        const parsed = parseFloat(text.replace(/[,$\s]/g, ""));
         if (!isNaN(parsed) && parsed !== value) {
-            onChange(parsed);
-        } else if (localValue.trim() === "" || isNaN(parsed)) {
-            // Reset to original if invalid
-            setLocalValue(formatEditableNumber(value));
+            onNumberChange(parsed);
+        } else if (text === "" || isNaN(parsed)) {
+            setLocalValue(displayValue);
         }
     };
 
@@ -121,7 +135,7 @@ function computeEffectiveSubtotal(
     priceOverrides: Record<string, number>
 ): number {
     return (table.items || []).reduce((sum, item, idx) => {
-        if (item.isIncluded) return sum;
+        if (item.isIncluded || item.isExcluded) return sum;
         return sum + getEffectivePrice(priceOverrides, table.id, idx, item.sellingPrice);
     }, 0);
 }
@@ -214,6 +228,7 @@ export default function PricingTableEditor() {
         const key = `${tableId}:${itemIndex}`;
         const updated = { ...priceOverrides, [key]: newPrice };
         setValue("details.priceOverrides" as any, updated, { shouldDirty: true });
+        handleSetItemTextStatus(tableId, itemIndex, null);
     };
 
     const handlePriceReset = (tableId: string, itemIndex: number) => {
@@ -226,6 +241,29 @@ export default function PricingTableEditor() {
     const handleToggleItemInclusion = (tableId: string, itemIndex: number) => {
         const current = getValues("details.pricingDocument" as any) as PricingDocument | null;
         if (!current?.tables?.length) return;
+        const table = current.tables.find((candidate) => candidate.id === tableId);
+        const item = table?.items?.[itemIndex] as any;
+        const nextStatus: "INCLUDED" | "EXCLUDED" | null = item?.isIncluded
+            ? "EXCLUDED"
+            : item?.isExcluded
+                ? null
+                : "INCLUDED";
+
+        handleSetItemTextStatus(tableId, itemIndex, nextStatus);
+
+        const key = `${tableId}:${itemIndex}`;
+        if (nextStatus === "EXCLUDED") {
+            setValue("details.priceOverrides" as any, { ...priceOverrides, [key]: 0 }, { shouldDirty: true });
+        } else if (nextStatus === null && priceOverrides[key] === 0) {
+            const updated = { ...priceOverrides };
+            delete updated[key];
+            setValue("details.priceOverrides" as any, updated, { shouldDirty: true });
+        }
+    };
+
+    const handleSetItemTextStatus = (tableId: string, itemIndex: number, status: "INCLUDED" | "EXCLUDED" | null) => {
+        const current = getValues("details.pricingDocument" as any) as PricingDocument | null;
+        if (!current?.tables?.length) return;
 
         const nextTables = (current.tables || []).map((table) => {
             if (table.id !== tableId) return table;
@@ -233,23 +271,37 @@ export default function PricingTableEditor() {
                 if (idx !== itemIndex) return item;
                 return {
                     ...item,
-                    isIncluded: !item.isIncluded,
+                    isIncluded: status === "INCLUDED",
+                    isExcluded: status === "EXCLUDED",
+                    textValue: status ?? undefined,
                 };
             });
-            return {
-                ...table,
-                items: nextItems,
-            };
+            return { ...table, items: nextItems };
         });
 
         setValue(
             "details.pricingDocument" as any,
-            {
-                ...current,
-                tables: nextTables,
-            },
+            { ...current, tables: nextTables },
             { shouldDirty: true }
         );
+    };
+
+    const handleAmountTextStatus = (tableId: string, itemIndex: number, status: "INCLUDED" | "EXCLUDED") => {
+        handleSetItemTextStatus(tableId, itemIndex, status);
+        if (status === "EXCLUDED") {
+            const key = `${tableId}:${itemIndex}`;
+            setValue("details.priceOverrides" as any, { ...priceOverrides, [key]: 0 }, { shouldDirty: true });
+        }
+    };
+
+    const handleClearItemTextStatus = (tableId: string, itemIndex: number) => {
+        handleSetItemTextStatus(tableId, itemIndex, null);
+        const key = `${tableId}:${itemIndex}`;
+        if (priceOverrides[key] === 0) {
+            const updated = { ...priceOverrides };
+            delete updated[key];
+            setValue("details.priceOverrides" as any, updated, { shouldDirty: true });
+        }
     };
 
     const handleResetAll = () => {
@@ -430,6 +482,8 @@ export default function PricingTableEditor() {
                     onPriceChange={handlePriceChange}
                     onPriceReset={handlePriceReset}
                     onToggleItemInclusion={handleToggleItemInclusion}
+                    onAmountTextStatus={handleAmountTextStatus}
+                    onClearItemTextStatus={handleClearItemTextStatus}
                     onAddItem={handleAddItem}
                     onDeleteItem={handleDeleteItem}
                     onDeleteSection={handleDeleteSection}
@@ -472,6 +526,8 @@ function PricingSection({
     onPriceChange,
     onPriceReset,
     onToggleItemInclusion,
+    onAmountTextStatus,
+    onClearItemTextStatus,
     onAddItem,
     onDeleteItem,
     onDeleteSection,
@@ -487,6 +543,8 @@ function PricingSection({
     onPriceChange: (tableId: string, idx: number, price: number) => void;
     onPriceReset: (tableId: string, idx: number) => void;
     onToggleItemInclusion: (tableId: string, idx: number) => void;
+    onAmountTextStatus: (tableId: string, idx: number, status: "INCLUDED" | "EXCLUDED") => void;
+    onClearItemTextStatus: (tableId: string, idx: number) => void;
     onAddItem: (tableId: string) => void;
     onDeleteItem: (tableId: string, idx: number) => void;
     onDeleteSection: (tableId: string) => void;
@@ -591,7 +649,9 @@ function PricingSection({
                             const effectivePrice = isPriceOverridden ? priceOverride : originalPrice;
 
                             const isIncluded = item?.isIncluded === true;
-                            const anyOverride = isDescOverridden || isPriceOverridden;
+                            const isExcluded = item?.isExcluded === true;
+                            const status = isIncluded ? "INCLUDED" : isExcluded ? "EXCLUDED" : null;
+                            const anyOverride = isDescOverridden || isPriceOverridden || status !== null;
 
                             return (
                                 <div
@@ -612,35 +672,31 @@ function PricingSection({
                                         } focus:border-[#0A52EF] focus:ring-1 focus:ring-[#0A52EF]/20`}
                                     />
                                     {/* Amount */}
-                                    {isIncluded ? (
-                                        <div className="text-xs text-right font-medium text-muted-foreground pr-2 py-1.5">
-                                            INCLUDED
-                                        </div>
-                                    ) : (
-                                        <DebouncedNumberInput
-                                            value={effectivePrice}
-                                            onChange={(val) => onPriceChange(table.id, idx, val)}
-                                            placeholder={formatCurrency(originalPrice) || "0.00"}
-                                            className={`w-full px-2 py-1.5 text-xs text-right font-medium bg-background border rounded-md transition-colors ${
-                                                isPriceOverridden
-                                                    ? "border-amber-500/40"
-                                                    : "border-border"
-                                            } focus:border-[#0A52EF] focus:ring-1 focus:ring-[#0A52EF]/20`}
-                                        />
-                                    )}
+                                    <DebouncedAmountInput
+                                        value={effectivePrice}
+                                        status={status}
+                                        onNumberChange={(val) => onPriceChange(table.id, idx, val)}
+                                        onStatusChange={(nextStatus) => onAmountTextStatus(table.id, idx, nextStatus)}
+                                        placeholder={formatCurrency(originalPrice) || "0.00"}
+                                        className={`w-full px-2 py-1.5 text-xs text-right font-medium bg-background border rounded-md transition-colors ${
+                                            isPriceOverridden || status
+                                                ? "border-amber-500/40"
+                                                : "border-border"
+                                        } focus:border-[#0A52EF] focus:ring-1 focus:ring-[#0A52EF]/20`}
+                                    />
                                     {/* Toggle / Reset */}
                                     <div className="flex items-center justify-end gap-1">
                                         <button
                                             type="button"
                                             onClick={() => onToggleItemInclusion(table.id, idx)}
                                             className={`flex items-center justify-center w-7 h-7 rounded transition-colors ${
-                                                isIncluded
+                                                isIncluded || isExcluded
                                                     ? "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
                                                     : "text-muted-foreground hover:text-foreground hover:bg-muted"
                                             }`}
-                                            title={isIncluded ? "Include in totals" : "Exclude from totals"}
+                                            title={isIncluded ? "Mark as excluded" : isExcluded ? "Restore dollar amount" : "Mark as included"}
                                         >
-                                            {isIncluded ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                                            {isIncluded || isExcluded ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
                                         </button>
                                         {anyOverride ? (
                                             <button
@@ -648,6 +704,7 @@ function PricingSection({
                                                 onClick={() => {
                                                     if (isDescOverridden) onDescriptionReset(table.id, idx);
                                                     if (isPriceOverridden) onPriceReset(table.id, idx);
+                                                    if (status) onClearItemTextStatus(table.id, idx);
                                                 }}
                                                 className="flex items-center justify-center w-7 h-7 text-amber-600 hover:text-amber-700 hover:bg-amber-500/10 rounded transition-colors"
                                                 title="Reset to Excel original"

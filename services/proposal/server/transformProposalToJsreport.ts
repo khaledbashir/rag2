@@ -167,7 +167,7 @@ export function transformProposalToJsreport(
 
         const items: JsreportPricingItem[] = totals.items.map((item: any) => ({
             description: item.description,
-            price: item.isIncluded ? "INCLUDED" : formatCurrency(item.price, currency),
+            price: item.textValue ? item.textValue.toUpperCase() : item.isIncluded ? "INCLUDED" : formatCurrency(item.price, currency),
         }));
 
         const result: JsreportPricingTable = {
