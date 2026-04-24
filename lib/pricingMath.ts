@@ -175,13 +175,22 @@ export function computeTableTotals(
     // Step 3b: Tariff — convert from USD-native to selected currency
     const tariff = roundToDisplay((table.tariff || 0) * fx);
 
-    // Step 4: Grand total — Mirror Mode: always use Excel's grandTotal directly.
+    // Step 4: Grand total — Mirror Mode: use Excel's grandTotal directly.
     // Natalia's rule: "whatever is here is what your engine will show" — no recalculation.
-    // Excel's grandTotal was set from the actual total row in the spreadsheet.
-    // Only fall back to calculated when Excel had no grand total row (grandTotal === 0).
-    const grandTotal = (Number.isFinite(table.grandTotal) && table.grandTotal !== 0)
-        ? roundToDisplay(table.grandTotal * fx)
-        : (subtotal + tax + bond + tariff);
+    //
+    // Exception: the synthetic "Project Grand Total" summary table (name === "Project Grand Total")
+    // is built by the code, not imported from Excel. When the user adds or edits line items there
+    // (e.g. appending a CMS row), the grand total must reflect the sum of rendered items, otherwise
+    // the PDF shows the new line but the total ignores it — a UX contradiction.
+    //
+    // Narrow fix (2026-04-25): for the summary table only, recompute from (subtotal + tax + bond +
+    // tariff). Every other table keeps strict Excel-mirror behavior.
+    const isSummaryTable = (table.name || "").trim().toLowerCase() === "project grand total";
+    const grandTotal = isSummaryTable
+        ? (subtotal + tax + bond + tariff)
+        : ((Number.isFinite(table.grandTotal) && table.grandTotal !== 0)
+            ? roundToDisplay(table.grandTotal * fx)
+            : (subtotal + tax + bond + tariff));
 
     // Step 5: When all modifiers (tax/bond/tariff) are $0, subtotal and grandTotal
     // should be identical. Any difference is rounding noise (sum-of-rounds vs round-of-sum).
