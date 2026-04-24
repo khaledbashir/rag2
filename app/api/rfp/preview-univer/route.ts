@@ -77,10 +77,7 @@ export async function POST(request: NextRequest) {
     const ledSheet = wb.getWorksheet("LED Cost Sheet");
     if (ledSheet) {
       const baseDisplays = displays.filter((display) => !display.spec.isAlternate);
-      const expectedRows = baseDisplays.map((display, idx) => ({
-        idx,
-        label: `${display.spec.name || `Display ${idx + 1}`}${display.spec.location ? ` — ${display.spec.location}` : ""}`.trim().toLowerCase(),
-      }));
+      let displayIdx = 0;
 
       for (let row = 4; row <= ledSheet.rowCount; row++) {
         const rawValue = ledSheet.getRow(row).getCell(1).value;
@@ -94,10 +91,9 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        const matched = expectedRows.find((entry) => entry.label === rowLabel.toLowerCase());
-        if (matched) {
-          displayRowMap[row - 1] = matched.idx;
-        }
+        if (displayIdx >= baseDisplays.length) break;
+        displayRowMap[row - 1] = displayIdx;
+        displayIdx += 1;
       }
     }
 

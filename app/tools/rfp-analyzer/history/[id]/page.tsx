@@ -445,9 +445,34 @@ export default function AnalysisDetailPage() {
     });
   }, [autoSaveSpecs]);
 
-  // H/W/Qty inline edit callback
+  // Display name/H/W/Qty inline edit callback
   const handleHistoryCellEdit = useCallback((sheetIndex: number, rowIndex: number, colIndex: number, newValue: string) => {
     const displayIndex = displayRowMap[rowIndex] ?? rowIndex;
+
+    // Display name edit (Column A) — text, not numeric.
+    if (colIndex === 0) {
+      const nextName = newValue.trim();
+      if (!nextName) return;
+
+      setAnalysis(prev => {
+        if (!prev) return prev;
+        if (displayIndex < 0 || displayIndex >= prev.screens.length) return prev;
+        const spec = { ...prev.screens[displayIndex], name: nextName };
+        const updated = [...prev.screens];
+        updated[displayIndex] = spec;
+        autoSaveSpecs(updated, prev.id);
+        return { ...prev, screens: updated };
+      });
+
+      setPricingPreview((prev: any) => {
+        if (!prev?.displays || displayIndex < 0 || displayIndex >= prev.displays.length) return prev;
+        const displays = [...prev.displays];
+        displays[displayIndex] = { ...displays[displayIndex], name: nextName };
+        return { ...prev, displays };
+      });
+      return;
+    }
+
     const numValue = parseFloat(newValue);
     if (isNaN(numValue) || numValue <= 0) return;
 

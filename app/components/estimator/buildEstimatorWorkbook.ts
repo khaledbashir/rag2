@@ -210,7 +210,7 @@ export function buildEstimatorWorkbook(
     // LED Cost Sheet data starts at 0-based row 3 (Excel row 4)
     // Product is col 5 (F), Qty is col 11 (L)
     const LED_DATA_START = 3;
-    const LED_DISPLAY_COL = 1;
+    const LED_DISPLAY_COL = 0;
     const LED_PRODUCT_COL = 5;
 
     // Build rows
@@ -310,9 +310,9 @@ export function buildEstimatorWorkbook(
       columns,
       rows,
     };
-    // LED Cost Sheet: Display=1, H(ft)=7, W(ft)=8, Qty=11, Margin Override=21
+    // LED Cost Sheet: Display=0, H(ft)=7, W(ft)=8, Qty=11, Margin Override=21
     if (isLedCostSheet) {
-      tab.editableColumns = [1, 7, 8, 11, 21];
+      tab.editableColumns = [0, 7, 8, 11, 21];
     }
     sheets.push(tab);
   }

@@ -30,6 +30,7 @@
 13. Add/remove screens on LED Cost Sheet (× to delete, + Add Screen row) — FREE
 14. Bid form review-before-download (no auto-download, shows match results + Download button) — FREE
 15. Bid form auto re-fills when specs/pricing edited (debounced 2s) — FREE
+16. Rename displays directly in LED Cost Sheet Column A and keep manually added displays independent when duplicate placeholder names exist — FREE
 
 ### Building Now (FREE — Natalia sent UNC Kenan Stadium workbook as reference)
 13. Install (Base) sheet — per-zone structural/labor/electrical breakdowns (300+ line items)

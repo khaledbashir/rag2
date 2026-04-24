@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { mapEstimatorToScoping } from "@/services/rfp/pipeline/estimatorToScopingMapper";
 import { generateScopingWorkbook } from "@/services/rfp/pipeline/generateScopingWorkbook";
-import { getEstimatorDisplayLabel, normalizeEstimatorAnswers, type EstimatorAnswers } from "@/app/components/estimator/questions";
+import { normalizeEstimatorAnswers, type EstimatorAnswers } from "@/app/components/estimator/questions";
 import { scaleWorkbookByFx } from "@/services/pricing/scaleWorkbookByFx";
 import { log } from "@/lib/logger";
 import ExcelJS from "exceljs";
@@ -303,11 +303,7 @@ export async function POST(req: NextRequest) {
     const ledSheet = wb.getWorksheet("LED Cost Sheet");
     if (ledSheet) {
       const baseDisplays = computedDisplays.filter((display) => !display.spec.isAlternate);
-      const expectedRows = answers.displays.map((display, idx) => {
-        const location = baseDisplays[idx]?.spec.location || "";
-        const label = `${getEstimatorDisplayLabel(display, idx, `Unnamed Display ${idx + 1}`)}${location ? ` — ${location}` : ""}`;
-        return { idx, label: label.trim().toLowerCase() };
-      });
+      let displayIdx = 0;
 
       for (let row = 4; row <= ledSheet.rowCount; row++) {
         const rawValue = ledSheet.getRow(row).getCell(1).value;
@@ -321,10 +317,9 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        const matched = expectedRows.find((entry) => entry.label === rowLabel.toLowerCase());
-        if (matched) {
-          displayRowMap[row - 1] = matched.idx; // workbook rows are 0-based in preview
-        }
+        if (displayIdx >= baseDisplays.length) break;
+        displayRowMap[row - 1] = displayIdx; // workbook rows are 0-based in preview
+        displayIdx += 1;
       }
     }
 
