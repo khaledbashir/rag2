@@ -72,6 +72,13 @@ _(none currently)_
 
 ---
 
+## From Jack McCrossin (Estimator Workbook)
+
+### Bug Fixes (FREE — reasonable fixes)
+1. Margin Analysis GRAND TOTAL Margin $ formula referenced the subtotal cost row (`D16-C12`) instead of the grand total cost row (`D16-C16`) — FIXED
+
+---
+
 ## From Jeremy (Estimator Bugs → Fixed)
 
 ### Bug Fixes (FREE — reasonable fixes)

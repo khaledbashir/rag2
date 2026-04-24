@@ -63,4 +63,58 @@ describe("generateScopingWorkbook", () => {
     expect(cellFormula(17)).toBe("P4*M4");
     expect(cellFormula(20)).toBe("Q4+R4+S4");
   });
+
+  it("uses the grand total cost row for Margin Analysis margin dollars", async () => {
+    const { buffer } = await generateScopingWorkbook({
+      project: {
+        clientName: "Test Client",
+        projectName: "Margin Formula Regression",
+        venue: null,
+        location: null,
+        isOutdoor: true,
+        isUnionLabor: false,
+        bondRequired: true,
+        specialRequirements: [],
+        schedulePhases: [],
+      },
+      specs: [
+        {
+          name: "Main Scoreboard",
+          location: "scoreboard",
+          widthFt: 33,
+          heightFt: 18,
+          widthPx: null,
+          heightPx: null,
+          pixelPitchMm: 10,
+          brightnessNits: 6000,
+          environment: "outdoor",
+          quantity: 1,
+          serviceType: "front",
+          mountingType: "Wall Mounted",
+          maxPowerW: null,
+          weightLbs: null,
+          specialRequirements: [],
+          confidence: 1,
+          sourcePages: [],
+          sourceType: "text",
+          citation: "test",
+          notes: null,
+        },
+      ],
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer));
+    const sheet = workbook.getWorksheet("Margin Analysis");
+    expect(sheet).toBeTruthy();
+
+    const grandTotalRow = sheet!.actualRowCount >= 1
+      ? Array.from({ length: sheet!.actualRowCount }, (_, index) => index + 1)
+          .find(row => String(sheet!.getCell(row, 2).value ?? "").trim() === "GRAND TOTAL")
+      : undefined;
+
+    expect(grandTotalRow).toBeTruthy();
+    const value = sheet!.getCell(grandTotalRow!, 5).value as { formula?: string; result?: number } | null;
+    expect(value?.formula).toBe(`IFERROR(D${grandTotalRow}-C${grandTotalRow},0)`);
+  });
 });

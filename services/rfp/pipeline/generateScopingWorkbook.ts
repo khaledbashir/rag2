@@ -1442,9 +1442,9 @@ function buildMarginAnalysis(
     const grandSell = d.sellingPrice + round2(d.sellingPrice * taxRateVal) + round2(d.sellingPrice * bondRateVal) + 0;
     grR.getCell(4).value = { formula: `D${subtotalRow}+D${taxRow}+D${bondRow}+D${tariffRow}`, result: grandSell };
     grR.getCell(4).numFmt = FMT_USD; grR.getCell(4).font = { bold: true, name: "Calibri" };
-    grR.getCell(5).value = { formula: `IFERROR(D${grandRow}-C${subtotalRow},0)`, result: grandSell - d.totalCost };
+    grR.getCell(5).value = { formula: marginDollarFormula(grandRow), result: grandSell - grandCostPerScreen };
     grR.getCell(5).numFmt = FMT_USD; grR.getCell(5).font = { bold: true, name: "Calibri" };
-    grR.getCell(6).value = { formula: `IFERROR(E${grandRow}/D${grandRow},0)`, result: grandSell > 0 ? (grandSell - d.totalCost) / grandSell : 0 };
+    grR.getCell(6).value = { formula: `IFERROR(E${grandRow}/D${grandRow},0)`, result: grandSell > 0 ? (grandSell - grandCostPerScreen) / grandSell : 0 };
     grR.getCell(6).numFmt = FMT_PCT; grR.getCell(6).font = { bold: true, name: "Calibri" };
     // Light bottom border to separate from next section
     for (let c = 2; c <= 6; c++) {
