@@ -117,15 +117,14 @@ export async function POST(request: NextRequest) {
             },
         });
 
-        // Mirror to Twenty CRM (fire-and-forget, but log failures so we never go blind).
-        syncProductToTwenty(product.id)
-            .then((r) => {
-                if (r.ok) log.info(`[products] CRM sync OK (${r.action}) — ${product.modelNumber} → ${r.twentyId}`);
-                else log.warn(`[products] CRM sync FAILED — ${product.modelNumber}: ${r.error}`);
-            })
-            .catch((err) => log.warn(`[products] CRM sync threw — ${product.modelNumber}:`, err?.message || err));
+        const twentySync = await syncProductToTwenty(product.id);
+        if (twentySync.ok) {
+            log.info(`[products] CRM sync OK (${twentySync.action}) — ${product.modelNumber} → ${twentySync.twentyId}`);
+        } else {
+            log.warn(`[products] CRM sync FAILED — ${product.modelNumber}: ${twentySync.error}`);
+        }
 
-        return NextResponse.json({ product }, { status: 201 });
+        return NextResponse.json({ product, twentySync }, { status: 201 });
     } catch (error: any) {
         if (error?.code === "P2002") {
             return NextResponse.json({ error: "A product with this model number already exists" }, { status: 409 });

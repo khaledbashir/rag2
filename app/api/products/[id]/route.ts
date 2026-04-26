@@ -89,14 +89,14 @@ export async function PUT(
             data,
         });
 
-        syncProductToTwenty(product.id)
-            .then((r) => {
-                if (r.ok) log.info(`[products/[id]] CRM sync OK (${r.action}) — ${product.modelNumber} → ${r.twentyId}`);
-                else log.warn(`[products/[id]] CRM sync FAILED — ${product.modelNumber}: ${r.error}`);
-            })
-            .catch((err) => log.warn(`[products/[id]] CRM sync threw — ${product.modelNumber}:`, err?.message || err));
+        const twentySync = await syncProductToTwenty(product.id);
+        if (twentySync.ok) {
+            log.info(`[products/[id]] CRM sync OK (${twentySync.action}) — ${product.modelNumber} → ${twentySync.twentyId}`);
+        } else {
+            log.warn(`[products/[id]] CRM sync FAILED — ${product.modelNumber}: ${twentySync.error}`);
+        }
 
-        return NextResponse.json({ product });
+        return NextResponse.json({ product, twentySync });
     } catch (error: any) {
         if (error?.code === "P2002") {
             return NextResponse.json({ error: "A product with this model number already exists" }, { status: 409 });
@@ -128,14 +128,14 @@ export async function DELETE(
             data: { isActive: false },
         });
 
-        softDeleteProductInTwenty(existing.modelNumber)
-            .then((r) => {
-                if (r.ok) log.info(`[products/[id]] CRM soft-delete OK — ${existing.modelNumber} → ${r.twentyId}`);
-                else log.warn(`[products/[id]] CRM soft-delete FAILED — ${existing.modelNumber}: ${r.error}`);
-            })
-            .catch((err) => log.warn(`[products/[id]] CRM soft-delete threw — ${existing.modelNumber}:`, err?.message || err));
+        const twentySync = await softDeleteProductInTwenty(existing.modelNumber);
+        if (twentySync.ok) {
+            log.info(`[products/[id]] CRM soft-delete OK — ${existing.modelNumber} → ${twentySync.twentyId}`);
+        } else {
+            log.warn(`[products/[id]] CRM soft-delete FAILED — ${existing.modelNumber}: ${twentySync.error}`);
+        }
 
-        return NextResponse.json({ success: true, message: "Product deactivated" });
+        return NextResponse.json({ success: true, message: "Product deactivated", twentySync });
     } catch (error) {
         log.error("[products/[id]] DELETE error:", error);
         return NextResponse.json({ error: "Failed to delete product" }, { status: 500 });
