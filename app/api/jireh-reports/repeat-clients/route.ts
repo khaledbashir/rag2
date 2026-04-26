@@ -2,7 +2,8 @@
  * GET /api/jireh-reports/repeat-clients
  *
  * Generates Jireh's "Repeat Clients" Excel: top N clients in a vertical with
- * Lifetime Revenue + Lifetime Margin % + First-Year of Engagement, ranked by
+ * Lifetime Revenue + Lifetime Margin % + First-Year of Engagement + total WON
+ * opportunities, ranked by
  * lifetime revenue. Mirrors the format of the file Jireh sent on 2026-04-26.
  *
  * Query params:
@@ -108,18 +109,18 @@ async function buildWorkbook(rows: CompanyAgg[], vertical: Vertical, year: numbe
     const ws = wb.addWorksheet(`${year} Clients`);
     ws.views = [{ showGridLines: false }];
 
-    // Match Jireh's template exactly: cols A-B blank, headers at row 3 in
-    // cols C-F, blank row 4, data starts row 5. No title, no subtitle, no #
-    // rank column.
+    // Match Jireh's template structure: cols A-B blank, headers at row 3,
+    // blank row 4, data starts row 5. No title, no subtitle, no rank column.
     ws.getRow(3).height = 15.75;
     ws.getRow(4).height = 5.1;
 
-    // Header row at r3, cols C-F
+    // Header row at r3, cols C-G
     ws.getCell("C3").value = "Client";
     ws.getCell("D3").value = "Client First-Year of Engagement";
     ws.getCell("E3").value = "Lifetime Client Revenue ($)";
     ws.getCell("F3").value = "Lifetime Client Margin (%)";
-    for (const col of ["C", "D", "E", "F"]) {
+    ws.getCell("G3").value = "Total WON Opportunities";
+    for (const col of ["C", "D", "E", "F", "G"]) {
         const cell = ws.getCell(`${col}3`);
         cell.font = { bold: true, size: 10 };
         cell.alignment = { vertical: "middle", horizontal: "left" };
@@ -141,6 +142,7 @@ async function buildWorkbook(rows: CompanyAgg[], vertical: Vertical, year: numbe
         const pctCell = ws.getCell(`F${rowIdx}`);
         pctCell.value = r.lifetimeRevenue > 0 ? r.lifetimeMargin / r.lifetimeRevenue : 0;
         pctCell.numFmt = "0.0%";
+        ws.getCell(`G${rowIdx}`).value = r.dealCount;
     });
 
     // Column widths from Jireh's source workbook.
@@ -150,6 +152,7 @@ async function buildWorkbook(rows: CompanyAgg[], vertical: Vertical, year: numbe
     ws.getColumn(4).width = 32.140625;
     ws.getColumn(5).width = 31.5703125;
     ws.getColumn(6).width = 13;
+    ws.getColumn(7).width = 24;
 
     return Buffer.from(await wb.xlsx.writeBuffer());
 }
