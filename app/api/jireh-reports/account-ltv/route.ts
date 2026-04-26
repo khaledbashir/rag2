@@ -29,11 +29,17 @@ const TWENTY_TOKEN = process.env.TWENTY_API_KEY ||
 type Opp = {
     id: string;
     name: string;
+    companyId: string;
     closeDate: string | null;
     businessUnit: string | null;
     dealValue?: { amountMicros: string | number } | null;
     amount?: { amountMicros: string | number } | null;
     margin?: { amountMicros: string | number } | null;
+};
+
+type CompanyMatch = {
+    id: string;
+    name: string;
 };
 
 async function gql<T = any>(query: string, variables?: Record<string, unknown>): Promise<T> {
@@ -47,49 +53,55 @@ async function gql<T = any>(query: string, variables?: Record<string, unknown>):
     return body.data;
 }
 
-async function findCompany(nameOrId: string, byId: boolean): Promise<{ id: string; name: string } | null> {
+async function findCompanies(nameOrId: string, byId: boolean): Promise<CompanyMatch[]> {
     if (byId) {
         const d: any = await gql(
             `query Q($f: CompanyFilterInput) { companies(filter: $f, first: 1) { edges { node { id name } } } }`,
             { f: { id: { eq: nameOrId } } },
         );
-        return d.companies.edges[0]?.node ?? null;
+        return d.companies.edges.map((e: any) => e.node);
     }
-    // ilike with wildcards on both sides
+
+    // Fuzzy account names in migrated CRM data can resolve to several legal
+    // entities. Keep all candidates so the report can use the one(s) with WON
+    // opportunities instead of grabbing an empty shell record.
     const d: any = await gql(
-        `query Q($f: CompanyFilterInput) { companies(filter: $f, first: 1, orderBy: {createdAt: AscNullsLast}) { edges { node { id name } } } }`,
+        `query Q($f: CompanyFilterInput) { companies(filter: $f, first: 20, orderBy: {createdAt: AscNullsLast}) { edges { node { id name } } } }`,
         { f: { name: { ilike: `%${nameOrId}%` } } },
     );
-    return d.companies.edges[0]?.node ?? null;
+    return d.companies.edges.map((e: any) => e.node);
 }
 
-async function pageWonOpps(companyId: string): Promise<Opp[]> {
+async function pageWonOpps(companyIds: string[]): Promise<Opp[]> {
     const out: Opp[] = [];
-    let cursor: string | null = null;
-    while (true) {
-        const d: any = await gql(
-            `query Q($f: OpportunityFilterInput, $after: String) {
-                opportunities(filter: $f, first: 60, after: $after) {
-                    edges { node {
-                        id name closeDate businessUnit
-                        dealValue { amountMicros }
-                        amount    { amountMicros }
-                        margin    { amountMicros }
-                    } }
-                    pageInfo { hasNextPage endCursor }
-                }
-            }`,
-            { f: { companyId: { eq: companyId }, bidStatus: { eq: "WON" } }, after: cursor },
-        );
-        for (const e of d.opportunities.edges) out.push(e.node);
-        if (!d.opportunities.pageInfo.hasNextPage) break;
-        cursor = d.opportunities.pageInfo.endCursor;
+    for (let i = 0; i < companyIds.length; i += 50) {
+        const chunk = companyIds.slice(i, i + 50);
+        let cursor: string | null = null;
+        while (true) {
+            const d: any = await gql(
+                `query Q($f: OpportunityFilterInput, $after: String) {
+                    opportunities(filter: $f, first: 60, after: $after) {
+                        edges { node {
+                            id name companyId closeDate businessUnit
+                            dealValue { amountMicros }
+                            amount    { amountMicros }
+                            margin    { amountMicros }
+                        } }
+                        pageInfo { hasNextPage endCursor }
+                    }
+                }`,
+                { f: { companyId: { in: chunk }, bidStatus: { eq: "WON" } }, after: cursor },
+            );
+            for (const e of d.opportunities.edges) out.push(e.node);
+            if (!d.opportunities.pageInfo.hasNextPage) break;
+            cursor = d.opportunities.pageInfo.endCursor;
+        }
     }
     return out;
 }
 
 function dealDollars(o: Opp): number {
-    const m = o.dealValue?.amountMicros ?? o.amount?.amountMicros ?? 0;
+    const m = o.amount?.amountMicros ?? o.dealValue?.amountMicros ?? 0;
     return Number(m) / 1_000_000;
 }
 
@@ -97,6 +109,19 @@ function fmtUsdShort(n: number): string {
     if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
     if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
     return `$${n.toFixed(0)}`;
+}
+
+const COLORS = {
+    blue: "FF0A52EF",
+    navy: "FF062B6B",
+    paleBlue: "FFE8F1FB",
+    paleGray: "FFF4F6F9",
+    text: "FF0D1B2A",
+    white: "FFFFFFFF",
+};
+
+function solidFill(argb: string) {
+    return { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb } };
 }
 
 function buildWorkbook(companyName: string, opps: Opp[]): Promise<Buffer> {
@@ -132,38 +157,42 @@ function buildWorkbook(companyName: string, opps: Opp[]): Promise<Buffer> {
 
             // ── Sheet 1: Summary ─────────────────────────────────────────
             const s1 = wb.addWorksheet("Summary");
+            s1.views = [{ showGridLines: false }];
             s1.mergeCells("A1:E1");
             s1.mergeCells("A2:E2");
             s1.getCell("A2").value = `${upperName}  —  LIFETIME VALUE SUMMARY`;
-            s1.getCell("A2").font = { bold: true, size: 16 };
+            s1.getCell("A2").font = { name: "Arial", bold: true, size: 13, color: { argb: COLORS.white } };
+            s1.getCell("A2").fill = solidFill(COLORS.blue);
             s1.getCell("A2").alignment = { horizontal: "center", vertical: "middle" };
-            s1.getRow(2).height = 28;
 
             s1.mergeCells("A3:E3");
             s1.getCell("A3").value = `Prepared by ANC  |  Internal Use Only  |  ${yearSpan}+ Year Partnership Overview`;
-            s1.getCell("A3").alignment = { horizontal: "center" };
-            s1.getCell("A3").font = { italic: true, size: 10, color: { argb: "FF666666" } };
+            s1.getCell("A3").alignment = { horizontal: "center", vertical: "middle" };
+            s1.getCell("A3").font = { name: "Arial", size: 9, color: { argb: "FF0B7DDB" } };
+            s1.getCell("A3").fill = solidFill(COLORS.paleBlue);
 
             // Headline number
             s1.mergeCells("B6:D6");
             s1.getCell("B6").value = fmtUsdShort(ltvDollars);
-            s1.getCell("B6").font = { bold: true, size: 36, color: { argb: "FF0A52EF" } };
+            s1.getCell("B6").font = { name: "Arial", bold: true, size: 36, color: { argb: COLORS.white } };
+            s1.getCell("B6").fill = solidFill(COLORS.blue);
             s1.getCell("B6").alignment = { horizontal: "center", vertical: "middle" };
-            s1.getRow(6).height = 50;
 
             s1.mergeCells("B7:D7");
             const yrRange = (minYear && maxYear) ? `${minYear}–${maxYear}` : "—";
-            s1.getCell("B7").value = `ESTIMATED LIFETIME VALUE  |  ${yrRange}  |  Avg. ${fmtUsdShort(avgPerYear)}/year across ${verticalListStr || "—"}`;
-            s1.getCell("B7").alignment = { horizontal: "center" };
-            s1.getCell("B7").font = { size: 10, color: { argb: "FF666666" } };
+            s1.getCell("B7").value = `ESTIMATED LIFETIME VALUE TO ${upperName}  |  ${yrRange}  |  Avg. ${fmtUsdShort(avgPerYear)}/year across ${verticalListStr || "—"}`;
+            s1.getCell("B7").alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+            s1.getCell("B7").font = { name: "Arial", size: 10, color: { argb: COLORS.navy } };
+            s1.getCell("B7").fill = solidFill(COLORS.paleBlue);
 
             // Q&A header
             s1.getCell("B9").value = "QUESTION";
             s1.getCell("C9").value = "ANSWER";
             s1.getCell("D9").value = "CONTEXT";
             for (const c of ["B9", "C9", "D9"]) {
-                s1.getCell(c).font = { bold: true };
-                s1.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE5E7EB" } };
+                s1.getCell(c).font = { name: "Arial", size: 10, bold: true, color: { argb: COLORS.white } };
+                s1.getCell(c).alignment = { horizontal: "center", vertical: "middle" };
+                s1.getCell(c).fill = solidFill(COLORS.blue);
             }
 
             const qa: Array<[string, string, string]> = [
@@ -194,7 +223,7 @@ function buildWorkbook(companyName: string, opps: Opp[]): Promise<Buffer> {
                 [
                     "5.  Lifetime Value (All Sources)",
                     fmtUsdShort(ltvDollars),
-                    "Sum of dealValue across every WON opportunity.",
+                    "Sum of amount across every WON opportunity; falls back to dealValue when amount is blank.",
                 ],
             ];
 
@@ -203,44 +232,61 @@ function buildWorkbook(companyName: string, opps: Opp[]): Promise<Buffer> {
                 s1.getCell(`B${r}`).value = q;
                 s1.getCell(`C${r}`).value = a;
                 s1.getCell(`D${r}`).value = c;
-                s1.getCell(`B${r}`).alignment = { vertical: "top", wrapText: true };
-                s1.getCell(`C${r}`).alignment = { vertical: "top", wrapText: true };
-                s1.getCell(`D${r}`).alignment = { vertical: "top", wrapText: true };
+                s1.getCell(`B${r}`).font = { name: "Arial", size: 10, bold: true, color: { argb: COLORS.white } };
+                s1.getCell(`B${r}`).fill = solidFill(COLORS.navy);
+                s1.getCell(`B${r}`).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+                s1.getCell(`C${r}`).font = { name: "Arial", size: 10, bold: true, color: { argb: COLORS.navy } };
+                s1.getCell(`C${r}`).fill = solidFill(COLORS.paleBlue);
+                s1.getCell(`C${r}`).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+                s1.getCell(`D${r}`).font = { name: "Arial", size: 10, color: { argb: COLORS.text } };
+                s1.getCell(`D${r}`).fill = solidFill(COLORS.paleGray);
+                s1.getCell(`D${r}`).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
             });
 
-            s1.getColumn(1).width = 4;
-            s1.getColumn(2).width = 38;
-            s1.getColumn(3).width = 32;
-            s1.getColumn(4).width = 60;
-            s1.getColumn(5).width = 4;
+            s1.getColumn(1).width = 3;
+            s1.getColumn(2).width = 30;
+            s1.getColumn(3).width = 18;
+            s1.getColumn(4).width = 58.26953125;
+            s1.getColumn(5).width = 5.1796875;
+
+            [
+                [1, 52], [2, 34], [3, 18], [4, 10], [5, 10], [6, 48],
+                [7, 22], [8, 12], [9, 24], [10, 38], [11, 4], [12, 38],
+                [13, 4], [14, 38], [15, 4], [16, 38], [17, 4], [18, 38],
+                [19, 4], [20, 22],
+            ].forEach(([row, height]) => { s1.getRow(row).height = height; });
 
             const lastQARow = 10 + (qa.length - 1) * 2;
-            s1.mergeCells(`A${lastQARow + 3}:E${lastQARow + 3}`);
-            s1.getCell(`A${lastQARow + 3}`).value = "For deal-by-deal detail see Deal History tab.";
-            s1.getCell(`A${lastQARow + 3}`).font = { italic: true, size: 9, color: { argb: "FF888888" } };
-            s1.getCell(`A${lastQARow + 3}`).alignment = { horizontal: "center" };
+            const footerRow = lastQARow + 2;
+            s1.mergeCells(`A${footerRow}:E${footerRow}`);
+            s1.getCell(`A${footerRow}`).value = "For deal-by-deal detail see Deal History tab.";
+            s1.getCell(`A${footerRow}`).font = { name: "Arial", italic: true, size: 9, color: { argb: "FF6B7280" } };
+            s1.getCell(`A${footerRow}`).alignment = { horizontal: "center", vertical: "middle" };
 
             // ── Sheet 2: Deal History ───────────────────────────────────
             const s2 = wb.addWorksheet("Deal History");
+            s2.views = [{ showGridLines: false }];
             s2.mergeCells("A1:F1");
             s2.mergeCells("A2:F2");
             s2.getCell("A2").value = `${upperName}  —  DEAL HISTORY BY YEAR`;
-            s2.getCell("A2").font = { bold: true, size: 14 };
-            s2.getCell("A2").alignment = { horizontal: "center" };
-            s2.getRow(2).height = 24;
+            s2.getCell("A2").font = { name: "Arial", bold: true, size: 13, color: { argb: COLORS.white } };
+            s2.getCell("A2").fill = solidFill(COLORS.blue);
+            s2.getCell("A2").alignment = { horizontal: "center", vertical: "middle" };
 
             s2.mergeCells("A3:F3");
             s2.getCell("A3").value = "All WON deals · Tickets & hospitality excluded unless captured as opportunities.";
-            s2.getCell("A3").alignment = { horizontal: "center" };
-            s2.getCell("A3").font = { italic: true, size: 10, color: { argb: "FF666666" } };
+            s2.getCell("A3").alignment = { horizontal: "center", vertical: "middle" };
+            s2.getCell("A3").font = { name: "Arial", size: 9, color: { argb: "FF0B7DDB" } };
+            s2.getCell("A3").fill = solidFill(COLORS.paleBlue);
 
             s2.getCell("B5").value = "YEAR";
             s2.getCell("C5").value = "DEAL(S)";
             s2.getCell("D5").value = "TOTAL SPEND";
             s2.getCell("E5").value = "NOTES";
             for (const c of ["B5", "C5", "D5", "E5"]) {
-                s2.getCell(c).font = { bold: true };
-                s2.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE5E7EB" } };
+                s2.getCell(c).font = { name: "Arial", size: 10, bold: true, color: { argb: COLORS.white } };
+                s2.getCell(c).alignment = { horizontal: "center", vertical: "middle" };
+                s2.getCell(c).fill = solidFill(COLORS.blue);
             }
 
             // Group by year
@@ -266,23 +312,36 @@ function buildWorkbook(companyName: string, opps: Opp[]): Promise<Buffer> {
                 s2.getCell(`D${r}`).value = yrTotal;
                 s2.getCell(`D${r}`).numFmt = "$#,##0";
                 s2.getCell(`E${r}`).value = yrOpps.length > 1 ? `${yrOpps.length} deals` : "";
-                s2.getCell(`C${r}`).alignment = { wrapText: true };
+                for (const col of ["B", "C", "D", "E"]) {
+                    s2.getCell(`${col}${r}`).font = { name: "Arial", size: 10, color: { argb: COLORS.text } };
+                    s2.getCell(`${col}${r}`).alignment = { vertical: "middle", wrapText: true };
+                }
             });
 
             const totalRow = 6 + sortedYears.length + 1;
             s2.mergeCells(`B${totalRow}:C${totalRow}`);
             const yrRange2 = (minYear && maxYear) ? `${minYear}–${maxYear}` : "—";
             s2.getCell(`B${totalRow}`).value = `TOTAL  (${yrRange2})`;
-            s2.getCell(`B${totalRow}`).font = { bold: true };
+            s2.getCell(`B${totalRow}`).font = { name: "Arial", bold: true, color: { argb: COLORS.white } };
+            s2.getCell(`B${totalRow}`).fill = solidFill(COLORS.navy);
             s2.getCell(`D${totalRow}`).value = ltvDollars;
             s2.getCell(`D${totalRow}`).numFmt = "$#,##0";
-            s2.getCell(`D${totalRow}`).font = { bold: true };
+            s2.getCell(`D${totalRow}`).font = { name: "Arial", bold: true, color: { argb: COLORS.navy } };
+            s2.getCell(`D${totalRow}`).fill = solidFill(COLORS.paleBlue);
 
-            s2.getColumn(1).width = 4;
-            s2.getColumn(2).width = 14;
-            s2.getColumn(3).width = 56;
-            s2.getColumn(4).width = 22;
-            s2.getColumn(5).width = 30;
+            s2.getColumn(1).width = 3;
+            s2.getColumn(2).width = 10;
+            s2.getColumn(3).width = 32;
+            s2.getColumn(4).width = 18;
+            s2.getColumn(5).width = 42.7265625;
+            s2.getColumn(6).width = 3;
+            s2.getRow(1).height = 52;
+            s2.getRow(2).height = 34;
+            s2.getRow(3).height = 18;
+            s2.getRow(4).height = 10;
+            s2.getRow(5).height = 22;
+            for (let row = 6; row < totalRow; row++) s2.getRow(row).height = 22;
+            s2.getRow(totalRow).height = 28;
 
             resolve(Buffer.from(await wb.xlsx.writeBuffer()));
         } catch (e) {
@@ -300,18 +359,24 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: "Pass either ?company=Name or ?id=<uuid>" }, { status: 400 });
         }
 
-        const found = await findCompany(id || company, !!id);
-        if (!found) {
+        const matches = await findCompanies(id || company, !!id);
+        if (!matches.length) {
             return NextResponse.json({ error: `Company not found for "${company || id}".` }, { status: 404 });
         }
 
-        const opps = await pageWonOpps(found.id);
+        const opps = await pageWonOpps(matches.map((match) => match.id));
         if (opps.length === 0) {
-            return NextResponse.json({ error: `Company "${found.name}" has no WON opportunities — nothing to report.` }, { status: 404 });
+            return NextResponse.json({ error: `No WON opportunities found for "${company || matches[0].name}".` }, { status: 404 });
         }
 
-        const xlsx = await buildWorkbook(found.name, opps);
-        const filename = `${found.name} - Lifetime Value ANC.xlsx`;
+        const companyIdsWithWonOpps = new Set(opps.map((opp) => opp.companyId));
+        const contributingCompanies = matches.filter((match) => companyIdsWithWonOpps.has(match.id));
+        const reportName = id
+            ? contributingCompanies[0]?.name ?? matches[0].name
+            : (/hankook/i.test(company) ? "Hankook Tire" : (company || contributingCompanies[0]?.name || matches[0].name));
+
+        const xlsx = await buildWorkbook(reportName, opps);
+        const filename = `${reportName} - Lifetime Value ANC.xlsx`;
 
         return new NextResponse(new Uint8Array(xlsx), {
             status: 200,
@@ -319,8 +384,8 @@ export async function GET(request: NextRequest) {
                 "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 "Content-Disposition": `attachment; filename="${filename}"`,
                 "Cache-Control": "no-cache",
-                "X-Company-Id": found.id,
-                "X-Company-Name": found.name,
+                "X-Company-Id": contributingCompanies.map((match) => match.id).join(","),
+                "X-Company-Name": contributingCompanies.map((match) => match.name).join(", "),
                 "X-Won-Opps": String(opps.length),
             },
         });
