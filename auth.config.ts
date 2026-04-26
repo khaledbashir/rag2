@@ -14,6 +14,8 @@ export const authConfig = {
         nextUrl.pathname.startsWith("/api/uploadthing") ||
         nextUrl.pathname.startsWith("/api/pricing-logic") ||
         nextUrl.pathname.startsWith("/api/agent-skill") ||
+        nextUrl.pathname.startsWith("/api/twenty-bridge/") ||
+        nextUrl.pathname.startsWith("/api/jireh-reports/") ||
         nextUrl.pathname.startsWith("/api/intelligence/") ||
         nextUrl.pathname.startsWith("/api/performance/seed") ||
         nextUrl.pathname.startsWith("/share/performance/") ||
