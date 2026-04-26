@@ -123,61 +123,41 @@ async function buildWorkbook(rows: CompanyAgg[], vertical: Vertical, year: numbe
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet(`${year} Clients`);
 
-    const verticalLabel = vertical === "TECHNOLOGY" ? "Technology"
-        : vertical === "VENUE_SERVICES" ? "Venue Services"
-        : "Media & Sponsorship";
+    // Match Jireh's template exactly: cols A-B blank, headers at row 3 in
+    // cols C-F, blank row 4, data starts row 5. No title, no subtitle, no #
+    // rank column.
 
-    // Title row
-    ws.mergeCells("B2:F2");
-    const t = ws.getCell("B2");
-    t.value = `ANC — ${verticalLabel} Repeat Clients ${year}`;
-    t.font = { name: "Calibri", size: 14, bold: true, color: { argb: "FF111111" } };
-    t.alignment = { vertical: "middle", horizontal: "left" };
+    // Header row at r3, cols C-F
+    ws.getCell("C3").value = "Client";
+    ws.getCell("D3").value = "Client First-Year of Engagement";
+    ws.getCell("E3").value = "Lifetime Client Revenue ($)";
+    ws.getCell("F3").value = "Lifetime Client Margin (%)";
+    for (const col of ["C", "D", "E", "F"]) {
+        const cell = ws.getCell(`${col}3`);
+        cell.font = { bold: true };
+        cell.alignment = { vertical: "middle", horizontal: "left" };
+    }
 
-    ws.mergeCells("B3:F3");
-    const sub = ws.getCell("B3");
-    sub.value = `Lifetime revenue + margin across all WON deals · Generated ${new Date().toISOString().slice(0, 10)}`;
-    sub.font = { name: "Calibri", size: 10, italic: true, color: { argb: "FF666666" } };
-
-    // Header row
-    const headers = ["#", "Client", "Client First-Year of Engagement", "Lifetime Client Revenue ($)", "Lifetime Client Margin (%)"];
-    ws.getRow(5).values = ["", ...headers];
-    ws.getRow(5).font = { bold: true };
-    ws.getRow(5).alignment = { vertical: "middle", horizontal: "left" };
-    ws.getRow(5).eachCell((cell, col) => {
-        if (col === 1) return;
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE5E7EB" } };
-        cell.border = { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } };
-    });
-
-    // Body rows
+    // Body rows: data sorted by lifetime revenue desc, starting at row 5.
     rows.forEach((r, i) => {
-        const rowIdx = 6 + i;
-        ws.getRow(rowIdx).values = [
-            "",
-            i + 1,
-            r.name,
-            r.firstYear ?? "",
-            r.lifetimeRevenue,
-            r.lifetimeRevenue > 0 ? r.lifetimeMargin / r.lifetimeRevenue : 0,
-        ];
-        const dealCell = ws.getRow(rowIdx).getCell(5);
-        dealCell.numFmt = "$#,##0";
-        const pctCell = ws.getRow(rowIdx).getCell(6);
+        const rowIdx = 5 + i;
+        ws.getCell(`C${rowIdx}`).value = r.name;
+        ws.getCell(`D${rowIdx}`).value = r.firstYear ?? "";
+        const revCell = ws.getCell(`E${rowIdx}`);
+        revCell.value = r.lifetimeRevenue;
+        revCell.numFmt = "$#,##0";
+        const pctCell = ws.getCell(`F${rowIdx}`);
+        pctCell.value = r.lifetimeRevenue > 0 ? r.lifetimeMargin / r.lifetimeRevenue : 0;
         pctCell.numFmt = "0.0%";
-        ws.getRow(rowIdx).eachCell((cell, col) => {
-            if (col === 1) return;
-            cell.border = { top: { style: "hair" }, bottom: { style: "hair" }, left: { style: "hair" }, right: { style: "hair" } };
-        });
     });
 
-    // Column widths
-    ws.getColumn(1).width = 2;
+    // Column widths matching Jireh's template feel
+    ws.getColumn(1).width = 4;
     ws.getColumn(2).width = 4;
-    ws.getColumn(3).width = 50;
+    ws.getColumn(3).width = 52;
     ws.getColumn(4).width = 32;
-    ws.getColumn(5).width = 30;
-    ws.getColumn(6).width = 30;
+    ws.getColumn(5).width = 28;
+    ws.getColumn(6).width = 28;
 
     return Buffer.from(await wb.xlsx.writeBuffer());
 }
