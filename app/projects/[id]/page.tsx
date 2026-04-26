@@ -28,5 +28,11 @@ export default async function ProjectEditorPage({ params }: PageProps) {
     // Map DB schema to Form schema
     const formData = mapDbProposalToFormSchema(project);
 
-    return <ProposalPage initialData={formData} projectId={id} />;
+    return (
+        <ProposalPage
+            initialData={formData}
+            projectId={id}
+            twentyOpportunityId={project.twentyOpportunityId ?? undefined}
+        />
+    );
 }

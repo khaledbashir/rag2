@@ -134,6 +134,7 @@ const WizardWrapper = ({ projectId, initialData }: ProposalPageProps) => {
       onImportExcel={importANCExcel}
       onExportPdf={() => handleSubmit(onFormSubmit)()}
       projectId={projectId ?? undefined}
+      twentyOpportunityId={twentyOpportunityId}
     />
   );
 
@@ -280,10 +281,10 @@ const WizardWrapper = ({ projectId, initialData }: ProposalPageProps) => {
  * Wraps with a scoped ProposalContextProvider so initialData/projectId are available
  * in context; this ensures new projects get a clean Excel state (no stale cache).
  */
-const ProposalPage = ({ initialData, projectId }: ProposalPageProps) => {
+const ProposalPage = ({ initialData, projectId, twentyOpportunityId }: ProposalPageProps) => {
   return (
     <ProposalContextProvider initialData={initialData} projectId={projectId}>
-      <Wizard header={<WizardWrapper initialData={initialData} projectId={projectId} />}>
+      <Wizard header={<WizardWrapper initialData={initialData} projectId={projectId} twentyOpportunityId={twentyOpportunityId} />}>
         <div className="hidden" />
         <div className="hidden" />
         <div className="hidden" />

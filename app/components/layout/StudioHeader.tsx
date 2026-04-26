@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { useWizard } from "react-use-wizard";
-import { Share2, Loader2, CheckCircle2, FileSpreadsheet, Save, ChevronDown, FileText, Receipt, FileSignature } from "lucide-react";
+import { Share2, Loader2, CheckCircle2, FileSpreadsheet, Save, ChevronDown, FileText, Receipt, FileSignature, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import LogoSelector from "@/app/components/reusables/LogoSelector";
 import SaveIndicator from "@/app/components/reusables/SaveIndicator";
@@ -30,6 +30,8 @@ interface StudioHeaderProps {
     onExportPdf: () => void;
     /** When "new", show "Create project first" banner and Save Draft (creates project). */
     projectId?: string;
+    /** When set, render a "View in CRM" deep-link pill that opens the matching Twenty Opportunity. */
+    twentyOpportunityId?: string;
 }
 
 export function StudioHeader({
@@ -39,6 +41,7 @@ export function StudioHeader({
     onImportExcel,
     onExportPdf,
     projectId,
+    twentyOpportunityId,
 }: StudioHeaderProps) {
     const wizard = useWizard();
     const { control, getValues } = useFormContext<ProposalType>();
@@ -133,6 +136,18 @@ export function StudioHeader({
                             <CheckCircle2 className="w-3 h-3" />
                             Excel Verified
                         </span>
+                    )}
+                    {twentyOpportunityId && (
+                        <a
+                            href={`https://crm.ancsports.net/object/opportunity/${twentyOpportunityId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-md bg-[#0A52EF]/10 px-2.5 py-1 text-[10px] font-semibold text-[#0A52EF] dark:text-[#7FA8FF] uppercase tracking-wide hover:bg-[#0A52EF]/20 transition-colors"
+                            title="Open this proposal's opportunity in Twenty CRM"
+                        >
+                            <ExternalLink className="w-3 h-3" />
+                            View in CRM
+                        </a>
                     )}
                 </div>
             </div>
