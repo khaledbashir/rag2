@@ -807,7 +807,17 @@ async function ensureOpportunityForProposal(proposal: {
       data: {
         name: oppName,
         companyId,
-        stage: "PROPOSAL",
+        // Twenty's OpportunityStageEnum was changed away from the old
+        // {NEW,SCREENING,MEETING,PROPOSAL,CUSTOMER} set. Sending "PROPOSAL"
+        // here was the silent-fail root cause: the GraphQL mutation rejected
+        // the value, the wrapping try/catch swallowed it, and the Note +
+        // Activity steps never ran. Current valid values:
+        //   EXISTING_CUSTOMER, NEW_OPPORTUNITY, MEETING_SALES_PROCESS,
+        //   SALES_LEAD_FORMAL_PROPOSAL, SALES_LEAD_BUDGET_PROPOSAL, RFP,
+        //   BAFO_NEGOTIATION
+        // SALES_LEAD_FORMAL_PROPOSAL is the closest match for a freshly
+        // created proposal-engine opportunity.
+        stage: "SALES_LEAD_FORMAL_PROPOSAL",
         bidStatus: "SCOPING",
       },
     },
