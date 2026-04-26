@@ -37,38 +37,30 @@ The vibe Jireh wants: *"Jireh talks to the AI and it just does it."* No clicks, 
 
 ## 2. What was built (and the verified state of each piece)
 
-### 2.1 Repeat Clients Report — ✅ DATA WORKS · ⚠️ FORMAT JUST FIXED, NOT DOUBLE-CHECKED
+### 2.1 Repeat Clients Report — ✅ PRODUCTION VERIFIED AGAINST TEMPLATE
 
 | Layer | Where | State |
 |---|---|---|
-| rag2 endpoint | `app/api/jireh-reports/repeat-clients/route.ts` | ✅ deployed (commit `6b7b7b83`). GET with `?vertical=TECHNOLOGY&top=10` returns Excel binary. Pages all companies in vertical, pages all WON opps, aggregates per-company lifetime revenue/margin/first-year, filters dealCount>=2, sorts desc, takes top N. |
+| rag2 endpoint | `app/api/jireh-reports/repeat-clients/route.ts` | ✅ deployed. GET with `?vertical=TECHNOLOGY&top=10` returns Excel binary. Pages all companies in vertical, pages all WON opps, aggregates per-company lifetime revenue/margin/first-year, filters dealCount>=2, sorts desc, takes top N. Styling fix shipped in `c6a1be32` so the workbook matches Jireh's actual source layout, not just the columns. |
 | Auth bypass | `auth.config.ts` + `middleware.ts` | ✅ both layers added the `/api/jireh-reports` path to public allowlist |
 | Twenty logic function | `generate-repeat-clients-report` (UUID `8acf4271-f0a6-46fa-9b0c-cceb55cb9b6a`) | ✅ created, isTool=true. Thin shim — HEAD's the rag2 endpoint, returns `{url, markdownToEmbed}` pointing at the public rag2 URL directly. |
 | Scout skill | `repeat-clients-report` (UUID `54288e81-63d5-4b4d-9cb6-a0bf0d5b08e8`) | ✅ activated. Content tells Scout to call the tool, embed `markdownToEmbed` verbatim, add a 1–2 sentence summary. |
-| Format match against Jireh's template | most-recent build (commit `6b7b7b83`) | ⚠️ Just shipped. **Verify by opening `/root/rag2/ANC - Technology Repeat Clients 2026.xlsx` and diff'ing column-by-column against the template before claiming match.** Prior version had title/subtitle/rank-column extras that didn't match — those are now stripped, but new agent should re-confirm. |
+| Format match against Jireh's template | production artifact saved at `output/spreadsheet/ANC-Technology-Repeat-Clients-2026-production-patched.xlsx` | ✅ Verified 2026-04-26 19:59 UTC by opening/diffing against `/root/rag2/ANC - Technology Repeat Clients 2026 2027 2028 (April 2026) (1).xlsx`: sheet name, C3:F3 headers, blank rows/cols, no merges, hidden gridlines, header fill/font, row heights, and column widths all pass. |
 
 **Test in Scout (NEW chat):** *"top 10 repeat technology clients"* → Scout fires the tool → drops a clickable Excel link.
 
 **Live data right now:** 273 tech companies / 580 WON opps / 12 repeat clients (>=2 wins). Top 10 starts with Notre Dame ($28.7M, 14% margin, since 2016) and ends with Bergen Catholic HS ($380K, since 2021).
 
-### 2.2 Account LTV Report — ⚠️ DEPLOYED + EXECUTES, BUT TWO ISSUES
+### 2.2 Account LTV Report — ✅ PRODUCTION VERIFIED FOR CRM-TRUTH SUMMARY + DEAL HISTORY
 
 | Layer | Where | State |
 |---|---|---|
-| rag2 endpoint | `app/api/jireh-reports/account-ltv/route.ts` | ✅ Deployed (commit `9e91277b`). `GET ?id=<uuid>` works (verified: `id=a2522508-e708-4d91-8ee2-75e200592506` for "Hankook Tire America Corp." returns valid 2-sheet Excel). |
-| Twenty logic function | `generate-account-ltv-report` (UUID `0af7d610-3d59-4d32-bf0b-b6286c1fffee`) | ✅ Created via `/tmp/build-ltv-tool-fn.py`. Skill `account-ltv-report` (`4b932931`) updated to call it. |
-| End-to-end via Scout chat | "lifetime value of Hankook" | ⚠️ Will fail with 404 due to issue #1 below. Test instead with the actual full company name like "lifetime value of Hankook Tire America Corp." OR fix issue #1. |
+| rag2 endpoint | `app/api/jireh-reports/account-ltv/route.ts` | ✅ Deployed. `GET ?company=Hankook` now works. Fixes shipped in `71c17b6b` and `5dbf552f`: fuzzy company lookups aggregate matching Hankook legal entities with WON opps, use account-revenue `amount` before `dealValue`, and skip zero-amount rows. |
+| Twenty logic function | `generate-account-ltv-report` (UUID `a1d07377-2080-425b-b7a2-056eaa57dd26`) | ✅ Recreated via `/tmp/build-ltv-tool-fn.py` after production verification. isTool=true. Returns direct public rag2 URL + `markdownToEmbed`. |
+| Scout skill | `account-ltv-report` (UUID `4b932931-a798-4ea1-921e-a6f7367ec596`) | ✅ Active. Updated to call `generate-account-ltv-report`. |
+| Format/data verification | production artifact saved at `output/spreadsheet/Hankook-LTV-production-patched.xlsx` | ✅ Verified 2026-04-26 19:59 UTC. Production headers: `x-won-opps: 32`, `x-company-name: Hankook Tire America Corp., Hankook Tire Canada Corp.`. Opened workbook and diffed Summary against `/root/rag2/Hankook_Lifetime_Value_ANC_Final.xlsx`: title/merge structure, gridlines, row heights, column widths, key fills/fonts all pass. Output: `$33.4M`, `2016–2024`, `32 deals`, no zero-dollar Deal History rows. |
 
-**Sample output saved at `/root/rag2/Hankook-LTV-output.xlsx`** — open it side-by-side with Jireh's template `/root/rag2/Hankook_Lifetime_Value_ANC_Final.xlsx` to see the gap.
-
-**Known issue 1 — Fuzzy company-name resolution picks wrong record.**
-The endpoint's `findCompany(name)` uses `ilike: %name%` ordered by `createdAt: AscNullsLast`. For "Hankook" this picks `Hankook Tire & Technology Co.,Ltd.` (which has 0 WON opps → 404) instead of `Hankook Tire America Corp.` (which has 36 WON opps). Fix: when fuzzy match returns multiple, pick the one with the most WON opps. File: `app/api/jireh-reports/account-ltv/route.ts:findCompany`. ~10 line change.
-
-**Known issue 2 — Q&A grid uses generic questions, not Jireh's Hankook-specific 5.**
-My output has rows: `Number of Deals`, `Verticals We've Done With Them`, `Total Contract Value — YoY`, `Largest Single Deal`, `Lifetime Value (All Sources)`. Jireh's Hankook template has: `Number of Deals`, `Teams We Have Given $ To`, `Total Contract Value — YoY`, `TGL Deal`, `Hospitality & Other Deals`. The last two are Hankook-account-specific (TGL = his Tomorrow's Golf League sponsorship; Hospitality = a special category). They aren't generalizable to other accounts. **Decision call for the next agent + Ahmad**: should this skill produce a generic 5-question grid (current behavior) or should it offer per-account custom question templates? Recommend: keep generic, mention limitation in skill description.
-
-**Known issue 3 — MLB Teams sheet is skipped.**
-Hankook's template has a third sheet listing the 16 MLB teams that received funding via ANC media rights. To produce this, we'd need to detect "team-funded" accounts (ones where opportunity revenueSplits or similar contains team names) and enumerate. Skipped for v1.
+**What is intentionally not matched:** Jireh's template headline is `$35M+` and includes a third `MLB Teams` tab. Current CRM data supports `$33.4M` from revenue-bearing WON opps in 2016–2024. The missing `$35M+` delta and MLB Teams tab require source fields that are not present in CRM today: pre-2016 history, future TGL/2025–2028 commitments with amounts, hospitality/tickets, and team-level sub-breakdowns inside opportunities. This is a data coverage limitation, not a broken endpoint.
 
 ### 2.3 Other working CRM connections (verified earlier in session)
 
@@ -111,11 +103,9 @@ These are stable and not part of the Jireh-handover scope, but flag if you accid
 
 ## 4. What the next agent should do — first 30 minutes
 
-1. **Confirm the format-fixed Repeat Clients output matches Jireh's template.** Open both files in Excel, diff visually. If anything's off, fix the rag2 endpoint at `app/api/jireh-reports/repeat-clients/route.ts:buildWorkbook` and re-deploy.
-2. **Confirm the account-ltv endpoint deploy is live**, then run `/tmp/build-ltv-tool-fn.py` to wire the function + skill.
-3. **Test Hankook LTV end-to-end** in Scout chat (new conversation): *"lifetime value of Hankook"*. Open the generated Excel. Compare column-by-column to `Hankook_Lifetime_Value_ANC_Final.xlsx`. Iterate until format matches.
-4. **Update `docs/CRM-CONNECTIONS-CHECKLIST.md`** to reflect verified state of items B14 and B15.
-5. **Tell Ahmad** with a single line of confirmation per skill: *"Repeat Clients ✅ format verified against template, here's the Hankook Excel matching too — open and confirm."* Don't claim ✅ without having opened the artifact yourself.
+1. **Optional UI-only final test:** In a fresh Scout/Boyka chat, type *"top 10 repeat technology clients"* and *"lifetime value of Hankook"*. The deterministic endpoints and Twenty metadata are already verified; this only checks the chat UX chooses the right skills.
+2. **Do not regress the artifact verification rule.** If either workbook changes later, open the generated XLSX and diff it against Jireh's template before saying ready.
+3. **If Ahmad wants the Hankook file to show `$35M+` and MLB Teams:** add explicit CRM fields or per-account config for future commitments, hospitality, and team-level sub-breakdowns. Do not invent those rows from code.
 
 ## 5. What the previous agent did wrong (so you don't)
 
