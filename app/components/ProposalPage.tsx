@@ -44,7 +44,7 @@ interface ProposalPageProps {
  * WizardWrapper - Provides wizard context to both stepper and form
  * PROMPT 56: Single hydration authority - this is the ONLY place that sets form state on load
  */
-const WizardWrapper = ({ projectId, initialData }: ProposalPageProps) => {
+const WizardWrapper = ({ projectId, initialData, twentyOpportunityId }: ProposalPageProps) => {
   const { handleSubmit, setValue, getValues, reset, control } = useFormContext<ProposalType>();
   const { onFormSubmit, importANCExcel, excelImportLoading, setInitialDataApplied } = useProposalContext();
   const wizard = useWizard();
