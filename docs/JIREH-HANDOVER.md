@@ -51,15 +51,24 @@ The vibe Jireh wants: *"Jireh talks to the AI and it just does it."* No clicks, 
 
 **Live data right now:** 273 tech companies / 580 WON opps / 12 repeat clients (>=2 wins). Top 10 starts with Notre Dame ($28.7M, 14% margin, since 2016) and ends with Bergen Catholic HS ($380K, since 2021).
 
-### 2.2 Account LTV Report — ⚠️ ENDPOINT + FUNCTION EXIST, FORMAT NOT VERIFIED AGAINST HANKOOK TEMPLATE
+### 2.2 Account LTV Report — ⚠️ DEPLOYED + EXECUTES, BUT TWO ISSUES
 
 | Layer | Where | State |
 |---|---|---|
-| rag2 endpoint | `app/api/jireh-reports/account-ltv/route.ts` | ⚠️ committed `9e91277b`, deploy in flight at handover time. GET `?company=Hankook` (fuzzy ilike) or `?id=<uuid>`. Returns 2-sheet Excel: Summary + Deal History. **MLB Teams sheet intentionally skipped** — needs reliable team-level data which this v1 doesn't have yet. |
-| Twenty logic function | `generate-account-ltv-report` | ⚠️ build script ready at `/tmp/build-ltv-tool-fn.py`. Was queued to run after the deploy lands but the prior session was cut off. New agent: run that script after confirming the endpoint deploy is live. |
-| Scout skill | `account-ltv-report` (UUID `4b932931-a798-4ea1-921e-a6f7367ec596`) | ⚠️ exists with old "do it by hand" prompt. Build script also updates the prompt to call the tool. Same — script is queued, run after deploy. |
+| rag2 endpoint | `app/api/jireh-reports/account-ltv/route.ts` | ✅ Deployed (commit `9e91277b`). `GET ?id=<uuid>` works (verified: `id=a2522508-e708-4d91-8ee2-75e200592506` for "Hankook Tire America Corp." returns valid 2-sheet Excel). |
+| Twenty logic function | `generate-account-ltv-report` (UUID `0af7d610-3d59-4d32-bf0b-b6286c1fffee`) | ✅ Created via `/tmp/build-ltv-tool-fn.py`. Skill `account-ltv-report` (`4b932931`) updated to call it. |
+| End-to-end via Scout chat | "lifetime value of Hankook" | ⚠️ Will fail with 404 due to issue #1 below. Test instead with the actual full company name like "lifetime value of Hankook Tire America Corp." OR fix issue #1. |
 
-**The hard part the next agent should NOT skip**: open the generated Excel for Hankook and compare row-by-row against `/root/rag2/Hankook_Lifetime_Value_ANC_Final.xlsx`. The Q&A questions/labels, the merge ranges, the headline number formatting, the year ordering. If anything's off, fix before declaring done.
+**Sample output saved at `/root/rag2/Hankook-LTV-output.xlsx`** — open it side-by-side with Jireh's template `/root/rag2/Hankook_Lifetime_Value_ANC_Final.xlsx` to see the gap.
+
+**Known issue 1 — Fuzzy company-name resolution picks wrong record.**
+The endpoint's `findCompany(name)` uses `ilike: %name%` ordered by `createdAt: AscNullsLast`. For "Hankook" this picks `Hankook Tire & Technology Co.,Ltd.` (which has 0 WON opps → 404) instead of `Hankook Tire America Corp.` (which has 36 WON opps). Fix: when fuzzy match returns multiple, pick the one with the most WON opps. File: `app/api/jireh-reports/account-ltv/route.ts:findCompany`. ~10 line change.
+
+**Known issue 2 — Q&A grid uses generic questions, not Jireh's Hankook-specific 5.**
+My output has rows: `Number of Deals`, `Verticals We've Done With Them`, `Total Contract Value — YoY`, `Largest Single Deal`, `Lifetime Value (All Sources)`. Jireh's Hankook template has: `Number of Deals`, `Teams We Have Given $ To`, `Total Contract Value — YoY`, `TGL Deal`, `Hospitality & Other Deals`. The last two are Hankook-account-specific (TGL = his Tomorrow's Golf League sponsorship; Hospitality = a special category). They aren't generalizable to other accounts. **Decision call for the next agent + Ahmad**: should this skill produce a generic 5-question grid (current behavior) or should it offer per-account custom question templates? Recommend: keep generic, mention limitation in skill description.
+
+**Known issue 3 — MLB Teams sheet is skipped.**
+Hankook's template has a third sheet listing the 16 MLB teams that received funding via ANC media rights. To produce this, we'd need to detect "team-funded" accounts (ones where opportunity revenueSplits or similar contains team names) and enumerate. Skipped for v1.
 
 ### 2.3 Other working CRM connections (verified earlier in session)
 
