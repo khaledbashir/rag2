@@ -122,10 +122,13 @@ function aggregate(companies: Array<{ id: string; name: string }>, opps: any[]):
 async function buildWorkbook(rows: CompanyAgg[], vertical: Vertical, year: number): Promise<Buffer> {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet(`${year} Clients`);
+    ws.views = [{ showGridLines: false }];
 
     // Match Jireh's template exactly: cols A-B blank, headers at row 3 in
     // cols C-F, blank row 4, data starts row 5. No title, no subtitle, no #
     // rank column.
+    ws.getRow(3).height = 15.75;
+    ws.getRow(4).height = 5.1;
 
     // Header row at r3, cols C-F
     ws.getCell("C3").value = "Client";
@@ -134,8 +137,13 @@ async function buildWorkbook(rows: CompanyAgg[], vertical: Vertical, year: numbe
     ws.getCell("F3").value = "Lifetime Client Margin (%)";
     for (const col of ["C", "D", "E", "F"]) {
         const cell = ws.getCell(`${col}3`);
-        cell.font = { bold: true };
+        cell.font = { bold: true, size: 10 };
         cell.alignment = { vertical: "middle", horizontal: "left" };
+        cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFBCD0FC" },
+        };
     }
 
     // Body rows: data sorted by lifetime revenue desc, starting at row 5.
@@ -151,13 +159,13 @@ async function buildWorkbook(rows: CompanyAgg[], vertical: Vertical, year: numbe
         pctCell.numFmt = "0.0%";
     });
 
-    // Column widths matching Jireh's template feel
-    ws.getColumn(1).width = 4;
-    ws.getColumn(2).width = 4;
-    ws.getColumn(3).width = 52;
-    ws.getColumn(4).width = 32;
-    ws.getColumn(5).width = 28;
-    ws.getColumn(6).width = 28;
+    // Column widths from Jireh's source workbook.
+    ws.getColumn(1).width = 13;
+    ws.getColumn(2).width = 13;
+    ws.getColumn(3).width = 60.140625;
+    ws.getColumn(4).width = 32.140625;
+    ws.getColumn(5).width = 31.5703125;
+    ws.getColumn(6).width = 13;
 
     return Buffer.from(await wb.xlsx.writeBuffer());
 }
