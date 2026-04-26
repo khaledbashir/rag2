@@ -764,7 +764,42 @@ export async function universalCrmPush(input: {
     },
   });
 
+  // Workflow #1: PDF/SOW exported → Opportunity.bidStatus = BID_SUBMITTED.
+  // Fire-and-forget so any failure here does not affect the existing push.
+  applyOpportunityWorkflowAction(opportunityId, input.actionType).catch((err) =>
+    console.warn("[universalCrmPush] workflow action failed:", err?.message || err),
+  );
+
   return { opportunityId };
+}
+
+/**
+ * Workflow side-effect runner — keeps "when X happens in engine → Y in CRM"
+ * automations co-located with the push call. Pure additive: any failure here
+ * is swallowed (logged) and never affects the user-visible export response.
+ *
+ * Currently registered:
+ *   - pdf_exported  → Opportunity.bidStatus = BID_SUBMITTED
+ *   - sow_generated → Opportunity.bidStatus = BID_SUBMITTED
+ *
+ * Add more actions by extending the switch below.
+ */
+async function applyOpportunityWorkflowAction(opportunityId: string, actionType: string) {
+  switch (actionType) {
+    case "pdf_exported":
+    case "sow_generated":
+      await twentyGraphql(
+        `mutation U($id: UUID!, $data: OpportunityUpdateInput!) {
+          updateOpportunity(id: $id, data: $data) { id bidStatus }
+        }`,
+        { id: opportunityId, data: { bidStatus: "BID_SUBMITTED" } },
+      );
+      console.log(`[universalCrmPush] workflow: ${actionType} → Opp ${opportunityId} bidStatus=BID_SUBMITTED`);
+      return;
+    default:
+      // No workflow registered for this actionType (e.g. excel_uploaded, rfp_analyzed).
+      return;
+  }
 }
 
 /**

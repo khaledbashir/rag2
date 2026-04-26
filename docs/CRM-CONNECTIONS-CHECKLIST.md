@@ -26,8 +26,7 @@ Single source of truth for what is wired between **rag2** (proposal engine) and 
 | # | Connection | Status | Verification |
 |---|---|---|---|
 | A1 | **rag2 product catalog → Twenty.LedProduct** (mirror by modelNumber on every save) | ✅ | Backfill 2026-04-26 17:25 UTC — Summary: total=158 created=31 updated=127 failed=0 (`/tmp/sync-results.log`). Twenty `ledProducts.totalCount`=160 (158 active rag2 + 2 stale). Code: `services/integrations/twenty/productSync.ts`, hooks at `app/api/products/{,[id]/,import/}route.ts` |
-| A2 | **`universalCrmPush` actually lands Notes** (PDF/Excel/SOW/audit) — fix shipped 2026-04-26: `ensureOpportunityForProposal` was hardcoding `stage: "PROPOSAL"` which Twenty's OpportunityStageEnum no longer accepts (rejects with `INVALID_ARGS_DATA`), causing silent failure that swallowed the Note + Activity steps. Changed to `SALES_LEAD_FORMAL_PROPOSAL`. | 🟡 | Code in commit `4761205c`. Verified end-to-end via standalone Python script (Company `0d7b3fd5` + Opp `87045aa3` for MetLife Stadium proposal). Deploy pending — current ancapp container does NOT yet have the fix in its image; this commit triggers a rebuild. |
-| A2-deploy | A2 fix actually deployed to production ancapp | ⬜ | Verify by grep'ing the running container for `SALES_LEAD_FORMAL_PROPOSAL` after EasyPanel finishes the build |
+| A2 | **`universalCrmPush` actually lands Notes** (PDF/Excel/SOW/audit) — fix shipped 2026-04-26: `ensureOpportunityForProposal` was hardcoding `stage: "PROPOSAL"` which Twenty's OpportunityStageEnum no longer accepts; changed to `SALES_LEAD_FORMAL_PROPOSAL`. | ✅ | Commit `4761205c`. E2E verified via Python (Company `0d7b3fd5` + Opp `87045aa3` for MetLife Stadium). **Deployed 2026-04-26 18:17 UTC** to container `p7mo5oj5yps9p05ywtivgbooo` — `SALES_LEAD_FORMAL_PROPOSAL` confirmed in `/app/.next/server/chunks/2521.js`. |
 | A3 | **`postRfpAnalyzedNote`** lands Note + ProposalEngineActivity on Opportunity | 🟡 | 3 Notes landed historically (`a6747424`, `dbdb4fbe`, `84eed684`); no fresh test |
 | A4 | **`/api/twenty-bridge/export-proposal-pdf?estimateId=…`** returns valid ANC-branded PDF | 🟡 | Endpoint exists; not yet hit with a real Twenty Estimate id |
 | A5 | **`/api/twenty-bridge/export-excel?estimateId=…`** returns valid scoping workbook | 🟡 | Same as above |
@@ -42,7 +41,7 @@ Single source of truth for what is wired between **rag2** (proposal engine) and 
 | B3 | **Per-FY revenue split** rows written to `opportunityRevenueSplit` from Excel project schedule | ⬜ | — |
 | B4 | **Currency** + **exchangeRate** fields on Opportunity, pushed on every export | ⬜ | — |
 | B5 | **`Opportunity.accountExecutive` + `accountExecutiveEmail`** auto-set on proposal create from logged-in user | ⬜ | — |
-| B6 | **bidStatus auto-progression**: RFP uploaded → SCOPING; PDF exported → BID_SUBMITTED; SIGNED → WON | ⬜ | — |
+| B6 | **bidStatus auto-progression**: RFP uploaded → SCOPING; PDF exported → BID_SUBMITTED; SIGNED → WON | 🟡 | **Workflow #1 shipped** 2026-04-26 commit pending: `applyOpportunityWorkflowAction()` in `crmAutomation.ts`. Currently handles `pdf_exported` + `sow_generated` → `BID_SUBMITTED`. Tested mutation shape against MetLife Stadium opp `87045aa3` (currently SCOPING — should flip on next PDF export). Awaiting deploy + end-to-end verify. |
 | B7 | **Mirror Mode flag** on Opportunity (boolean: was this proposal Excel-parity?) | ⬜ | — |
 | B8 | **Premium/Installation SOW type** SELECT field | ⬜ | — |
 | B9 | **Rate card version** TEXT field ("NX Yaham 2026-Q2", "LG 2026-Q1") | ⬜ | — |
