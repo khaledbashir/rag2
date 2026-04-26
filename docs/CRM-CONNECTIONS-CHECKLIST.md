@@ -26,7 +26,8 @@ Single source of truth for what is wired between **rag2** (proposal engine) and 
 | # | Connection | Status | Verification |
 |---|---|---|---|
 | A1 | **rag2 product catalog → Twenty.LedProduct** (mirror by modelNumber on every save) | ✅ | Backfill 2026-04-26 17:25 UTC — Summary: total=158 created=31 updated=127 failed=0 (`/tmp/sync-results.log`). Twenty `ledProducts.totalCount`=160 (158 active rag2 + 2 stale). Code: `services/integrations/twenty/productSync.ts`, hooks at `app/api/products/{,[id]/,import/}route.ts` |
-| A2 | **`universalCrmPush` actually lands Notes** (PDF/Excel/SOW/audit) — fix shipped 2026-04-26: `ensureOpportunityForProposal` was hardcoding `stage: "PROPOSAL"` which Twenty's OpportunityStageEnum no longer accepts (rejects with `INVALID_ARGS_DATA`), causing silent failure that swallowed the Note + Activity steps. Changed to `SALES_LEAD_FORMAL_PROPOSAL`. | 🟡 | Diagnosed 2026-04-26 17:35 UTC by reproducing each step against test Company `9bda09fc` — createOpportunity with old "PROPOSAL" returned `Invalid value 'PROPOSAL' for field "stage"`; with `SALES_LEAD_FORMAL_PROPOSAL` succeeded (test Opp `728e369c`, both since deleted). Fix in `services/integrations/twenty/crmAutomation.ts`. Needs production E2E verify after deploy. |
+| A2 | **`universalCrmPush` actually lands Notes** (PDF/Excel/SOW/audit) — fix shipped 2026-04-26: `ensureOpportunityForProposal` was hardcoding `stage: "PROPOSAL"` which Twenty's OpportunityStageEnum no longer accepts (rejects with `INVALID_ARGS_DATA`), causing silent failure that swallowed the Note + Activity steps. Changed to `SALES_LEAD_FORMAL_PROPOSAL`. | 🟡 | Code in commit `4761205c`. Verified end-to-end via standalone Python script (Company `0d7b3fd5` + Opp `87045aa3` for MetLife Stadium proposal). Deploy pending — current ancapp container does NOT yet have the fix in its image; this commit triggers a rebuild. |
+| A2-deploy | A2 fix actually deployed to production ancapp | ⬜ | Verify by grep'ing the running container for `SALES_LEAD_FORMAL_PROPOSAL` after EasyPanel finishes the build |
 | A3 | **`postRfpAnalyzedNote`** lands Note + ProposalEngineActivity on Opportunity | 🟡 | 3 Notes landed historically (`a6747424`, `dbdb4fbe`, `84eed684`); no fresh test |
 | A4 | **`/api/twenty-bridge/export-proposal-pdf?estimateId=…`** returns valid ANC-branded PDF | 🟡 | Endpoint exists; not yet hit with a real Twenty Estimate id |
 | A5 | **`/api/twenty-bridge/export-excel?estimateId=…`** returns valid scoping workbook | 🟡 | Same as above |
@@ -101,6 +102,13 @@ Single source of truth for what is wired between **rag2** (proposal engine) and 
 | G2 | "CRM Sync ✅" badge on rag2 admin products page | ⬜ | — |
 | G3 | Per-row sync log persisted (so we can replay failures, not just grep stdout) | ⬜ | — |
 | G4 | rag2 → CRM push **error surfaces in the API response** (already done for products via `twentySync` field; do same for proposal exports) | 🟡 | products: ✅ via `twentySync` in response; proposals: still fire-and-forget |
+
+## Z. Backfill state (idempotent — re-runnable)
+
+| Thread | State | Notes |
+|---|---|---|
+| **Proposal → Twenty Opportunity backfill** | 🚧 in-flight | `/tmp/backfill-proposals-to-crm.py` running PID-tracked. As of last snapshot: **61 / 855 proposals linked.** ETA ~25 min. Skips 24 junk-named proposals (test/dd/h/etc). On completion, every real proposal page will render the View-in-CRM pill. |
+| **First-export auto-link** | 🟡 awaiting A2-deploy | Once A2 fix is in production, every new PDF / Excel / SOW export auto-creates Company + Opp + saves `twentyOpportunityId` on first push. No manual backfill needed for future proposals. |
 
 ## H. Users + access (separate from connection plumbing)
 
