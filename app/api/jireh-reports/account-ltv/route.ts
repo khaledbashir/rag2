@@ -364,7 +364,8 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: `Company not found for "${company || id}".` }, { status: 404 });
         }
 
-        const opps = await pageWonOpps(matches.map((match) => match.id));
+        const opps = (await pageWonOpps(matches.map((match) => match.id)))
+            .filter((opp) => dealDollars(opp) > 0);
         if (opps.length === 0) {
             return NextResponse.json({ error: `No WON opportunities found for "${company || matches[0].name}".` }, { status: 404 });
         }
