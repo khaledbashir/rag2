@@ -69,6 +69,10 @@ export default auth((req) => {
     // only a Twenty estimate UUID, which we validate against Twenty's REST
     // API before returning anything.
     pathname.startsWith("/api/twenty-bridge") ||
+    // Jireh-style reports — Twenty agents call these to generate Excel
+    // reports server-side. No rag2 user session; the inbound request runs
+    // a read-only Twenty GraphQL aggregation under the workspace API token.
+    pathname.startsWith("/api/jireh-reports") ||
     pathname.startsWith("/share/performance/") ||
     pathname.startsWith("/auth/")
   ) {
