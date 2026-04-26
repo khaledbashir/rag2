@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { requireAuth } from "@/lib/apiAuth";
 import { log } from "@/lib/logger";
+import { syncProductToTwenty } from "@/services/integrations/twenty/productSync";
 
 const prisma = new PrismaClient();
 
@@ -115,6 +116,14 @@ export async function POST(request: NextRequest) {
                 sourceSpreadsheet: body.sourceSpreadsheet || "manual",
             },
         });
+
+        // Mirror to Twenty CRM (fire-and-forget, but log failures so we never go blind).
+        syncProductToTwenty(product.id)
+            .then((r) => {
+                if (r.ok) log.info(`[products] CRM sync OK (${r.action}) — ${product.modelNumber} → ${r.twentyId}`);
+                else log.warn(`[products] CRM sync FAILED — ${product.modelNumber}: ${r.error}`);
+            })
+            .catch((err) => log.warn(`[products] CRM sync threw — ${product.modelNumber}:`, err?.message || err));
 
         return NextResponse.json({ product }, { status: 201 });
     } catch (error: any) {

@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient, Prisma } from "@prisma/client";
 import * as XLSX from "xlsx";
 import { log } from "@/lib/logger";
+import { syncProductToTwenty } from "@/services/integrations/twenty/productSync";
 
 const prisma = new PrismaClient();
 
@@ -90,6 +91,7 @@ export async function POST(request: NextRequest) {
         let updated = 0;
         let skipped = 0;
         const errors: Array<{ row: number; error: string }> = [];
+        const touchedIds: string[] = [];
 
         for (let i = 0; i < rows.length; i++) {
             try {
@@ -105,22 +107,42 @@ export async function POST(request: NextRequest) {
                     where: { modelNumber: product.modelNumber },
                 });
 
+                let row;
                 if (existing) {
-                    await prisma.manufacturerProduct.update({
+                    row = await prisma.manufacturerProduct.update({
                         where: { modelNumber: product.modelNumber },
                         data: product,
                     });
                     updated++;
                 } else {
-                    await prisma.manufacturerProduct.create({ data: product });
+                    row = await prisma.manufacturerProduct.create({ data: product });
                     created++;
                 }
+                touchedIds.push(row.id);
             } catch (err) {
                 errors.push({
                     row: i + 2, // +2 for 1-indexed + header row
                     error: err instanceof Error ? err.message : String(err),
                 });
             }
+        }
+
+        // Mirror to Twenty CRM (background, paced under 100/min rate limit).
+        if (touchedIds.length > 0) {
+            (async () => {
+                let okCount = 0;
+                let failCount = 0;
+                for (const id of touchedIds) {
+                    const r = await syncProductToTwenty(id);
+                    if (r.ok) okCount++;
+                    else {
+                        failCount++;
+                        log.warn(`[products/import] CRM sync FAILED for ${id}: ${r.error}`);
+                    }
+                    await new Promise((res) => setTimeout(res, 700));
+                }
+                log.info(`[products/import] CRM sync done — ${okCount} ok, ${failCount} failed of ${touchedIds.length}`);
+            })().catch((err) => log.error("[products/import] CRM sync loop crashed:", err));
         }
 
         const total = await prisma.manufacturerProduct.count({ where: { isActive: true } });

@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { requireAuth } from "@/lib/apiAuth";
 import { log } from "@/lib/logger";
+import { syncProductToTwenty, softDeleteProductInTwenty } from "@/services/integrations/twenty/productSync";
 
 const prisma = new PrismaClient();
 
@@ -88,6 +89,13 @@ export async function PUT(
             data,
         });
 
+        syncProductToTwenty(product.id)
+            .then((r) => {
+                if (r.ok) log.info(`[products/[id]] CRM sync OK (${r.action}) — ${product.modelNumber} → ${r.twentyId}`);
+                else log.warn(`[products/[id]] CRM sync FAILED — ${product.modelNumber}: ${r.error}`);
+            })
+            .catch((err) => log.warn(`[products/[id]] CRM sync threw — ${product.modelNumber}:`, err?.message || err));
+
         return NextResponse.json({ product });
     } catch (error: any) {
         if (error?.code === "P2002") {
@@ -119,6 +127,13 @@ export async function DELETE(
             where: { id },
             data: { isActive: false },
         });
+
+        softDeleteProductInTwenty(existing.modelNumber)
+            .then((r) => {
+                if (r.ok) log.info(`[products/[id]] CRM soft-delete OK — ${existing.modelNumber} → ${r.twentyId}`);
+                else log.warn(`[products/[id]] CRM soft-delete FAILED — ${existing.modelNumber}: ${r.error}`);
+            })
+            .catch((err) => log.warn(`[products/[id]] CRM soft-delete threw — ${existing.modelNumber}:`, err?.message || err));
 
         return NextResponse.json({ success: true, message: "Product deactivated" });
     } catch (error) {
