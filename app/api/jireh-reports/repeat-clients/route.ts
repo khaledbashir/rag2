@@ -45,65 +45,49 @@ async function gql<T = any>(query: string, variables?: Record<string, unknown>):
     return body.data;
 }
 
-async function pageCompanies(vertical: Vertical): Promise<Array<{ id: string; name: string }>> {
-    const out: Array<{ id: string; name: string }> = [];
+async function pageWonOppsByVertical(vertical: Vertical): Promise<any[]> {
+    const out: any[] = [];
     let cursor: string | null = null;
     while (true) {
         const data: any = await gql(
-            `query Q($filter: CompanyFilterInput, $after: String) {
-                companies(filter: $filter, first: 60, after: $after, orderBy: {createdAt: AscNullsLast}) {
-                    edges { cursor node { id name } }
+            `query Q($filter: OpportunityFilterInput, $after: String) {
+                opportunities(filter: $filter, first: 60, after: $after) {
+                    edges { node {
+                        id companyId closeDate
+                        businessUnit bidStatus
+                        dealValue { amountMicros }
+                        amount    { amountMicros }
+                        margin    { amountMicros }
+                        company { id name }
+                    } }
                     pageInfo { hasNextPage endCursor }
                 }
             }`,
-            { filter: { revenueType: { eq: vertical } }, after: cursor },
+            { filter: { bidStatus: { eq: "WON" }, businessUnit: { eq: vertical } }, after: cursor },
         );
-        for (const e of data.companies.edges) out.push(e.node);
-        if (!data.companies.pageInfo.hasNextPage) break;
-        cursor = data.companies.pageInfo.endCursor;
-        if (out.length > 5000) break; // safety
+        for (const e of data.opportunities.edges) out.push(e.node);
+        if (!data.opportunities.pageInfo.hasNextPage) break;
+        cursor = data.opportunities.pageInfo.endCursor;
+        if (out.length > 10000) break; // safety
     }
     return out;
 }
 
-async function pageOpps(companyIds: string[]): Promise<any[]> {
-    const out: any[] = [];
-    // Twenty filter `companyId IN [...]` — chunk to avoid query size limits
-    const chunkSize = 50;
-    for (let i = 0; i < companyIds.length; i += chunkSize) {
-        const chunk = companyIds.slice(i, i + chunkSize);
-        let cursor: string | null = null;
-        while (true) {
-            const data: any = await gql(
-                `query Q($filter: OpportunityFilterInput, $after: String) {
-                    opportunities(filter: $filter, first: 60, after: $after) {
-                        edges { node {
-                            id companyId closeDate
-                            dealValue { amountMicros }
-                            amount    { amountMicros }
-                            margin    { amountMicros }
-                        } }
-                        pageInfo { hasNextPage endCursor }
-                    }
-                }`,
-                {
-                    filter: { companyId: { in: chunk }, bidStatus: { eq: "WON" } },
-                    after: cursor,
-                },
-            );
-            for (const e of data.opportunities.edges) out.push(e.node);
-            if (!data.opportunities.pageInfo.hasNextPage) break;
-            cursor = data.opportunities.pageInfo.endCursor;
-        }
-    }
-    return out;
-}
-
-function aggregate(companies: Array<{ id: string; name: string }>, opps: any[]): CompanyAgg[] {
+function aggregate(opps: any[]): CompanyAgg[] {
     const byCompany = new Map<string, CompanyAgg>();
-    for (const c of companies) byCompany.set(c.id, { id: c.id, name: c.name, dealCount: 0, lifetimeRevenue: 0, lifetimeMargin: 0, firstYear: null });
 
     for (const o of opps) {
+        if (!o.companyId || !o.company?.name) continue;
+        if (!byCompany.has(o.companyId)) {
+            byCompany.set(o.companyId, {
+                id: o.companyId,
+                name: o.company.name,
+                dealCount: 0,
+                lifetimeRevenue: 0,
+                lifetimeMargin: 0,
+                firstYear: null,
+            });
+        }
         const agg = byCompany.get(o.companyId);
         if (!agg) continue;
         const dealMicros = o.dealValue?.amountMicros ?? o.amount?.amountMicros ?? 0;
@@ -181,9 +165,8 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: "Invalid vertical (use TECHNOLOGY | VENUE_SERVICES | MEDIA_SPONSORSHIP)" }, { status: 400 });
         }
 
-        const companies = await pageCompanies(vertical);
-        const opps = await pageOpps(companies.map((c) => c.id));
-        const aggs = aggregate(companies, opps).filter((a) => a.dealCount >= 2);
+        const opps = await pageWonOppsByVertical(vertical);
+        const aggs = aggregate(opps).filter((a) => a.dealCount >= 2);
         aggs.sort((a, b) => b.lifetimeRevenue - a.lifetimeRevenue);
         const top10 = aggs.slice(0, top);
 
@@ -201,7 +184,7 @@ export async function GET(request: NextRequest) {
                 "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 "Content-Disposition": `attachment; filename="${filename}"`,
                 "Cache-Control": "no-cache",
-                "X-Total-Companies": String(companies.length),
+                "X-Total-Companies": String(new Set(opps.map((o) => o.companyId).filter(Boolean)).size),
                 "X-Total-Opps-Won": String(opps.length),
                 "X-Repeat-Clients": String(aggs.length),
             },
