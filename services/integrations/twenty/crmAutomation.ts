@@ -663,6 +663,67 @@ export async function postArtifactNote(input: {
   });
 }
 /**
+ * markPricingCompleteOnMirrorFinalize — flips pricingComplete=YES and stamps
+ * pricingCompleteDate on the matching Twenty opportunity when a proposal is
+ * finalized in Mirror Mode. Fire-and-forget; failures are logged but never
+ * surface to the caller (the proposal export must always succeed even if
+ * Twenty is briefly unreachable).
+ *
+ * Caller passes the proposalId. We resolve the linked twentyOpportunityId
+ * directly off the Proposal row (no RFP-analysis indirection needed for the
+ * Mirror Mode flow). If the proposal has no linked opportunity, the call is a
+ * no-op — Mirror Mode without a linked CRM record just exports as before.
+ */
+export async function markPricingCompleteOnMirrorFinalize(
+  proposalId: string,
+): Promise<{ ok: boolean; opportunityId?: string; reason?: string }> {
+  try {
+    const proposal = await prisma.proposal.findUnique({
+      where: { id: proposalId },
+      select: { twentyOpportunityId: true },
+    });
+    let opportunityId = proposal?.twentyOpportunityId || null;
+    if (!opportunityId) {
+      opportunityId = await resolveOpportunityIdForProposal(proposalId);
+    }
+    if (!opportunityId) {
+      return { ok: true, reason: "no linked Twenty opportunity for this proposal" };
+    }
+
+    const nowIso = new Date().toISOString();
+    const res = await fetch(
+      `${TWENTY_BASE}/rest/opportunities/${opportunityId}`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${TWENTY_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          pricingComplete: "YES",
+          pricingCompleteDate: nowIso,
+        }),
+      },
+    );
+    if (!res.ok) {
+      const errText = await res.text();
+      console.warn(
+        `[markPricingCompleteOnMirrorFinalize] PATCH failed ${res.status} on opp ${opportunityId}:`,
+        errText.slice(0, 300),
+      );
+      return { ok: false, opportunityId, reason: `PATCH ${res.status}` };
+    }
+    return { ok: true, opportunityId };
+  } catch (err) {
+    console.warn(
+      "[markPricingCompleteOnMirrorFinalize] error:",
+      err instanceof Error ? err.message : err,
+    );
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
  * Universal CRM Push — the one function every rag2 action calls.
  *
  * 1. Resolves the Twenty opportunity for a proposal (looks at proposal.twentyOpportunityId,

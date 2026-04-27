@@ -3,7 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { generateScopingWorkbook } from "@/services/rfp/pipeline/generateScopingWorkbook";
 import { mapMirrorToScoping } from "@/services/rfp/pipeline/pricingDocumentToScopingMapper";
 import { mapIntelligenceToScoping } from "@/services/rfp/pipeline/screenAuditToScopingMapper";
-import { universalCrmPush, saveCrmArtifact } from "@/services/integrations/twenty/crmAutomation";
+import {
+  universalCrmPush,
+  saveCrmArtifact,
+  markPricingCompleteOnMirrorFinalize,
+} from "@/services/integrations/twenty/crmAutomation";
 import { log } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
@@ -178,6 +182,19 @@ export async function POST(req: NextRequest) {
           }),
         )
         .catch((error) => log.warn("[Audit Export] CRM artifact sync failed:", error?.message || error));
+
+      // Mirror Mode finalize → flip pricingComplete=YES on linked Twenty opportunity.
+      // Fire-and-forget; never affects export response.
+      const isMirrorFinalize =
+        bodyMirrorMode === true || (proposal?.calculationMode as any) === "MIRROR";
+      if (isMirrorFinalize) {
+        markPricingCompleteOnMirrorFinalize(proposalId).catch((error) =>
+          log.warn(
+            "[Audit Export] markPricingCompleteOnMirrorFinalize failed:",
+            error?.message || error,
+          ),
+        );
+      }
     }
 
     return new Response(buffer as any, {
