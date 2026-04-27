@@ -91,17 +91,11 @@ function aggregate(opps: any[]): CompanyAgg[] {
         }
         const agg = byCompany.get(o.companyId);
         if (!agg) continue;
-        const dealMicros = Number(o.dealValue?.amountMicros ?? o.amount?.amountMicros ?? 0);
-        const marginMicros = Number(o.margin?.amountMicros ?? 0);
+        const dealMicros = o.dealValue?.amountMicros ?? o.amount?.amountMicros ?? 0;
+        const marginMicros = o.margin?.amountMicros ?? 0;
         agg.dealCount++;
-        // Skip rev=$0 records from BOTH revenue and margin sums.
-        // SF migration left ~270 historical opps with rev=$0 but large negative margin
-        // (stranded cost lines from 2010-2014). Including them in margin would produce
-        // false negatives on accounts like Indiana Pacers (-135%) and LA Dodgers (-42%).
-        if (dealMicros > 0) {
-            agg.lifetimeRevenue += dealMicros / 1_000_000;
-            agg.lifetimeMargin += marginMicros / 1_000_000;
-        }
+        agg.lifetimeRevenue += Number(dealMicros) / 1_000_000;
+        agg.lifetimeMargin += Number(marginMicros) / 1_000_000;
         if (o.closeDate) {
             const y = parseInt(String(o.closeDate).slice(0, 4), 10);
             if (Number.isFinite(y) && (agg.firstYear === null || y < agg.firstYear)) agg.firstYear = y;
