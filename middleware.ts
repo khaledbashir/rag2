@@ -73,6 +73,10 @@ export default auth((req) => {
     // reports server-side. No rag2 user session; the inbound request runs
     // a read-only Twenty GraphQL aggregation under the workspace API token.
     pathname.startsWith("/api/jireh-reports") ||
+    // CRM-side renderers — Twenty logic functions POST pre-aggregated rows
+    // here and the endpoint returns a saved xlsx. No rag2 session, no
+    // business logic, no Twenty queries; just file rendering.
+    pathname.startsWith("/api/render/") ||
     pathname.startsWith("/share/performance/") ||
     pathname.startsWith("/auth/")
   ) {
