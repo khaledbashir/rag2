@@ -933,9 +933,12 @@ function buildProjectOverview(wb: ExcelJS.Workbook, data: ProjectOverviewData): 
   hdr(fpR.getCell(3), C.ANC_BLUE);
   row++;
 
+  // Master margin cells (C16-C20). LED Cost Sheet, Install sheets, Margin Analysis, and
+  // Budget Summary all formula-link to these. Override on one screen by typing a number
+  // directly into that screen's margin cell (replaces the link).
   const finRows: [string, number | string][] = [
-    ["LED Hardware Margin", DEFAULT_MARGINS.ledHardware],
-    ["Install / Services Margin", DEFAULT_MARGINS.install],
+    ["LED Hardware Margin", data.ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware],
+    ["Install / Services Margin", data.ov?.servicesMarginPct ?? DEFAULT_MARGINS.install],
     ["Engineering Margin", DEFAULT_MARGINS.engineering],
     ["Equipment Margin", DEFAULT_MARGINS.equipment],
     ["CMS Margin", DEFAULT_MARGINS.cms],
@@ -950,10 +953,15 @@ function buildProjectOverview(wb: ExcelJS.Workbook, data: ProjectOverviewData): 
     r.getCell(2).font = { bold: true, name: "Calibri", size: 10 };
     r.getCell(3).value = value;
     r.getCell(3).font = { name: "Calibri", size: 10 };
-    if (typeof value === "number") r.getCell(3).numFmt = FMT_PCT;
+    if (typeof value === "number") {
+      r.getCell(3).numFmt = FMT_PCT;
+      inputCell(r.getCell(3)); // Master input — yellow editable cell
+    }
     if (row % 2 === 0) {
       r.getCell(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.LIGHT_GRAY } };
-      r.getCell(3).fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.LIGHT_GRAY } };
+      if (typeof value !== "number") {
+        r.getCell(3).fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.LIGHT_GRAY } };
+      }
     }
     row++;
   }
@@ -1062,25 +1070,34 @@ function buildBudgetSummary(
     : "0";
 
   const totalDisplaySqFt = displays.reduce((sum, d) => sum + d.areaSqFt, 0);
-  const categories: Array<{ label: string; marginPct: number; costFormula?: string; sellFormulaRef?: string; result: number; showPricePerSqFt?: boolean }> = [
+  // marginFormulaRef pulls the margin from the Project Overview master cells (C16-C20).
+  // Map: LED Hardware→C16, Install/Services categories→C17, Engineering→C18, Equipment→C19, CMS→C20.
+  const PO_LED = `'Project Overview'!$C$16`;
+  const PO_INSTALL = `'Project Overview'!$C$17`;
+  const PO_ENG = `'Project Overview'!$C$18`;
+  const PO_EQUIP = `'Project Overview'!$C$19`;
+  const PO_CMS = `'Project Overview'!$C$20`;
+  const categories: Array<{ label: string; marginPct: number; marginFormulaRef?: string; costFormula?: string; sellFormulaRef?: string; result: number; showPricePerSqFt?: boolean }> = [
     {
       label: "LED Hardware (all displays)",
       marginPct: hwMargin,
+      marginFormulaRef: PO_LED,
       costFormula: `SUM('LED Cost Sheet'!T4:T${ledDataEnd})`,
       sellFormulaRef: `SUM('LED Cost Sheet'!V4:V${ledDataEnd})`,
       result: displays.reduce((s, d) => s + d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost, 0),
       showPricePerSqFt: true,
     },
-    { label: "Structural Materials", marginPct: svcMargin, costFormula: installCostSum((tab) => `SUM('${tab}'!I26:I26)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K26:K26)`), result: displays.reduce((s, d) => s + d.structuralMaterialsCost, 0), showPricePerSqFt: true },
-    { label: "Structural Labor & LED Installation", marginPct: svcMargin, costFormula: installCostSum((tab) => `(SUM('${tab}'!I35:I35)-SUM('${tab}'!I34:I34))`), sellFormulaRef: installCostSum((tab) => `(SUM('${tab}'!K35:K35)-SUM('${tab}'!K34:K34))`), result: displays.reduce((s, d) => s + d.structuralLaborCost, 0), showPricePerSqFt: true },
-    { label: "Electrical & Data", marginPct: svcMargin, costFormula: installCostSum((tab) => `SUM('${tab}'!I44:I44)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K44:K44)`), result: displays.reduce((s, d) => s + d.electricalCost, 0), showPricePerSqFt: true },
-    { label: "PM / General Conditions / Travel", marginPct: svcMargin, costFormula: installCostSum((tab) => `SUM('${tab}'!I34:I34)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K34:K34)`), result: displays.reduce((s, d) => s + d.pmCost + d.travelCost, 0) },
-    { label: "Engineering & Permits", marginPct: svcMargin, costFormula: installCostSum((tab) => `SUM('${tab}'!I52:I52)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K52:K52)`), result: displays.reduce((s, d) => s + d.engCost, 0) },
+    { label: "Structural Materials", marginPct: svcMargin, marginFormulaRef: PO_INSTALL, costFormula: installCostSum((tab) => `SUM('${tab}'!I26:I26)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K26:K26)`), result: displays.reduce((s, d) => s + d.structuralMaterialsCost, 0), showPricePerSqFt: true },
+    { label: "Structural Labor & LED Installation", marginPct: svcMargin, marginFormulaRef: PO_INSTALL, costFormula: installCostSum((tab) => `(SUM('${tab}'!I35:I35)-SUM('${tab}'!I34:I34))`), sellFormulaRef: installCostSum((tab) => `(SUM('${tab}'!K35:K35)-SUM('${tab}'!K34:K34))`), result: displays.reduce((s, d) => s + d.structuralLaborCost, 0), showPricePerSqFt: true },
+    { label: "Electrical & Data", marginPct: svcMargin, marginFormulaRef: PO_INSTALL, costFormula: installCostSum((tab) => `SUM('${tab}'!I44:I44)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K44:K44)`), result: displays.reduce((s, d) => s + d.electricalCost, 0), showPricePerSqFt: true },
+    { label: "PM / General Conditions / Travel", marginPct: svcMargin, marginFormulaRef: PO_INSTALL, costFormula: installCostSum((tab) => `SUM('${tab}'!I34:I34)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K34:K34)`), result: displays.reduce((s, d) => s + d.pmCost + d.travelCost, 0) },
+    { label: "Engineering & Permits", marginPct: svcMargin, marginFormulaRef: PO_ENG, costFormula: installCostSum((tab) => `SUM('${tab}'!I52:I52)`), sellFormulaRef: installCostSum((tab) => `SUM('${tab}'!K52:K52)`), result: displays.reduce((s, d) => s + d.engCost, 0) },
   ];
   if (costCenterRefs?.cms) {
     categories.push({
       label: "CMS (Content Management System)",
       marginPct: DEFAULT_MARGINS.cms,
+      marginFormulaRef: PO_CMS,
       costFormula: `SUM(CMS!${costCenterRefs.cms.subtotalCell}:${costCenterRefs.cms.subtotalCell})`,
       sellFormulaRef: costCenterRefs.cms.sellCell ? `SUM(CMS!${costCenterRefs.cms.sellCell}:${costCenterRefs.cms.sellCell})` : undefined,
       result: ov?.cmsAllocation ?? 0,
@@ -1090,6 +1107,7 @@ function buildBudgetSummary(
     categories.push({
       label: "Scoring System",
       marginPct: DEFAULT_MARGINS.scoring,
+      marginFormulaRef: PO_EQUIP,
       costFormula: `SUM(Scoring!${costCenterRefs.scoring.subtotalCell}:${costCenterRefs.scoring.subtotalCell})`,
       sellFormulaRef: costCenterRefs.scoring.sellCell ? `SUM(Scoring!${costCenterRefs.scoring.sellCell}:${costCenterRefs.scoring.sellCell})` : undefined,
       result: ov?.scoringAllocation ?? 0,
@@ -1099,6 +1117,7 @@ function buildBudgetSummary(
     categories.push({
       label: "Venue Services",
       marginPct: ov?.venueServiceMarginPct ?? DEFAULT_MARGINS.install,
+      marginFormulaRef: PO_INSTALL,
       costFormula: `SUM('Venue Services'!${costCenterRefs.venueServices.subtotalCell}:${costCenterRefs.venueServices.subtotalCell})`,
       sellFormulaRef: costCenterRefs.venueServices.sellCell ? `SUM('Venue Services'!${costCenterRefs.venueServices.sellCell}:${costCenterRefs.venueServices.sellCell})` : undefined,
       result: 0,
@@ -1115,6 +1134,7 @@ function buildBudgetSummary(
       categories.push({
         label: label as string,
         marginPct: marginPct as number,
+        marginFormulaRef: PO_EQUIP,
         costFormula: `SUM('Additional Items'!F${sheetRow}:F${sheetRow})`,
         sellFormulaRef: `SUM('Additional Items'!H${sheetRow}:H${sheetRow})`,
         result: 0,
@@ -1123,7 +1143,7 @@ function buildBudgetSummary(
   }
 
   const catStartRow = row;
-  for (const { label, result, marginPct, costFormula, sellFormulaRef, showPricePerSqFt } of categories) {
+  for (const { label, result, marginPct, marginFormulaRef, costFormula, sellFormulaRef, showPricePerSqFt } of categories) {
     const r = ws.getRow(row);
     r.getCell(2).value = label;
     r.getCell(2).font = { name: "Calibri", size: 10 };
@@ -1139,7 +1159,10 @@ function buildBudgetSummary(
     r.getCell(4).numFmt = FMT_USD;
     r.getCell(5).value = { formula: marginFormula(row), result: result > 0 ? round2(result / (1 - marginPct) - result) : 0 };
     r.getCell(5).numFmt = FMT_USD;
-    r.getCell(6).value = marginPct; r.getCell(6).numFmt = FMT_PCT;
+    r.getCell(6).value = marginFormulaRef
+      ? { formula: marginFormulaRef, result: marginPct }
+      : marginPct;
+    r.getCell(6).numFmt = FMT_PCT;
     r.getCell(7).value = showPricePerSqFt && totalDisplaySqFt > 0 ? { formula: `IFERROR(C${row}/${totalDisplaySqFt},0)`, result: round2(result / totalDisplaySqFt) } : "";
     r.getCell(7).numFmt = FMT_USD;
     stripe(r, 7, row % 2 === 0);
@@ -1292,7 +1315,7 @@ function buildMarginAnalysis(
   const marginDollarFormula = (r: number) => `IFERROR(D${r}-C${r},0)`;
   const blendedMarginFormula = (r: number) => `IFERROR(1-C${r}/D${r},0)`;
 
-  function writeCategory(label: string, cost: number, marginPct: number, costFormula?: string): void {
+  function writeCategory(label: string, cost: number, marginPct: number, costFormula?: string, marginFormula?: string): void {
     const r = ws.getRow(row);
     r.getCell(2).value = `    ${label}`; r.getCell(2).font = subFont;
     if (cost === 0) {
@@ -1311,7 +1334,10 @@ function buildMarginAnalysis(
       ? { formula: marginDollarFormula(row), result: round2(cost / (1 - marginPct) - cost) }
       : 0;
     r.getCell(5).numFmt = FMT_USD; r.getCell(5).font = subFont;
-    r.getCell(6).value = marginPct; r.getCell(6).numFmt = FMT_PCT; r.getCell(6).font = subFont;
+    r.getCell(6).value = marginFormula
+      ? { formula: marginFormula, result: marginPct }
+      : marginPct;
+    r.getCell(6).numFmt = FMT_PCT; r.getCell(6).font = subFont;
     row++;
   }
 
@@ -1358,13 +1384,13 @@ function buildMarginAnalysis(
     ws.getCell(ledRow, 4).numFmt = FMT_USD; ws.getCell(ledRow, 4).font = subFont;
     ws.getCell(ledRow, 5).value = { formula: marginDollarFormula(ledRow), result: round2(ledSellResult - ledCostResult) };
     ws.getCell(ledRow, 5).numFmt = FMT_USD; ws.getCell(ledRow, 5).font = subFont;
-    ws.getCell(ledRow, 6).value = hwMargin;
+    ws.getCell(ledRow, 6).value = { formula: `'Project Overview'!$C$16`, result: hwMargin };
     ws.getCell(ledRow, 6).numFmt = FMT_PCT; ws.getCell(ledRow, 6).font = subFont;
-    writeCategory("Structural Materials", d.structuralMaterialsCost, svcMargin, instRef ? `${instRef}!I26` : undefined);
-    writeCategory("Structural Labor & LED Installation", d.structuralLaborCost, svcMargin, instRef ? `${instRef}!I35-${instRef}!I34` : undefined);
-    writeCategory("Electrical & Data", d.electricalCost, svcMargin, instRef ? `${instRef}!I44` : undefined);
-    writeCategory("PM / General Conditions / Travel", d.pmCost + d.travelCost, svcMargin, instRef ? `${instRef}!I34` : undefined);
-    writeCategory("Engineering & Permits", d.engCost, svcMargin, instRef ? `${instRef}!I52` : undefined);
+    writeCategory("Structural Materials", d.structuralMaterialsCost, svcMargin, instRef ? `${instRef}!I26` : undefined, `'Project Overview'!$C$17`);
+    writeCategory("Structural Labor & LED Installation", d.structuralLaborCost, svcMargin, instRef ? `${instRef}!I35-${instRef}!I34` : undefined, `'Project Overview'!$C$17`);
+    writeCategory("Electrical & Data", d.electricalCost, svcMargin, instRef ? `${instRef}!I44` : undefined, `'Project Overview'!$C$17`);
+    writeCategory("PM / General Conditions / Travel", d.pmCost + d.travelCost, svcMargin, instRef ? `${instRef}!I34` : undefined, `'Project Overview'!$C$17`);
+    writeCategory("Engineering & Permits", d.engCost, svcMargin, instRef ? `${instRef}!I52` : undefined, `'Project Overview'!$C$18`);
     const catEndRow = row - 1;
 
     // ─── SUBTOTAL — SUM of category rows ───
@@ -1514,7 +1540,7 @@ function buildMarginAnalysis(
     ? { formula: `SUM(CMS!${costCenterRefs.cms.subtotalCell}:${costCenterRefs.cms.subtotalCell})`, result: cmsCost }
     : cmsCost;
   cmsR.getCell(3).numFmt = FMT_USD;
-  cmsR.getCell(6).value = DEFAULT_MARGINS.cms; cmsR.getCell(6).numFmt = FMT_PCT; inputCell(cmsR.getCell(6));
+  cmsR.getCell(6).value = { formula: `'Project Overview'!$C$20`, result: DEFAULT_MARGINS.cms }; cmsR.getCell(6).numFmt = FMT_PCT; inputCell(cmsR.getCell(6));
   cmsR.getCell(4).value = costCenterRefs?.cms?.sellCell
     ? { formula: `SUM(CMS!${costCenterRefs.cms.sellCell}:${costCenterRefs.cms.sellCell})`, result: round2(cmsCost / (1 - DEFAULT_MARGINS.cms)) }
     : cmsCost > 0
@@ -1540,7 +1566,7 @@ function buildMarginAnalysis(
     ? { formula: `SUM(Scoring!${costCenterRefs.scoring.subtotalCell}:${costCenterRefs.scoring.subtotalCell})`, result: scoringCost }
     : scoringCost;
   scR.getCell(3).numFmt = FMT_USD;
-  scR.getCell(6).value = DEFAULT_MARGINS.scoring; scR.getCell(6).numFmt = FMT_PCT; inputCell(scR.getCell(6));
+  scR.getCell(6).value = { formula: `'Project Overview'!$C$19`, result: DEFAULT_MARGINS.scoring }; scR.getCell(6).numFmt = FMT_PCT; inputCell(scR.getCell(6));
   scR.getCell(4).value = costCenterRefs?.scoring?.sellCell
     ? { formula: `SUM(Scoring!${costCenterRefs.scoring.sellCell}:${costCenterRefs.scoring.sellCell})`, result: round2(scoringCost / (1 - DEFAULT_MARGINS.scoring)) }
     : scoringCost > 0
@@ -1561,7 +1587,7 @@ function buildMarginAnalysis(
     venueR.getCell(2).font = { bold: true, name: "Calibri" };
     venueR.getCell(3).value = { formula: `SUM('Venue Services'!${costCenterRefs.venueServices.subtotalCell}:${costCenterRefs.venueServices.subtotalCell})`, result: 0 };
     venueR.getCell(3).numFmt = FMT_USD;
-    venueR.getCell(6).value = ov?.venueServiceMarginPct ?? DEFAULT_MARGINS.install;
+    venueR.getCell(6).value = { formula: `'Project Overview'!$C$17`, result: ov?.venueServiceMarginPct ?? DEFAULT_MARGINS.install };
     venueR.getCell(6).numFmt = FMT_PCT;
     venueR.getCell(4).value = costCenterRefs.venueServices.sellCell
       ? { formula: `SUM('Venue Services'!${costCenterRefs.venueServices.sellCell}:${costCenterRefs.venueServices.sellCell})`, result: 0 }
@@ -1804,7 +1830,11 @@ function buildLedCostSheet(
   masterMarginLabel.font = { bold: true, name: "Calibri", size: 11 };
   masterMarginLabel.alignment = { horizontal: "right", vertical: "middle" };
   const masterMarginCell = ws.getCell(masterMarginRow, 22); // column V
-  masterMarginCell.value = Number(ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware);
+  // Linked to Project Overview master (C16). Type a number here to override for this sheet only.
+  masterMarginCell.value = {
+    formula: `'Project Overview'!$C$16`,
+    result: Number(ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware),
+  };
   masterMarginCell.numFmt = FMT_PCT;
   masterMarginCell.font = { bold: true, name: "Calibri", size: 12 };
   masterMarginCell.alignment = { horizontal: "center", vertical: "middle" };
@@ -2331,21 +2361,25 @@ function buildInstallSheet(
   const hwMarginForInstall = ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware;
   const svcMargin = ov?.servicesMarginPct ?? hwMarginForInstall;
 
-  // Margin assignment — track row numbers so data rows can reference them
+  // Margin assignment — track row numbers so data rows can reference them.
+  // Each cell formula-links to Project Overview master so you set margins once and they
+  // cascade to every screen. Type a number directly to override this screen only.
   row += 2;
   ws.getCell(row, 3).value = "Linked Margin Assignment";
   ws.getCell(row, 3).font = { bold: true, name: "Calibri" };
   row++;
   const marginRows = { install: row, electrical: row + 1, anc: row + 2, engineering: row + 3 };
-  const margins = [
-    ["Install Margin", svcMargin],
-    ["Electrical Margin", svcMargin],
-    ["ANC Margin", svcMargin],
-    ["Engineering and Permits", svcMargin],
+  // Per Natalia (Apr 2026): Install/Electrical/ANC all link to "Install / Services Margin" (PO C17).
+  // Engineering links to "Engineering Margin" (PO C18).
+  const margins: Array<[string, string, number]> = [
+    ["Install Margin", `'Project Overview'!$C$17`, svcMargin],
+    ["Electrical Margin", `'Project Overview'!$C$17`, svcMargin],
+    ["ANC Margin", `'Project Overview'!$C$17`, svcMargin],
+    ["Engineering and Permits", `'Project Overview'!$C$18`, DEFAULT_MARGINS.engineering],
   ];
-  margins.forEach(([label, val]) => {
-    ws.getCell(row, 3).value = label as string;
-    ws.getCell(row, 4).value = val as number;
+  margins.forEach(([label, formula, fallback]) => {
+    ws.getCell(row, 3).value = label;
+    ws.getCell(row, 4).value = { formula, result: fallback };
     ws.getCell(row, 4).numFmt = FMT_PCT;
     inputCell(ws.getCell(row, 4));
     row++;
@@ -3427,7 +3461,12 @@ function buildVenueServices(
   settings.forEach(([label, value, note], idx) => {
     const r = ws.getRow(row + idx);
     r.getCell(1).value = label;
-    r.getCell(2).value = value;
+    // Margin % links to Project Overview master (Install / Services). Type a number to override.
+    if (label === "Margin %") {
+      r.getCell(2).value = { formula: `'Project Overview'!$C$17`, result: value as number };
+    } else {
+      r.getCell(2).value = value;
+    }
     if (label.includes("%")) {
       r.getCell(2).numFmt = FMT_PCT;
     } else if (label.includes("Cost")) {
@@ -3521,7 +3560,7 @@ function buildAdditionalItems(
     r.getCell(4).value = defaultCost; r.getCell(4).numFmt = FMT_USD; inputCell(r.getCell(4));
     r.getCell(5).value = 1; inputCell(r.getCell(5));
     r.getCell(6).value = { formula: `D${currentRow}*E${currentRow}`, result: defaultCost }; r.getCell(6).numFmt = FMT_USD;
-    r.getCell(7).value = DEFAULT_MARGINS.equipment; r.getCell(7).numFmt = FMT_PCT; inputCell(r.getCell(7));
+    r.getCell(7).value = { formula: `'Project Overview'!$C$19`, result: DEFAULT_MARGINS.equipment }; r.getCell(7).numFmt = FMT_PCT; inputCell(r.getCell(7));
     r.getCell(8).value = { formula: `IFERROR(F${currentRow}/(1-G${currentRow}),0)`, result: defaultCost > 0 ? round2(defaultCost / (1 - DEFAULT_MARGINS.equipment)) : 0 }; r.getCell(8).numFmt = FMT_USD;
     r.getCell(9).value = { formula: `IFERROR(H${currentRow}-F${currentRow},0)`, result: defaultCost > 0 ? round2((defaultCost / (1 - DEFAULT_MARGINS.equipment)) - defaultCost) : 0 }; r.getCell(9).numFmt = FMT_USD;
     stripe(r, 9, idx % 2 === 0);
