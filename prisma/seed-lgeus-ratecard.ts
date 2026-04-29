@@ -63,7 +63,7 @@ const products: LGEUSProduct[] = [
   // R4 — both variants are 7000 nits; differ by service type + power, not brightness
   {
     modelNumber: "LGEUS-R4-FS",
-    displayName: "R4 Radiance (Front Service)",
+    displayName: "R4 Radiance FM",
     productFamily: "Radiance",
     productLine: "Radiance FM",
     application: "Fixed Installation",
@@ -77,7 +77,7 @@ const products: LGEUSProduct[] = [
   },
   {
     modelNumber: "LGEUS-R4-RS",
-    displayName: "R4 Radiance (Rear Service)",
+    displayName: "R4 Radiance RS",
     productFamily: "Radiance",
     productLine: "Radiance RS",
     application: "Fixed Installation",
@@ -92,7 +92,7 @@ const products: LGEUSProduct[] = [
   // R6 — HB (RS, 10000 nits) + regular (FM, 7500 nits)
   {
     modelNumber: "LGEUS-R6-HB",
-    displayName: "R6 Radiance High Brightness",
+    displayName: "R6 Radiance RS",
     productFamily: "Radiance", productLine: "Radiance RS",
     application: "Fixed Installation",
     pixelPitch: 5.95,
@@ -105,7 +105,7 @@ const products: LGEUSProduct[] = [
   },
   {
     modelNumber: "LGEUS-R6",
-    displayName: "R6 Radiance",
+    displayName: "R6 Radiance FM",
     productFamily: "Radiance", productLine: "Radiance FM",
     application: "Fixed Installation",
     pixelPitch: 5.95,
@@ -119,7 +119,7 @@ const products: LGEUSProduct[] = [
   // R8
   {
     modelNumber: "LGEUS-R8-HB",
-    displayName: "R8 Radiance High Brightness",
+    displayName: "R8 Radiance RS",
     productFamily: "Radiance", productLine: "Radiance RS",
     application: "Fixed Installation",
     pixelPitch: 8.33,
@@ -132,7 +132,7 @@ const products: LGEUSProduct[] = [
   },
   {
     modelNumber: "LGEUS-R8",
-    displayName: "R8 Radiance",
+    displayName: "R8 Radiance FM",
     productFamily: "Radiance", productLine: "Radiance FM",
     application: "Fixed Installation",
     pixelPitch: 8.33,
@@ -146,7 +146,7 @@ const products: LGEUSProduct[] = [
   // R10
   {
     modelNumber: "LGEUS-R10-HB",
-    displayName: "R10 Radiance High Brightness",
+    displayName: "R10 Radiance RS",
     productFamily: "Radiance", productLine: "Radiance RS",
     application: "Fixed Installation",
     pixelPitch: 10.4167,
@@ -159,7 +159,7 @@ const products: LGEUSProduct[] = [
   },
   {
     modelNumber: "LGEUS-R10",
-    displayName: "R10 Radiance",
+    displayName: "R10 Radiance FM",
     productFamily: "Radiance", productLine: "Radiance FM",
     application: "Fixed Installation",
     pixelPitch: 10.4167,
@@ -173,7 +173,7 @@ const products: LGEUSProduct[] = [
   // A10 — Stadium Perimeter (Aura series)
   {
     modelNumber: "LGEUS-A10-HB",
-    displayName: "A10 Aura High Brightness",
+    displayName: "A10 Aura RS",
     productFamily: "Aura", productLine: "Aura RS",
     application: "Stadium Perimeter",
     pixelPitch: 10,
@@ -186,7 +186,7 @@ const products: LGEUSProduct[] = [
   },
   {
     modelNumber: "LGEUS-A10",
-    displayName: "A10 Aura",
+    displayName: "A10 Aura FM",
     productFamily: "Aura", productLine: "Aura FM",
     application: "Stadium Perimeter",
     pixelPitch: 10,
@@ -200,7 +200,7 @@ const products: LGEUSProduct[] = [
   // HO10T — Stadium Fascia (Halo outdoor)
   {
     modelNumber: "LGEUS-HO10T-HB",
-    displayName: "HO10T Halo Fascia High Brightness",
+    displayName: "HO10T Halo Fascia RS",
     productFamily: "Halo", productLine: "Halo Fascia RS",
     application: "Stadium Fascia",
     pixelPitch: 10,
@@ -213,7 +213,7 @@ const products: LGEUSProduct[] = [
   },
   {
     modelNumber: "LGEUS-HO10T",
-    displayName: "HO10T Halo Fascia",
+    displayName: "HO10T Halo Fascia FM",
     productFamily: "Halo", productLine: "Halo Fascia FM",
     application: "Stadium Fascia",
     pixelPitch: 10,
@@ -227,7 +227,7 @@ const products: LGEUSProduct[] = [
   // HO8T
   {
     modelNumber: "LGEUS-HO8T-HB",
-    displayName: "HO8T Halo Fascia High Brightness",
+    displayName: "HO8T Halo Fascia RS",
     productFamily: "Halo", productLine: "Halo Fascia RS",
     application: "Stadium Fascia",
     pixelPitch: 8.33,
@@ -240,7 +240,7 @@ const products: LGEUSProduct[] = [
   },
   {
     modelNumber: "LGEUS-HO8T",
-    displayName: "HO8T Halo Fascia",
+    displayName: "HO8T Halo Fascia FM",
     productFamily: "Halo", productLine: "Halo Fascia FM",
     application: "Stadium Fascia",
     pixelPitch: 8.33,
@@ -254,7 +254,7 @@ const products: LGEUSProduct[] = [
   // HO6T
   {
     modelNumber: "LGEUS-HO6T-HB",
-    displayName: "HO6T Halo Fascia High Brightness",
+    displayName: "HO6T Halo Fascia RS",
     productFamily: "Halo", productLine: "Halo Fascia RS",
     application: "Stadium Fascia",
     pixelPitch: 6.25,
@@ -267,7 +267,7 @@ const products: LGEUSProduct[] = [
   },
   {
     modelNumber: "LGEUS-HO6T",
-    displayName: "HO6T Halo Fascia",
+    displayName: "HO6T Halo Fascia FM",
     productFamily: "Halo", productLine: "Halo Fascia FM",
     application: "Stadium Fascia",
     pixelPitch: 6.25,
@@ -337,7 +337,7 @@ const products: LGEUSProduct[] = [
   // C4 — HB (RS, 2000 nits) + regular (FM, 1200 nits)
   {
     modelNumber: "LGEUS-C4-HB",
-    displayName: "C4 Corona High Brightness",
+    displayName: "C4 Corona RS",
     productFamily: "Corona", productLine: "Corona RS",
     application: "Fixed Installation",
     pixelPitch: 4,
@@ -350,7 +350,7 @@ const products: LGEUSProduct[] = [
   },
   {
     modelNumber: "LGEUS-C4",
-    displayName: "C4 Corona",
+    displayName: "C4 Corona FM",
     productFamily: "Corona", productLine: "Corona FM",
     application: "Fixed Installation",
     pixelPitch: 4,
@@ -364,7 +364,7 @@ const products: LGEUSProduct[] = [
   // C6
   {
     modelNumber: "LGEUS-C6-HB",
-    displayName: "C6 Corona High Brightness",
+    displayName: "C6 Corona RS",
     productFamily: "Corona", productLine: "Corona RS",
     application: "Fixed Installation",
     pixelPitch: 6,
@@ -377,7 +377,7 @@ const products: LGEUSProduct[] = [
   },
   {
     modelNumber: "LGEUS-C6",
-    displayName: "C6 Corona",
+    displayName: "C6 Corona FM",
     productFamily: "Corona", productLine: "Corona FM",
     application: "Fixed Installation",
     pixelPitch: 6,
@@ -391,7 +391,7 @@ const products: LGEUSProduct[] = [
   // C10
   {
     modelNumber: "LGEUS-C10-HB",
-    displayName: "C10 Corona High Brightness",
+    displayName: "C10 Corona RS",
     productFamily: "Corona", productLine: "Corona RS",
     application: "Fixed Installation",
     pixelPitch: 10,
@@ -404,7 +404,7 @@ const products: LGEUSProduct[] = [
   },
   {
     modelNumber: "LGEUS-C10",
-    displayName: "C10 Corona",
+    displayName: "C10 Corona FM",
     productFamily: "Corona", productLine: "Corona FM",
     application: "Fixed Installation",
     pixelPitch: 10,
@@ -418,7 +418,7 @@ const products: LGEUSProduct[] = [
   // H6T — Halo Fascia Indoor
   {
     modelNumber: "LGEUS-H6T-HB",
-    displayName: "H6T Halo Fascia High Brightness",
+    displayName: "H6T Halo Fascia RS",
     productFamily: "Halo", productLine: "Halo Fascia RS",
     application: "Stadium Fascia",
     pixelPitch: 6,
@@ -431,7 +431,7 @@ const products: LGEUSProduct[] = [
   },
   {
     modelNumber: "LGEUS-H6T",
-    displayName: "H6T Halo Fascia",
+    displayName: "H6T Halo Fascia FM",
     productFamily: "Halo", productLine: "Halo Fascia FM",
     application: "Stadium Fascia",
     pixelPitch: 6,
@@ -445,7 +445,7 @@ const products: LGEUSProduct[] = [
   // H10T
   {
     modelNumber: "LGEUS-H10T-HB",
-    displayName: "H10T Halo Fascia High Brightness",
+    displayName: "H10T Halo Fascia RS",
     productFamily: "Halo", productLine: "Halo Fascia RS",
     application: "Stadium Fascia",
     pixelPitch: 10,
@@ -458,7 +458,7 @@ const products: LGEUSProduct[] = [
   },
   {
     modelNumber: "LGEUS-H10T",
-    displayName: "H10T Halo Fascia",
+    displayName: "H10T Halo Fascia FM",
     productFamily: "Halo", productLine: "Halo Fascia FM",
     application: "Stadium Fascia",
     pixelPitch: 10,

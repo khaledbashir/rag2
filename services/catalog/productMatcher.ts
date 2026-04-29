@@ -168,14 +168,24 @@ export class ProductMatcher {
                     const pitchA = Math.min(Math.abs(a.pixelPitch - targetPitch) * 10, 100);
                     const pitchB = Math.min(Math.abs(b.pixelPitch - targetPitch) * 10, 100);
 
-                    // --- Layer 3: Manufacturer preference (tiebreaker only, 0-1 range) ---
+                    // --- Layer 3: Service type — prefer RS (rear) over FM (front) by default. ---
+                    // Natalia 2026-04-29: "RS should be our default on all products even if brightness
+                    // in the spec is lower than the threshold. Estimators should have to force the AI
+                    // to pick FM so we don't choose on mistake. Very few FM orders, only small market
+                    // minor league." Tiebreaker only — pitch + nits dominate. Manual SKU selection
+                    // bypasses this entirely (matcher isn't called).
+                    const svcPriority = (st: string | null) => st === "rear" || st === "front_rear" ? 0 : st === "front" ? 0.3 : 0.5;
+                    const svcA = svcPriority(a.serviceType);
+                    const svcB = svcPriority(b.serviceType);
+
+                    // --- Layer 4: Manufacturer preference (tiebreaker only, 0-1 range) ---
                     // Only matters when two products have identical spec compliance.
                     const mfgPriority = (m: string) => /yaham/i.test(m) ? 0 : /\blg\b/i.test(m) ? 0.5 : 1;
                     const mfgA = mfgPriority(a.manufacturer);
                     const mfgB = mfgPriority(b.manufacturer);
 
-                    const scoreA = isSpecialtyA + isMeshA + nitsPenaltyA + pitchA + mfgA;
-                    const scoreB = isSpecialtyB + isMeshB + nitsPenaltyB + pitchB + mfgB;
+                    const scoreA = isSpecialtyA + isMeshA + nitsPenaltyA + pitchA + svcA + mfgA;
+                    const scoreB = isSpecialtyB + isMeshB + nitsPenaltyB + pitchB + svcB + mfgB;
                     return scoreA - scoreB;
                 });
 
