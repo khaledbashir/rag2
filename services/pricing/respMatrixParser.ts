@@ -38,7 +38,7 @@ export function findRespMatrixSheetCandidates(workbook: any): string[] {
 
   const candidates = names.filter((name) => {
     const n = normalize(name);
-    return /^resp\s*matrix\b/.test(n);
+    return /^resp(?:onsibility)?\s*matrix\b/.test(n);
   });
 
   if (candidates.length === 0) return [];

@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
 
                 let message: string;
                 if (hasRespHint) {
-                    message = "We couldn't read the Responsibility Matrix from this Excel. If your file includes one, make sure the sheet name starts with 'Resp Matrix' and includes ANC/Purchaser columns.";
+                    message = "We couldn't read the Responsibility Matrix from this Excel. If your file includes one, make sure the sheet name starts with 'Resp Matrix' or 'Responsibility Matrix' and includes ANC/Purchaser columns.";
                 } else if (parserErrors.length > 0) {
                     // Show the actual parser error — it now contains specific diagnostics
                     message = parserErrors[0];
