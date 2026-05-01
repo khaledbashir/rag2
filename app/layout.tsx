@@ -31,7 +31,16 @@ export const metadata: Metadata = {
     title: "ANC Proposal Engine | Professional Sports Technology Proposals",
     description:
         "Create professional proposals for LED screens, sports technology, and digital signage projects with ANC Proposal Engine.",
-    icons: [{ rel: "icon", url: "/anc-logo-blue.png" }],
+    icons: {
+        icon: [
+            { rel: "icon", url: "/favicon.ico" },
+            { rel: "icon", type: "image/png", sizes: "16x16", url: "/favicon-16x16.png" },
+            { rel: "icon", type: "image/png", sizes: "32x32", url: "/favicon-32x32.png" },
+            { rel: "icon", type: "image/png", sizes: "192x192", url: "/android-chrome-192x192.png" },
+            { rel: "icon", type: "image/png", sizes: "512x512", url: "/android-chrome-512x512.png" },
+        ],
+        apple: [{ rel: "apple-touch-icon", sizes: "180x180", url: "/apple-touch-icon.png" }],
+    },
     keywords: ROOTKEYWORDS,
     robots: {
         index: true,
