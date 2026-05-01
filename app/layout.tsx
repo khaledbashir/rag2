@@ -124,6 +124,14 @@ export default async function RootLayout({
                             src="https://abc-umami.izcgmb.easypanel.host/script.js"
                             data-website-id="e275b293-afcd-468b-8748-cba2d667ab25"
                         ></script>
+                        <script
+                            defer
+                            src="https://abc-umami.izcgmb.easypanel.host/recorder.js"
+                            data-website-id="e275b293-afcd-468b-8748-cba2d667ab25"
+                            data-sample-rate="0.15"
+                            data-mask-level="moderate"
+                            data-max-duration="300000"
+                        ></script>
 
                         {/* PostHog Analytics (no-op until NEXT_PUBLIC_POSTHOG_KEY is set) */}
                         {process.env.NEXT_PUBLIC_POSTHOG_KEY ? (

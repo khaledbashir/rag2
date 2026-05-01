@@ -26,6 +26,7 @@ DO NOT TOUCH. Behavior must remain IDENTICAL. No "quick fixes" or "improvements"
 - Mirror Mode margin-sheet detection now prefers populated non-CMS tabs and preserves GBP via sheet names or Excel currency formatting (2026-04-07)
 - Currency FX threading across 6 surfaces (wizard/PDF/cost sheet/Excel/margin/rate card), behind `FEATURES.CURRENCY_EXCHANGE_RATE` flag (2026-04-17)
 - RFP Analyzer LED Cost Sheet Column A display renaming and independent duplicate display row edits fixed (2026-04-24)
+- ANC Twenty CRM mobile metadata quota/chunk-cache crash fixed in live image `twenty-anc:metadata-field-quota-fix-20260501e` (2026-05-01)
 
 ## 🎯 ANC Twenty CRM — #1 priority (decision Mon-Tue 2026-04-21/22)
 - Live at `https://crm.ancsports.net` — replaces Salesforce

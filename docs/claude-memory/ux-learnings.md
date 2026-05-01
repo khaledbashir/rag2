@@ -12,6 +12,27 @@
 - Example good: "got it, i'll stick to 2024-2026 and grab the freshest cost analysis from each. appreciate it"
 - Example bad: "perfect, that's exactly what i need. i'll focus on 2024-2026, grab the freshest cost analysis sheets, and cross-check the LED specs and margin analysis against what the system produces. thank you for this"
 
+## Deployment and Verification Workflow
+- Ahmad usually does not check changes locally unless there is a real need.
+- Preferred flow for app changes: implement, push to GitHub, let Easypanel build/deploy, then verify in production.
+- After making a code change for Ahmad, default to committing and pushing it to GitHub so Easypanel starts a build automatically, unless he explicitly says to hold it locally.
+- When a pushed route 404s after deploy, check the EasyPanel/GitHub branch target immediately. Do not assume the current local branch is the deployment branch; make sure the commit lands where EasyPanel is building from.
+- Do not default to starting local dev servers or asking Ahmad to inspect localhost for routine ANC web changes.
+- Local checks are still useful for fast compile/type sanity or when a production-only deploy loop would be wasteful, but the user-facing QA path should be production after Easypanel deploy.
+- After each meaningful build slice, status updates should use this simple format: "What we did" and "What users can now do." Keep it short, clear, and non-technical unless detail is needed.
+
+## CRM Long-Term Build Principles
+- The ANC CRM is a long-run system, not a disposable prototype. Build decisions should assume future maintenance, real operators, and compounding consequences.
+- Do not hide problems under the rug, ship band-aids, or optimize for "make it work now" when that creates debt Ahmad will have to pay for later.
+- From minute one, prefer the fix that can last: clear data model, honest architecture, explicit tradeoffs, and no shortcuts that make life harder later.
+
+## Product Selection and UI Polish
+- When Ahmad says "Airtable," do not reinterpret that as "find an Airtable alternative." Start from actual Airtable unless he explicitly asks for alternatives.
+- For ANC operator-facing tools, enterprise polish is a hard requirement, not a nice-to-have. A technically capable tool with an ugly or dated admin UI is usually the wrong answer.
+- Do not deploy or migrate to OSS database/admin tools based only on specs like Postgres, plugins, or self-hosting. First evaluate whether the daily user experience looks credible for Nick, techs, and enterprise stakeholders.
+- If a tool's UI is questionable, show real screenshots or a live demo before investing implementation time. The decision should be eye-tested early.
+- Prefer integrating the polished system Ahmad already asked for, then filling gaps with ANC custom layers, over replacing it with a rough tool that needs heavy cosmetic rescue.
+
 ## Scope Discussion Learnings
 - When Natalia pushes back on something being "new scope," listen — she often knows the product better than we do
 - Alt pitch was called "big scope" initially but turned out to be simple: only LED hardware cost changes per pitch variant
