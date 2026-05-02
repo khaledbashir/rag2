@@ -28,6 +28,8 @@ import {
   LOCAL_STORAGE_PROPOSAL_DRAFT_KEY,
 } from "@/lib/variables";
 
+import UmamiIdentify from "@/components/UmamiIdentify";
+
 // Helpers
 const readDraftFromLocalStorage = (): ProposalType | null => {
   if (typeof window === "undefined") return null;
@@ -86,6 +88,7 @@ const Providers = ({ children }: ProvidersProps) => {
 
   return (
     <SessionProvider>
+      <UmamiIdentify />
       <ThemeProvider
         attribute="class"
         defaultTheme="light"
