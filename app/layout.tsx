@@ -128,7 +128,7 @@ export default async function RootLayout({
                             defer
                             src="https://abc-umami.izcgmb.easypanel.host/recorder.js"
                             data-website-id="e275b293-afcd-468b-8748-cba2d667ab25"
-                            data-sample-rate="0.15"
+                            data-sample-rate="1"
                             data-mask-level="moderate"
                             data-max-duration="300000"
                         ></script>
