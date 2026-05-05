@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import { Pool } from "pg";
 
 const TWENTY_BASE = "https://abc-twenty.izcgmb.easypanel.host";
 
@@ -93,22 +93,11 @@ type ConnectedEmailAccount = {
   handle: string | null;
   provider: string;
   authFailedAt: string | null;
-  connectionParameters: {
-    SMTP?: {
-      host?: string;
-      port?: number;
-      secure?: boolean;
-      username?: string;
-      password?: string;
-    };
-  } | null;
+  accessToken: string | null;
+  refreshToken: string | null;
 };
 
-type ConnectedAccountsQueryData = {
-  connectedAccounts: {
-    edges: Array<{ node: ConnectedEmailAccount }>;
-  };
-};
+let reportEmailAccountPool: Pool | null = null;
 
 function getTwentyApiKey() {
   const key = process.env.TWENTY_API_KEY?.trim();
@@ -137,39 +126,122 @@ async function twentyGraphql<T>(query: string, variables?: Record<string, unknow
   return body.data;
 }
 
+function getTwentyCoreDatabaseUrl() {
+  const url = process.env.TWENTY_CORE_DATABASE_URL?.trim();
+  if (!url) throw new Error("TWENTY_CORE_DATABASE_URL is not configured");
+  return url;
+}
+
+function getReportEmailAccountPool() {
+  if (!reportEmailAccountPool) {
+    reportEmailAccountPool = new Pool({ connectionString: getTwentyCoreDatabaseUrl() });
+  }
+  return reportEmailAccountPool;
+}
+
 async function getReportEmailAccount() {
-  const accountId = process.env.CRM_REPORT_EMAIL_CONNECTED_ACCOUNT_ID?.trim();
-  const filter = accountId ? { id: { eq: accountId } } : undefined;
-  const data = await twentyGraphql<ConnectedAccountsQueryData>(
+  const handle = process.env.CRM_REPORT_MICROSOFT_HANDLE?.trim() || "support@anc.com";
+  const accountId = process.env.CRM_REPORT_MICROSOFT_CONNECTED_ACCOUNT_ID?.trim();
+  const result = await getReportEmailAccountPool().query<ConnectedEmailAccount>(
     `
-      query ReportEmailAccount($filter: ConnectedAccountFilterInput) {
-        connectedAccounts(filter: $filter, first: 20) {
-          edges {
-            node {
-              id
-              handle
-              provider
-              authFailedAt
-              connectionParameters
-            }
-          }
-        }
-      }
+      select id, handle, provider, "authFailedAt", "accessToken", "refreshToken"
+      from core."connectedAccount"
+      where ${accountId ? `id = $1` : `lower(handle) = lower($1) and provider = 'microsoft'`}
+        and "accessToken" is not null
+        and "refreshToken" is not null
+      order by "lastCredentialsRefreshedAt" desc nulls last, "updatedAt" desc
+      limit 1
     `,
-    { filter },
+    [accountId || handle],
   );
 
-  const account = data.connectedAccounts.edges
-    .map((edge) => edge.node)
-    .find((entry) => entry.handle && entry.connectionParameters?.SMTP?.host && entry.connectionParameters.SMTP.password);
-
-  if (!account) {
-    throw new Error("No CRM connected SMTP email account is configured");
-  }
-  if (account.authFailedAt) {
-    throw new Error(`CRM email account ${account.handle} has an auth failure`);
-  }
+  const account = result.rows[0];
+  if (!account) throw new Error(`No connected Microsoft report mailbox found for ${handle}`);
+  if (account.authFailedAt) throw new Error(`CRM email account ${account.handle} has an auth failure`);
+  if (!account.accessToken || !account.refreshToken) throw new Error(`CRM email account ${account.handle} is missing Microsoft tokens`);
   return account;
+}
+
+async function refreshMicrosoftAccountToken(account: ConnectedEmailAccount) {
+  const clientId =
+    process.env.CRM_MICROSOFT_CLIENT_ID?.trim() ||
+    process.env.AUTH_MICROSOFT_CLIENT_ID?.trim();
+  const clientSecret =
+    process.env.CRM_MICROSOFT_CLIENT_SECRET?.trim() ||
+    process.env.AUTH_MICROSOFT_CLIENT_SECRET?.trim();
+
+  if (!clientId || !clientSecret || !account.refreshToken) {
+    throw new Error("Microsoft token refresh is not configured");
+  }
+
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    refresh_token: account.refreshToken,
+    grant_type: "refresh_token",
+    scope: "offline_access Mail.Send Mail.Read Mail.ReadWrite User.Read email openid profile",
+  });
+
+  const res = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  const token = await res.json().catch(() => ({}));
+  if (!res.ok || !token.access_token) {
+    throw new Error(token.error_description || token.error || `Microsoft token refresh ${res.status}`);
+  }
+
+  const accessToken = String(token.access_token);
+  const refreshToken = token.refresh_token ? String(token.refresh_token) : account.refreshToken;
+  await getReportEmailAccountPool().query(
+    `
+      update core."connectedAccount"
+      set "accessToken" = $1,
+          "refreshToken" = $2,
+          "lastCredentialsRefreshedAt" = now(),
+          "updatedAt" = now()
+      where id = $3
+    `,
+    [accessToken, refreshToken, account.id],
+  );
+
+  return { ...account, accessToken, refreshToken };
+}
+
+async function sendMicrosoftGraphMail(account: ConnectedEmailAccount, subject: string, html: string, recipients: string[]) {
+  const send = (accessToken: string) =>
+    fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: {
+          subject,
+          body: { contentType: "HTML", content: html },
+          toRecipients: recipients.map((address) => ({ emailAddress: { address } })),
+        },
+        saveToSentItems: true,
+      }),
+    });
+
+  let res = await send(account.accessToken || "");
+  if (res.status === 401 || res.status === 403) {
+    account = await refreshMicrosoftAccountToken(account);
+    res = await send(account.accessToken || "");
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.error?.message || `Microsoft Graph sendMail ${res.status}`);
+  }
+
+  return {
+    id: `${account.handle || account.id}:${Date.now()}`,
+    provider: "microsoft-graph",
+    from: account.handle || "support@anc.com",
+  };
 }
 
 function dollars(value: CurrencyValue) {
@@ -523,30 +595,5 @@ export async function sendClosedWonReportEmail(input: {
       : "Report results (Opportunities Closed Won Last 7 Days)";
 
   const account = await getReportEmailAccount();
-  const smtp = account.connectionParameters?.SMTP;
-  if (!smtp?.host || !smtp.username || !smtp.password) {
-    throw new Error(`CRM email account ${account.handle || account.id} is missing SMTP settings`);
-  }
-
-  const transporter = nodemailer.createTransport({
-    host: smtp.host,
-    port: smtp.port || 587,
-    secure: Boolean(smtp.secure),
-    auth: {
-      user: smtp.username,
-      pass: smtp.password,
-    },
-  });
-
-  const sent = await transporter.sendMail({
-    from: {
-      name: process.env.CRM_CLOSED_WON_REPORT_FROM_NAME?.trim() || "ANC CRM Reports",
-      address: account.handle || smtp.username,
-    },
-    to: input.recipients,
-    subject,
-    html: input.html,
-  });
-
-  return { id: sent.messageId, provider: account.provider, from: account.handle || smtp.username };
+  return sendMicrosoftGraphMail(account, subject, input.html, input.recipients);
 }
