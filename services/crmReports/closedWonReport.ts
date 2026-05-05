@@ -1,7 +1,6 @@
-import { readFileSync } from "fs";
+import nodemailer from "nodemailer";
 
 const TWENTY_BASE = "https://abc-twenty.izcgmb.easypanel.host";
-const RESEND_API_URL = "https://api.resend.com/emails";
 
 type CurrencyValue = {
   amountMicros?: number | null;
@@ -89,15 +88,27 @@ type ClosedWonQueryData = {
   };
 };
 
-function readEnvFileValue(filePath: string, key: string) {
-  try {
-    const content = readFileSync(filePath, "utf8");
-    const match = content.match(new RegExp(`^${key}=(.+)$`, "m"));
-    return match?.[1]?.trim() || "";
-  } catch {
-    return "";
-  }
-}
+type ConnectedEmailAccount = {
+  id: string;
+  handle: string | null;
+  provider: string;
+  authFailedAt: string | null;
+  connectionParameters: {
+    SMTP?: {
+      host?: string;
+      port?: number;
+      secure?: boolean;
+      username?: string;
+      password?: string;
+    };
+  } | null;
+};
+
+type ConnectedAccountsQueryData = {
+  connectedAccounts: {
+    edges: Array<{ node: ConnectedEmailAccount }>;
+  };
+};
 
 function getTwentyApiKey() {
   const key = process.env.TWENTY_API_KEY?.trim();
@@ -105,13 +116,6 @@ function getTwentyApiKey() {
     throw new Error("TWENTY_API_KEY is not configured");
   }
   return key;
-}
-
-function getResendApiKey() {
-  return (
-    process.env.RESEND_API_KEY?.trim() ||
-    readEnvFileValue("/root/.anc-secrets/resend.env", "RESEND_API_KEY")
-  );
 }
 
 async function twentyGraphql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
@@ -131,6 +135,41 @@ async function twentyGraphql<T>(query: string, variables?: Record<string, unknow
   }
   if (!body.data) throw new Error("Twenty GraphQL returned no data");
   return body.data;
+}
+
+async function getReportEmailAccount() {
+  const accountId = process.env.CRM_REPORT_EMAIL_CONNECTED_ACCOUNT_ID?.trim();
+  const filter = accountId ? { id: { eq: accountId } } : undefined;
+  const data = await twentyGraphql<ConnectedAccountsQueryData>(
+    `
+      query ReportEmailAccount($filter: ConnectedAccountFilterInput) {
+        connectedAccounts(filter: $filter, first: 20) {
+          edges {
+            node {
+              id
+              handle
+              provider
+              authFailedAt
+              connectionParameters
+            }
+          }
+        }
+      }
+    `,
+    { filter },
+  );
+
+  const account = data.connectedAccounts.edges
+    .map((edge) => edge.node)
+    .find((entry) => entry.handle && entry.connectionParameters?.SMTP?.host && entry.connectionParameters.SMTP.password);
+
+  if (!account) {
+    throw new Error("No CRM connected SMTP email account is configured");
+  }
+  if (account.authFailedAt) {
+    throw new Error(`CRM email account ${account.handle} has an auth failure`);
+  }
+  return account;
 }
 
 function dollars(value: CurrencyValue) {
@@ -476,36 +515,38 @@ export async function sendClosedWonReportEmail(input: {
   html: string;
   recipients: string[];
 }) {
-  const apiKey = getResendApiKey();
-  if (!apiKey) throw new Error("RESEND_API_KEY is not configured");
   if (!input.recipients.length) throw new Error("No report recipients configured");
-
-  const from =
-    process.env.CRM_CLOSED_WON_REPORT_FROM?.trim() ||
-    "ANC CRM Reports <reports@reports.anc.com>";
 
   const subject =
     input.report.period === "monthToDate"
       ? "Report results (Opportunities Closed Won Month-to-Date)"
       : "Report results (Opportunities Closed Won Last 7 Days)";
 
-  const res = await fetch(RESEND_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
+  const account = await getReportEmailAccount();
+  const smtp = account.connectionParameters?.SMTP;
+  if (!smtp?.host || !smtp.username || !smtp.password) {
+    throw new Error(`CRM email account ${account.handle || account.id} is missing SMTP settings`);
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port || 587,
+    secure: Boolean(smtp.secure),
+    auth: {
+      user: smtp.username,
+      pass: smtp.password,
     },
-    body: JSON.stringify({
-      from,
-      to: input.recipients,
-      subject,
-      html: input.html,
-    }),
   });
 
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(body?.message || body?.error || `Resend ${res.status}`);
-  }
-  return body as { id?: string };
+  const sent = await transporter.sendMail({
+    from: {
+      name: process.env.CRM_CLOSED_WON_REPORT_FROM_NAME?.trim() || "ANC CRM Reports",
+      address: account.handle || smtp.username,
+    },
+    to: input.recipients,
+    subject,
+    html: input.html,
+  });
+
+  return { id: sent.messageId, provider: account.provider, from: account.handle || smtp.username };
 }

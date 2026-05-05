@@ -28,6 +28,26 @@ function periodFromRequest(request: NextRequest): ClosedWonReportPeriod {
   return raw === "monthToDate" ? "monthToDate" : "last7";
 }
 
+function todayParts(timeZone = "America/New_York") {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(new Date());
+
+  return {
+    year: Number(parts.find((part) => part.type === "year")?.value),
+    month: Number(parts.find((part) => part.type === "month")?.value),
+    day: Number(parts.find((part) => part.type === "day")?.value),
+  };
+}
+
+function isLastDayOfMonth() {
+  const { year, month, day } = todayParts();
+  return day === new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
 async function recipientsFromRequest(request: NextRequest) {
   const body = await request.json().catch(() => null);
   if (Array.isArray(body?.recipients)) {
@@ -39,14 +59,21 @@ async function recipientsFromRequest(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     requireReportSecret(request);
-    const report = await buildClosedWonReport(periodFromRequest(request));
+    const period = periodFromRequest(request);
+    if (request.nextUrl.searchParams.get("onlyLastDay") === "1" && !isLastDayOfMonth()) {
+      return NextResponse.json({ ok: true, skipped: true, reason: "Not the last day of the month", period });
+    }
+
+    const report = await buildClosedWonReport(period);
     const html = renderClosedWonReportHtml(report);
     const recipients = await recipientsFromRequest(request);
     const result = await sendClosedWonReportEmail({ report, html, recipients });
 
     return NextResponse.json({
       ok: true,
-      resendId: result.id || null,
+      messageId: result.id || null,
+      provider: result.provider,
+      from: result.from,
       recipients,
       totals: report.totals,
       period: report.period,
