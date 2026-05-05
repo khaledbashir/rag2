@@ -1,0 +1,59 @@
+import { NextRequest, NextResponse } from "next/server";
+import {
+  buildClosedWonReport,
+  getDefaultClosedWonRecipients,
+  renderClosedWonReportHtml,
+  sendClosedWonReportEmail,
+  type ClosedWonReportPeriod,
+} from "@/services/crmReports/closedWonReport";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 90;
+
+function requireReportSecret(request: NextRequest) {
+  const expected = process.env.CRM_REPORT_SECRET?.trim();
+  if (!expected && process.env.NODE_ENV !== "production") return;
+  if (!expected) throw new Error("CRM_REPORT_SECRET is not configured");
+
+  const supplied =
+    request.headers.get("x-crm-report-secret") ||
+    request.nextUrl.searchParams.get("secret") ||
+    "";
+  if (supplied !== expected) throw new Error("Unauthorized");
+}
+
+function periodFromRequest(request: NextRequest): ClosedWonReportPeriod {
+  const raw = request.nextUrl.searchParams.get("period");
+  return raw === "monthToDate" ? "monthToDate" : "last7";
+}
+
+async function recipientsFromRequest(request: NextRequest) {
+  const body = await request.json().catch(() => null);
+  if (Array.isArray(body?.recipients)) {
+    return body.recipients.map((entry: unknown) => String(entry).trim()).filter(Boolean);
+  }
+  return getDefaultClosedWonRecipients();
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    requireReportSecret(request);
+    const report = await buildClosedWonReport(periodFromRequest(request));
+    const html = renderClosedWonReportHtml(report);
+    const recipients = await recipientsFromRequest(request);
+    const result = await sendClosedWonReportEmail({ report, html, recipients });
+
+    return NextResponse.json({
+      ok: true,
+      resendId: result.id || null,
+      recipients,
+      totals: report.totals,
+      period: report.period,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to send report";
+    const status = message === "Unauthorized" ? 401 : 500;
+    return NextResponse.json({ ok: false, error: message }, { status });
+  }
+}
