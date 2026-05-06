@@ -101,8 +101,13 @@ async function pageWonOpps(companyIds: string[]): Promise<Opp[]> {
 }
 
 function dealDollars(o: Opp): number {
-    const m = o.amount?.amountMicros ?? o.dealValue?.amountMicros ?? 0;
-    return Number(m) / 1_000_000;
+    // SF migration left many opps with amount.amountMicros = 0 (literal zero)
+    // while the real number lives on dealValue. `??` only falls through on
+    // null/undefined, so treat 0 as missing and prefer dealValue when amount
+    // is unset or zero.
+    const amt = Number(o.amount?.amountMicros || 0);
+    const dv = Number(o.dealValue?.amountMicros || 0);
+    return (amt > 0 ? amt : dv) / 1_000_000;
 }
 
 function fmtUsdShort(n: number): string {
