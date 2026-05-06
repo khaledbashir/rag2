@@ -10,6 +10,7 @@ type CurrencyValue = {
 type TwentyOpportunity = {
   id: string;
   name: string | null;
+  opportunityNumber: string | null;
   bidStatus: string | null;
   stage: string | null;
   businessUnit: string | null;
@@ -38,6 +39,7 @@ export type ClosedWonReportPeriod = "last7" | "monthToDate";
 
 export type ClosedWonReportRow = {
   id: string;
+  opportunityNumber: string;
   owner: string;
   department: string;
   accountName: string;
@@ -51,6 +53,13 @@ export type ClosedWonReportRow = {
   statusUpdate: string;
 };
 
+type ReportTotals = {
+  records: number;
+  revenue: number;
+  costs: number;
+  margin: number;
+};
+
 export type ClosedWonReport = {
   period: ClosedWonReportPeriod;
   title: string;
@@ -58,22 +67,17 @@ export type ClosedWonReport = {
   rangeStart: string;
   rangeEnd: string;
   rows: ClosedWonReportRow[];
-  totals: {
-    records: number;
-    revenue: number;
-    costs: number;
-    margin: number;
-  };
-  ownerGroups: Array<{
-    owner: string;
+  totals: ReportTotals;
+  departmentGroups: Array<{
+    department: string;
     rows: ClosedWonReportRow[];
-    totals: {
-      records: number;
-      revenue: number;
-      costs: number;
-      margin: number;
-    };
+    totals: ReportTotals;
   }>;
+  fyYear: number;
+  fyTotals: {
+    grand: ReportTotals;
+    byDepartment: Array<{ department: string; totals: ReportTotals }>;
+  };
 };
 
 type GraphqlResponse<T> = {
@@ -354,6 +358,7 @@ async function fetchWonOpportunities() {
               node {
                 id
                 name
+                opportunityNumber
                 bidStatus
                 stage
                 businessUnit
@@ -390,54 +395,89 @@ async function fetchWonOpportunities() {
   return out;
 }
 
+function toReportRow(opp: TwentyOpportunity): ClosedWonReportRow {
+  const revenue = firstNonZero(
+    dollars(opp.totalProjectRevenue),
+    dollars(opp.dealValue),
+    dollars(opp.amount),
+    dollars(opp.salePrice),
+  );
+  const margin = firstNonZero(dollars(opp.totalProjectMargin), dollars(opp.margin));
+  const costs = revenue - margin;
+
+  return {
+    id: opp.id,
+    opportunityNumber: opp.opportunityNumber?.trim() || "",
+    owner: ownerName(opp),
+    department: departmentLabel(opp.businessUnit),
+    accountName: opp.company?.name || "-",
+    opportunityName: opp.name || "-",
+    revenue,
+    costs,
+    margin,
+    substantialCompletionDate: toDateOnly(opp.substantialCompletionDate),
+    awardDate: toDateOnly(opp.closeDate),
+    createdDate: toDateOnly(opp.createdAt),
+    statusUpdate: opp.winLossReason?.trim() || "-",
+  };
+}
+
+const DEPARTMENT_ORDER = ["Technology", "Service", "Media/Sponsorship"];
+
+function compareDepartments(a: string, b: string) {
+  const ai = DEPARTMENT_ORDER.indexOf(a);
+  const bi = DEPARTMENT_ORDER.indexOf(b);
+  if (ai === -1 && bi === -1) return a.localeCompare(b);
+  if (ai === -1) return 1;
+  if (bi === -1) return -1;
+  return ai - bi;
+}
+
 export async function buildClosedWonReport(period: ClosedWonReportPeriod = "last7") {
   const generatedAt = new Date().toISOString();
-  const { start, end, title } = periodRange(period, new Date(generatedAt));
+  const now = new Date(generatedAt);
+  const { start, end, title } = periodRange(period, now);
   const opportunities = await fetchWonOpportunities();
 
   const rows = opportunities
     .filter((opp) => isInRange(opp.closeDate, start, end) || isInRange(opp.createdAt, start, end))
-    .map((opp): ClosedWonReportRow => {
-      const revenue = firstNonZero(
-        dollars(opp.totalProjectRevenue),
-        dollars(opp.dealValue),
-        dollars(opp.amount),
-        dollars(opp.salePrice),
-      );
-      const margin = firstNonZero(dollars(opp.totalProjectMargin), dollars(opp.margin));
-      const costs = revenue - margin;
-
-      return {
-        id: opp.id,
-        owner: ownerName(opp),
-        department: departmentLabel(opp.businessUnit),
-        accountName: opp.company?.name || "-",
-        opportunityName: opp.name || "-",
-        revenue,
-        costs,
-        margin,
-        substantialCompletionDate: toDateOnly(opp.substantialCompletionDate),
-        awardDate: toDateOnly(opp.closeDate),
-        createdDate: toDateOnly(opp.createdAt),
-        statusUpdate: opp.winLossReason?.trim() || "-",
-      };
-    })
+    .map(toReportRow)
     .sort((a, b) => {
-      const ownerCompare = a.owner.localeCompare(b.owner);
-      if (ownerCompare !== 0) return ownerCompare;
+      const deptCompare = compareDepartments(a.department, b.department);
+      if (deptCompare !== 0) return deptCompare;
       return (b.awardDate || "").localeCompare(a.awardDate || "");
     });
 
   const totals = sumRows(rows);
   const groups = new Map<string, ClosedWonReportRow[]>();
   for (const row of rows) {
-    groups.set(row.owner, [...(groups.get(row.owner) || []), row]);
+    groups.set(row.department, [...(groups.get(row.department) || []), row]);
   }
-  const ownerGroups = Array.from(groups.entries()).map(([owner, groupRows]) => ({
-      owner,
+  const departmentGroups = Array.from(groups.entries())
+    .map(([department, groupRows]) => ({
+      department,
       rows: groupRows,
       totals: sumRows(groupRows),
-    }));
+    }))
+    .sort((a, b) => compareDepartments(a.department, b.department));
+
+  const fyYear = now.getUTCFullYear();
+  const fyStart = new Date(Date.UTC(fyYear, 0, 1, 0, 0, 0));
+  const fyEnd = new Date(Date.UTC(fyYear, 11, 31, 23, 59, 59));
+  const fyRows = opportunities
+    .filter((opp) => isInRange(opp.closeDate, fyStart, fyEnd))
+    .map(toReportRow);
+  const fyByDeptMap = new Map<string, ClosedWonReportRow[]>();
+  for (const row of fyRows) {
+    fyByDeptMap.set(row.department, [...(fyByDeptMap.get(row.department) || []), row]);
+  }
+  const fyByDepartment = Array.from(fyByDeptMap.entries())
+    .map(([department, groupRows]) => ({ department, totals: sumRows(groupRows) }))
+    .sort((a, b) => compareDepartments(a.department, b.department));
+  const fyTotals = {
+    grand: sumRows(fyRows),
+    byDepartment: fyByDepartment,
+  };
 
   return {
     period,
@@ -447,7 +487,9 @@ export async function buildClosedWonReport(period: ClosedWonReportPeriod = "last
     rangeEnd: end.toISOString(),
     rows,
     totals,
-    ownerGroups,
+    departmentGroups,
+    fyYear,
+    fyTotals,
   } satisfies ClosedWonReport;
 }
 
@@ -480,12 +522,30 @@ function summaryCell(label: string, value: string) {
   `;
 }
 
+const OPPORTUNITY_URL_BASE = "https://crm.ancsports.net/object/opportunity";
+const TABLE_COLUMNS = [
+  "Opp #",
+  "Account Name",
+  "Opportunity Name",
+  "Account Executive",
+  "Total Project Revenue",
+  "Total Project Costs",
+  "Total Project Margin",
+  "Contract Completion Date",
+  "Award Date",
+  "Created Date",
+  "Status Update",
+];
+const TABLE_COLUMN_COUNT = TABLE_COLUMNS.length;
+
 function dataRow(row: ClosedWonReportRow) {
+  const oppLink = `${OPPORTUNITY_URL_BASE}/${esc(row.id)}`;
   return `
     <tr>
-      <td style="padding:8px;border:1px solid #e5e7eb;">${esc(row.department)}</td>
+      <td style="padding:8px;border:1px solid #e5e7eb;font-family:monospace;">${esc(row.opportunityNumber || "-")}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;">${esc(row.accountName)}</td>
-      <td style="padding:8px;border:1px solid #e5e7eb;">${esc(row.opportunityName)}</td>
+      <td style="padding:8px;border:1px solid #e5e7eb;"><a href="${oppLink}" style="color:#2563eb;text-decoration:none;">${esc(row.opportunityName)}</a></td>
+      <td style="padding:8px;border:1px solid #e5e7eb;">${esc(row.owner)}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;">${esc(formatCurrency(row.revenue))}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;">${esc(formatCurrency(row.costs))}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;">${esc(formatCurrency(row.margin))}</td>
@@ -500,7 +560,7 @@ function dataRow(row: ClosedWonReportRow) {
 function subtotalRow(label: string, totals: ClosedWonReport["totals"]) {
   return `
     <tr>
-      <td colspan="3" style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;font-weight:700;">${esc(label)}</td>
+      <td colspan="4" style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;font-weight:700;">${esc(label)}</td>
       <td style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;text-align:right;font-weight:700;">${esc(formatCurrency(totals.revenue))}</td>
       <td style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;text-align:right;font-weight:700;">${esc(formatCurrency(totals.costs))}</td>
       <td style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;text-align:right;font-weight:700;">${esc(formatCurrency(totals.margin))}</td>
@@ -509,14 +569,58 @@ function subtotalRow(label: string, totals: ClosedWonReport["totals"]) {
   `;
 }
 
+function fyTotalsBlock(report: ClosedWonReport) {
+  const { fyYear, fyTotals } = report;
+  const headerCells = `
+    <th style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:left;font-weight:700;">Department</th>
+    <th style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:right;font-weight:700;">Records</th>
+    <th style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:right;font-weight:700;">Revenue</th>
+    <th style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:right;font-weight:700;">Costs</th>
+    <th style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:right;font-weight:700;">Margin</th>
+  `;
+  const departmentRows = fyTotals.byDepartment
+    .map(
+      (entry) => `
+        <tr>
+          <td style="padding:8px;border:1px solid #e0e7ff;">${esc(entry.department)}</td>
+          <td style="padding:8px;border:1px solid #e0e7ff;text-align:right;">${entry.totals.records}</td>
+          <td style="padding:8px;border:1px solid #e0e7ff;text-align:right;">${esc(formatCurrency(entry.totals.revenue))}</td>
+          <td style="padding:8px;border:1px solid #e0e7ff;text-align:right;">${esc(formatCurrency(entry.totals.costs))}</td>
+          <td style="padding:8px;border:1px solid #e0e7ff;text-align:right;">${esc(formatCurrency(entry.totals.margin))}</td>
+        </tr>
+      `,
+    )
+    .join("") ||
+    `<tr><td colspan="5" style="padding:12px;border:1px solid #e0e7ff;text-align:center;color:#64748b;">No closed won deals in FY ${fyYear} yet.</td></tr>`;
+
+  return `
+    <div style="margin-bottom:22px;">
+      <div style="font-size:14px;font-weight:700;color:#312e81;margin-bottom:8px;">FY ${fyYear} year-to-date — Closed Won by Business Unit</div>
+      <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:12px;">
+        <thead><tr>${headerCells}</tr></thead>
+        <tbody>
+          ${departmentRows}
+          <tr>
+            <td style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;font-weight:700;">FY ${fyYear} total</td>
+            <td style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:right;font-weight:700;">${fyTotals.grand.records}</td>
+            <td style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:right;font-weight:700;">${esc(formatCurrency(fyTotals.grand.revenue))}</td>
+            <td style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:right;font-weight:700;">${esc(formatCurrency(fyTotals.grand.costs))}</td>
+            <td style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:right;font-weight:700;">${esc(formatCurrency(fyTotals.grand.margin))}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 export function renderClosedWonReportHtml(report: ClosedWonReport) {
   const rowsHtml =
-    report.ownerGroups
+    report.departmentGroups
       .map(
         (group) => `
           <tr>
-            <td colspan="10" style="padding:10px 8px;border:1px solid #cbd5e1;background:#eef2ff;font-weight:700;">
-              ${esc(group.owner)} (${group.totals.records} ${group.totals.records === 1 ? "record" : "records"})
+            <td colspan="${TABLE_COLUMN_COUNT}" style="padding:10px 8px;border:1px solid #cbd5e1;background:#eef2ff;font-weight:700;">
+              ${esc(group.department)} (${group.totals.records} ${group.totals.records === 1 ? "record" : "records"})
             </td>
           </tr>
           ${group.rows.map(dataRow).join("")}
@@ -525,7 +629,7 @@ export function renderClosedWonReportHtml(report: ClosedWonReport) {
       )
       .join("") || `
         <tr>
-          <td colspan="10" style="padding:18px;border:1px solid #e5e7eb;text-align:center;color:#64748b;">No closed won opportunities found for this period.</td>
+          <td colspan="${TABLE_COLUMN_COUNT}" style="padding:18px;border:1px solid #e5e7eb;text-align:center;color:#64748b;">No closed won opportunities found for this period.</td>
         </tr>
       `;
 
@@ -551,10 +655,12 @@ export function renderClosedWonReportHtml(report: ClosedWonReport) {
             </tr>
           </table>
 
+          ${fyTotalsBlock(report)}
+
           <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:12px;">
             <thead>
               <tr>
-                ${["Department", "Account Name", "Opportunity Name", "Total Project Revenue", "Total Project Costs", "Total Project Margin", "Substantial Completion Date", "Award Date", "Created Date", "Status Update"]
+                ${TABLE_COLUMNS
                   .map((label) => `<th style="padding:8px;border:1px solid #d1d5db;background:#e2e8f0;text-align:left;font-weight:700;">${esc(label)}</th>`)
                   .join("")}
               </tr>
@@ -566,7 +672,7 @@ export function renderClosedWonReportHtml(report: ClosedWonReport) {
           </table>
 
           <div style="font-size:11px;color:#64748b;margin-top:18px;">
-            Filter: Closed Won deals where Award Date or Created Date falls between ${esc(formatShortDate(report.rangeStart))} and ${esc(formatShortDate(report.rangeEnd))}.
+            Filter: Closed Won deals where Award Date or Created Date falls between ${esc(formatShortDate(report.rangeStart))} and ${esc(formatShortDate(report.rangeEnd))}. Grouped by Business Unit. Opportunity name links open the deal in the CRM.
           </div>
         </div>
       </div>
