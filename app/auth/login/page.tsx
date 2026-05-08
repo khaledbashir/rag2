@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
 export default function LoginPage() {
-  const microsoftSsoEnabled = process.env.NEXT_PUBLIC_MICROSOFT_SSO_ENABLED === "true";
+  const microsoftSsoEnabled = process.env.NEXT_PUBLIC_MICROSOFT_SSO_ENABLED !== "false";
   const [isHubHost, setIsHubHost] = useState(false);
   const [callbackUrl, setCallbackUrl] = useState("/");
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -18,12 +18,18 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [autoMicrosoft, setAutoMicrosoft] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setCallbackUrl(params.get("callbackUrl") ?? "/");
+    const cb = params.get("callbackUrl") ?? "/";
+    setCallbackUrl(cb);
     setUrlError(params.get("error"));
-    setIsHubHost(["apps.ancsports.net", "app.ancsports.net"].includes(window.location.hostname));
+    setIsHubHost(["apps.anc.com", "app.anc.com", "apps.ancsports.net", "app.ancsports.net"].includes(window.location.hostname));
+    if (params.get("microsoft") === "auto" && !params.get("error")) {
+      setAutoMicrosoft(true);
+      void signIn("microsoft-entra-id", { callbackUrl: cb });
+    }
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -173,13 +179,23 @@ export default function LoginPage() {
 
           {/* Header */}
           <h1 className="font-serif text-2xl font-bold text-zinc-900 tracking-tight text-center md:text-left">
-            Welcome back
+            {autoMicrosoft ? "Redirecting…" : "Welcome back"}
           </h1>
           <p className="text-sm text-zinc-500 mt-1 text-center md:text-left">
-            {isHubHost ? "Sign in once with your ANC Microsoft account" : "Sign in to your account"}
+            {autoMicrosoft
+              ? "Signing you in with your ANC Microsoft account."
+              : isHubHost
+                ? "Sign in once with your ANC Microsoft account"
+                : "Sign in to your account"}
           </p>
 
-          {microsoftSsoEnabled && (
+          {autoMicrosoft && (
+            <div className="mt-10 flex items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-[#0A52EF]" aria-hidden="true" />
+            </div>
+          )}
+
+          {!autoMicrosoft && microsoftSsoEnabled && (
             <>
               <button
                 type="button"
@@ -204,6 +220,7 @@ export default function LoginPage() {
           )}
 
           {/* Form */}
+          {!autoMicrosoft && (
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
               <Label htmlFor="login-email" className="text-sm font-medium text-zinc-700">
@@ -293,6 +310,7 @@ export default function LoginPage() {
               </AnimatePresence>
             </Button>
           </form>
+          )}
 
           <p className="text-xs text-zinc-400 text-center mt-8">
             Authorized personnel only
