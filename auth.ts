@@ -1,18 +1,71 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { authConfig } from "./auth.config";
 import { ensureAnythingLlmUser } from "@/services/anythingllm/userProvisioner";
 
+function microsoftAllowedDomains(): string[] {
+  return (process.env.AUTH_MICROSOFT_ALLOWED_DOMAINS || "anc.com")
+    .split(",")
+    .map((domain) => domain.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function microsoftEmailFromProfile(profile: Record<string, unknown>): string {
+  const raw =
+    profile.email ||
+    profile.preferred_username ||
+    profile.upn ||
+    profile.unique_name;
+  return typeof raw === "string" ? raw.trim().toLowerCase() : "";
+}
+
+const microsoftProvider =
+  process.env.AUTH_MICROSOFT_ENTRA_ID_ID &&
+  process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET &&
+  process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER
+    ? [
+        MicrosoftEntraID({
+          clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
+          clientSecret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET,
+          issuer: process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER,
+          allowDangerousEmailAccountLinking: true,
+          profile(profile) {
+            const email = microsoftEmailFromProfile(profile as Record<string, unknown>);
+            return {
+              id: String(profile.sub),
+              name: typeof profile.name === "string" ? profile.name : email,
+              email,
+              image: null,
+            };
+          },
+        }),
+      ]
+    : [];
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
+  callbacks: {
+    ...authConfig.callbacks,
+    async signIn({ account, profile, user }) {
+      if (account?.provider !== "microsoft-entra-id") return true;
+
+      const email = (user.email || microsoftEmailFromProfile((profile || {}) as Record<string, unknown>)).toLowerCase();
+      const domain = email.split("@")[1] || "";
+      const allowedDomains = microsoftAllowedDomains();
+
+      return Boolean(email && allowedDomains.includes(domain));
+    },
+  },
   secret: process.env.AUTH_SECRET,
   trustHost: true,
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
   providers: [
+    ...microsoftProvider,
     Credentials({
       credentials: {
         email: { label: "Email", type: "email" },

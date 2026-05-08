@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
 export default function LoginPage() {
+  const microsoftSsoEnabled = process.env.NEXT_PUBLIC_MICROSOFT_SSO_ENABLED === "true";
+  const [isHubHost, setIsHubHost] = useState(false);
   const [callbackUrl, setCallbackUrl] = useState("/");
   const [urlError, setUrlError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
@@ -21,6 +23,7 @@ export default function LoginPage() {
     const params = new URLSearchParams(window.location.search);
     setCallbackUrl(params.get("callbackUrl") ?? "/");
     setUrlError(params.get("error"));
+    setIsHubHost(["apps.ancsports.net", "app.ancsports.net"].includes(window.location.hostname));
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -54,6 +57,11 @@ export default function LoginPage() {
       setMessage(`Connection error: ${err.message || "Unknown error"}. Check your network.`);
     }
     setLoading(false);
+  }
+
+  async function handleMicrosoftSignIn() {
+    setMessage("");
+    await signIn("microsoft-entra-id", { callbackUrl: callbackUrl || "/hub" });
   }
 
   const showError = urlError === "CredentialsSignin" || message;
@@ -119,10 +127,10 @@ export default function LoginPage() {
             transition={{ duration: 0.7, delay: 0.4, ease: "easeOut" }}
           >
             <h2 className="font-serif text-2xl md:text-3xl lg:text-4xl font-bold text-white mt-6 md:mt-8 tracking-tight">
-              Proposal Engine
+              {isHubHost ? "ANC Platform" : "Proposal Engine"}
             </h2>
             <p className="hidden md:block text-base text-white/60 font-light mt-3 tracking-wide">
-              Professional Sports Display Technology
+              {isHubHost ? "One secure place for ANC apps" : "Professional Sports Display Technology"}
             </p>
           </motion.div>
 
@@ -168,11 +176,35 @@ export default function LoginPage() {
             Welcome back
           </h1>
           <p className="text-sm text-zinc-500 mt-1 text-center md:text-left">
-            Sign in to your account
+            {isHubHost ? "Sign in once with your ANC Microsoft account" : "Sign in to your account"}
           </p>
 
+          {microsoftSsoEnabled && (
+            <>
+              <button
+                type="button"
+                onClick={handleMicrosoftSignIn}
+                className="mt-8 flex h-12 w-full items-center justify-center gap-3 rounded-lg border border-zinc-200 bg-white text-sm font-semibold text-zinc-900 shadow-sm transition-all duration-200 hover:-translate-y-[1px] hover:border-zinc-300 hover:bg-zinc-50"
+              >
+                <span className="grid h-5 w-5 grid-cols-2 gap-0.5" aria-hidden="true">
+                  <span className="bg-[#f25022]" />
+                  <span className="bg-[#7fba00]" />
+                  <span className="bg-[#00a4ef]" />
+                  <span className="bg-[#ffb900]" />
+                </span>
+                Sign in with Microsoft
+              </button>
+
+              <div className="my-6 flex items-center gap-3">
+                <div className="h-px flex-1 bg-zinc-200" />
+                <span className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">Fallback</span>
+                <div className="h-px flex-1 bg-zinc-200" />
+              </div>
+            </>
+          )}
+
           {/* Form */}
-          <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
               <Label htmlFor="login-email" className="text-sm font-medium text-zinc-700">
                 Email address

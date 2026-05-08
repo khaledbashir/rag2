@@ -59,6 +59,7 @@ interface NavChild {
 }
 
 const mainMenuItems: NavItem[] = [
+    { icon: LayoutGrid, label: "ANC Hub", description: "Open the unified ANC app launcher.", href: "/hub", allowedRoles: null },
     { icon: LayoutGrid, label: "Projects", description: "View all proposal, mirror, intelligence, and estimate records.", href: "/projects", allowedRoles: null },
     { icon: Kanban, label: "Pipeline", description: "Track proposal stages, approvals, and deal movement.", href: "/pipeline", allowedRoles: null },
 ];

@@ -42,6 +42,8 @@ const ROUTE_RULES: Array<{
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
+  const host = req.headers.get("host")?.split(":")[0].toLowerCase() || "";
+  const isAppsHost = host === "apps.ancsports.net" || host === "app.ancsports.net";
 
   // Canonicalize malformed paths like //demo/virtual-venue-v2 -> /demo/virtual-venue-v2
   // to avoid client-side history.replaceState cross-origin parsing issues.
@@ -50,6 +52,12 @@ export default auth((req) => {
     const normalizedUrl = req.nextUrl.clone();
     normalizedUrl.pathname = normalizedPath;
     return NextResponse.redirect(normalizedUrl);
+  }
+
+  if (isAppsHost && pathname === "/") {
+    const hubUrl = req.nextUrl.clone();
+    hubUrl.pathname = "/hub";
+    return NextResponse.redirect(hubUrl);
   }
 
   // Public routes — no auth needed
@@ -94,7 +102,9 @@ export default auth((req) => {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    return NextResponse.redirect(new URL("/auth/login", req.url));
+    const loginUrl = new URL("/auth/login", req.url);
+    loginUrl.searchParams.set("callbackUrl", `${pathname}${req.nextUrl.search}`);
+    return NextResponse.redirect(loginUrl);
   }
 
   const userRole = user.role || "VIEWER"; // Default to most restrictive
