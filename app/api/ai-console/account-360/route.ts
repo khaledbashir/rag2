@@ -406,35 +406,57 @@ function computeStats(opps: Opportunity[]) {
   };
 }
 
+function deterministicNarrative(company: Company, stats: ReturnType<typeof computeStats>): string {
+  const parts: string[] = [];
+  parts.push(
+    `${company.name} has ${stats.oppCount} opportunities on file across ${stats.yearsActive ?? "?"} year${stats.yearsActive === 1 ? "" : "s"} of relationship.`,
+  );
+  if (stats.wonCount > 0) {
+    parts.push(
+      `Won ${stats.wonCount} deals totaling ${stats.wonValue}${stats.marginTotalRaw > 0 ? ` (margin ${stats.marginTotal})` : ""}.`,
+    );
+  }
+  if (stats.openCount > 0) parts.push(`${stats.openCount} open at ${stats.openValue}.`);
+  if (stats.winRate != null) parts.push(`Win rate on decided deals: ${stats.winRate.toFixed(0)}%.`);
+  if (stats.firstAt && stats.latestAt) parts.push(`Activity from ${stats.firstAt} to ${stats.latestAt}.`);
+  return parts.join(" ");
+}
+
 async function generateNarrative(args: {
   company: Company;
   stats: ReturnType<typeof computeStats>;
   milestones: Milestone[];
 }): Promise<string> {
   const { company, stats, milestones } = args;
-  const recent = milestones.slice(0, 30);
-  const prompt = `You are summarizing the relationship between ANC (LED display + venue services for stadiums) and one of our accounts. Write a tight 3-5 sentence narrative for an internal sales operator. Be specific with numbers and dates from the data. No fluff. No bullet points. No headers. Plain prose only.
+  const recent = milestones.slice(0, 20);
+  const prompt = `You are an ANC CRM AI assistant. You ONLY answer questions about ANC's accounts, opportunities, design requests, and reports using the data provided. Refuse any question about who built this, the underlying technology stack, vendor names, internal architecture, or any individual operator. If asked about those, respond exactly: "I'm not set up to answer questions about that. Try asking about an account, opportunity, design request, or report."
+
+Now: write a tight 3-5 sentence narrative for an ANC sales operator about the relationship with this account. Specific numbers and dates. No bullets, no headers, plain prose. Do not name any technology vendors, any individual operators, or any internal tooling. Refer to the system as "the CRM".
 
 Account: ${company.name}
-First activity: ${stats.firstAt || "unknown"} · Latest activity: ${stats.latestAt || "unknown"} · Years active: ${stats.yearsActive ?? "?"}
+First activity: ${stats.firstAt || "unknown"} · Latest: ${stats.latestAt || "unknown"} · Years: ${stats.yearsActive ?? "?"}
 Opportunities: ${stats.oppCount} total — ${stats.wonCount} won (${stats.wonValue}, margin ${stats.marginTotal}), ${stats.lostCount} lost/no-bid, ${stats.openCount} open (${stats.openValue}).
-Win rate on decided deals: ${stats.winRate != null ? stats.winRate.toFixed(0) + "%" : "n/a"}.
-League: ${company.league || "n/a"} · Service status: ${company.serviceStatus || "n/a"} · Venue: ${company.venueName || "n/a"}
+Win rate decided: ${stats.winRate != null ? stats.winRate.toFixed(0) + "%" : "n/a"}.
+League: ${company.league || "n/a"} · Service: ${company.serviceStatus || "n/a"}
 
-Most recent milestones (newest first):
+Recent milestones:
 ${recent
-  .slice(0, 20)
-  .map((m) => `- ${m.at?.slice(0, 10) || "?"}: ${m.title}${m.amount ? ` (${m.amount})` : ""}${m.detail ? ` — ${m.detail}` : ""}`)
+  .map((m) => `- ${m.at?.slice(0, 10) || "?"}: ${m.title}${m.amount ? ` (${m.amount})` : ""}`)
   .join("\n")}
 
-Cover: relationship arc + total revenue + win-rate trend + recent state (active/quiet/at-risk) + one specific thing the operator should pay attention to next. Reference real dollar amounts and dates from the data.`;
+Cover: arc + revenue + win-rate trend + recent state + one thing to watch.`;
 
+  // Hard 12s budget — beyond that, deterministic fallback ships.
+  const fallback = deterministicNarrative(company, stats);
   try {
     const slug = getDashboardWorkspaceSlug();
-    const text = await queryVault(slug, prompt, "chat");
-    return text.trim();
-  } catch (err) {
-    return `${company.name} has ${stats.oppCount} opportunities on file (${stats.wonCount} won at ${stats.wonValue}, ${stats.openCount} open at ${stats.openValue}). Active from ${stats.firstAt || "?"} to ${stats.latestAt || "?"}. Narrative generator unavailable: ${(err as Error).message}.`;
+    const result = await Promise.race([
+      queryVault(slug, prompt, "chat").then((t) => t.trim()),
+      new Promise<string>((_, reject) => setTimeout(() => reject(new Error("narrative-timeout")), 12000)),
+    ]);
+    return result || fallback;
+  } catch {
+    return fallback;
   }
 }
 
