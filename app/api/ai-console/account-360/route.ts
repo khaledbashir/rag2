@@ -62,6 +62,10 @@ type Opportunity = {
   probability: number | null;
   amount: Money;
   margin: Money;
+  salePrice: Money;
+  totalProjectRevenue: Money;
+  totalProjectMargin: Money;
+  dealValue: Money;
   closeDate: string | null;
   proposalDueDate: string | null;
   pricingCompleteDate: string | null;
@@ -72,6 +76,44 @@ type Opportunity = {
   technologyVendorPartner: string | null;
   createdAt: string;
 };
+
+const microsOf = (m: Money) => (m && m.amountMicros != null ? Number(m.amountMicros) : 0);
+
+// Best-known revenue picks the non-zero max across populated fields. SF migration
+// left different fields populated on different opps — salePrice for some,
+// totalProjectRevenue for others, dealValue for others, FY-rollup amount for newer.
+function bestRevenue(o: Opportunity): { micros: number; currency: string } {
+  const candidates = [o.salePrice, o.totalProjectRevenue, o.dealValue, o.amount];
+  let best = 0;
+  let currency = "USD";
+  for (const c of candidates) {
+    const v = microsOf(c);
+    if (v > best) {
+      best = v;
+      if (c?.currencyCode) currency = c.currencyCode;
+    }
+  }
+  return { micros: best, currency };
+}
+
+function bestMargin(o: Opportunity): { micros: number; currency: string } {
+  const candidates = [o.totalProjectMargin, o.margin];
+  let best = 0;
+  let currency = "USD";
+  for (const c of candidates) {
+    const v = microsOf(c);
+    if (v > best) {
+      best = v;
+      if (c?.currencyCode) currency = c.currencyCode;
+    }
+  }
+  return { micros: best, currency };
+}
+
+const fmtMicros = (micros: number, currency = "USD") =>
+  micros > 0
+    ? new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(micros / 1_000_000)
+    : null;
 
 type Milestone = {
   type:
@@ -128,6 +170,8 @@ async function fetchOpportunities(companyId: string): Promise<Opportunity[]> {
         edges{ node{
           id name bidStatus stage businessUnit probability
           amount{amountMicros currencyCode} margin{amountMicros currencyCode}
+          salePrice{amountMicros currencyCode} dealValue{amountMicros currencyCode}
+          totalProjectRevenue{amountMicros currencyCode} totalProjectMargin{amountMicros currencyCode}
           closeDate proposalDueDate pricingCompleteDate substantialCompletionDate
           accountExecutive proposalStage priority technologyVendorPartner createdAt
         }}
@@ -198,12 +242,14 @@ function synthesize(args: {
   const out: Milestone[] = [];
 
   for (const o of opps) {
+    const rev = bestRevenue(o);
+    const revFmt = fmtMicros(rev.micros, rev.currency);
     out.push({
       type: "opp.created",
       at: o.createdAt,
       title: `Opportunity opened — ${o.name}`,
       detail: [o.businessUnit, o.accountExecutive].filter(Boolean).join(" · ") || null,
-      amount: fmtMoney(o.amount),
+      amount: revFmt,
       link: `${CRM_BASE}/object/opportunity/${o.id}`,
       badge: o.businessUnit,
     });
@@ -213,7 +259,7 @@ function synthesize(args: {
         at: o.closeDate,
         title: `${o.bidStatus === "WON" ? "Won" : o.bidStatus === "LOST" ? "Lost" : "No bid"} — ${o.name}`,
         detail: o.accountExecutive || null,
-        amount: fmtMoney(o.amount),
+        amount: revFmt,
         link: `${CRM_BASE}/object/opportunity/${o.id}`,
         badge: o.bidStatus,
       });
@@ -315,8 +361,8 @@ function computeStats(opps: Opportunity[]) {
   let firstAt: string | null = null,
     latestAt: string | null = null;
   for (const o of opps) {
-    const dollars = o.amount?.amountMicros ? Number(o.amount.amountMicros) / 1_000_000 : 0;
-    const m = o.margin?.amountMicros ? Number(o.margin.amountMicros) / 1_000_000 : 0;
+    const dollars = bestRevenue(o).micros / 1_000_000;
+    const m = bestMargin(o).micros / 1_000_000;
     if (o.bidStatus === "WON") {
       wonCount += 1;
       wonValue += dollars;
