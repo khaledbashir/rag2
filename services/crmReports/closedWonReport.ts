@@ -103,7 +103,6 @@ export type ClosedWonReport = {
   fyYear: number;
   dashboardUrl: string;
   won2026: SectionData;
-  pipeline2026: SectionData;
   recent: SectionData & {
     title: string;
     rangeStart: string;
@@ -390,18 +389,6 @@ async function fetchWon2026Opportunities(): Promise<OpportunityDbRow[]> {
   return result.rows;
 }
 
-async function fetchPipeline2026Opportunities(): Promise<OpportunityDbRow[]> {
-  const schema = await getWorkspaceSchema();
-  const query = buildOpportunityQuery(
-    schema,
-    `o."bidStatus" in (${PIPELINE_BID_STATUSES.map((_, i) => `$${i + 1}`).join(",")})
-       and (o."revenue2026AmountMicros" is not null and o."revenue2026AmountMicros" <> 0
-         or o."margin2026AmountMicros" is not null and o."margin2026AmountMicros" <> 0)`,
-  );
-  const result = await getTwentyDbPool().query<OpportunityDbRow>(query, [...PIPELINE_BID_STATUSES]);
-  return result.rows;
-}
-
 async function fetchRecentClosedWonOpportunities(start: Date, end: Date): Promise<OpportunityDbRow[]> {
   const schema = await getWorkspaceSchema();
   const query = buildOpportunityQuery(
@@ -484,19 +471,17 @@ export async function buildClosedWonReport(period: ClosedWonReportPeriod = "last
   const fyYear = now.getUTCFullYear();
   const { start, end, title: recentTitle } = periodRange(period, now);
 
-  const [wonRaw, pipelineRaw, recentRaw] = await Promise.all([
+  const [wonRaw, recentRaw] = await Promise.all([
     fetchWon2026Opportunities(),
-    fetchPipeline2026Opportunities(),
     fetchRecentClosedWonOpportunities(start, end),
   ]);
 
   const wonRows = wonRaw.map(toReportRow);
-  const pipelineRows = pipelineRaw.map(toReportRow);
   const recentRows = recentRaw.map(toReportRow);
 
   const periodLabel = period === "monthToDate" ? "Month-to-Date" : "Last 7 Days";
-  const title = `${fyYear} Won & Forecast by Business Unit — ${periodLabel}`;
-  const subtitle = `Mirror of CRM dashboard "${fyYear} Won & Forecast by Business Unit". Won and Pipeline numbers reflect ${fyYear} revenue/margin splits per opportunity.`;
+  const title = `${fyYear} Closed Won by Business Unit — ${periodLabel}`;
+  const subtitle = `Mirrors the Closed Won widgets on the CRM dashboard "${fyYear} Won & Forecast by Business Unit". Numbers reflect ${fyYear} revenue/margin splits per opportunity.`;
 
   return {
     period,
@@ -508,7 +493,6 @@ export async function buildClosedWonReport(period: ClosedWonReportPeriod = "last
     fyYear,
     dashboardUrl: DASHBOARD_URL,
     won2026: buildSection(wonRows),
-    pipeline2026: buildSection(pipelineRows),
     recent: {
       title: recentTitle,
       rangeStart: start.toISOString(),
@@ -671,18 +655,14 @@ export function renderClosedWonReportHtml(report: ClosedWonReport) {
   const year = report.fyYear;
 
   const wonAccent = "#eef2ff";
-  const pipelineAccent = "#fef3c7";
   const recentAccent = "#ecfdf5";
 
   const summaryRow = `
     <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:18px;">
       <tr>
-        ${summaryCell(`Won ${year} deals`, String(report.won2026.totals.records), wonAccent)}
-        ${summaryCell(`Won ${year} revenue`, formatCurrency(report.won2026.totals.revenue), wonAccent)}
-        ${summaryCell(`Won ${year} margin`, formatCurrency(report.won2026.totals.margin), wonAccent)}
-        ${summaryCell(`Pipeline ${year} deals`, String(report.pipeline2026.totals.records), pipelineAccent)}
-        ${summaryCell(`Pipeline ${year} revenue`, formatCurrency(report.pipeline2026.totals.revenue), pipelineAccent)}
-        ${summaryCell(`Pipeline ${year} margin`, formatCurrency(report.pipeline2026.totals.margin), pipelineAccent)}
+        ${summaryCell(`Closed Won ${year} deals`, String(report.won2026.totals.records), wonAccent)}
+        ${summaryCell(`Closed Won ${year} revenue`, formatCurrency(report.won2026.totals.revenue), wonAccent)}
+        ${summaryCell(`Closed Won ${year} margin`, formatCurrency(report.won2026.totals.margin), wonAccent)}
       </tr>
     </table>
   `;
@@ -701,15 +681,12 @@ export function renderClosedWonReportHtml(report: ClosedWonReport) {
         <div style="padding:18px 24px;">
           ${summaryRow}
 
-          ${summaryByBusinessUnit(year, `${year} Closed Won by Business Unit`, "#eef2ff", report.won2026)}
-          ${summaryByBusinessUnit(year, `${year} Pipeline (Forecast) by Business Unit`, "#fef3c7", report.pipeline2026)}
+          ${summaryByBusinessUnit(year, `${year} Closed Won by Business Unit`, wonAccent, report.won2026)}
 
-          ${sectionTable(year, `${year} Closed Won — all deals (${report.won2026.totals.records})`, wonAccent, report.won2026, `No closed-won opportunities have ${year} revenue or margin booked.`)}
-          ${sectionTable(year, `${year} Pipeline (Forecast) — all deals (${report.pipeline2026.totals.records})`, pipelineAccent, report.pipeline2026, `No pipeline opportunities have ${year} revenue or margin booked.`)}
           ${sectionTable(year, `${esc(report.recent.title)} — closed-won activity (${report.recent.totals.records})`, recentAccent, report.recent, "No closed-won activity in this window.")}
 
           <div style="font-size:11px;color:#64748b;margin-top:18px;">
-            Filters mirror the CRM dashboard "${year} Won & Forecast by Business Unit": Won = bid status not in (verbal agreement, prospecting, RFP received, scoping, bid submitted, shortlisted, lost, no bid) with non-zero ${year} revenue or margin. Pipeline = bid status in those open stages with non-zero ${year} revenue or margin. Activity table = bid status WON with award date or created date in the period window. Opportunity name links open the deal in the CRM.
+            Filter mirrors the CRM dashboard "${year} Won & Forecast by Business Unit" Closed Won widgets: bid status not in (verbal agreement, prospecting, RFP received, scoping, bid submitted, shortlisted, lost, no bid) with non-zero ${year} revenue or margin. Activity table = bid status WON with award date or created date in the period window. Opportunity name links open the deal in the CRM.
           </div>
         </div>
       </div>
@@ -733,7 +710,7 @@ export async function sendClosedWonReportEmail(input: {
   if (!input.recipients.length) throw new Error("No report recipients configured");
 
   const periodLabel = input.report.period === "monthToDate" ? "Month-to-Date" : "Last 7 Days";
-  const subject = `Report results (${input.report.fyYear} Won & Forecast by Business Unit — ${periodLabel})`;
+  const subject = `Report results (${input.report.fyYear} Closed Won by Business Unit — ${periodLabel})`;
 
   const account = await getReportEmailAccount();
   return sendMicrosoftGraphMail(account, subject, input.html, input.recipients);

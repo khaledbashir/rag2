@@ -78,7 +78,6 @@ export async function POST(request: NextRequest) {
       period: report.period,
       fyYear: report.fyYear,
       won2026: report.won2026.totals,
-      pipeline2026: report.pipeline2026.totals,
       recent: report.recent.totals,
     });
   } catch (error) {
