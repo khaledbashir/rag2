@@ -398,6 +398,15 @@ async function fetchRecentClosedWonOpportunities(start: Date, end: Date): Promis
          (o."closeDate" is not null and o."closeDate" >= $1::timestamptz and o."closeDate" <= $2::timestamptz)
          or
          (o."createdAt" >= $1::timestamptz and o."createdAt" <= $2::timestamptz)
+         or
+         exists (
+           select 1 from "${schema}"."timelineActivity" t
+           where t."targetOpportunityId" = o.id
+             and t."happensAt" >= $1::timestamptz
+             and t."happensAt" <= $2::timestamptz
+             and t.name = 'opportunity.updated'
+             and t.properties->'diff'->'bidStatus'->>'after' = 'WON'
+         )
        )`,
   );
   const result = await getTwentyDbPool().query<OpportunityDbRow>(query, [start.toISOString(), end.toISOString()]);
@@ -686,7 +695,7 @@ export function renderClosedWonReportHtml(report: ClosedWonReport) {
           ${sectionTable(year, `${esc(report.recent.title)} — closed-won activity (${report.recent.totals.records})`, recentAccent, report.recent, "No closed-won activity in this window.")}
 
           <div style="font-size:11px;color:#64748b;margin-top:18px;">
-            Filter mirrors the CRM dashboard "${year} Won & Forecast by Business Unit" Closed Won widgets: bid status not in (verbal agreement, prospecting, RFP received, scoping, bid submitted, shortlisted, lost, no bid) with non-zero ${year} revenue or margin. Activity table = bid status WON with award date or created date in the period window. Opportunity name links open the deal in the CRM.
+            Filter mirrors the CRM dashboard "${year} Won & Forecast by Business Unit" Closed Won widgets: bid status not in (verbal agreement, prospecting, RFP received, scoping, bid submitted, shortlisted, lost, no bid) with non-zero ${year} revenue or margin. Activity table = currently WON opportunities where the bid status flipped to WON in the period window, or the deal was created or its award date set in the period window. Opportunity name links open the deal in the CRM.
           </div>
         </div>
       </div>
