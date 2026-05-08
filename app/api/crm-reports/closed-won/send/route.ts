@@ -75,8 +75,11 @@ export async function POST(request: NextRequest) {
       provider: result.provider,
       from: result.from,
       recipients,
-      totals: report.totals,
       period: report.period,
+      fyYear: report.fyYear,
+      won2026: report.won2026.totals,
+      pipeline2026: report.pipeline2026.totals,
+      recent: report.recent.totals,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to send report";

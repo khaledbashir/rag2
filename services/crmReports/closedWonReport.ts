@@ -1,39 +1,57 @@
 import { Pool } from "pg";
 
 const TWENTY_BASE = "https://abc-twenty.izcgmb.easypanel.host";
+const DASHBOARD_URL =
+  "https://crm.ancsports.net/object/dashboard/e6459a59-3e4e-4810-a34a-5ef15142e69d";
 
-type CurrencyValue = {
-  amountMicros?: number | null;
-  currencyCode?: string | null;
-} | null;
+const PIPELINE_BID_STATUSES = [
+  "VERBAL_AGREEMENT",
+  "PROSPECTING",
+  "RFP_RECEIVED",
+  "SCOPING",
+  "BID_SUBMITTED",
+  "SHORTLISTED",
+] as const;
 
-type TwentyOpportunity = {
+const NON_WON_BID_STATUSES = [
+  ...PIPELINE_BID_STATUSES,
+  "LOST",
+  "NO_BID",
+] as const;
+
+type ConnectedEmailAccount = {
   id: string;
-  name: string | null;
-  opportunityNumber: string | null;
-  bidStatus: string | null;
-  stage: string | null;
-  businessUnit: string | null;
-  closeDate: string | null;
-  createdAt: string | null;
-  updatedAt: string | null;
-  substantialCompletionDate: string | null;
-  accountExecutive: string | null;
-  accountExecutiveEmail: string | null;
-  winLossReason: string | null;
-  totalProjectRevenue: CurrencyValue;
-  totalProjectMargin: CurrencyValue;
-  dealValue: CurrencyValue;
-  salePrice: CurrencyValue;
-  amount: CurrencyValue;
-  margin: CurrencyValue;
-  company: { id: string; name: string | null } | null;
-  owner: {
-    id: string;
-    userEmail: string | null;
-    name: { firstName?: string | null; lastName?: string | null } | null;
-  } | null;
+  handle: string | null;
+  provider: string;
+  authFailedAt: string | null;
+  accessToken: string | null;
+  refreshToken: string | null;
 };
+
+let twentyDbPool: Pool | null = null;
+let workspaceSchemaCache: string | null = null;
+
+function getTwentyDbPool() {
+  if (!twentyDbPool) {
+    const url = process.env.TWENTY_CORE_DATABASE_URL?.trim();
+    if (!url) throw new Error("TWENTY_CORE_DATABASE_URL is not configured");
+    twentyDbPool = new Pool({ connectionString: url });
+  }
+  return twentyDbPool;
+}
+
+async function getWorkspaceSchema(): Promise<string> {
+  if (workspaceSchemaCache) return workspaceSchemaCache;
+  const result = await getTwentyDbPool().query<{ databaseSchema: string }>(
+    `select "databaseSchema" from core.workspace where "deletedAt" is null and "databaseSchema" is not null order by "createdAt" asc limit 1`,
+  );
+  const schema = result.rows[0]?.databaseSchema;
+  if (!schema || !/^workspace_[a-z0-9_]+$/i.test(schema)) {
+    throw new Error("Could not resolve Twenty workspace database schema");
+  }
+  workspaceSchemaCache = schema;
+  return schema;
+}
 
 export type ClosedWonReportPeriod = "last7" | "monthToDate";
 
@@ -44,9 +62,12 @@ export type ClosedWonReportRow = {
   department: string;
   accountName: string;
   opportunityName: string;
+  bidStatus: string;
   revenue: number;
   costs: number;
   margin: number;
+  totalProjectRevenue: number;
+  totalProjectMargin: number;
   substantialCompletionDate: string | null;
   awardDate: string | null;
   createdDate: string | null;
@@ -60,85 +81,43 @@ type ReportTotals = {
   margin: number;
 };
 
+type DepartmentGroup = {
+  department: string;
+  rows: ClosedWonReportRow[];
+  totals: ReportTotals;
+};
+
+type SectionData = {
+  rows: ClosedWonReportRow[];
+  totals: ReportTotals;
+  departmentGroups: DepartmentGroup[];
+};
+
 export type ClosedWonReport = {
   period: ClosedWonReportPeriod;
   title: string;
+  subtitle: string;
   generatedAt: string;
   rangeStart: string;
   rangeEnd: string;
-  rows: ClosedWonReportRow[];
-  totals: ReportTotals;
-  departmentGroups: Array<{
-    department: string;
-    rows: ClosedWonReportRow[];
-    totals: ReportTotals;
-  }>;
   fyYear: number;
-  fyTotals: {
-    grand: ReportTotals;
-    byDepartment: Array<{ department: string; totals: ReportTotals }>;
+  dashboardUrl: string;
+  won2026: SectionData;
+  pipeline2026: SectionData;
+  recent: SectionData & {
+    title: string;
+    rangeStart: string;
+    rangeEnd: string;
   };
-};
-
-type GraphqlResponse<T> = {
-  data?: T;
-  errors?: Array<{ message?: string }>;
-};
-
-type ClosedWonQueryData = {
-  opportunities: {
-    edges: Array<{ node: TwentyOpportunity }>;
-    pageInfo: { hasNextPage: boolean; endCursor: string | null };
-  };
-};
-
-type ConnectedEmailAccount = {
-  id: string;
-  handle: string | null;
-  provider: string;
-  authFailedAt: string | null;
-  accessToken: string | null;
-  refreshToken: string | null;
 };
 
 let reportEmailAccountPool: Pool | null = null;
 
-function getTwentyApiKey() {
-  const key = process.env.TWENTY_API_KEY?.trim();
-  if (!key) {
-    throw new Error("TWENTY_API_KEY is not configured");
-  }
-  return key;
-}
-
-async function twentyGraphql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
-  const res = await fetch(`${TWENTY_BASE}/graphql`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${getTwentyApiKey()}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-
-  const body = (await res.json().catch(() => ({}))) as GraphqlResponse<T>;
-  if (!res.ok || body.errors?.length) {
-    const err = body.errors?.map((entry) => entry.message).filter(Boolean).join(", ");
-    throw new Error(err || `Twenty GraphQL ${res.status}`);
-  }
-  if (!body.data) throw new Error("Twenty GraphQL returned no data");
-  return body.data;
-}
-
-function getTwentyCoreDatabaseUrl() {
-  const url = process.env.TWENTY_CORE_DATABASE_URL?.trim();
-  if (!url) throw new Error("TWENTY_CORE_DATABASE_URL is not configured");
-  return url;
-}
-
 function getReportEmailAccountPool() {
   if (!reportEmailAccountPool) {
-    reportEmailAccountPool = new Pool({ connectionString: getTwentyCoreDatabaseUrl() });
+    const url = process.env.TWENTY_CORE_DATABASE_URL?.trim();
+    if (!url) throw new Error("TWENTY_CORE_DATABASE_URL is not configured");
+    reportEmailAccountPool = new Pool({ connectionString: url });
   }
   return reportEmailAccountPool;
 }
@@ -248,22 +227,15 @@ async function sendMicrosoftGraphMail(account: ConnectedEmailAccount, subject: s
   };
 }
 
-function dollars(value: CurrencyValue) {
-  return Number(value?.amountMicros || 0) / 1_000_000;
+function microsToDollars(value: string | number | null | undefined) {
+  return Number(value || 0) / 1_000_000;
 }
 
-function firstNonZero(...values: number[]) {
-  return values.find((value) => Number.isFinite(value) && value !== 0) || 0;
-}
-
-function ownerName(opp: TwentyOpportunity) {
+function ownerName(opp: { accountExecutive: string | null; ownerFirstName: string | null; ownerLastName: string | null }) {
   const accountExecutive = opp.accountExecutive?.trim();
   if (accountExecutive) return accountExecutive;
-
-  const first = opp.owner?.name?.firstName?.trim() || "";
-  const last = opp.owner?.name?.lastName?.trim() || "";
-  const fullName = `${first} ${last}`.trim();
-  return fullName || opp.owner?.userEmail || "Unassigned";
+  const fullName = `${opp.ownerFirstName?.trim() || ""} ${opp.ownerLastName?.trim() || ""}`.trim();
+  return fullName || "Unassigned";
 }
 
 function departmentLabel(value: string | null) {
@@ -324,17 +296,16 @@ function periodRange(period: ClosedWonReportPeriod, now = new Date()) {
     return {
       start: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0)),
       end,
-      title: "Opportunities Closed Won Month-to-Date",
+      title: "Closed-Won Activity Month-to-Date",
     };
   }
-
   const start = new Date(now);
   start.setUTCDate(start.getUTCDate() - 7);
   start.setUTCHours(0, 0, 0, 0);
   return {
     start,
     end,
-    title: "Opportunities Closed Won Last 7 Days",
+    title: "Closed-Won Activity Last 7 Days",
   };
 }
 
@@ -343,83 +314,6 @@ function isInRange(value: string | null, start: Date, end: Date) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return false;
   return date >= start && date <= end;
-}
-
-async function fetchWonOpportunities() {
-  const out: TwentyOpportunity[] = [];
-  let after: string | null = null;
-
-  while (true) {
-    const data: ClosedWonQueryData = await twentyGraphql<ClosedWonQueryData>(
-      `
-        query ClosedWonOpps($after: String) {
-          opportunities(filter: { bidStatus: { eq: WON } }, first: 100, after: $after) {
-            edges {
-              node {
-                id
-                name
-                opportunityNumber
-                bidStatus
-                stage
-                businessUnit
-                closeDate
-                createdAt
-                updatedAt
-                substantialCompletionDate
-                accountExecutive
-                accountExecutiveEmail
-                winLossReason
-                totalProjectRevenue { amountMicros currencyCode }
-                totalProjectMargin { amountMicros currencyCode }
-                dealValue { amountMicros currencyCode }
-                salePrice { amountMicros currencyCode }
-                amount { amountMicros currencyCode }
-                margin { amountMicros currencyCode }
-                company { id name }
-                owner { id userEmail name { firstName lastName } }
-              }
-            }
-            pageInfo { hasNextPage endCursor }
-          }
-        }
-      `,
-      { after },
-    );
-
-    out.push(...data.opportunities.edges.map((edge: { node: TwentyOpportunity }) => edge.node));
-    if (!data.opportunities.pageInfo.hasNextPage) break;
-    after = data.opportunities.pageInfo.endCursor;
-    if (out.length > 20000) throw new Error("Closed won query exceeded safety limit");
-  }
-
-  return out;
-}
-
-function toReportRow(opp: TwentyOpportunity): ClosedWonReportRow {
-  const revenue = firstNonZero(
-    dollars(opp.totalProjectRevenue),
-    dollars(opp.dealValue),
-    dollars(opp.amount),
-    dollars(opp.salePrice),
-  );
-  const margin = firstNonZero(dollars(opp.totalProjectMargin), dollars(opp.margin));
-  const costs = revenue - margin;
-
-  return {
-    id: opp.id,
-    opportunityNumber: opp.opportunityNumber?.trim() || "",
-    owner: ownerName(opp),
-    department: departmentLabel(opp.businessUnit),
-    accountName: opp.company?.name || "-",
-    opportunityName: opp.name || "-",
-    revenue,
-    costs,
-    margin,
-    substantialCompletionDate: toDateOnly(opp.substantialCompletionDate),
-    awardDate: toDateOnly(opp.closeDate),
-    createdDate: toDateOnly(opp.createdAt),
-    statusUpdate: opp.winLossReason?.trim() || "-",
-  };
 }
 
 const DEPARTMENT_ORDER = ["Technology", "Service", "Media/Sponsorship"];
@@ -433,67 +327,122 @@ function compareDepartments(a: string, b: string) {
   return ai - bi;
 }
 
-export async function buildClosedWonReport(period: ClosedWonReportPeriod = "last7") {
-  const generatedAt = new Date().toISOString();
-  const now = new Date(generatedAt);
-  const { start, end, title } = periodRange(period, now);
-  const opportunities = await fetchWonOpportunities();
+type OpportunityDbRow = {
+  id: string;
+  name: string | null;
+  opportunityNumber: string | null;
+  bidStatus: string | null;
+  businessUnit: string | null;
+  closeDate: string | null;
+  createdAt: string | null;
+  substantialCompletionDate: string | null;
+  accountExecutive: string | null;
+  accountExecutiveEmail: string | null;
+  winLossReason: string | null;
+  revenue2026AmountMicros: string | null;
+  margin2026AmountMicros: string | null;
+  totalProjectRevenueAmountMicros: string | null;
+  totalProjectMarginAmountMicros: string | null;
+  ownerFirstName: string | null;
+  ownerLastName: string | null;
+  companyName: string | null;
+};
 
-  const rows = opportunities
-    .filter((opp) => isInRange(opp.closeDate, start, end) || isInRange(opp.createdAt, start, end))
-    .map(toReportRow)
-    .sort((a, b) => {
-      const deptCompare = compareDepartments(a.department, b.department);
-      if (deptCompare !== 0) return deptCompare;
-      return (b.awardDate || "").localeCompare(a.awardDate || "");
-    });
-
-  const totals = sumRows(rows);
-  const groups = new Map<string, ClosedWonReportRow[]>();
-  for (const row of rows) {
-    groups.set(row.department, [...(groups.get(row.department) || []), row]);
-  }
-  const departmentGroups = Array.from(groups.entries())
-    .map(([department, groupRows]) => ({
-      department,
-      rows: groupRows,
-      totals: sumRows(groupRows),
-    }))
-    .sort((a, b) => compareDepartments(a.department, b.department));
-
-  const fyYear = now.getUTCFullYear();
-  const fyStart = new Date(Date.UTC(fyYear, 0, 1, 0, 0, 0));
-  const fyEnd = new Date(Date.UTC(fyYear, 11, 31, 23, 59, 59));
-  const fyRows = opportunities
-    .filter((opp) => isInRange(opp.closeDate, fyStart, fyEnd))
-    .map(toReportRow);
-  const fyByDeptMap = new Map<string, ClosedWonReportRow[]>();
-  for (const row of fyRows) {
-    fyByDeptMap.set(row.department, [...(fyByDeptMap.get(row.department) || []), row]);
-  }
-  const fyByDepartment = Array.from(fyByDeptMap.entries())
-    .map(([department, groupRows]) => ({ department, totals: sumRows(groupRows) }))
-    .sort((a, b) => compareDepartments(a.department, b.department));
-  const fyTotals = {
-    grand: sumRows(fyRows),
-    byDepartment: fyByDepartment,
-  };
-
-  return {
-    period,
-    title,
-    generatedAt,
-    rangeStart: start.toISOString(),
-    rangeEnd: end.toISOString(),
-    rows,
-    totals,
-    departmentGroups,
-    fyYear,
-    fyTotals,
-  } satisfies ClosedWonReport;
+function buildOpportunityQuery(schema: string, whereClause: string) {
+  return `
+    select
+      o.id,
+      o.name,
+      o."opportunityNumber",
+      o."bidStatus",
+      o."businessUnit",
+      o."closeDate",
+      o."createdAt",
+      o."substantialCompletionDate",
+      o."accountExecutive",
+      o."accountExecutiveEmail",
+      o."winLossReason",
+      o."revenue2026AmountMicros",
+      o."margin2026AmountMicros",
+      o."totalProjectRevenueAmountMicros",
+      o."totalProjectMarginAmountMicros",
+      wm."nameFirstName" as "ownerFirstName",
+      wm."nameLastName" as "ownerLastName",
+      c.name as "companyName"
+    from "${schema}".opportunity o
+    left join "${schema}"."workspaceMember" wm on wm.id = o."ownerId"
+    left join "${schema}".company c on c.id = o."companyId"
+    where o."deletedAt" is null
+      and ${whereClause}
+  `;
 }
 
-function sumRows(rows: ClosedWonReportRow[]) {
+async function fetchWon2026Opportunities(): Promise<OpportunityDbRow[]> {
+  const schema = await getWorkspaceSchema();
+  const query = buildOpportunityQuery(
+    schema,
+    `o."bidStatus" is not null
+       and o."bidStatus" not in (${NON_WON_BID_STATUSES.map((_, i) => `$${i + 1}`).join(",")})
+       and (o."revenue2026AmountMicros" is not null and o."revenue2026AmountMicros" <> 0
+         or o."margin2026AmountMicros" is not null and o."margin2026AmountMicros" <> 0)`,
+  );
+  const result = await getTwentyDbPool().query<OpportunityDbRow>(query, [...NON_WON_BID_STATUSES]);
+  return result.rows;
+}
+
+async function fetchPipeline2026Opportunities(): Promise<OpportunityDbRow[]> {
+  const schema = await getWorkspaceSchema();
+  const query = buildOpportunityQuery(
+    schema,
+    `o."bidStatus" in (${PIPELINE_BID_STATUSES.map((_, i) => `$${i + 1}`).join(",")})
+       and (o."revenue2026AmountMicros" is not null and o."revenue2026AmountMicros" <> 0
+         or o."margin2026AmountMicros" is not null and o."margin2026AmountMicros" <> 0)`,
+  );
+  const result = await getTwentyDbPool().query<OpportunityDbRow>(query, [...PIPELINE_BID_STATUSES]);
+  return result.rows;
+}
+
+async function fetchRecentClosedWonOpportunities(start: Date, end: Date): Promise<OpportunityDbRow[]> {
+  const schema = await getWorkspaceSchema();
+  const query = buildOpportunityQuery(
+    schema,
+    `o."bidStatus" = 'WON'
+       and (
+         (o."closeDate" is not null and o."closeDate" >= $1::timestamptz and o."closeDate" <= $2::timestamptz)
+         or
+         (o."createdAt" >= $1::timestamptz and o."createdAt" <= $2::timestamptz)
+       )`,
+  );
+  const result = await getTwentyDbPool().query<OpportunityDbRow>(query, [start.toISOString(), end.toISOString()]);
+  return result.rows;
+}
+
+function toReportRow(opp: OpportunityDbRow): ClosedWonReportRow {
+  const revenue = microsToDollars(opp.revenue2026AmountMicros);
+  const margin = microsToDollars(opp.margin2026AmountMicros);
+  const costs = revenue - margin;
+
+  return {
+    id: opp.id,
+    opportunityNumber: opp.opportunityNumber?.trim() || "",
+    owner: ownerName(opp),
+    department: departmentLabel(opp.businessUnit),
+    accountName: opp.companyName || "-",
+    opportunityName: opp.name || "-",
+    bidStatus: opp.bidStatus || "-",
+    revenue,
+    costs,
+    margin,
+    totalProjectRevenue: microsToDollars(opp.totalProjectRevenueAmountMicros),
+    totalProjectMargin: microsToDollars(opp.totalProjectMarginAmountMicros),
+    substantialCompletionDate: toDateOnly(opp.substantialCompletionDate),
+    awardDate: toDateOnly(opp.closeDate),
+    createdDate: toDateOnly(opp.createdAt),
+    statusUpdate: opp.winLossReason?.trim() || "-",
+  };
+}
+
+function sumRows(rows: ClosedWonReportRow[]): ReportTotals {
   return rows.reduce(
     (totals, row) => ({
       records: totals.records + 1,
@@ -505,6 +454,70 @@ function sumRows(rows: ClosedWonReportRow[]) {
   );
 }
 
+function buildSection(rows: ClosedWonReportRow[]): SectionData {
+  const sorted = [...rows].sort((a, b) => {
+    const deptCompare = compareDepartments(a.department, b.department);
+    if (deptCompare !== 0) return deptCompare;
+    if (b.revenue !== a.revenue) return b.revenue - a.revenue;
+    return (b.awardDate || "").localeCompare(a.awardDate || "");
+  });
+
+  const totals = sumRows(sorted);
+  const groups = new Map<string, ClosedWonReportRow[]>();
+  for (const row of sorted) {
+    groups.set(row.department, [...(groups.get(row.department) || []), row]);
+  }
+  const departmentGroups = Array.from(groups.entries())
+    .map(([department, groupRows]) => ({
+      department,
+      rows: groupRows,
+      totals: sumRows(groupRows),
+    }))
+    .sort((a, b) => compareDepartments(a.department, b.department));
+
+  return { rows: sorted, totals, departmentGroups };
+}
+
+export async function buildClosedWonReport(period: ClosedWonReportPeriod = "last7"): Promise<ClosedWonReport> {
+  const generatedAt = new Date().toISOString();
+  const now = new Date(generatedAt);
+  const fyYear = now.getUTCFullYear();
+  const { start, end, title: recentTitle } = periodRange(period, now);
+
+  const [wonRaw, pipelineRaw, recentRaw] = await Promise.all([
+    fetchWon2026Opportunities(),
+    fetchPipeline2026Opportunities(),
+    fetchRecentClosedWonOpportunities(start, end),
+  ]);
+
+  const wonRows = wonRaw.map(toReportRow);
+  const pipelineRows = pipelineRaw.map(toReportRow);
+  const recentRows = recentRaw.map(toReportRow);
+
+  const periodLabel = period === "monthToDate" ? "Month-to-Date" : "Last 7 Days";
+  const title = `${fyYear} Won & Forecast by Business Unit — ${periodLabel}`;
+  const subtitle = `Mirror of CRM dashboard "${fyYear} Won & Forecast by Business Unit". Won and Pipeline numbers reflect ${fyYear} revenue/margin splits per opportunity.`;
+
+  return {
+    period,
+    title,
+    subtitle,
+    generatedAt,
+    rangeStart: start.toISOString(),
+    rangeEnd: end.toISOString(),
+    fyYear,
+    dashboardUrl: DASHBOARD_URL,
+    won2026: buildSection(wonRows),
+    pipeline2026: buildSection(pipelineRows),
+    recent: {
+      title: recentTitle,
+      rangeStart: start.toISOString(),
+      rangeEnd: end.toISOString(),
+      ...buildSection(recentRows),
+    },
+  };
+}
+
 function esc(value: unknown) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -513,32 +526,35 @@ function esc(value: unknown) {
     .replace(/"/g, "&quot;");
 }
 
-function summaryCell(label: string, value: string) {
+function summaryCell(label: string, value: string, accent: string) {
   return `
-    <td style="padding:10px 14px;border:1px solid #d7dce2;background:#f8fafc;">
-      <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.03em;">${esc(label)}</div>
+    <td style="padding:10px 14px;border:1px solid #d7dce2;background:${accent};">
+      <div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.03em;">${esc(label)}</div>
       <div style="font-size:18px;font-weight:700;color:#111827;margin-top:4px;">${esc(value)}</div>
     </td>
   `;
 }
 
 const OPPORTUNITY_URL_BASE = "https://crm.ancsports.net/object/opportunity";
-const TABLE_COLUMNS = [
+
+const SECTION_COLUMNS = [
   "Opp #",
   "Account Name",
   "Opportunity Name",
   "Account Executive",
+  "Bid Status",
+  "Revenue (year)",
+  "Costs (year)",
+  "Margin (year)",
   "Total Project Revenue",
-  "Total Project Costs",
   "Total Project Margin",
-  "Contract Completion Date",
   "Award Date",
   "Created Date",
   "Status Update",
 ];
-const TABLE_COLUMN_COUNT = TABLE_COLUMNS.length;
+const SECTION_COLUMN_COUNT = SECTION_COLUMNS.length;
 
-function dataRow(row: ClosedWonReportRow) {
+function dataRow(row: ClosedWonReportRow, year: number) {
   const oppLink = `${OPPORTUNITY_URL_BASE}/${esc(row.id)}`;
   return `
     <tr>
@@ -546,10 +562,12 @@ function dataRow(row: ClosedWonReportRow) {
       <td style="padding:8px;border:1px solid #e5e7eb;">${esc(row.accountName)}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;"><a href="${oppLink}" style="color:#2563eb;text-decoration:none;">${esc(row.opportunityName)}</a></td>
       <td style="padding:8px;border:1px solid #e5e7eb;">${esc(row.owner)}</td>
+      <td style="padding:8px;border:1px solid #e5e7eb;">${esc(row.bidStatus)}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;">${esc(formatCurrency(row.revenue))}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;">${esc(formatCurrency(row.costs))}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;">${esc(formatCurrency(row.margin))}</td>
-      <td style="padding:8px;border:1px solid #e5e7eb;">${esc(formatShortDate(row.substantialCompletionDate))}</td>
+      <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;color:#475569;">${esc(formatCurrency(row.totalProjectRevenue))}</td>
+      <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;color:#475569;">${esc(formatCurrency(row.totalProjectMargin))}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;">${esc(formatShortDate(row.awardDate))}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;">${esc(formatShortDate(row.createdDate))}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;">${esc(row.statusUpdate)}</td>
@@ -557,55 +575,91 @@ function dataRow(row: ClosedWonReportRow) {
   `;
 }
 
-function subtotalRow(label: string, totals: ClosedWonReport["totals"]) {
+function subtotalRow(label: string, totals: ReportTotals) {
   return `
     <tr>
-      <td colspan="4" style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;font-weight:700;">${esc(label)}</td>
+      <td colspan="5" style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;font-weight:700;">${esc(label)}</td>
       <td style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;text-align:right;font-weight:700;">${esc(formatCurrency(totals.revenue))}</td>
       <td style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;text-align:right;font-weight:700;">${esc(formatCurrency(totals.costs))}</td>
       <td style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;text-align:right;font-weight:700;">${esc(formatCurrency(totals.margin))}</td>
-      <td colspan="4" style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;"></td>
+      <td colspan="5" style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;"></td>
     </tr>
   `;
 }
 
-function fyTotalsBlock(report: ClosedWonReport) {
-  const { fyYear, fyTotals } = report;
-  const headerCells = `
-    <th style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:left;font-weight:700;">Department</th>
-    <th style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:right;font-weight:700;">Records</th>
-    <th style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:right;font-weight:700;">Revenue</th>
-    <th style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:right;font-weight:700;">Costs</th>
-    <th style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:right;font-weight:700;">Margin</th>
+function sectionTable(year: number, label: string, accent: string, section: SectionData, emptyMessage: string) {
+  const headerCells = SECTION_COLUMNS.map((columnLabel) => {
+    const display = columnLabel.replace("(year)", `(${year})`);
+    return `<th style="padding:8px;border:1px solid #d1d5db;background:#e2e8f0;text-align:left;font-weight:700;">${esc(display)}</th>`;
+  }).join("");
+
+  const groupsHtml = section.departmentGroups.length
+    ? section.departmentGroups
+        .map(
+          (group) => `
+            <tr>
+              <td colspan="${SECTION_COLUMN_COUNT}" style="padding:10px 8px;border:1px solid #cbd5e1;background:${accent};font-weight:700;">
+                ${esc(group.department)} (${group.totals.records} ${group.totals.records === 1 ? "deal" : "deals"})
+              </td>
+            </tr>
+            ${group.rows.map((row) => dataRow(row, year)).join("")}
+            ${subtotalRow(`${group.department} subtotal`, group.totals)}
+          `,
+        )
+        .join("")
+    : `
+        <tr>
+          <td colspan="${SECTION_COLUMN_COUNT}" style="padding:18px;border:1px solid #e5e7eb;text-align:center;color:#64748b;">${esc(emptyMessage)}</td>
+        </tr>
+      `;
+
+  return `
+    <div style="margin-bottom:24px;">
+      <div style="font-size:14px;font-weight:700;color:#111827;margin:0 0 10px 0;">${esc(label)}</div>
+      <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:12px;">
+        <thead><tr>${headerCells}</tr></thead>
+        <tbody>
+          ${groupsHtml}
+          ${section.departmentGroups.length ? subtotalRow(`Grand total (${section.totals.records} ${section.totals.records === 1 ? "deal" : "deals"})`, section.totals) : ""}
+        </tbody>
+      </table>
+    </div>
   `;
-  const departmentRows = fyTotals.byDepartment
+}
+
+function summaryByBusinessUnit(year: number, label: string, accent: string, section: SectionData) {
+  const headerCells = `
+    <th style="padding:8px;border:1px solid #c7d2fe;background:${accent};text-align:left;font-weight:700;">Business Unit</th>
+    <th style="padding:8px;border:1px solid #c7d2fe;background:${accent};text-align:right;font-weight:700;">Deals</th>
+    <th style="padding:8px;border:1px solid #c7d2fe;background:${accent};text-align:right;font-weight:700;">${year} Revenue</th>
+    <th style="padding:8px;border:1px solid #c7d2fe;background:${accent};text-align:right;font-weight:700;">${year} Margin</th>
+  `;
+  const departmentRows = section.departmentGroups
     .map(
       (entry) => `
         <tr>
           <td style="padding:8px;border:1px solid #e0e7ff;">${esc(entry.department)}</td>
           <td style="padding:8px;border:1px solid #e0e7ff;text-align:right;">${entry.totals.records}</td>
           <td style="padding:8px;border:1px solid #e0e7ff;text-align:right;">${esc(formatCurrency(entry.totals.revenue))}</td>
-          <td style="padding:8px;border:1px solid #e0e7ff;text-align:right;">${esc(formatCurrency(entry.totals.costs))}</td>
           <td style="padding:8px;border:1px solid #e0e7ff;text-align:right;">${esc(formatCurrency(entry.totals.margin))}</td>
         </tr>
       `,
     )
     .join("") ||
-    `<tr><td colspan="5" style="padding:12px;border:1px solid #e0e7ff;text-align:center;color:#64748b;">No closed won deals in FY ${fyYear} yet.</td></tr>`;
+    `<tr><td colspan="4" style="padding:12px;border:1px solid #e0e7ff;text-align:center;color:#64748b;">No deals match this section.</td></tr>`;
 
   return `
-    <div style="margin-bottom:22px;">
-      <div style="font-size:14px;font-weight:700;color:#312e81;margin-bottom:8px;">FY ${fyYear} year-to-date — Closed Won by Business Unit</div>
+    <div style="margin-bottom:18px;">
+      <div style="font-size:14px;font-weight:700;color:#111827;margin-bottom:8px;">${esc(label)}</div>
       <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:12px;">
         <thead><tr>${headerCells}</tr></thead>
         <tbody>
           ${departmentRows}
           <tr>
-            <td style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;font-weight:700;">FY ${fyYear} total</td>
-            <td style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:right;font-weight:700;">${fyTotals.grand.records}</td>
-            <td style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:right;font-weight:700;">${esc(formatCurrency(fyTotals.grand.revenue))}</td>
-            <td style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:right;font-weight:700;">${esc(formatCurrency(fyTotals.grand.costs))}</td>
-            <td style="padding:8px;border:1px solid #c7d2fe;background:#eef2ff;text-align:right;font-weight:700;">${esc(formatCurrency(fyTotals.grand.margin))}</td>
+            <td style="padding:8px;border:1px solid #c7d2fe;background:${accent};font-weight:700;">Total</td>
+            <td style="padding:8px;border:1px solid #c7d2fe;background:${accent};text-align:right;font-weight:700;">${section.totals.records}</td>
+            <td style="padding:8px;border:1px solid #c7d2fe;background:${accent};text-align:right;font-weight:700;">${esc(formatCurrency(section.totals.revenue))}</td>
+            <td style="padding:8px;border:1px solid #c7d2fe;background:${accent};text-align:right;font-weight:700;">${esc(formatCurrency(section.totals.margin))}</td>
           </tr>
         </tbody>
       </table>
@@ -614,24 +668,24 @@ function fyTotalsBlock(report: ClosedWonReport) {
 }
 
 export function renderClosedWonReportHtml(report: ClosedWonReport) {
-  const rowsHtml =
-    report.departmentGroups
-      .map(
-        (group) => `
-          <tr>
-            <td colspan="${TABLE_COLUMN_COUNT}" style="padding:10px 8px;border:1px solid #cbd5e1;background:#eef2ff;font-weight:700;">
-              ${esc(group.department)} (${group.totals.records} ${group.totals.records === 1 ? "record" : "records"})
-            </td>
-          </tr>
-          ${group.rows.map(dataRow).join("")}
-          ${subtotalRow("", group.totals)}
-        `,
-      )
-      .join("") || `
-        <tr>
-          <td colspan="${TABLE_COLUMN_COUNT}" style="padding:18px;border:1px solid #e5e7eb;text-align:center;color:#64748b;">No closed won opportunities found for this period.</td>
-        </tr>
-      `;
+  const year = report.fyYear;
+
+  const wonAccent = "#eef2ff";
+  const pipelineAccent = "#fef3c7";
+  const recentAccent = "#ecfdf5";
+
+  const summaryRow = `
+    <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:18px;">
+      <tr>
+        ${summaryCell(`Won ${year} deals`, String(report.won2026.totals.records), wonAccent)}
+        ${summaryCell(`Won ${year} revenue`, formatCurrency(report.won2026.totals.revenue), wonAccent)}
+        ${summaryCell(`Won ${year} margin`, formatCurrency(report.won2026.totals.margin), wonAccent)}
+        ${summaryCell(`Pipeline ${year} deals`, String(report.pipeline2026.totals.records), pipelineAccent)}
+        ${summaryCell(`Pipeline ${year} revenue`, formatCurrency(report.pipeline2026.totals.revenue), pipelineAccent)}
+        ${summaryCell(`Pipeline ${year} margin`, formatCurrency(report.pipeline2026.totals.margin), pipelineAccent)}
+      </tr>
+    </table>
+  `;
 
   return `<!doctype html>
 <html>
@@ -640,39 +694,22 @@ export function renderClosedWonReportHtml(report: ClosedWonReport) {
       <div style="background:#ffffff;border:1px solid #d7dce2;border-radius:8px;overflow:hidden;">
         <div style="padding:22px 24px;border-bottom:1px solid #e5e7eb;">
           <div style="font-size:22px;font-weight:700;">${esc(report.title)}</div>
-          <div style="font-size:13px;color:#64748b;margin-top:6px;">
-            As of ${esc(formatGeneratedAt(report.generatedAt))} - CRM scheduled report
-          </div>
+          <div style="font-size:13px;color:#475569;margin-top:6px;">As of ${esc(formatGeneratedAt(report.generatedAt))} · CRM scheduled report</div>
+          <div style="font-size:12px;color:#64748b;margin-top:8px;">${esc(report.subtitle)} <a href="${esc(report.dashboardUrl)}" style="color:#2563eb;text-decoration:none;">Open dashboard</a>.</div>
         </div>
 
         <div style="padding:18px 24px;">
-          <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:18px;">
-            <tr>
-              ${summaryCell("Total Records", String(report.totals.records))}
-              ${summaryCell("Total Project Revenue", formatCurrency(report.totals.revenue))}
-              ${summaryCell("Total Project Costs", formatCurrency(report.totals.costs))}
-              ${summaryCell("Total Project Margin", formatCurrency(report.totals.margin))}
-            </tr>
-          </table>
+          ${summaryRow}
 
-          ${fyTotalsBlock(report)}
+          ${summaryByBusinessUnit(year, `${year} Closed Won by Business Unit`, "#eef2ff", report.won2026)}
+          ${summaryByBusinessUnit(year, `${year} Pipeline (Forecast) by Business Unit`, "#fef3c7", report.pipeline2026)}
 
-          <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:12px;">
-            <thead>
-              <tr>
-                ${TABLE_COLUMNS
-                  .map((label) => `<th style="padding:8px;border:1px solid #d1d5db;background:#e2e8f0;text-align:left;font-weight:700;">${esc(label)}</th>`)
-                  .join("")}
-              </tr>
-            </thead>
-            <tbody>
-              ${rowsHtml}
-              ${subtotalRow(`Grand Total (${report.totals.records} ${report.totals.records === 1 ? "record" : "records"})`, report.totals)}
-            </tbody>
-          </table>
+          ${sectionTable(year, `${year} Closed Won — all deals (${report.won2026.totals.records})`, wonAccent, report.won2026, `No closed-won opportunities have ${year} revenue or margin booked.`)}
+          ${sectionTable(year, `${year} Pipeline (Forecast) — all deals (${report.pipeline2026.totals.records})`, pipelineAccent, report.pipeline2026, `No pipeline opportunities have ${year} revenue or margin booked.`)}
+          ${sectionTable(year, `${esc(report.recent.title)} — closed-won activity (${report.recent.totals.records})`, recentAccent, report.recent, "No closed-won activity in this window.")}
 
           <div style="font-size:11px;color:#64748b;margin-top:18px;">
-            Filter: Closed Won deals where Award Date or Created Date falls between ${esc(formatShortDate(report.rangeStart))} and ${esc(formatShortDate(report.rangeEnd))}. Grouped by Business Unit. Opportunity name links open the deal in the CRM.
+            Filters mirror the CRM dashboard "${year} Won & Forecast by Business Unit": Won = bid status not in (verbal agreement, prospecting, RFP received, scoping, bid submitted, shortlisted, lost, no bid) with non-zero ${year} revenue or margin. Pipeline = bid status in those open stages with non-zero ${year} revenue or margin. Activity table = bid status WON with award date or created date in the period window. Opportunity name links open the deal in the CRM.
           </div>
         </div>
       </div>
@@ -695,10 +732,8 @@ export async function sendClosedWonReportEmail(input: {
 }) {
   if (!input.recipients.length) throw new Error("No report recipients configured");
 
-  const subject =
-    input.report.period === "monthToDate"
-      ? "Report results (Opportunities Closed Won Month-to-Date)"
-      : "Report results (Opportunities Closed Won Last 7 Days)";
+  const periodLabel = input.report.period === "monthToDate" ? "Month-to-Date" : "Last 7 Days";
+  const subject = `Report results (${input.report.fyYear} Won & Forecast by Business Unit — ${periodLabel})`;
 
   const account = await getReportEmailAccount();
   return sendMicrosoftGraphMail(account, subject, input.html, input.recipients);
