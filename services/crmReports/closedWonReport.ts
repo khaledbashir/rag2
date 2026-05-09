@@ -117,6 +117,7 @@ export type ClosedWonReport = {
   fyYear: number;
   dashboardUrl: string;
   won2026: SectionData;
+  topWins: ClosedWonReportRow[];
   recent: SectionData & {
     title: string;
     rangeStart: string;
@@ -593,6 +594,10 @@ export async function buildClosedWonReport(period: ClosedWonReportPeriod = "last
   const title = `${fyYear} Closed Won by Business Unit — ${periodLabel}`;
   const subtitle = `Mirrors the Closed Won widgets on the CRM dashboard "${fyYear} Won & Forecast by Business Unit". Numbers reflect ${fyYear} revenue/margin splits per opportunity.`;
 
+  const topWins = [...wonRows]
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 10);
+
   return {
     period,
     title,
@@ -603,6 +608,7 @@ export async function buildClosedWonReport(period: ClosedWonReportPeriod = "last
     fyYear,
     dashboardUrl: DASHBOARD_URL,
     won2026: buildSection(wonRows),
+    topWins,
     recent: {
       title: recentTitle,
       rangeStart: start.toISOString(),
@@ -762,6 +768,62 @@ function summaryByBusinessUnit(year: number, label: string, accent: string, sect
   `;
 }
 
+function topWinsSection(year: number, rows: ClosedWonReportRow[]) {
+  if (!rows.length) return "";
+
+  const accent = "#fef3c7";
+  const headers = [
+    "#",
+    "Opp",
+    "Account",
+    "Opportunity",
+    "Account Executive",
+    "Business Unit",
+    `${year} Revenue`,
+    `${year} Margin`,
+    "Total Project Revenue",
+    "Award Date",
+  ];
+
+  const headerCells = headers
+    .map(
+      (label) =>
+        `<th style="padding:8px;border:1px solid #fde68a;background:${accent};text-align:left;font-weight:700;">${esc(label)}</th>`,
+    )
+    .join("");
+
+  const dataRows = rows
+    .map((row, idx) => {
+      const oppLink = `${OPPORTUNITY_URL_BASE}/${esc(row.id)}`;
+      return `
+        <tr>
+          <td style="padding:8px;border:1px solid #fde68a;text-align:right;color:#92400e;font-weight:700;">${idx + 1}</td>
+          <td style="padding:8px;border:1px solid #fde68a;font-family:monospace;">${esc(row.opportunityNumber || "-")}</td>
+          <td style="padding:8px;border:1px solid #fde68a;">${esc(row.accountName)}</td>
+          <td style="padding:8px;border:1px solid #fde68a;"><a href="${oppLink}" style="color:#2563eb;text-decoration:none;">${esc(row.opportunityName)}</a></td>
+          <td style="padding:8px;border:1px solid #fde68a;">${esc(row.owner)}</td>
+          <td style="padding:8px;border:1px solid #fde68a;">${esc(row.department)}</td>
+          <td style="padding:8px;border:1px solid #fde68a;text-align:right;font-weight:700;">${esc(formatCurrency(row.revenue))}</td>
+          <td style="padding:8px;border:1px solid #fde68a;text-align:right;">${esc(formatCurrency(row.margin))}</td>
+          <td style="padding:8px;border:1px solid #fde68a;text-align:right;color:#475569;">${esc(formatCurrency(row.totalProjectRevenue))}</td>
+          <td style="padding:8px;border:1px solid #fde68a;">${esc(formatShortDate(row.awardDate))}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  return `
+    <div style="margin-bottom:24px;">
+      <div style="font-size:14px;font-weight:700;color:#111827;margin:0 0 6px 0;">Top ${rows.length} ${year} Wins by Revenue</div>
+      <div style="font-size:11px;color:#64748b;margin-bottom:10px;">Largest closed-won deals by ${year} revenue across all business units, regardless of when the bid flipped to WON. Surfaces the highest-impact wins by name even when they're outside the recent activity window.</div>
+      <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:12px;">
+        <thead><tr>${headerCells}</tr></thead>
+        <tbody>${dataRows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 function revertedFromWonSection(rows: RevertedFromWonRow[]) {
   if (!rows.length) return "";
 
@@ -843,12 +905,14 @@ export function renderClosedWonReportHtml(report: ClosedWonReport) {
 
           ${summaryByBusinessUnit(year, `${year} Closed Won by Business Unit`, wonAccent, report.won2026)}
 
+          ${topWinsSection(year, report.topWins)}
+
           ${sectionTable(year, `${esc(report.recent.title)} — closed-won activity (${report.recent.totals.records})`, recentAccent, report.recent, "No closed-won activity in this window.")}
 
           ${revertedFromWonSection(report.revertedFromWon)}
 
           <div style="font-size:11px;color:#64748b;margin-top:18px;">
-            Filter mirrors the CRM dashboard "${year} Won & Forecast by Business Unit" Closed Won widgets: bid status not in (verbal agreement, prospecting, RFP received, scoping, bid submitted, shortlisted, lost, no bid) with non-zero ${year} revenue or margin. Activity table = currently WON opportunities where the bid status flipped to WON in the period window, or the deal was created or its award date set in the period window. The "Reverted from WON" section lists opportunities that flipped to WON in the window and then got moved back out — these correspond to Slack big-win alerts that no longer represent a current win. Opportunity name links open the deal in the CRM.
+            Filter mirrors the CRM dashboard "${year} Won & Forecast by Business Unit" Closed Won widgets: bid status not in (verbal agreement, prospecting, RFP received, scoping, bid submitted, shortlisted, lost, no bid) with non-zero ${year} revenue or margin. The "Top ${year} Wins by Revenue" section lists the largest closed-won deals across all business units by ${year} revenue, regardless of when they flipped to WON. Activity table = currently WON opportunities where the bid status flipped to WON in the period window, or the deal was created or its award date set in the period window. The "Reverted from WON" section lists opportunities that flipped to WON in the window and then got moved back out — these correspond to Slack big-win alerts that no longer represent a current win. Opportunity name links open the deal in the CRM.
           </div>
         </div>
       </div>
