@@ -93,6 +93,20 @@ type SectionData = {
   departmentGroups: DepartmentGroup[];
 };
 
+export type RevertedFromWonRow = {
+  id: string;
+  opportunityNumber: string;
+  owner: string;
+  department: string;
+  accountName: string;
+  opportunityName: string;
+  currentBidStatus: string;
+  flippedToWonAt: string | null;
+  revertedAt: string;
+  revertedTo: string;
+  totalProjectRevenue: number;
+};
+
 export type ClosedWonReport = {
   period: ClosedWonReportPeriod;
   title: string;
@@ -108,6 +122,7 @@ export type ClosedWonReport = {
     rangeStart: string;
     rangeEnd: string;
   };
+  revertedFromWon: RevertedFromWonRow[];
 };
 
 let reportEmailAccountPool: Pool | null = null;
@@ -389,6 +404,90 @@ async function fetchWon2026Opportunities(): Promise<OpportunityDbRow[]> {
   return result.rows;
 }
 
+type RevertedDbRow = OpportunityDbRow & {
+  flippedToWonAt: string | null;
+  revertedAt: string;
+  revertedTo: string;
+};
+
+async function fetchRevertedFromWonOpportunities(start: Date, end: Date): Promise<RevertedDbRow[]> {
+  const schema = await getWorkspaceSchema();
+  const query = `
+    with reverted as (
+      select distinct on (t."targetOpportunityId")
+        t."targetOpportunityId" as opp_id,
+        t."happensAt" as reverted_at,
+        t.properties->'diff'->'bidStatus'->>'after' as reverted_to
+      from "${schema}"."timelineActivity" t
+      where t."happensAt" >= $1::timestamptz
+        and t."happensAt" <= $2::timestamptz
+        and t.name = 'opportunity.updated'
+        and t.properties->'diff'->'bidStatus'->>'before' = 'WON'
+        and t.properties->'diff'->'bidStatus'->>'after' is not null
+        and t.properties->'diff'->'bidStatus'->>'after' <> 'WON'
+      order by t."targetOpportunityId", t."happensAt" desc
+    ),
+    flipped_to_won as (
+      select distinct on (t."targetOpportunityId")
+        t."targetOpportunityId" as opp_id,
+        t."happensAt" as flipped_at
+      from "${schema}"."timelineActivity" t
+      where t."happensAt" >= $1::timestamptz
+        and t."happensAt" <= $2::timestamptz
+        and t.name = 'opportunity.updated'
+        and t.properties->'diff'->'bidStatus'->>'after' = 'WON'
+      order by t."targetOpportunityId", t."happensAt" desc
+    )
+    select
+      o.id,
+      o.name,
+      o."opportunityNumber",
+      o."bidStatus",
+      o."businessUnit",
+      o."closeDate",
+      o."createdAt",
+      o."substantialCompletionDate",
+      o."accountExecutive",
+      o."accountExecutiveEmail",
+      o."winLossReason",
+      o."revenue2026AmountMicros",
+      o."margin2026AmountMicros",
+      o."totalProjectRevenueAmountMicros",
+      o."totalProjectMarginAmountMicros",
+      wm."nameFirstName" as "ownerFirstName",
+      wm."nameLastName" as "ownerLastName",
+      c.name as "companyName",
+      f.flipped_at as "flippedToWonAt",
+      r.reverted_at as "revertedAt",
+      r.reverted_to as "revertedTo"
+    from reverted r
+    join "${schema}".opportunity o on o.id = r.opp_id and o."deletedAt" is null
+    left join "${schema}"."workspaceMember" wm on wm.id = o."ownerId"
+    left join "${schema}".company c on c.id = o."companyId"
+    left join flipped_to_won f on f.opp_id = r.opp_id
+    where o."bidStatus" <> 'WON'
+    order by r.reverted_at desc
+  `;
+  const result = await getTwentyDbPool().query<RevertedDbRow>(query, [start.toISOString(), end.toISOString()]);
+  return result.rows;
+}
+
+function toRevertedRow(opp: RevertedDbRow): RevertedFromWonRow {
+  return {
+    id: opp.id,
+    opportunityNumber: opp.opportunityNumber?.trim() || "",
+    owner: ownerName(opp),
+    department: departmentLabel(opp.businessUnit),
+    accountName: opp.companyName || "-",
+    opportunityName: opp.name || "-",
+    currentBidStatus: opp.bidStatus || "-",
+    flippedToWonAt: opp.flippedToWonAt,
+    revertedAt: opp.revertedAt,
+    revertedTo: opp.revertedTo,
+    totalProjectRevenue: microsToDollars(opp.totalProjectRevenueAmountMicros),
+  };
+}
+
 async function fetchRecentClosedWonOpportunities(start: Date, end: Date): Promise<OpportunityDbRow[]> {
   const schema = await getWorkspaceSchema();
   const query = buildOpportunityQuery(
@@ -480,13 +579,15 @@ export async function buildClosedWonReport(period: ClosedWonReportPeriod = "last
   const fyYear = now.getUTCFullYear();
   const { start, end, title: recentTitle } = periodRange(period, now);
 
-  const [wonRaw, recentRaw] = await Promise.all([
+  const [wonRaw, recentRaw, revertedRaw] = await Promise.all([
     fetchWon2026Opportunities(),
     fetchRecentClosedWonOpportunities(start, end),
+    fetchRevertedFromWonOpportunities(start, end),
   ]);
 
   const wonRows = wonRaw.map(toReportRow);
   const recentRows = recentRaw.map(toReportRow);
+  const revertedFromWon = revertedRaw.map(toRevertedRow);
 
   const periodLabel = period === "monthToDate" ? "Month-to-Date" : "Last 7 Days";
   const title = `${fyYear} Closed Won by Business Unit — ${periodLabel}`;
@@ -508,6 +609,7 @@ export async function buildClosedWonReport(period: ClosedWonReportPeriod = "last
       rangeEnd: end.toISOString(),
       ...buildSection(recentRows),
     },
+    revertedFromWon,
   };
 }
 
@@ -660,6 +762,55 @@ function summaryByBusinessUnit(year: number, label: string, accent: string, sect
   `;
 }
 
+function revertedFromWonSection(rows: RevertedFromWonRow[]) {
+  if (!rows.length) return "";
+
+  const headerCells = [
+    "Opp #",
+    "Account",
+    "Opportunity",
+    "Account Executive",
+    "Flipped to WON",
+    "Reverted to",
+    "Reverted at",
+    "Total Project Revenue",
+  ]
+    .map(
+      (label) =>
+        `<th style="padding:8px;border:1px solid #fecaca;background:#fee2e2;text-align:left;font-weight:700;">${esc(label)}</th>`,
+    )
+    .join("");
+
+  const dataRows = rows
+    .map((row) => {
+      const oppLink = `${OPPORTUNITY_URL_BASE}/${esc(row.id)}`;
+      return `
+        <tr>
+          <td style="padding:8px;border:1px solid #fecaca;font-family:monospace;">${esc(row.opportunityNumber || "-")}</td>
+          <td style="padding:8px;border:1px solid #fecaca;">${esc(row.accountName)}</td>
+          <td style="padding:8px;border:1px solid #fecaca;"><a href="${oppLink}" style="color:#2563eb;text-decoration:none;">${esc(row.opportunityName)}</a></td>
+          <td style="padding:8px;border:1px solid #fecaca;">${esc(row.owner)}</td>
+          <td style="padding:8px;border:1px solid #fecaca;">${esc(formatShortDate(row.flippedToWonAt))}</td>
+          <td style="padding:8px;border:1px solid #fecaca;">${esc(row.revertedTo)}</td>
+          <td style="padding:8px;border:1px solid #fecaca;">${esc(formatShortDate(row.revertedAt))}</td>
+          <td style="padding:8px;border:1px solid #fecaca;text-align:right;">${esc(formatCurrency(row.totalProjectRevenue))}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  return `
+    <div style="margin-bottom:24px;">
+      <div style="font-size:14px;font-weight:700;color:#991b1b;margin:0 0 6px 0;">Reverted from WON during the window (${rows.length})</div>
+      <div style="font-size:11px;color:#64748b;margin-bottom:10px;">These opportunities flipped to WON inside the window (which fired the Slack big-win alert) and then got reverted. They are excluded from the Closed Won totals above because their current bid status is no longer WON.</div>
+      <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:12px;">
+        <thead><tr>${headerCells}</tr></thead>
+        <tbody>${dataRows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 export function renderClosedWonReportHtml(report: ClosedWonReport) {
   const year = report.fyYear;
 
@@ -694,8 +845,10 @@ export function renderClosedWonReportHtml(report: ClosedWonReport) {
 
           ${sectionTable(year, `${esc(report.recent.title)} — closed-won activity (${report.recent.totals.records})`, recentAccent, report.recent, "No closed-won activity in this window.")}
 
+          ${revertedFromWonSection(report.revertedFromWon)}
+
           <div style="font-size:11px;color:#64748b;margin-top:18px;">
-            Filter mirrors the CRM dashboard "${year} Won & Forecast by Business Unit" Closed Won widgets: bid status not in (verbal agreement, prospecting, RFP received, scoping, bid submitted, shortlisted, lost, no bid) with non-zero ${year} revenue or margin. Activity table = currently WON opportunities where the bid status flipped to WON in the period window, or the deal was created or its award date set in the period window. Opportunity name links open the deal in the CRM.
+            Filter mirrors the CRM dashboard "${year} Won & Forecast by Business Unit" Closed Won widgets: bid status not in (verbal agreement, prospecting, RFP received, scoping, bid submitted, shortlisted, lost, no bid) with non-zero ${year} revenue or margin. Activity table = currently WON opportunities where the bid status flipped to WON in the period window, or the deal was created or its award date set in the period window. The "Reverted from WON" section lists opportunities that flipped to WON in the window and then got moved back out — these correspond to Slack big-win alerts that no longer represent a current win. Opportunity name links open the deal in the CRM.
           </div>
         </div>
       </div>
