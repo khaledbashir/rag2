@@ -574,6 +574,30 @@ function buildSection(rows: ClosedWonReportRow[]): SectionData {
   return { rows: sorted, totals, departmentGroups };
 }
 
+function buildSectionByOwner(rows: ClosedWonReportRow[]): SectionData {
+  const sorted = [...rows].sort((a, b) => {
+    const ownerCompare = a.owner.localeCompare(b.owner);
+    if (ownerCompare !== 0) return ownerCompare;
+    if (b.revenue !== a.revenue) return b.revenue - a.revenue;
+    return (b.awardDate || "").localeCompare(a.awardDate || "");
+  });
+
+  const totals = sumRows(sorted);
+  const groups = new Map<string, ClosedWonReportRow[]>();
+  for (const row of sorted) {
+    groups.set(row.owner, [...(groups.get(row.owner) || []), row]);
+  }
+  const departmentGroups = Array.from(groups.entries())
+    .map(([owner, groupRows]) => ({
+      department: owner,
+      rows: groupRows,
+      totals: sumRows(groupRows),
+    }))
+    .sort((a, b) => a.department.localeCompare(b.department));
+
+  return { rows: sorted, totals, departmentGroups };
+}
+
 export async function buildClosedWonReport(period: ClosedWonReportPeriod = "last7"): Promise<ClosedWonReport> {
   const generatedAt = new Date().toISOString();
   const now = new Date(generatedAt);
@@ -613,7 +637,7 @@ export async function buildClosedWonReport(period: ClosedWonReportPeriod = "last
       title: recentTitle,
       rangeStart: start.toISOString(),
       rangeEnd: end.toISOString(),
-      ...buildSection(recentRows),
+      ...buildSectionByOwner(recentRows),
     },
     revertedFromWon,
   };
@@ -642,18 +666,17 @@ const SECTION_COLUMNS = [
   "Opp #",
   "Account Name",
   "Opportunity Name",
-  "Account Executive",
-  "Bid Status",
   "Revenue (year)",
   "Costs (year)",
   "Margin (year)",
-  "Total Project Revenue",
-  "Total Project Margin",
-  "Award Date",
+  "Substantial Completion",
+  "Close Date",
   "Created Date",
   "Status Update",
 ];
 const SECTION_COLUMN_COUNT = SECTION_COLUMNS.length;
+const SECTION_LABEL_COLSPAN = 3;
+const SECTION_TRAILING_COLSPAN = SECTION_COLUMN_COUNT - SECTION_LABEL_COLSPAN - 3;
 
 function dataRow(row: ClosedWonReportRow, year: number) {
   const oppLink = `${OPPORTUNITY_URL_BASE}/${esc(row.id)}`;
@@ -662,13 +685,10 @@ function dataRow(row: ClosedWonReportRow, year: number) {
       <td style="padding:8px;border:1px solid #e5e7eb;font-family:monospace;">${esc(row.opportunityNumber || "-")}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;">${esc(row.accountName)}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;"><a href="${oppLink}" style="color:#2563eb;text-decoration:none;">${esc(row.opportunityName)}</a></td>
-      <td style="padding:8px;border:1px solid #e5e7eb;">${esc(row.owner)}</td>
-      <td style="padding:8px;border:1px solid #e5e7eb;">${esc(row.bidStatus)}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;">${esc(formatCurrency(row.revenue))}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;">${esc(formatCurrency(row.costs))}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;">${esc(formatCurrency(row.margin))}</td>
-      <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;color:#475569;">${esc(formatCurrency(row.totalProjectRevenue))}</td>
-      <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;color:#475569;">${esc(formatCurrency(row.totalProjectMargin))}</td>
+      <td style="padding:8px;border:1px solid #e5e7eb;">${esc(formatShortDate(row.substantialCompletionDate))}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;">${esc(formatShortDate(row.awardDate))}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;">${esc(formatShortDate(row.createdDate))}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;">${esc(row.statusUpdate)}</td>
@@ -679,11 +699,11 @@ function dataRow(row: ClosedWonReportRow, year: number) {
 function subtotalRow(label: string, totals: ReportTotals) {
   return `
     <tr>
-      <td colspan="5" style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;font-weight:700;">${esc(label)}</td>
+      <td colspan="${SECTION_LABEL_COLSPAN}" style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;font-weight:700;">${esc(label)}</td>
       <td style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;text-align:right;font-weight:700;">${esc(formatCurrency(totals.revenue))}</td>
       <td style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;text-align:right;font-weight:700;">${esc(formatCurrency(totals.costs))}</td>
       <td style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;text-align:right;font-weight:700;">${esc(formatCurrency(totals.margin))}</td>
-      <td colspan="5" style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;"></td>
+      <td colspan="${SECTION_TRAILING_COLSPAN}" style="padding:8px;border:1px solid #d1d5db;background:#f8fafc;"></td>
     </tr>
   `;
 }
@@ -892,7 +912,7 @@ export function renderClosedWonReportHtml(report: ClosedWonReport) {
         <div style="padding:18px 24px;">
           ${summaryByBusinessUnit(year, `${year} Closed Won by Business Unit`, wonAccent, report.won2026)}
 
-          ${sectionTable(year, `${esc(report.recent.title)} (${report.recent.totals.records})`, recentAccent, report.recent, "No closed-won activity in this window.")}
+          ${sectionTable(year, `${esc(report.recent.title)} — grouped by Account Executive (${report.recent.totals.records} ${report.recent.totals.records === 1 ? "deal" : "deals"})`, recentAccent, report.recent, "No closed-won activity in this window.")}
         </div>
       </div>
     </div>
