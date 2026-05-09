@@ -879,16 +879,6 @@ export function renderClosedWonReportHtml(report: ClosedWonReport) {
   const wonAccent = "#eef2ff";
   const recentAccent = "#ecfdf5";
 
-  const summaryRow = `
-    <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:18px;">
-      <tr>
-        ${summaryCell(`Closed Won ${year} deals`, String(report.won2026.totals.records), wonAccent)}
-        ${summaryCell(`Closed Won ${year} revenue`, formatCurrency(report.won2026.totals.revenue), wonAccent)}
-        ${summaryCell(`Closed Won ${year} margin`, formatCurrency(report.won2026.totals.margin), wonAccent)}
-      </tr>
-    </table>
-  `;
-
   return `<!doctype html>
 <html>
   <body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#111827;">
@@ -896,24 +886,13 @@ export function renderClosedWonReportHtml(report: ClosedWonReport) {
       <div style="background:#ffffff;border:1px solid #d7dce2;border-radius:8px;overflow:hidden;">
         <div style="padding:22px 24px;border-bottom:1px solid #e5e7eb;">
           <div style="font-size:22px;font-weight:700;">${esc(report.title)}</div>
-          <div style="font-size:13px;color:#475569;margin-top:6px;">As of ${esc(formatGeneratedAt(report.generatedAt))} · CRM scheduled report</div>
-          <div style="font-size:12px;color:#64748b;margin-top:8px;">${esc(report.subtitle)} <a href="${esc(report.dashboardUrl)}" style="color:#2563eb;text-decoration:none;">Open dashboard</a>.</div>
+          <div style="font-size:13px;color:#475569;margin-top:6px;">As of ${esc(formatGeneratedAt(report.generatedAt))} · CRM scheduled report · <a href="${esc(report.dashboardUrl)}" style="color:#2563eb;text-decoration:none;">Open dashboard</a></div>
         </div>
 
         <div style="padding:18px 24px;">
-          ${summaryRow}
-
           ${summaryByBusinessUnit(year, `${year} Closed Won by Business Unit`, wonAccent, report.won2026)}
 
-          ${topWinsSection(year, report.topWins)}
-
-          ${sectionTable(year, `${esc(report.recent.title)} — closed-won activity (${report.recent.totals.records})`, recentAccent, report.recent, "No closed-won activity in this window.")}
-
-          ${revertedFromWonSection(report.revertedFromWon)}
-
-          <div style="font-size:11px;color:#64748b;margin-top:18px;">
-            Filter mirrors the CRM dashboard "${year} Won & Forecast by Business Unit" Closed Won widgets: bid status not in (verbal agreement, prospecting, RFP received, scoping, bid submitted, shortlisted, lost, no bid) with non-zero ${year} revenue or margin. The "Top ${year} Wins by Revenue" section lists the largest closed-won deals across all business units by ${year} revenue, regardless of when they flipped to WON. Activity table = currently WON opportunities where the bid status flipped to WON in the period window, or the deal was created or its award date set in the period window. The "Reverted from WON" section lists opportunities that flipped to WON in the window and then got moved back out — these correspond to Slack big-win alerts that no longer represent a current win. Opportunity name links open the deal in the CRM.
-          </div>
+          ${sectionTable(year, `${esc(report.recent.title)} (${report.recent.totals.records})`, recentAccent, report.recent, "No closed-won activity in this window.")}
         </div>
       </div>
     </div>
