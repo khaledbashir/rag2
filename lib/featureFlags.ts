@@ -32,7 +32,8 @@ export const FEATURES = {
    * Adds /estimator/[projectId]/cms picker + /admin/cms-catalog admin +
    * /api/cms/* endpoints. CMS subtotal flows into the LED estimate as a
    * single "Control System" line.
-   * Flip to true once the change order is approved and billable.
+   * Flipped ON 2026-05-13 — Ahmad wants the surface visible so he can
+   * demo to Natalia. Change-order paperwork follows.
    */
-  CMS_PRICING: false,
+  CMS_PRICING: true,
 } as const;
