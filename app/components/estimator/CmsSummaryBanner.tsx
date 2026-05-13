@@ -42,7 +42,7 @@ export default async function CmsSummaryBanner({ projectId }: { projectId: strin
           {hasAny ? (
             <p className="text-sm font-medium">
               ${total.toLocaleString("en-US", { maximumFractionDigits: 0 })}
-              {bom?.acCapacityFlag && (
+              {FEATURES.CMS_PRICING_STRATEGIC && bom?.acCapacityFlag && (
                 <span className="ml-2 text-xs text-orange-500 font-normal">
                   · AC capacity flagged
                 </span>

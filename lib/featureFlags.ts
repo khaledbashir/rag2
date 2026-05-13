@@ -36,4 +36,13 @@ export const FEATURES = {
    * demo to Natalia. Change-order paperwork follows.
    */
   CMS_PRICING: true,
+  /**
+   * CMS Pricing — Option 3 "strategic" extras on top of the base picker.
+   * When OFF, the picker shows only the equipment list, quantities, line
+   * totals, subtotal → LED line (matches Natalia's actual ask).
+   * When ON, surfaces the smart-defaults button, soft-cost warnings,
+   * heat/AC panel, CRM sanity check panel, prior-client prefill, and
+   * margin column. Flip ON when Option 3 scope is approved/billed.
+   */
+  CMS_PRICING_STRATEGIC: false,
 } as const;

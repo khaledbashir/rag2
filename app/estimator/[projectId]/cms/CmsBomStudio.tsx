@@ -2,6 +2,9 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Plus, Trash2, Zap, Thermometer, Download, Sparkles, History, ShieldCheck, ShieldAlert } from "lucide-react";
+import { FEATURES } from "@/lib/featureFlags";
+
+const STRATEGIC = FEATURES.CMS_PRICING_STRATEGIC;
 
 type Category =
   | "SERVER_EQUIPMENT" | "SERVER_ADDON" | "USER_STATION" | "INTERCONNECT"
@@ -227,18 +230,22 @@ export default function CmsBomStudio({ projectId }: { projectId: string }) {
           >
             {saving ? "Saving…" : isDirty ? "Save BOM" : "Saved"}
           </button>
-          <button
-            onClick={applySmartDefaults}
-            className="px-3 py-1.5 rounded border border-border text-sm flex items-center gap-1.5 hover:bg-muted"
-          >
-            <Sparkles className="w-4 h-4" /> Apply smart defaults
-          </button>
-          <button
-            onClick={runSanityCheck}
-            className="px-3 py-1.5 rounded border border-border text-sm flex items-center gap-1.5 hover:bg-muted"
-          >
-            <ShieldCheck className="w-4 h-4" /> Sanity check
-          </button>
+          {STRATEGIC && (
+            <button
+              onClick={applySmartDefaults}
+              className="px-3 py-1.5 rounded border border-border text-sm flex items-center gap-1.5 hover:bg-muted"
+            >
+              <Sparkles className="w-4 h-4" /> Apply smart defaults
+            </button>
+          )}
+          {STRATEGIC && (
+            <button
+              onClick={runSanityCheck}
+              className="px-3 py-1.5 rounded border border-border text-sm flex items-center gap-1.5 hover:bg-muted"
+            >
+              <ShieldCheck className="w-4 h-4" /> Sanity check
+            </button>
+          )}
           <a
             href={`/api/cms/project/${projectId}/bom/export.xlsx`}
             className="px-3 py-1.5 rounded border border-border text-sm flex items-center gap-1.5 hover:bg-muted"
@@ -247,8 +254,8 @@ export default function CmsBomStudio({ projectId }: { projectId: string }) {
           </a>
         </div>
 
-        {/* Warnings */}
-        {bom.softCostWarnings.length > 0 && (
+        {/* Warnings — strategic only */}
+        {STRATEGIC && bom.softCostWarnings.length > 0 && (
           <div className="border border-orange-500/40 bg-orange-500/5 rounded-lg p-3 space-y-1">
             {bom.softCostWarnings.map((w, i) => (
               <div key={i} className="text-sm flex items-start gap-2">
@@ -278,20 +285,22 @@ export default function CmsBomStudio({ projectId }: { projectId: string }) {
           {isDirty && <p className="text-xs text-orange-500 mt-2">Unsaved changes — totals will sync on Save.</p>}
         </div>
 
-        <div className="border border-border rounded-lg p-4">
-          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"><Thermometer className="w-4 h-4" /> Heat + Power</h3>
-          <Row label="Total continuous draw" value={`${fmt(liveTotals.totalWatt)} W`} />
-          <Row label="Heat load" value={`${fmt(liveTotals.totalBtu)} BTU/hr`} />
-          <Row label="Estimated AC need" value={`${liveTotals.estimatedAcTons.toFixed(2)} tons`} />
-          {liveTotals.acCapacityFlag && (
-            <div className="mt-3 text-xs flex items-start gap-2 text-orange-500">
-              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-              <span>Exceeds standard rack cooling (~24,000 BTU/hr). Spec additional AC capacity in the install scope.</span>
-            </div>
-          )}
-        </div>
+        {STRATEGIC && (
+          <div className="border border-border rounded-lg p-4">
+            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"><Thermometer className="w-4 h-4" /> Heat + Power</h3>
+            <Row label="Total continuous draw" value={`${fmt(liveTotals.totalWatt)} W`} />
+            <Row label="Heat load" value={`${fmt(liveTotals.totalBtu)} BTU/hr`} />
+            <Row label="Estimated AC need" value={`${liveTotals.estimatedAcTons.toFixed(2)} tons`} />
+            {liveTotals.acCapacityFlag && (
+              <div className="mt-3 text-xs flex items-start gap-2 text-orange-500">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>Exceeds standard rack cooling (~24,000 BTU/hr). Spec additional AC capacity in the install scope.</span>
+              </div>
+            )}
+          </div>
+        )}
 
-        {sanityCheck && (
+        {STRATEGIC && sanityCheck && (
           <div className={`border rounded-lg p-4 ${sanityCheck.verdict === "OK" ? "border-emerald-500/40 bg-emerald-500/5" : sanityCheck.verdict === "NO_DATA" ? "border-border" : "border-orange-500/40 bg-orange-500/5"}`}>
             <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
               {sanityCheck.verdict === "OK" ? <ShieldCheck className="w-4 h-4 text-emerald-500" /> : <ShieldAlert className="w-4 h-4 text-orange-500" />}
@@ -304,7 +313,7 @@ export default function CmsBomStudio({ projectId }: { projectId: string }) {
           </div>
         )}
 
-        {priorProjects && priorProjects.priorProjects.length > 0 && (
+        {STRATEGIC && priorProjects && priorProjects.priorProjects.length > 0 && (
           <div className="border border-border rounded-lg p-4">
             <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"><History className="w-4 h-4" /> Prior {bom.proposal.clientName} CMS projects</h3>
             <div className="space-y-2">
@@ -360,8 +369,8 @@ function Section({
                       <th className="text-left px-3 py-1.5 font-normal">SKU</th>
                       <th className="text-left px-3 py-1.5 font-normal">Item</th>
                       <th className="text-right px-3 py-1.5 font-normal">Unit Cost</th>
-                      <th className="text-right px-3 py-1.5 font-normal">Sell Price</th>
-                      <th className="text-right px-3 py-1.5 font-normal">Margin</th>
+                      {STRATEGIC && <th className="text-right px-3 py-1.5 font-normal">Sell Price</th>}
+                      {STRATEGIC && <th className="text-right px-3 py-1.5 font-normal">Margin</th>}
                       <th className="text-right px-3 py-1.5 font-normal">Qty</th>
                       <th className="text-right px-3 py-1.5 font-normal">Line Total</th>
                       <th className="px-3 py-1.5"></th>
@@ -379,10 +388,14 @@ function Section({
                           <td className="px-3 py-1.5 font-mono text-xs">{ci.sku}</td>
                           <td className="px-3 py-1.5">{ci.displayName}</td>
                           <td className="px-3 py-1.5 text-right">${fmt(cost)}</td>
-                          <td className="px-3 py-1.5 text-right">{ci.unitPrice ? `$${fmt(sell)}` : <span className="text-muted-foreground">—</span>}</td>
-                          <td className={`px-3 py-1.5 text-right text-xs ${margin >= 0 ? "text-emerald-500" : "text-destructive"}`}>
-                            {ci.unitPrice ? `$${fmt(margin)} (${marginPct.toFixed(0)}%)` : "—"}
-                          </td>
+                          {STRATEGIC && (
+                            <td className="px-3 py-1.5 text-right">{ci.unitPrice ? `$${fmt(sell)}` : <span className="text-muted-foreground">—</span>}</td>
+                          )}
+                          {STRATEGIC && (
+                            <td className={`px-3 py-1.5 text-right text-xs ${margin >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+                              {ci.unitPrice ? `$${fmt(margin)} (${marginPct.toFixed(0)}%)` : "—"}
+                            </td>
+                          )}
                           <td className="px-3 py-1.5 text-right">
                             <input
                               type="number"
