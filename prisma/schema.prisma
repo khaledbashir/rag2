@@ -259,6 +259,7 @@ model Proposal {
   screens      ScreenConfig[]
   snapshots    ProposalSnapshot[]
   rfpDocuments RfpDocument[]
+  cmsBom       CmsProjectBom?
 
   @@index([calculationMode])
   @@index([createdAt])
@@ -1081,4 +1082,115 @@ model TrackerActivity {
   action    String   // "verified", "disputed", "commented", "moved", "reset"
   details   String?  // Extra detail text
   createdAt DateTime @default(now())
+}
+
+// ============================================================================
+// CMS / Control System Pricing (Natalia/Jireh ask 2026-05-13)
+// Replaces the standalone CMS_BASE_BOM Excel with an in-engine picker that
+// flows into the LED estimate as a single "Control System" line.
+// ============================================================================
+enum CmsCategory {
+  SERVER_EQUIPMENT
+  SERVER_ADDON
+  USER_STATION
+  INTERCONNECT
+  TRIGGER_HARDWARE
+  SCALER
+  ROUTER
+  KVM
+  BROADCAST_DA
+  RACK
+  TRAINING
+  INTEGRATION
+  SHIPPING
+  LICENSE
+  SUPPORT_TIER
+}
+
+model CmsCatalogItem {
+  id            String      @id @default(cuid())
+  sku           String      @unique
+  displayName   String
+  category      CmsCategory
+  unitCost      Decimal     // ANC buy cost
+  unitPrice     Decimal?    // Sell price; null = derive from unitCost at quote time
+  unit          String      @default("each") // "each" | "per_week" | "per_mile" | "per_package" | "per_pound"
+  heatLoadBtu   Float?
+  maxWatt       Float?
+  internalNotes String?
+  customerNotes String?
+  sortOrder     Int         @default(0)
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  versions     CmsCatalogVersion[]
+  bomLineItems CmsBomLineItem[]
+
+  @@index([category, isActive])
+}
+
+// Price history — every change to unitCost/unitPrice snapshots here so already-
+// quoted proposals can pin to the version they were priced at and not silently
+// re-price.
+model CmsCatalogVersion {
+  id            String         @id @default(cuid())
+  catalogItem   CmsCatalogItem @relation(fields: [catalogItemId], references: [id], onDelete: Cascade)
+  catalogItemId String
+  unitCost      Decimal
+  unitPrice     Decimal?
+  effectiveAt   DateTime       @default(now())
+  retiredAt     DateTime?
+  changedBy     String?
+
+  bomLineItems CmsBomLineItem[]
+
+  @@index([catalogItemId, effectiveAt])
+}
+
+model CmsProjectBom {
+  id         String   @id @default(cuid())
+  proposalId String   @unique
+  proposal   Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  // Smart-defaults state
+  smartDefaultsApplied Boolean @default(false)
+
+  // Cached computed totals — read by LED estimate as a single line
+  hardwareSubtotal Decimal @default(0)
+  licenseSubtotal  Decimal @default(0)
+  softCostSubtotal Decimal @default(0)
+  grandSubtotal    Decimal @default(0)
+
+  // Heat/power rollup
+  totalHeatBtu Float @default(0)
+  totalWatt    Float @default(0)
+  estimatedAcTons Float @default(0)
+  acCapacityFlag Boolean @default(false) // true if load > standard rack cooling threshold
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lineItems CmsBomLineItem[]
+}
+
+model CmsBomLineItem {
+  id               String             @id @default(cuid())
+  bom              CmsProjectBom      @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  bomId            String
+  catalogItem      CmsCatalogItem     @relation(fields: [catalogItemId], references: [id])
+  catalogItemId    String
+  catalogVersion   CmsCatalogVersion? @relation(fields: [catalogVersionId], references: [id])
+  catalogVersionId String?
+
+  quantity          Decimal @default(0)
+  unitCostSnapshot  Decimal // Pinned at row creation
+  unitPriceSnapshot Decimal?
+
+  isAutoDefault Boolean @default(false) // true if added by smart-defaults engine
+
+  createdAt DateTime @default(now())
+
+  @@index([bomId])
+  @@index([catalogItemId])
 }

@@ -27,4 +27,12 @@ export const FEATURES = {
    * approved. CRM-side kill-switch lives in scripts/disable-mns.py.
    */
   M_AND_S_OPERATING_LAYER: true,
+  /**
+   * CMS / Control System pricing module (Natalia/Jireh ask 2026-05-13).
+   * Adds /estimator/[projectId]/cms picker + /admin/cms-catalog admin +
+   * /api/cms/* endpoints. CMS subtotal flows into the LED estimate as a
+   * single "Control System" line.
+   * Flip to true once the change order is approved and billable.
+   */
+  CMS_PRICING: false,
 } as const;

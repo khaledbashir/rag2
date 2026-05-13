@@ -5,6 +5,45 @@
 ## Branch: phase2/product-database
 ## Production: https://proposals.anc.com
 
+## Recently added (2026-05-13) — CMS / Control System Pricing Module (Option 3)
+
+**Status:** Built, gated behind `FEATURES.CMS_PRICING` (default OFF). Flip to true to expose to users.
+
+Stakeholder ask: Natalia/Jireh — pull control system pricing into the engine so it stops being a fudge percentage and lives in the same project file as the LED estimate.
+
+**Data model** (`prisma/schema.prisma`, migration `20260513210000_add_cms_pricing_module`):
+- `CmsCategory` enum (15 categories: SERVER_EQUIPMENT, SCALER, ROUTER, LICENSE, SUPPORT_TIER, etc.)
+- `CmsCatalogItem` — SKU rows with unit cost, sell price, watt, BTU, soft-delete via isActive
+- `CmsCatalogVersion` — price-change snapshots so historical proposals don't silently re-price
+- `CmsProjectBom` — per-proposal cached subtotals + heat/power rollup, 1:1 with Proposal
+- `CmsBomLineItem` — selected line items with snapshotted cost/price + pinned catalog version
+
+**Seed** (`prisma/seed-cms-catalog.ts`): 80 SKUs across 15 categories ported verbatim from Natalia's CMS_BASE_BOM (1).xlsx.
+
+**APIs**:
+- `GET/POST /api/cms/catalog` — list + admin create
+- `GET/PATCH/DELETE /api/cms/catalog/[id]` — fetch w/ version history, edit (auto-snapshots on price change), soft-archive
+- `GET/PUT /api/cms/project/[id]/bom` — fetch BOM + live smart-default recommendation + empty-row warnings; PUT replaces line items
+- `POST /api/cms/project/[id]/bom/apply-smart-defaults` — fills Integration/Training/Shipping defaults based on hardware loadout
+- `GET /api/cms/project/[id]/bom/sanity-check` — cross-references current quote vs CMS/LiveSync deals in the CRM (n=193), flags >25% outside IQR band
+- `GET /api/cms/project/[id]/bom/prior-projects` — finds prior priced CMS BOMs for the same client for prefill
+- `GET /api/cms/project/[id]/bom/export.xlsx` — generates Excel matching Natalia's two-tab BOM layout
+
+**Pages**:
+- `/admin/cms-catalog` — SKU table grouped by category, inline edit, soft-archive, new-SKU form. RBAC: ADMIN + PRODUCT_EXPERT
+- `/estimator/[projectId]/cms` — picker UI with Hardware / License sections, smart-defaults button, heat/power panel, sanity-check panel, prior-client prefill, margin column
+
+**Estimator integration** (additive only, RFP-safe):
+- `app/components/estimator/CmsSummaryBanner.tsx` — server component above the LED estimator that surfaces "Control System: $X" with click-through. Does NOT modify EstimatorStudio or any RFP-shared module.
+
+**Services**:
+- `lib/cms/heatRollup.ts` — watt + BTU sum with AC-capacity flag (24,000 BTU/hr standard rack threshold)
+- `lib/cms/smartDefaults.ts` — Integration (ceil(servers/4) weeks), Training (1 wk floor), Shipping (weight/miles/packages from hardware count)
+- `lib/cms/bomService.ts` — recompute & persist subtotals after every BOM mutation
+- `services/cms/sanityCheck.ts` — Twenty CRM Pool reuse from `services/crmReports`, pulls LiveSync deals + computes p25/median/p75
+
+---
+
 ## Recently added (2026-04-17)
 
 **Currency/FX threading across all 6 export surfaces** (hidden behind `FEATURES.CURRENCY_EXCHANGE_RATE` feature flag — OFF by default):

@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import EstimatorStudio from "@/app/components/estimator/EstimatorStudio";
 import Breadcrumbs from "@/app/components/layout/Breadcrumbs";
+import CmsSummaryBanner from "@/app/components/estimator/CmsSummaryBanner";
 
 export default async function EstimatorProjectPage({
     params,
@@ -69,6 +70,7 @@ export default async function EstimatorProjectPage({
                     { label: estimateLabel },
                 ]} />
             </div>
+            <CmsSummaryBanner projectId={project.id} />
             <EstimatorStudio
                 projectId={project.id}
                 initialAnswers={initialAnswers as any}

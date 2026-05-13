@@ -27,6 +27,8 @@ DO NOT TOUCH. Behavior must remain IDENTICAL. No "quick fixes" or "improvements"
 - Currency FX threading across 6 surfaces (wizard/PDF/cost sheet/Excel/margin/rate card), behind `FEATURES.CURRENCY_EXCHANGE_RATE` flag (2026-04-17)
 - RFP Analyzer LED Cost Sheet Column A display renaming and independent duplicate display row edits fixed (2026-04-24)
 - ANC Twenty CRM mobile metadata quota/chunk-cache crash fixed in live image `twenty-anc:metadata-field-quota-fix-20260501e` (2026-05-01)
+- ANC Forms + Scout form-builder live: CRM AI can create shareable forms from chat; `companies` target creates Company records and linked People on submit (2026-05-08)
+- CMS / Control System pricing module shipped behind `FEATURES.CMS_PRICING` flag (default OFF): `/admin/cms-catalog` + `/estimator/[projectId]/cms` picker + CMS summary banner on every LED estimate. 80 SKUs seeded from Natalia's CMS_BASE_BOM, smart-defaults engine for soft costs, heat/power AC-capacity flag, CRM sanity check vs 193 historical CMS/LiveSync deals, prior-client prefill, BOM Excel export matching Natalia's layout. Migration: `20260513210000_add_cms_pricing_module` (2026-05-13)
 
 ## 🎯 ANC Twenty CRM — #1 priority (decision Mon-Tue 2026-04-21/22)
 - Live at `https://crm.ancsports.net` — replaces Salesforce
