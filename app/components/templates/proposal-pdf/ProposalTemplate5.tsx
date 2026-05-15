@@ -56,7 +56,6 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const documentMode = resolveDocumentMode(details);
     const catalogMode = documentMode.toLowerCase() as CatalogDocumentMode;
     const docModeConfig = getModeConfig(documentMode);
-    const docLabel = docModeConfig.headerText;
     const isLOI = documentMode === "LOI" || documentMode === "CONTRACT";
     const isContract = documentMode === "CONTRACT";
     const isCO = documentMode === "CHANGE_ORDER";
@@ -69,6 +68,11 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const changeOrderOriginalContractAmount = Number((details as any)?.changeOrderOriginalContractAmount) || 0;
     const changeOrderOverheadPct = Number((details as any)?.changeOrderOverheadPct) || 0;
     const changeOrderIntroText = (((details as any)?.changeOrderIntroText || "") + "").trim();
+
+    // Header label — CO mode appends the CO number ("CHANGE ORDER · CO-01") so it shows in the header per the CO #4 spec.
+    const docLabel = isCO && changeOrderNumber
+        ? `${docModeConfig.headerText} · ${changeOrderNumber}`
+        : docModeConfig.headerText;
 
     // T&C exhibit config — toggleable for both Short Form Agreement (LOI) and Short Form Contract.
     // Default off for SFA, on for CONTRACT — both can override via the toggle.
@@ -413,9 +417,61 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         );
     };
 
+    // Change Order Description of Work — line-item table fed by details.items (CO line items).
+    // Falls back to the existing PricingSection if no line items entered (covers LED-pricing-table use case).
+    const ChangeOrderDescriptionOfWork = () => {
+        const items = Array.isArray((details as any)?.items)
+            ? (details as any).items.filter((it: any) => it && (it.name || it.description) && (Number(it.unitPrice) || Number(it.total) || Number(it.quantity)))
+            : [];
+        if (items.length === 0) return <PricingSection />;
+        const fmt = (n: number) => formatCurrency((Number(n) || 0) * (exchangeRate || 1), undefined, currency);
+        return (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginTop: 6 }}>
+                <thead>
+                    <tr>
+                        <th style={{ background: colors.primary, color: colors.white, textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", width: "55%" }}>Description</th>
+                        <th style={{ background: colors.primary, color: colors.white, textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", width: "10%" }}>Qty</th>
+                        <th style={{ background: colors.primary, color: colors.white, textAlign: "right", padding: "8px 10px", fontWeight: 700, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", width: "15%" }}>Unit Price</th>
+                        <th style={{ background: colors.primary, color: colors.white, textAlign: "right", padding: "8px 10px", fontWeight: 700, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", width: "20%" }}>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {items.map((it: any, idx: number) => {
+                        const qty = Number(it.quantity) || 0;
+                        const unit = Number(it.unitPrice) || 0;
+                        const explicitTotal = Number(it.total);
+                        const lineTotal = Number.isFinite(explicitTotal) && explicitTotal !== 0 ? explicitTotal : qty * unit;
+                        return (
+                            <tr key={idx} style={{ background: idx % 2 === 0 ? "transparent" : colors.surface }}>
+                                <td style={{ padding: "8px 10px", borderBottom: `1px solid ${colors.border}` }}>
+                                    <div style={{ fontWeight: 600, color: colors.text }}>{it.name || it.description || `Line ${idx + 1}`}</div>
+                                    {it.name && it.description && <div style={{ fontSize: 11, color: colors.textMuted }}>{it.description}</div>}
+                                </td>
+                                <td style={{ padding: "8px 10px", borderBottom: `1px solid ${colors.border}`, color: colors.text }}>{qty || "—"}</td>
+                                <td style={{ padding: "8px 10px", borderBottom: `1px solid ${colors.border}`, textAlign: "right", color: colors.text, fontVariantNumeric: "tabular-nums" }}>{fmt(unit)}</td>
+                                <td style={{ padding: "8px 10px", borderBottom: `1px solid ${colors.border}`, textAlign: "right", color: colors.text, fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{fmt(lineTotal)}</td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        );
+    };
+
     // Change Order Totals — Subtotal / Overhead % / Total CO / Original Contract / New Contract
     const ChangeOrderTotalsBlock = () => {
-        const subtotal = calculateProjectTotal();
+        // Subtotal: prefer hand-entered line items; fall back to the project pricing total.
+        const lineItems = Array.isArray((details as any)?.items)
+            ? (details as any).items.filter((it: any) => it && (it.name || it.description) && (Number(it.unitPrice) || Number(it.total) || Number(it.quantity)))
+            : [];
+        const itemsSubtotal = lineItems.reduce((sum: number, it: any) => {
+            const qty = Number(it.quantity) || 0;
+            const unit = Number(it.unitPrice) || 0;
+            const explicit = Number(it.total);
+            const lineTotal = Number.isFinite(explicit) && explicit !== 0 ? explicit : qty * unit;
+            return sum + lineTotal;
+        }, 0);
+        const subtotal = lineItems.length > 0 ? itemsSubtotal : calculateProjectTotal();
         const overheadAmt = Math.round((subtotal * (changeOrderOverheadPct / 100)) * 100) / 100;
         const totalCO = subtotal + overheadAmt;
         const newContract = changeOrderOriginalContractAmount + totalCO;
@@ -665,7 +721,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                     {showPricingTables && (
                         <div className="px-6">
                             <SectionHeader title="Description of Work" />
-                            <PricingSection />
+                            <ChangeOrderDescriptionOfWork />
                         </div>
                     )}
                     <ChangeOrderTotalsBlock />
