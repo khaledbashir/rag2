@@ -1,0 +1,4 @@
+ALTER TYPE "DocumentMode" ADD VALUE IF NOT EXISTS 'CONTRACT';
+
+ALTER TABLE "Proposal"
+ADD COLUMN IF NOT EXISTS "substantialCompletionDate" TEXT;

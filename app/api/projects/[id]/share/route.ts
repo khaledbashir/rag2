@@ -134,6 +134,7 @@ export async function POST(
                 paymentInformation: { bankName: "", accountName: "", accountNumber: "" },
                 additionalNotes: (project as any).additionalNotes || clientSummary?.additionalNotes || "",
                 paymentTerms: (project as any).paymentTerms || clientSummary?.paymentTerms || "50% on Deposit, 40% on Mobilization, 10% on Substantial Completion",
+                substantialCompletionDate: (project as any).substantialCompletionDate || "",
                 pdfTemplate: 5,
                 quoteItems: ((project as any).quoteItems || []) as any,
                 screens: project.screens.map(s => ({
@@ -183,6 +184,8 @@ export async function POST(
                 showSpecifications: cfg.showSpecifications ?? true,
                 showCompanyFooter: cfg.showCompanyFooter ?? true,
                 showPaymentTerms: (documentMode === "LOI" || documentMode === "CONTRACT") ? (cfg.showPaymentTerms ?? true) : false,
+                showTermsAndConditions: (documentMode === "LOI" || documentMode === "CONTRACT") ? (cfg.showTermsAndConditions ?? documentMode === "CONTRACT") : false,
+                showSubstantialCompletionDate: (documentMode === "LOI" || documentMode === "CONTRACT") ? (cfg.showSubstantialCompletionDate ?? documentMode === "CONTRACT") : false,
                 showSignatureBlock: (documentMode === "LOI" || documentMode === "CONTRACT") ? (cfg.showSignatureBlock ?? true) : false,
                 showAssumptions: false,
                 showExhibitA: cfg.showExhibitA ?? false,
@@ -203,7 +206,15 @@ export async function POST(
                 tableHeaderOverrides: (project as any).tableHeaderOverrides || {},
                 descriptionOverrides: (project as any).descriptionOverrides || {},
                 priceOverrides: (project as any).priceOverrides || {},
-                customProposalNotes: (project as any).customProposalNotes || ""
+                customProposalNotes: (project as any).customProposalNotes || "",
+                // Change Order fields (only meaningful when documentMode === "CHANGE_ORDER")
+                changeOrderNumber: (project as any).changeOrderNumber || cfg.changeOrderNumber || "",
+                changeOrderRequestedBy: (project as any).changeOrderRequestedBy || cfg.changeOrderRequestedBy || "",
+                changeOrderDate: (project as any).changeOrderDate || cfg.changeOrderDate || "",
+                changeOrderOriginalContractAmount: Number((project as any).changeOrderOriginalContractAmount || cfg.changeOrderOriginalContractAmount) || 0,
+                changeOrderOverheadPct: Number((project as any).changeOrderOverheadPct || cfg.changeOrderOverheadPct) || 0,
+                changeOrderIntroText: (project as any).changeOrderIntroText || cfg.changeOrderIntroText || "",
+                showHiddenRows: cfg.showHiddenRows ?? false,
             },
             pricingDocument: (project as any).pricingDocument || undefined,
             marginAnalysis: (project as any).marginAnalysis || undefined,

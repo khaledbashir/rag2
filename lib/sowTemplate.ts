@@ -9,9 +9,9 @@
 // Document Header Types (LOI, Hard Quote, Budget)
 export const DOCUMENT_HEADERS = {
     LOI: {
-        title: "LETTER OF INTENT",
+        title: "SHORT FORM AGREEMENT",
         subtitle: "Non-Binding Preliminary Estimate",
-        disclaimer: "This Letter of Intent represents a preliminary, non-binding estimate for budgetary purposes only. Final pricing will be provided upon receipt of complete project specifications."
+        disclaimer: "This Short Form Agreement represents a preliminary, non-binding estimate for budgetary purposes only. Final pricing will be provided upon receipt of complete project specifications."
     },
     HARD_QUOTE: {
         title: "SALES QUOTATION",

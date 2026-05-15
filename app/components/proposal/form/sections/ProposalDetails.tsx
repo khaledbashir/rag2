@@ -219,8 +219,9 @@ const ProposalDetails = () => {
                             <SelectContent className="bg-popover border-border text-popover-foreground">
                                 <SelectItem value="BUDGET" className="focus:bg-accent focus:text-accent-foreground">Budget</SelectItem>
                                 <SelectItem value="PROPOSAL" className="focus:bg-accent focus:text-accent-foreground">Proposal</SelectItem>
-                                <SelectItem value="LOI" className="focus:bg-accent focus:text-accent-foreground">LOI</SelectItem>
-                                <SelectItem value="CONTRACT" className="focus:bg-accent focus:text-accent-foreground">Contract</SelectItem>
+                                <SelectItem value="LOI" className="focus:bg-accent focus:text-accent-foreground">Short Form Agreement</SelectItem>
+                                <SelectItem value="CONTRACT" className="focus:bg-accent focus:text-accent-foreground">Short Form Contract</SelectItem>
+                                <SelectItem value="CHANGE_ORDER" className="focus:bg-accent focus:text-accent-foreground">Change Order</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -240,7 +241,7 @@ const ProposalDetails = () => {
                                 size="sm"
                                 onClick={() => handleModeChange("LOI")}
                             >
-                                Promote to LOI
+                                Promote to Short Form
                             </BaseButton>
                         )}
                         {mode !== "CONTRACT" && (

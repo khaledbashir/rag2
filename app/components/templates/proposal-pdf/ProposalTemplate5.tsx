@@ -30,7 +30,7 @@ import type { PdfColors, PdfTemplateSpacing } from "./sections/shared";
 
 // Helpers
 import { formatCurrency } from "@/lib/helpers";
-import { resolveDocumentMode } from "@/lib/documentMode";
+import { resolveDocumentMode, getModeConfig } from "@/lib/documentMode";
 import {
     DOCUMENT_MODES,
 } from "@/services/rfp/productCatalog";
@@ -55,14 +55,25 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
 
     const documentMode = resolveDocumentMode(details);
     const catalogMode = documentMode.toLowerCase() as CatalogDocumentMode;
-    const docModeConfig = DOCUMENT_MODES[catalogMode] || DOCUMENT_MODES.proposal;
+    const docModeConfig = getModeConfig(documentMode);
     const docLabel = docModeConfig.headerText;
     const isLOI = documentMode === "LOI" || documentMode === "CONTRACT";
     const isContract = documentMode === "CONTRACT";
+    const isCO = documentMode === "CHANGE_ORDER";
+    const shortFormDocumentName = isContract ? "Short Form Contract" : "Short Form Agreement";
 
-    // T&C exhibit config — only renders for CONTRACT mode when toggle is on
-    const showTc = (details as any)?.showTermsAndConditions ?? true;
-    const tcConfig = (isContract && showTc) ? {
+    // Change Order metadata
+    const changeOrderNumber = (((details as any)?.changeOrderNumber || "") + "").trim();
+    const changeOrderRequestedBy = (((details as any)?.changeOrderRequestedBy || "") + "").trim();
+    const changeOrderDateRaw = (((details as any)?.changeOrderDate || "") + "").trim();
+    const changeOrderOriginalContractAmount = Number((details as any)?.changeOrderOriginalContractAmount) || 0;
+    const changeOrderOverheadPct = Number((details as any)?.changeOrderOverheadPct) || 0;
+    const changeOrderIntroText = (((details as any)?.changeOrderIntroText || "") + "").trim();
+
+    // T&C exhibit config — toggleable for both Short Form Agreement (LOI) and Short Form Contract.
+    // Default off for SFA, on for CONTRACT — both can override via the toggle.
+    const showTc = (details as any)?.showTermsAndConditions ?? isContract;
+    const tcConfig = (isLOI && showTc) ? {
         purchaserName: (details as any)?.purchaserLegalName || receiver?.name || "Purchaser",
         warrantyYears: (details as any)?.tcWarrantyYears ?? 5,
         includeLaborWarranty: (details as any)?.tcIncludeLaborWarranty ?? true,
@@ -79,6 +90,11 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const purchaserAddress = (() => {
         const parts = [receiver?.address, receiver?.city, receiver?.zipCode].filter(Boolean);
         return parts.length > 0 ? parts.join(", ") : "";
+    })();
+    const venueLabel = (() => {
+        const raw = ((details as any)?.venue || (details as any)?.location || "").toString().trim();
+        if (!raw || raw.toLowerCase() === "generic") return "";
+        return raw;
     })();
 
     // Prompt 43: Currency detection from pricingDocument
@@ -225,6 +241,15 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     // FR-4.3: Custom editable text fields
     const customIntroText = (details as any)?.additionalNotes || "";
     const customPaymentTerms = (details as any)?.paymentTerms || "";
+    const substantialCompletionDate = ((details as any)?.substantialCompletionDate || "").toString().trim();
+    const showSubstantialCompletionDate = (details as any)?.showSubstantialCompletionDate ?? isContract;
+
+    const formatShortFormDate = (raw: string) => {
+        if (!raw) return "";
+        const d = new Date(raw);
+        if (isNaN(d.getTime())) return raw;
+        return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    };
 
     // ===== COMPONENTS =====
 
@@ -329,11 +354,17 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         const defaultTerms = "50% on Deposit\n40% on Mobilization\n10% on Substantial Completion";
         const raw = (customPaymentTerms?.trim() || defaultTerms).toString();
         const lines = raw.split(/\r?\n|,/g).map((l: string) => l.trim()).filter(Boolean);
+        const completionLabel = showSubstantialCompletionDate ? formatShortFormDate(substantialCompletionDate) : "";
         if (lines.length === 0) return null;
         return (
             <div data-preview-section="payment-terms" className="mt-2">
                 <SectionHeader title="Payment Terms" />
                 <div className="rounded-lg p-3 text-[14px] leading-snug" style={{ background: colors.surface, color: colors.textMuted }}>
+                    {completionLabel && (
+                        <div className="mb-2" style={{ color: colors.text }}>
+                            <strong>Substantial Completion:</strong> {completionLabel}
+                        </div>
+                    )}
                     {lines.map((line: string, idx: number) => <div key={idx}>{line}</div>)}
                 </div>
             </div>
@@ -350,6 +381,62 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                 <SectionHeader title="Notes" />
                 <div className="rounded-lg p-3 text-[14px] leading-snug whitespace-pre-wrap" style={{ background: colors.surface, color: colors.text }}>
                     {notesText}
+                </div>
+            </div>
+        );
+    };
+
+    // Change Order Info Block — Project / CO# / Requested By / Date
+    const ChangeOrderInfoBlock = () => {
+        const projectLabel = (details?.proposalName || (details as any)?.clientName || receiver?.name || "—").toString();
+        const coNumberLabel = changeOrderNumber || "—";
+        const requestedByLabel = changeOrderRequestedBy || receiver?.name || "—";
+        const dateLabel = formatShortFormDate(changeOrderDateRaw) || formatShortFormDate(headerDate || "") || "—";
+        const rows: Array<[string, string]> = [
+            ["Project", projectLabel],
+            ["Change Order #", coNumberLabel],
+            ["Requested By", requestedByLabel],
+            ["Date", dateLabel],
+        ];
+        return (
+            <div className="mt-2" style={{ paddingLeft: `${contentPaddingX}px`, paddingRight: `${contentPaddingX}px` }}>
+                <SectionHeader title="Change Order Details" />
+                <div className="rounded-lg p-3 text-[14px] leading-snug" style={{ background: colors.surface, color: colors.text }}>
+                    {rows.map(([label, value]) => (
+                        <div key={label} className="flex" style={{ paddingTop: 2, paddingBottom: 2 }}>
+                            <div style={{ width: 160, color: colors.textMuted, fontWeight: 600 }}>{label}</div>
+                            <div style={{ flex: 1 }}>{value}</div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
+    // Change Order Totals — Subtotal / Overhead % / Total CO / Original Contract / New Contract
+    const ChangeOrderTotalsBlock = () => {
+        const subtotal = calculateProjectTotal();
+        const overheadAmt = Math.round((subtotal * (changeOrderOverheadPct / 100)) * 100) / 100;
+        const totalCO = subtotal + overheadAmt;
+        const newContract = changeOrderOriginalContractAmount + totalCO;
+        const fmt = (n: number) => formatCurrency((Number(n) || 0) * (exchangeRate || 1), undefined, currency);
+        const rows: Array<[string, string, boolean]> = [
+            ["Subtotal", fmt(subtotal), false],
+            [`ANC Overhead (${changeOrderOverheadPct}%)`, fmt(overheadAmt), false],
+            ["Total Change Order Amount", fmt(totalCO), true],
+            ["Original Contract Amount", fmt(changeOrderOriginalContractAmount), false],
+            ["New Contract Amount", fmt(newContract), true],
+        ];
+        return (
+            <div className="mt-3" style={{ paddingLeft: `${contentPaddingX}px`, paddingRight: `${contentPaddingX}px` }}>
+                <SectionHeader title="Revised Contract Totals" />
+                <div className="rounded-lg p-3 text-[14px] leading-snug" style={{ background: colors.surface, color: colors.text }}>
+                    {rows.map(([label, value, emphasize]) => (
+                        <div key={label} className="flex justify-between" style={{ paddingTop: 4, paddingBottom: 4, borderTop: emphasize ? `1px solid ${colors.border}` : "none" }}>
+                            <div style={{ color: colors.textMuted, fontWeight: emphasize ? 700 : 500 }}>{label}</div>
+                            <div style={{ fontWeight: emphasize ? 700 : 500, color: emphasize ? colors.text : colors.textMuted }}>{value}</div>
+                        </div>
+                    ))}
                 </div>
             </div>
         );
@@ -542,9 +629,17 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                     <div className="text-[14px] leading-snug" style={{ color: colors.textMuted }}>
                         {customIntroText?.trim() ? (
                             <p className="text-justify whitespace-pre-wrap">{customIntroText.trim()}</p>
+                        ) : isCO ? (
+                            changeOrderIntroText ? (
+                                <p className="text-justify whitespace-pre-wrap">{changeOrderIntroText}</p>
+                            ) : (
+                                <p className="text-justify">
+                                    This Change Order amends the existing agreement between <strong style={{ color: colors.text }}>{purchaserLegalName}</strong> and <strong style={{ color: colors.text }}>ANC Sports Enterprises, LLC</strong> for the <strong style={{ color: colors.text }}>{details?.proposalName || (details as any)?.clientName || receiver?.name || "project"}</strong>{venueLabel ? <> at <strong style={{ color: colors.text }}>{venueLabel}</strong></> : null}. The scope, pricing, and revised contract totals are set forth below.
+                                </p>
+                            )
                         ) : isLOI ? (
                             <p className="text-justify">
-                                This Sales Quotation will set forth the terms by which <strong style={{ color: colors.text }}>{purchaserLegalName}</strong> (&quot;Purchaser&quot;){purchaserAddress ? ` located at ${purchaserAddress}` : ""} and <strong style={{ color: colors.text }}>ANC Sports Enterprises, LLC</strong> (&quot;ANC&quot;) located at 2 Manhattanville Road, Suite 402, Purchase, NY 10577 (collectively, the &quot;Parties&quot;) agree that ANC will provide following LED Display and services (the &quot;Display System&quot;) described below for the <strong style={{ color: colors.text }}>{details?.proposalName || (details as any)?.clientName || receiver?.name || "project"}</strong>.
+                                This {shortFormDocumentName} sets forth the terms by which <strong style={{ color: colors.text }}>{purchaserLegalName}</strong> (&quot;Purchaser&quot;){purchaserAddress ? ` located at ${purchaserAddress}` : ""} and <strong style={{ color: colors.text }}>ANC Sports Enterprises, LLC</strong> (&quot;ANC&quot;) located at 2 Manhattanville Road, Suite 402, Purchase, NY 10577 (collectively, the &quot;Parties&quot;) agree that ANC will provide the display system and related services described below for the <strong style={{ color: colors.text }}>{details?.proposalName || (details as any)?.clientName || receiver?.name || "project"}</strong>{venueLabel ? <> at <strong style={{ color: colors.text }}>{venueLabel}</strong></> : null}.
                             </p>
                         ) : documentMode === "PROPOSAL" ? (
                             <p>
@@ -562,11 +657,43 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
             {/* Prompt 58: Custom Proposal Notes — now renders in NotesSection (after pricing, before payment) */}
 
             {/* ════════════════════════════════════════════════════════════
+                CHANGE ORDER MODE — info block → DOW table → totals → payment/sig
+               ════════════════════════════════════════════════════════════ */}
+            {isCO ? (
+                <>
+                    <ChangeOrderInfoBlock />
+                    {showPricingTables && (
+                        <div className="px-6">
+                            <SectionHeader title="Description of Work" />
+                            <PricingSection />
+                        </div>
+                    )}
+                    <ChangeOrderTotalsBlock />
+                    {showNotes && (
+                        <div className="px-6">
+                            <NotesSection />
+                        </div>
+                    )}
+                    {shouldRenderPaymentTerms && (
+                        <div className="px-6">
+                            <PaymentTermsSection />
+                        </div>
+                    )}
+                    {shouldRenderSignatureBlock && (
+                        <div className="px-6 break-inside-avoid">
+                            <SignatureBlock />
+                        </div>
+                    )}
+                    <div className="px-6">
+                        <HybridFooter />
+                    </div>
+                </>
+            ) : /* ════════════════════════════════════════════════════════════
                 LOI MODE — Natalia's required page structure (Prompt 41)
                 Structure A (master table): Intro → Summary → Payment/Sig → Breakdown → Specs
                 Structure B (no master):    Intro → Breakdown → Payment/Sig → Specs
-               ════════════════════════════════════════════════════════════ */}
-            {isLOI ? (
+               ════════════════════════════════════════════════════════════ */
+            isLOI ? (
                 masterTableIndex !== null ? (
                     /* ── Structure A: Business/Legal → THE KICK → Technical ── */
                     <>

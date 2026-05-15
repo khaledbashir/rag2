@@ -329,11 +329,19 @@ const ProposalDetailsSchema = z.object({
     signatureBlockText: fieldValidators.stringOptional, // Custom legal text before signature lines
     specsSectionTitle: fieldValidators.stringOptional, // Custom title for specifications section (default: "SPECIFICATIONS")
     paymentTerms: fieldValidators.stringMin1,
+    substantialCompletionDate: z.string().optional(),
     signature: SignatureSchema.optional(),
     updatedAt: fieldValidators.stringOptional,
     documentType: z.enum(["LOI", "First Round"]).default("First Round"),
     pricingType: z.enum(["Hard Quoted", "Budget"]).default("Budget"),
-    documentMode: z.enum(["BUDGET", "PROPOSAL", "LOI", "CONTRACT"]).optional().default("BUDGET"),
+    documentMode: z.enum(["BUDGET", "PROPOSAL", "LOI", "CONTRACT", "CHANGE_ORDER"]).optional().default("BUDGET"),
+    // Change Order fields — used when documentMode === "CHANGE_ORDER"
+    changeOrderNumber: z.string().optional(), // e.g. "CO-01"
+    changeOrderRequestedBy: z.string().optional(),
+    changeOrderDate: z.string().optional(),
+    changeOrderOriginalContractAmount: z.number().optional().default(0),
+    changeOrderOverheadPct: z.number().optional().default(0), // ANC overhead %
+    changeOrderIntroText: z.string().optional(), // Optional opening blurb (Krissy to provide)
     pageLayout: z.string().optional().default("portrait-letter"),
     specsDisplayMode: z.enum(["condensed", "extended"]).optional().default("extended"),
     mirrorMode: z.boolean().default(false),
@@ -380,6 +388,8 @@ const ProposalDetailsSchema = z.object({
     showSpecifications: z.boolean().optional().default(true),
     showCompanyFooter: z.boolean().optional().default(true),
     showPaymentTerms: z.boolean().optional().default(true), // Toggle for payment terms section
+    showTermsAndConditions: z.boolean().optional().default(false), // Toggle for contract terms exhibit
+    showSubstantialCompletionDate: z.boolean().optional().default(false), // Toggle for substantial completion date
     showSignatureBlock: z.boolean().optional().default(true), // Toggle for signature block
     showAssumptions: z.boolean().optional().default(false), // Toggle for assumptions text (default OFF per client)
     showExhibitA: z.boolean().optional().default(false), // Toggle for Exhibit A (Statement of Work)

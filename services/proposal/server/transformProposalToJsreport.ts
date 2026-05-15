@@ -242,6 +242,13 @@ export function transformProposalToJsreport(
         return parts.length > 0 ? parts.join(", ") : "";
     })();
 
+    // Venue / location string used inside the SFA intro paragraph
+    const venueLabel = (() => {
+        const raw = ((details as any)?.venue || (details as any)?.location || "").toString().trim();
+        if (!raw || raw.toLowerCase() === "generic") return "";
+        return raw;
+    })();
+
     // Intro Text Logic
     let introText = "";
     if (isLOI && details?.loiHeaderText?.trim()) {
@@ -249,8 +256,8 @@ export function transformProposalToJsreport(
     } else if (details?.introText?.trim()) {
         introText = details.introText.trim();
     } else if (isLOI) {
-        // Fallback LOI Text
-        introText = `This Sales Quotation will set forth the terms by which <strong style="color:black">${purchaserLegalName}</strong> ("Purchaser")${purchaserAddress ? ` located at ${purchaserAddress}` : ""} and <strong style="color:black">ANC Sports Enterprises, LLC</strong> ("ANC") located at 2 Manhattanville Road, Suite 402, Purchase, NY 10577 (collectively, the "Parties") agree that ANC will provide following LED Display and services described below for the <strong style="color:black">${details?.proposalName || "project"}</strong>.`;
+        const venueClause = venueLabel ? ` at <strong style="color:black">${venueLabel}</strong>` : "";
+        introText = `This Short Form Agreement sets forth the terms by which <strong style="color:black">${purchaserLegalName}</strong> ("Purchaser")${purchaserAddress ? ` located at ${purchaserAddress}` : ""} and <strong style="color:black">ANC Sports Enterprises, LLC</strong> ("ANC") located at 2 Manhattanville Road, Suite 402, Purchase, NY 10577 (collectively, the "Parties") agree that ANC will provide the display system and related services described below for the <strong style="color:black">${details?.proposalName || "project"}</strong>${venueClause}.`;
     } else {
         // Generic fallback
         introText = `ANC is pleased to present the following proposal for <strong style="color:black">${purchaserName}</strong> per the specifications and pricing below.`;

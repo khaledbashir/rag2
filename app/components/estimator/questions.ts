@@ -99,8 +99,9 @@ export const PROJECT_QUESTIONS: Question[] = [
         options: [
             { value: "budget", label: "Budget Estimate", description: "Early-stage ROM with no commitments" },
             { value: "proposal", label: "Proposal", description: "Formal sales quotation" },
-            { value: "loi", label: "Letter of Intent", description: "Full legal document with signatures" },
-            { value: "contract", label: "Contract", description: "Binding agreement with terms and conditions" },
+            { value: "loi", label: "Short Form Agreement", description: "Agreement with signatures" },
+            { value: "contract", label: "Short Form Contract", description: "Agreement with terms and conditions" },
+            { value: "change-order", label: "Change Order", description: "Amend an existing contract — new scope + revised total" },
         ],
         defaultValue: "budget",
         required: true,
@@ -764,7 +765,7 @@ export interface EstimatorAnswers {
     clientName: string;
     projectName: string;
     location: string;
-    docType: "budget" | "proposal" | "loi" | "contract";
+    docType: "budget" | "proposal" | "loi" | "contract" | "change-order";
     estimateDepth: "rom" | "detailed";
     currency: "USD" | "CAD" | "EUR" | "GBP";
     /**

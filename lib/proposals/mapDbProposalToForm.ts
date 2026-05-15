@@ -6,9 +6,9 @@ import { FORM_DEFAULT_VALUES } from "@/lib/variables";
  */
 export function mapDbProposalToFormSchema(dbProject: any) {
     const cfg = (dbProject.documentConfig || {}) as any;
-    const documentMode = (dbProject.documentMode || "BUDGET") as "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT";
-    const documentType = (documentMode === "LOI" || documentMode === "CONTRACT") ? "LOI" : "First Round";
-    const pricingType = (documentMode === "PROPOSAL" || documentMode === "CONTRACT") ? "Hard Quoted" : "Budget";
+    const documentMode = (dbProject.documentMode || "BUDGET") as "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT" | "CHANGE_ORDER";
+    const documentType = (documentMode === "LOI" || documentMode === "CONTRACT" || documentMode === "CHANGE_ORDER") ? "LOI" : "First Round";
+    const pricingType = (documentMode === "PROPOSAL" || documentMode === "CONTRACT" || documentMode === "CHANGE_ORDER") ? "Hard Quoted" : "Budget";
 
     return {
         sender: FORM_DEFAULT_VALUES.sender,
@@ -39,6 +39,7 @@ export function mapDbProposalToFormSchema(dbProject: any) {
             paymentInformation: { bankName: "", accountName: "", accountNumber: "" },
             additionalNotes: dbProject.additionalNotes || "",
             paymentTerms: dbProject.paymentTerms || "50% on Deposit, 40% on Mobilization, 10% on Substantial Completion",
+            substantialCompletionDate: dbProject.substantialCompletionDate || "",
             totalAmountInWords: "",
             documentType: documentType as any,
             pricingType: pricingType as any,
@@ -87,6 +88,8 @@ export function mapDbProposalToFormSchema(dbProject: any) {
             showSpecifications: cfg.showSpecifications ?? true,
             showCompanyFooter: cfg.showCompanyFooter ?? true,
             showPaymentTerms: cfg.showPaymentTerms ?? false,
+            showTermsAndConditions: cfg.showTermsAndConditions ?? documentMode === "CONTRACT",
+            showSubstantialCompletionDate: cfg.showSubstantialCompletionDate ?? documentMode === "CONTRACT",
             showSignatureBlock: cfg.showSignatureBlock ?? false,
             showAssumptions: false,
             showExhibitA: cfg.showExhibitA ?? false,
@@ -114,6 +117,13 @@ export function mapDbProposalToFormSchema(dbProject: any) {
             status: dbProject.status || "DRAFT",
             source: dbProject.source || null,
             embeddingStatus: dbProject.embeddingStatus || null,
+            // Change Order fields (only meaningful when documentMode === "CHANGE_ORDER")
+            changeOrderNumber: dbProject.changeOrderNumber || cfg.changeOrderNumber || "",
+            changeOrderRequestedBy: dbProject.changeOrderRequestedBy || cfg.changeOrderRequestedBy || "",
+            changeOrderDate: dbProject.changeOrderDate || cfg.changeOrderDate || "",
+            changeOrderOriginalContractAmount: Number(dbProject.changeOrderOriginalContractAmount || cfg.changeOrderOriginalContractAmount) || 0,
+            changeOrderOverheadPct: Number(dbProject.changeOrderOverheadPct || cfg.changeOrderOverheadPct) || 0,
+            changeOrderIntroText: dbProject.changeOrderIntroText || cfg.changeOrderIntroText || "",
         },
         marginAnalysis: dbProject.marginAnalysis || undefined,
     };

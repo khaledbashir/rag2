@@ -44,6 +44,7 @@ enum DocumentMode {
   PROPOSAL
   LOI
   CONTRACT
+  CHANGE_ORDER
 }
 
 enum ChangeRequestStatus {
@@ -153,6 +154,7 @@ model Proposal {
   documentConfig       Json?
   quoteItems           Json?
   paymentTerms         String?
+  substantialCompletionDate String?
   additionalNotes      String?
   signatureBlockText   String? // Bug #4: Persisted signature block text for LOI
   loiHeaderText        String? // LOI opening legal paragraph (Prompt 10)

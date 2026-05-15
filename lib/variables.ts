@@ -196,7 +196,14 @@ export const FORM_DEFAULT_VALUES = {
     totalAmountInWords: "",
     documentType: "First Round" as "LOI" | "First Round",
     pricingType: "Budget" as "Hard Quoted" | "Budget",
-    documentMode: "BUDGET" as "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT",
+    documentMode: "BUDGET" as "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT" | "CHANGE_ORDER",
+    // Change Order fields — populated when documentMode === "CHANGE_ORDER"
+    changeOrderNumber: "",
+    changeOrderRequestedBy: "",
+    changeOrderDate: "",
+    changeOrderOriginalContractAmount: 0,
+    changeOrderOverheadPct: 0,
+    changeOrderIntroText: "",
     pdfTemplate: 5, // Enterprise Standard: ANC Hybrid Template
     screens: [],
     internalAudit: {},
@@ -216,6 +223,8 @@ export const FORM_DEFAULT_VALUES = {
     showSpecifications: true,
     showCompanyFooter: true,
     showPaymentTerms: false,
+    showTermsAndConditions: false,
+    showSubstantialCompletionDate: false,
     showSignatureBlock: false,
     showAssumptions: false,
     showExhibitA: false,
@@ -318,7 +327,7 @@ export const FORM_FILL_VALUES = {
     totalAmountInWords: "Eight Hundred Fifty",
     documentType: "First Round" as "LOI" | "First Round",
     pricingType: "Hard Quoted" as "Hard Quoted" | "Budget",
-    documentMode: "PROPOSAL" as "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT",
+    documentMode: "PROPOSAL" as "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT" | "CHANGE_ORDER",
     pdfTemplate: 5, // Enterprise Standard: ANC Hybrid Template
     venue: "Generic" as "Milan Puskar Stadium" | "WVU Coliseum" | "Generic",
   },

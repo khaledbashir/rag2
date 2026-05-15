@@ -23,6 +23,7 @@ import {
     FileText,
     FileCheck,
     FileSignature,
+    FileEdit,
     ChevronRight,
     ChevronDown,
     PenLine
@@ -40,6 +41,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import ExcelGridViewer from "@/app/components/ExcelGridViewer";
 import { FEATURES } from "@/lib/featureFlags";
 import type { ProposalType } from "@/types";
@@ -1075,7 +1077,7 @@ const Step4Export = () => {
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="pt-0">
-                                <div className="grid grid-cols-4 gap-2">
+                                <div className="grid grid-cols-5 gap-2">
                                     <button
                                         type="button"
                                         onClick={() => setHeaderType("BUDGET")}
@@ -1113,7 +1115,7 @@ const Step4Export = () => {
                                         )}
                                     >
                                         <FileSignature className="w-3.5 h-3.5" />
-                                        LOI
+                                        Short Form
                                     </button>
                                     <button
                                         type="button"
@@ -1128,9 +1130,109 @@ const Step4Export = () => {
                                         <Shield className="w-3.5 h-3.5" />
                                         Contract
                                     </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setHeaderType("CHANGE_ORDER")}
+                                        className={cn(
+                                            "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors",
+                                            headerType === "CHANGE_ORDER"
+                                                ? "border-rose-500/50 bg-rose-500/10 text-rose-700 dark:text-rose-200"
+                                                : "border-border bg-card/40 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                                        )}
+                                    >
+                                        <FileEdit className="w-3.5 h-3.5" />
+                                        Change Order
+                                    </button>
                                 </div>
                             </CardContent>
                         </Card>
+
+                        {/* Change Order Details — visible only when CHANGE_ORDER is selected */}
+                        {headerType === "CHANGE_ORDER" && (
+                            <Card className="bg-card/40 border border-border/60 overflow-hidden">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-[0.2em]">Change Order Details</CardTitle>
+                                    <CardDescription className="text-xs text-muted-foreground">
+                                        These fields populate the Change Order PDF header, info block, and revised contract totals.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent className="pt-0 space-y-3">
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="flex flex-col gap-1">
+                                            <Label htmlFor="changeOrderNumber" className="text-[11px] font-medium text-muted-foreground">Change Order #</Label>
+                                            <Input
+                                                id="changeOrderNumber"
+                                                type="text"
+                                                placeholder="CO-01"
+                                                value={watch("details.changeOrderNumber" as any) || ""}
+                                                onChange={(e) => setValue("details.changeOrderNumber" as any, e.target.value, { shouldDirty: true })}
+                                                className="h-8 text-xs"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                            <Label htmlFor="changeOrderDate" className="text-[11px] font-medium text-muted-foreground">Date</Label>
+                                            <Input
+                                                id="changeOrderDate"
+                                                type="date"
+                                                value={watch("details.changeOrderDate" as any) || ""}
+                                                onChange={(e) => setValue("details.changeOrderDate" as any, e.target.value, { shouldDirty: true })}
+                                                className="h-8 text-xs"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                        <Label htmlFor="changeOrderRequestedBy" className="text-[11px] font-medium text-muted-foreground">Requested By</Label>
+                                        <Input
+                                            id="changeOrderRequestedBy"
+                                            type="text"
+                                            placeholder="Client / requestor name"
+                                            value={watch("details.changeOrderRequestedBy" as any) || ""}
+                                            onChange={(e) => setValue("details.changeOrderRequestedBy" as any, e.target.value, { shouldDirty: true })}
+                                            className="h-8 text-xs"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="flex flex-col gap-1">
+                                            <Label htmlFor="changeOrderOriginalContractAmount" className="text-[11px] font-medium text-muted-foreground">Original Contract Amount</Label>
+                                            <Input
+                                                id="changeOrderOriginalContractAmount"
+                                                type="number"
+                                                min={0}
+                                                step={100}
+                                                placeholder="0"
+                                                value={watch("details.changeOrderOriginalContractAmount" as any) ?? 0}
+                                                onChange={(e) => setValue("details.changeOrderOriginalContractAmount" as any, Number(e.target.value) || 0, { shouldDirty: true })}
+                                                className="h-8 text-xs"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                            <Label htmlFor="changeOrderOverheadPct" className="text-[11px] font-medium text-muted-foreground">ANC Overhead (%)</Label>
+                                            <Input
+                                                id="changeOrderOverheadPct"
+                                                type="number"
+                                                min={0}
+                                                max={100}
+                                                step={0.5}
+                                                placeholder="0"
+                                                value={watch("details.changeOrderOverheadPct" as any) ?? 0}
+                                                onChange={(e) => setValue("details.changeOrderOverheadPct" as any, Number(e.target.value) || 0, { shouldDirty: true })}
+                                                className="h-8 text-xs"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                        <Label htmlFor="changeOrderIntroText" className="text-[11px] font-medium text-muted-foreground">Intro Paragraph (optional)</Label>
+                                        <Textarea
+                                            id="changeOrderIntroText"
+                                            placeholder="Custom opening blurb. Leave blank for the default."
+                                            value={watch("details.changeOrderIntroText" as any) || ""}
+                                            onChange={(e) => setValue("details.changeOrderIntroText" as any, e.target.value, { shouldDirty: true })}
+                                            className="text-xs min-h-[60px]"
+                                        />
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
 
                         {/* Document Config: Master Table + Page Layout */}
                         <Card className="bg-card/40 border border-border/60">
@@ -1252,7 +1354,7 @@ const Step4Export = () => {
                                     <p className="text-xs text-muted-foreground text-center">
                                         PDF sections are controlled by the <span className="text-foreground font-semibold">Document Mode</span> switcher in the toolbar above.
                                         <br />
-                                        <span className="text-[10px]">Budget = estimate only • Proposal = formal quote • LOI = binding letter with signatures • Contract = full agreement with T&C</span>
+                                        <span className="text-[10px]">Budget = estimate only • Proposal = formal quote • Short Form = agreement with signatures • Contract = short form with terms</span>
                                     </p>
 
                                     {/* AI-Generated SOW Toggle - Intelligence Mode only */}
@@ -1297,7 +1399,7 @@ const Step4Export = () => {
                                             </TabsTrigger>
                                             <TabsTrigger value="loi" className="flex items-center gap-1.5">
                                                 <FileCheck className="w-3.5 h-3.5" />
-                                                LOI
+                                                Short Form
                                             </TabsTrigger>
                                         </TabsList>
 
@@ -1468,7 +1570,7 @@ const Step4Export = () => {
                                             </div>
                                         </TabsContent>
 
-                                        {/* LOI Tab */}
+                                        {/* Short Form / Contract Tab */}
                                         <TabsContent value="loi" className="space-y-1 mt-4">
                                             <div className="flex items-center justify-between py-3 border-b border-border/30">
                                                 <div className="flex flex-col">
@@ -1516,6 +1618,13 @@ const Step4Export = () => {
                                             </div>
                                             <div className="flex items-center justify-between py-3 border-b border-border/30">
                                                 <div className="flex flex-col">
+                                                    <Label htmlFor="showSubstantialCompletionDate" className="text-sm font-semibold text-foreground">Substantial Completion Date</Label>
+                                                    <p className="text-[11px] text-muted-foreground">Include date above payment terms when entered</p>
+                                                </div>
+                                                <Switch id="showSubstantialCompletionDate" checked={watch("details.showSubstantialCompletionDate" as any) ?? headerType === "CONTRACT"} onCheckedChange={(checked) => setValue("details.showSubstantialCompletionDate" as any, checked, { shouldDirty: true })} className="data-[state=checked]:bg-brand-blue" />
+                                            </div>
+                                            <div className="flex items-center justify-between py-3 border-b border-border/30">
+                                                <div className="flex flex-col">
                                                     <Label htmlFor="showSignatureBlock" className="text-sm font-semibold text-foreground">Signature Lines</Label>
                                                     <p className="text-[11px] text-muted-foreground">Include signature block for both parties</p>
                                                 </div>
@@ -1560,14 +1669,14 @@ const Step4Export = () => {
                                                 </div>
                                                 <Switch id="showNotes-loi" checked={watch("details.showNotes") ?? true} onCheckedChange={(checked) => setValue("details.showNotes", checked)} className="data-[state=checked]:bg-brand-blue" />
                                             </div>
-                                            {/* T&C Exhibit toggle — CONTRACT mode only */}
-                                            {headerType === "CONTRACT" && (
+                                            {/* T&C Exhibit toggle — Short Form Agreement (LOI) + Short Form Contract */}
+                                            {(headerType === "LOI" || headerType === "CONTRACT") && (
                                                 <div className="flex items-center justify-between py-3">
                                                     <div className="flex flex-col">
                                                         <Label htmlFor="showTermsAndConditions" className="text-sm font-semibold text-foreground">Terms &amp; Conditions</Label>
-                                                        <p className="text-[11px] text-muted-foreground">Include T&amp;C exhibit page (Exhibit C)</p>
+                                                        <p className="text-[11px] text-muted-foreground">Include short form terms exhibit</p>
                                                     </div>
-                                                    <Switch id="showTermsAndConditions" checked={watch("details.showTermsAndConditions" as any) ?? true} onCheckedChange={(checked) => setValue("details.showTermsAndConditions" as any, checked, { shouldDirty: true })} className="data-[state=checked]:bg-brand-blue" />
+                                                    <Switch id="showTermsAndConditions" checked={watch("details.showTermsAndConditions" as any) ?? headerType === "CONTRACT"} onCheckedChange={(checked) => setValue("details.showTermsAndConditions" as any, checked, { shouldDirty: true })} className="data-[state=checked]:bg-brand-blue" />
                                                 </div>
                                             )}
                                         </TabsContent>

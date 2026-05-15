@@ -1,11 +1,11 @@
 {
     "companyName": "ANC",
-    "documentType": "Letter of Intent",
+    "documentType": "Short Form Agreement",
     "date": "February 13, 2026",
     "proposalNumber": "ANC-2026-0213",
     "projectName": "Venue Digital Display Systems — Phase 1",
     "clientName": "Client Corp",
-    "introText": "ANC is pleased to present this Letter of Intent for the design, fabrication, and installation of digital display systems as outlined below. This proposal includes all necessary hardware, software, and professional services.",
+    "introText": "ANC is pleased to present this Short Form Agreement for the design, fabrication, and installation of digital display systems as outlined below. This proposal includes all necessary hardware, software, and professional services.",
     "pricingTables": [
         {
             "label": "HISTORY WALL LCD DISPLAY",

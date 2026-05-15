@@ -744,7 +744,7 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
         ["Project Name", answers.projectName || "—"],
         ["Location", answers.location || "—"],
         ["Date Created", now],
-        ["Document Type", answers.docType === "budget" ? "Budget Estimate" : answers.docType === "loi" ? "Letter of Intent" : "Sales Quotation"],
+        ["Document Type", answers.docType === "budget" ? "Budget Estimate" : answers.docType === "loi" ? "Short Form Agreement" : answers.docType === "contract" ? "Short Form Contract" : answers.docType === "change-order" ? "Change Order" : "Sales Quotation"],
         ["Estimate Depth", answers.estimateDepth === "rom" ? "ROM / Budget" : "Detailed"],
         ["Currency", answers.currency || "USD"],
         ["Environment", answers.isIndoor ? "Indoor" : "Outdoor"],
@@ -832,7 +832,7 @@ function buildProjectInfo(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sheet
 // --- Budget Summary ---
 function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): SheetTab {
     const rows: SheetRow[] = [];
-    const docLabel = answers.docType === "budget" ? "BUDGET ESTIMATE" : answers.docType === "loi" ? "LETTER OF INTENT" : "SALES QUOTATION";
+    const docLabel = answers.docType === "budget" ? "BUDGET ESTIMATE" : answers.docType === "loi" ? "SHORT FORM AGREEMENT" : answers.docType === "contract" ? "SHORT FORM CONTRACT" : answers.docType === "change-order" ? "CHANGE ORDER" : "SALES QUOTATION";
 
     rows.push({
         cells: [{ value: `ANC ${docLabel} — ${answers.projectName || "PROJECT"}`, bold: true, header: true, span: 8, align: "center" }],

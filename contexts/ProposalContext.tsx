@@ -192,8 +192,8 @@ const defaultProposalContext = {
     setRulesDetected: (rules: any) => { },
     // Core State
     proposal: null as any,
-    headerType: "PROPOSAL" as "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT",
-    setHeaderType: (type: "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT") => { },
+    headerType: "PROPOSAL" as "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT" | "CHANGE_ORDER",
+    setHeaderType: (type: "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT" | "CHANGE_ORDER") => { },
     calculationMode: "MIRROR" as "MIRROR" | "INTELLIGENCE",
     setCalculationMode: (mode: "MIRROR" | "INTELLIGENCE") => { },
     risks: [] as RiskItem[],
@@ -609,22 +609,23 @@ export const ProposalContextProvider = ({
     const watchedDocumentMode = watch("details.documentMode");
     const headerType = useMemo(() => {
         // documentMode is the canonical source — check it first
-        if (watchedDocumentMode === "CONTRACT") return "CONTRACT";
-        if (watchedDocumentMode === "LOI") return "LOI";
-        if (watchedDocumentMode === "PROPOSAL") return "PROPOSAL";
-        if (watchedDocumentMode === "BUDGET") return "BUDGET";
+        if (watchedDocumentMode === "CHANGE_ORDER") return "CHANGE_ORDER" as const;
+        if (watchedDocumentMode === "CONTRACT") return "CONTRACT" as const;
+        if (watchedDocumentMode === "LOI") return "LOI" as const;
+        if (watchedDocumentMode === "PROPOSAL") return "PROPOSAL" as const;
+        if (watchedDocumentMode === "BUDGET") return "BUDGET" as const;
         // Fallback: infer from legacy fields
         return watchedDocumentType === "LOI"
-            ? "LOI"
+            ? "LOI" as const
             : watchedPricingType === "Hard Quoted"
-                ? "PROPOSAL"
-                : "BUDGET";
+                ? "PROPOSAL" as const
+                : "BUDGET" as const;
     }, [watchedDocumentMode, watchedDocumentType, watchedPricingType]);
 
     const mirrorMode = watch("details.mirrorMode") || false;
 
     const setHeaderType = useCallback(
-        (next: "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT") => {
+        (next: "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT" | "CHANGE_ORDER") => {
             setValue("details.documentMode", next, {
                 shouldValidate: true,
                 shouldDirty: true,
@@ -640,6 +641,12 @@ export const ProposalContextProvider = ({
                     shouldDirty: true,
                 });
                 setValue("details.showSignatureBlock", true, {
+                    shouldDirty: true,
+                });
+                setValue("details.showSubstantialCompletionDate" as any, next === "CONTRACT", {
+                    shouldDirty: true,
+                });
+                setValue("details.showTermsAndConditions" as any, next === "CONTRACT", {
                     shouldDirty: true,
                 });
                 // Mirror Mode: never enable SOW (static hard-coded content not relevant)
@@ -668,6 +675,8 @@ export const ProposalContextProvider = ({
             setValue("details.showSignatureBlock", false, {
                 shouldDirty: true,
             });
+            setValue("details.showSubstantialCompletionDate" as any, false, { shouldDirty: true });
+            setValue("details.showTermsAndConditions" as any, false, { shouldDirty: true });
             // Mirror Mode: keep specs hidden (user controls via toggle)
             if (!mirrorMode) {
                 setValue("details.showSpecifications", true, {
@@ -896,6 +905,8 @@ export const ProposalContextProvider = ({
                             showSpecifications: d?.showSpecifications,
                             showCompanyFooter: d?.showCompanyFooter,
                             showPaymentTerms: d?.showPaymentTerms,
+                            showTermsAndConditions: d?.showTermsAndConditions,
+                            showSubstantialCompletionDate: d?.showSubstantialCompletionDate,
                             showSignatureBlock: d?.showSignatureBlock,
                             showExhibitA: d?.showExhibitA,
                             showExhibitB: d?.showExhibitB,
@@ -906,6 +917,7 @@ export const ProposalContextProvider = ({
                         },
                         quoteItems: d?.quoteItems,
                         paymentTerms: d?.paymentTerms,
+                        substantialCompletionDate: d?.substantialCompletionDate,
                         additionalNotes: d?.additionalNotes,
                         signatureBlockText: d?.signatureBlockText,
                         loiHeaderText: d?.loiHeaderText,
@@ -1389,7 +1401,7 @@ export const ProposalContextProvider = ({
                     const clientName = (details?.clientName || details?.proposalName || "proposal").toString();
                     const safeUnderscored = (s: string) => s.replace(/[/\\:*?"<>|]/g, "").replace(/\s+/g, "_").trim().slice(0, 50) || "Client";
                     const docMode = details?.documentMode || "LOI";
-                    const documentTypeLabel = docMode === "LOI" ? "Letter_of_Intent" : docMode === "PROPOSAL" ? "Proposal" : "Budget_Estimate";
+                    const documentTypeLabel = docMode === "LOI" ? "Short_Form_Agreement" : docMode === "CONTRACT" ? "Short_Form_Contract" : docMode === "PROPOSAL" ? "Proposal" : "Budget_Estimate";
                     const dateStr = new Date().toISOString().slice(0, 10);
                     const fileName = `ANC_${safeUnderscored(clientName)}_${documentTypeLabel}_${dateStr}_jsreport.pdf`;
                     const a = document.createElement("a");
@@ -1443,7 +1455,7 @@ export const ProposalContextProvider = ({
             const clientName = (details?.clientName || details?.proposalName || "Proposal").toString()
                 .replace(/[/\\:*?"<>|]/g, "").replace(/\s+/g, "_").trim().slice(0, 50) || "Proposal";
             const docMode = details?.documentMode ?? headerType;
-            const docLabel = docMode === "LOI" ? "Letter_of_Intent" : docMode === "PROPOSAL" ? "Proposal" : "Budget_Estimate";
+            const docLabel = docMode === "LOI" ? "Short_Form_Agreement" : docMode === "CONTRACT" ? "Short_Form_Contract" : docMode === "PROPOSAL" ? "Proposal" : "Budget_Estimate";
             const tabTitle = `ANC_${clientName}_${docLabel}_${new Date().toISOString().slice(0, 10)}`;
 
             // Open in new tab and set title so it doesn't show "about:blank"
@@ -1493,8 +1505,10 @@ export const ProposalContextProvider = ({
             const docMode = details?.documentMode ?? headerType;
             const documentTypeLabel =
                 docMode === "LOI"
-                    ? "Letter_of_Intent"
-                    : docMode === "PROPOSAL"
+                    ? "Short_Form_Agreement"
+                    : docMode === "CONTRACT"
+                        ? "Short_Form_Contract"
+                        : docMode === "PROPOSAL"
                         ? "Proposal"
                         : "Budget_Estimate";
             const dateStr = new Date().toISOString().slice(0, 10);
@@ -1546,7 +1560,7 @@ export const ProposalContextProvider = ({
     const MODES = [
         { mode: "BUDGET" as const, label: "Budget" },
         { mode: "PROPOSAL" as const, label: "Proposal" },
-        { mode: "LOI" as const, label: "Letter of Intent" },
+        { mode: "LOI" as const, label: "Short Form Agreement" },
     ] as const;
 
     /**
@@ -1611,6 +1625,8 @@ export const ProposalContextProvider = ({
                         pricingType:
                             mode === "PROPOSAL" ? "Hard Quoted" : "Budget",
                         showPaymentTerms: isLOI,
+                        showTermsAndConditions: mode === "CONTRACT",
+                        showSubstantialCompletionDate: mode === "CONTRACT",
                         showSignatureBlock: isLOI,
                         showExhibitA: isLOI || mode === "PROPOSAL",
                         showExhibitB: isLOI,
@@ -1765,6 +1781,8 @@ export const ProposalContextProvider = ({
                     documentType: isLOI ? "LOI" : "First Round",
                     pricingType: mode === "PROPOSAL" ? "Hard Quoted" : "Budget",
                     showPaymentTerms: isLOI,
+                    showTermsAndConditions: mode === "CONTRACT",
+                    showSubstantialCompletionDate: mode === "CONTRACT",
                     showSignatureBlock: isLOI,
                     showExhibitA: isLOI || mode === "PROPOSAL",
                     showExhibitB: isLOI,
@@ -1783,7 +1801,7 @@ export const ProposalContextProvider = ({
                 const blob = await res.blob();
                 if (blob.size === 0) continue;
 
-                const bundleDocType = mode === "LOI" ? "LOI" : mode === "CONTRACT" ? "Contract" : mode === "PROPOSAL" ? "Proposal" : "Budget_Estimate";
+                const bundleDocType = mode === "LOI" ? "Short_Form_Agreement" : mode === "CONTRACT" ? "Short_Form_Contract" : mode === "PROPOSAL" ? "Proposal" : "Budget_Estimate";
                 const fileName = `ANC_${safeUnderscored(clientName)}_${bundleDocType}_${bundleDateStr}.pdf`;
 
                 triggerDownload(blob, fileName);
@@ -2122,6 +2140,8 @@ export const ProposalContextProvider = ({
                                 showSpecifications: d?.showSpecifications,
                                 showCompanyFooter: d?.showCompanyFooter,
                                 showPaymentTerms: d?.showPaymentTerms,
+                                showTermsAndConditions: d?.showTermsAndConditions,
+                                showSubstantialCompletionDate: d?.showSubstantialCompletionDate,
                                 showSignatureBlock: d?.showSignatureBlock,
                                 showExhibitA: d?.showExhibitA,
                                 showExhibitB: d?.showExhibitB,
@@ -2132,6 +2152,7 @@ export const ProposalContextProvider = ({
                             },
                             quoteItems: d?.quoteItems,
                             paymentTerms: d?.paymentTerms,
+                            substantialCompletionDate: d?.substantialCompletionDate,
                             additionalNotes: d?.additionalNotes,
                             signatureBlockText: d?.signatureBlockText,
                             loiHeaderText: d?.loiHeaderText,
@@ -2210,6 +2231,10 @@ export const ProposalContextProvider = ({
                         ?.showCompanyFooter,
                     showPaymentTerms: (formValues as any)?.details
                         ?.showPaymentTerms,
+                    showTermsAndConditions: (formValues as any)?.details
+                        ?.showTermsAndConditions,
+                    showSubstantialCompletionDate: (formValues as any)?.details
+                        ?.showSubstantialCompletionDate,
                     showSignatureBlock: (formValues as any)?.details
                         ?.showSignatureBlock,
                     showExhibitA: (formValues as any)?.details?.showExhibitA,
@@ -2223,6 +2248,7 @@ export const ProposalContextProvider = ({
                 },
                 quoteItems: (formValues as any)?.details?.quoteItems,
                 paymentTerms: (formValues as any)?.details?.paymentTerms,
+                substantialCompletionDate: (formValues as any)?.details?.substantialCompletionDate,
                 additionalNotes: (formValues as any)?.details?.additionalNotes,
                 signatureBlockText: (formValues as any)?.details?.signatureBlockText,
                 loiHeaderText: (formValues as any)?.details?.loiHeaderText,
