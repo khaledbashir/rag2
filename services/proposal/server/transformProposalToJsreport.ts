@@ -134,10 +134,15 @@ export function transformProposalToJsreport(
     const { receiver } = data;
 
     // 1. Resolve Document Mode & Config
-    const documentMode = resolveDocumentMode(details); // "LOI" | "PROPOSAL" | "BUDGET"
+    const documentMode = resolveDocumentMode(details); // "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT" | "CHANGE_ORDER"
+    const isCO = documentMode === "CHANGE_ORDER";
     const catalogMode = documentMode.toLowerCase() as CatalogDocumentMode;
-    const docModeConfig = DOCUMENT_MODES[catalogMode] || DOCUMENT_MODES.proposal;
-    const docLabel = docModeConfig.headerText;
+    const CO_HEADER_BASE = "CHANGE ORDER";
+    const docModeConfig = isCO
+        ? { headerText: CO_HEADER_BASE, includeSignatures: true, includePaymentTerms: true, includeLegalIntro: true, includeProjectSummaryFirst: false, includeResponsibilityMatrix: false }
+        : (DOCUMENT_MODES[catalogMode] || DOCUMENT_MODES.proposal);
+    const changeOrderNumberRaw = (((details as any)?.changeOrderNumber || "") + "").trim();
+    const docLabel = isCO && changeOrderNumberRaw ? `${CO_HEADER_BASE} · ${changeOrderNumberRaw}` : docModeConfig.headerText;
     const isLOI = documentMode === "LOI" || documentMode === "CONTRACT";
 
     const pricingDocument = details?.pricingDocument || (data as any)?.pricingDocument;
@@ -251,7 +256,13 @@ export function transformProposalToJsreport(
 
     // Intro Text Logic
     let introText = "";
-    if (isLOI && details?.loiHeaderText?.trim()) {
+    const changeOrderIntroOverride = (((details as any)?.changeOrderIntroText || "") + "").trim();
+    if (isCO && changeOrderIntroOverride) {
+        introText = changeOrderIntroOverride;
+    } else if (isCO) {
+        const venueClause = venueLabel ? ` at <strong style="color:black">${venueLabel}</strong>` : "";
+        introText = `This Change Order amends the existing agreement between <strong style="color:black">${purchaserLegalName}</strong> and <strong style="color:black">ANC Sports Enterprises, LLC</strong> for the <strong style="color:black">${details?.proposalName || "project"}</strong>${venueClause}. The scope, pricing, and revised contract totals are set forth below.`;
+    } else if (isLOI && details?.loiHeaderText?.trim()) {
         introText = details.loiHeaderText.trim();
     } else if (details?.introText?.trim()) {
         introText = details.introText.trim();
@@ -290,12 +301,12 @@ export function transformProposalToJsreport(
     const showNotes = details.showNotes ?? true;
     const showScopeOfWork = details.showScopeOfWork ?? false;
 
-    // LOI specific defaults
+    // LOI / Change Order specific defaults
     let showExhibitA = details.showExhibitA;
-    if (showExhibitA === undefined) showExhibitA = isLOI ? true : (documentMode === "PROPOSAL"); // Default true for LOI/Proposal, false for Budget
+    if (showExhibitA === undefined) showExhibitA = isCO ? false : (isLOI ? true : (documentMode === "PROPOSAL")); // Default true for LOI/Proposal, false for Budget/CO
 
     let showSpecifications = details.showSpecifications;
-    if (showSpecifications === undefined) showSpecifications = !isLOI; // Default true for Proposal/Budget, false for LOI (unless Exhibit A is used)
+    if (showSpecifications === undefined) showSpecifications = isCO ? false : !isLOI; // CO and LOI default false; Proposal/Budget default true
 
     const hasGeneratedSchedule = false; // Placeholder for now
 
