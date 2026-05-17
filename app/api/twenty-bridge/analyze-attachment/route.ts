@@ -1,9 +1,9 @@
 /**
  * POST /api/twenty-bridge/analyze-attachment
  *
- * Bridge endpoint called by Twenty CRM's rfp-auto-on-attach logic function.
- * Receives a PDF (base64), runs the GLM5 extractor, persists to RfpAnalysis,
- * and returns the extracted display specs in the shape Twenty expects.
+ * Push-model endpoint: Twenty CRM fires attachment.created, its logic function
+ * sends us the IDs. We do everything: download the PDF from Twenty, run GLM5,
+ * persist to RfpAnalysis, write EstimateLines back to Twenty.
  *
  * Public (no rag2 auth): Twenty is ANC-internal and this is a narrow bridge.
  */
@@ -26,10 +26,63 @@ const execFileAsync = promisify(execFile);
 export const dynamic = "force-dynamic";
 export const maxDuration = 180;
 
+const TWENTY_API_KEY = process.env.TWENTY_API_KEY || "";
+
 interface RequestBody {
-  pdfBase64: string;
-  estimateId: string;
-  filename?: string;
+  attachmentId?: string;
+  estimateId?: string;
+  opportunityId?: string;
+  fileId: string;
+  fileName?: string;
+  serverUrl?: string;
+  pdfBase64?: string;
+}
+
+async function downloadFromTwenty(serverUrl: string, fileId: string): Promise<Buffer> {
+  const fileUrl = `${serverUrl}/files/${fileId}`;
+  const res = await fetch(fileUrl, {
+    headers: { Authorization: `Bearer ${TWENTY_API_KEY}` },
+  });
+  if (!res.ok) {
+    throw new Error(`File download failed: ${res.status} from ${fileUrl}`);
+  }
+  return Buffer.from(await res.arrayBuffer());
+}
+
+async function writeEstimateLines(
+  serverUrl: string,
+  estimateId: string,
+  displays: any[],
+  fileName: string,
+): Promise<string[]> {
+  const created: string[] = [];
+  for (const d of displays) {
+    const res = await fetch(`${serverUrl}/rest/estimateLines`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${TWENTY_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        displayName: d.name,
+        widthFt: d.widthFt,
+        heightFt: d.heightFt,
+        pitchMm: d.pitchMm || 10,
+        quantity: d.quantity,
+        totalSqFt: d.sqFt,
+        marginPct: 30,
+        lineNotes: `Auto-extracted from ${fileName}`,
+        estimateId,
+      }),
+    });
+    const json: any = await res.json().catch(() => ({}));
+    const lineId =
+      json?.data?.createEstimateLine?.id ??
+      json?.data?.estimateLine?.id ??
+      json?.data?.id;
+    if (lineId) created.push(lineId);
+  }
+  return created;
 }
 
 export async function POST(req: NextRequest) {
@@ -38,11 +91,17 @@ export async function POST(req: NextRequest) {
 
   try {
     const body: RequestBody = await req.json();
-    const { pdfBase64, estimateId, filename = "attachment.pdf" } = body;
+    const {
+      estimateId,
+      fileId,
+      fileName = "attachment.pdf",
+      serverUrl,
+      pdfBase64,
+    } = body;
 
-    if (!pdfBase64 || !estimateId) {
+    if (!fileId && !pdfBase64) {
       return NextResponse.json(
-        { error: "pdfBase64 and estimateId are required" },
+        { error: "fileId or pdfBase64 required" },
         { status: 400 },
       );
     }
@@ -54,10 +113,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const pdfBuffer = Buffer.from(pdfBase64, "base64");
-    const fileSize = pdfBuffer.length;
+    const crmUrl = serverUrl || process.env.TWENTY_API_URL || "";
 
-    tempPath = path.join(os.tmpdir(), `twenty-rfp-${estimateId}-${Date.now()}.pdf`);
+    let pdfBuffer: Buffer;
+    if (pdfBase64) {
+      pdfBuffer = Buffer.from(pdfBase64, "base64");
+    } else {
+      if (!crmUrl) {
+        return NextResponse.json(
+          { error: "serverUrl required when not sending pdfBase64" },
+          { status: 400 },
+        );
+      }
+      log.info(`[twenty-bridge/analyze-attachment] Downloading file ${fileId} from ${crmUrl}`);
+      pdfBuffer = await downloadFromTwenty(crmUrl, fileId);
+    }
+
+    const fileSize = pdfBuffer.length;
+    tempPath = path.join(os.tmpdir(), `twenty-rfp-${estimateId || "unknown"}-${Date.now()}.pdf`);
     await fs.writeFile(tempPath, pdfBuffer);
 
     let totalPages = 0;
@@ -72,7 +145,7 @@ export async function POST(req: NextRequest) {
     }
 
     log.info(
-      `[twenty-bridge/analyze-attachment] Starting GLM5 extraction: ${filename} (${totalPages} pages, ${Math.round(fileSize / 1024)}KB) for estimate ${estimateId}`,
+      `[twenty-bridge/analyze-attachment] GLM5 extraction: ${fileName} (${totalPages} pages, ${Math.round(fileSize / 1024)}KB) estimate=${estimateId}`,
     );
 
     const glmResult = await extractWithGLM5(tempPath, { timeout: 150 });
@@ -83,8 +156,7 @@ export async function POST(req: NextRequest) {
     const warnings = glmResult.warnings || [];
 
     const displays = screens.map((s: any) => ({
-      name:
-        s.name || s.location || s.description || "Display",
+      name: s.name || s.location || s.description || "Display",
       widthFt: s.widthFt || 0,
       heightFt: s.heightFt || 0,
       pitchMm: s.pitchMm || s.pitch || 0,
@@ -97,7 +169,7 @@ export async function POST(req: NextRequest) {
 
     const analysis = await prisma.rfpAnalysis.create({
       data: {
-        filename,
+        filename: fileName,
         fileSize,
         pageCount: totalPages,
         projectName: project.projectName || project.name || null,
@@ -110,12 +182,22 @@ export async function POST(req: NextRequest) {
         project: project as any,
         requirements: requirements as any,
         status: "complete",
-        createdBy: `twenty-bridge:${estimateId}`,
+        createdBy: `twenty-bridge:${estimateId || "no-estimate"}`,
       },
     });
 
+    let linesCreated = 0;
+    let lineIds: string[] = [];
+    if (estimateId && displays.length > 0 && crmUrl) {
+      lineIds = await writeEstimateLines(crmUrl, estimateId, displays, fileName);
+      linesCreated = lineIds.length;
+      log.info(
+        `[twenty-bridge/analyze-attachment] Wrote ${linesCreated} estimate lines to ${crmUrl}`,
+      );
+    }
+
     log.info(
-      `[twenty-bridge/analyze-attachment] Done: ${displays.length} displays, analysisId=${analysis.id}, ${Date.now() - startTime}ms`,
+      `[twenty-bridge/analyze-attachment] Done: ${displays.length} displays, ${linesCreated} lines written, analysisId=${analysis.id}, ${Date.now() - startTime}ms`,
     );
 
     return NextResponse.json({
@@ -123,6 +205,8 @@ export async function POST(req: NextRequest) {
       analysisId: analysis.id,
       estimateId,
       displays,
+      linesCreated,
+      lineIds,
       project,
       warnings,
       stats: {
@@ -133,10 +217,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err: any) {
-    log.error(
-      "[twenty-bridge/analyze-attachment]",
-      err?.message || err,
-    );
+    log.error("[twenty-bridge/analyze-attachment]", err?.message || err);
     return NextResponse.json(
       { error: err?.message || "extraction failed", stack: err?.stack?.slice(0, 500) },
       { status: 500 },
