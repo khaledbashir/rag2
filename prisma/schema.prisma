@@ -1227,8 +1227,26 @@ model CatalogItem {
   impactLevel    String?              @default("medium") // high, medium, low
   estimatedWeeks Int?                 @default(2)
   category       String?
+  persona        String?
+  department     String?
+  endGoal        String?
+  aiScore        Int                  @default(0)
+  likes          Int                  @default(0)
+  dislikes       Int                  @default(0)
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
+  comments       CatalogComment[]
 
   @@index([catalogId])
+}
+
+model CatalogComment {
+  id        String      @id @default(cuid())
+  item      CatalogItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId    String
+  author    String      @default("Anonymous")
+  body      String      @db.Text
+  createdAt DateTime    @default(now())
+
+  @@index([itemId])
 }

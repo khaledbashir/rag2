@@ -20,12 +20,32 @@ export async function GET(
 
   const items: any[] = await prisma.$queryRawUnsafe(`
     SELECT id, title, description, tier, price::float, discount::float, position, status,
-           "aiReasoning", "dataEvidence", "impactLevel", "estimatedWeeks", category
+           "aiReasoning", "dataEvidence", "impactLevel", "estimatedWeeks", category,
+           persona, department, "endGoal", "aiScore", likes, dislikes
     FROM "CatalogItem" WHERE "catalogId" = $1
     ORDER BY position ASC
   `, catalog.id);
 
-  return NextResponse.json({ ...catalog, items });
+  const comments: any[] = await prisma.$queryRawUnsafe(`
+    SELECT cc.id, cc."itemId", cc.author, cc.body, cc."createdAt"
+    FROM "CatalogComment" cc
+    JOIN "CatalogItem" ci ON ci.id = cc."itemId"
+    WHERE ci."catalogId" = $1
+    ORDER BY cc."createdAt" DESC
+  `, catalog.id);
+
+  const commentsByItem: Record<string, any[]> = {};
+  for (const c of comments) {
+    if (!commentsByItem[c.itemId]) commentsByItem[c.itemId] = [];
+    commentsByItem[c.itemId].push(c);
+  }
+
+  const enrichedItems = items.map(item => ({
+    ...item,
+    comments: commentsByItem[item.id] || [],
+  }));
+
+  return NextResponse.json({ ...catalog, items: enrichedItems });
 }
 
 export async function PATCH(
@@ -42,12 +62,12 @@ export async function PATCH(
     let idx = 2;
 
     for (const [key, val] of Object.entries(fields)) {
-      if (["title", "description", "tier", "status", "aiReasoning", "dataEvidence", "impactLevel", "category"].includes(key)) {
+      if (["title", "description", "tier", "status", "aiReasoning", "dataEvidence", "impactLevel", "category", "persona", "department", "endGoal"].includes(key)) {
         sets.push(`"${key}" = $${idx}`);
         vals.push(val);
         idx++;
       }
-      if (["price", "discount", "position", "estimatedWeeks"].includes(key)) {
+      if (["price", "discount", "position", "estimatedWeeks", "aiScore"].includes(key)) {
         sets.push(`"${key}" = $${idx}`);
         vals.push(Number(val));
         idx++;
@@ -62,6 +82,25 @@ export async function PATCH(
       );
     }
 
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.action === "react") {
+    const { itemId, reaction } = body;
+    if (reaction === "like") {
+      await prisma.$executeRawUnsafe(`UPDATE "CatalogItem" SET likes = likes + 1 WHERE id = $1`, itemId);
+    } else if (reaction === "dislike") {
+      await prisma.$executeRawUnsafe(`UPDATE "CatalogItem" SET dislikes = dislikes + 1 WHERE id = $1`, itemId);
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.action === "comment") {
+    const { itemId, author, text } = body;
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "CatalogComment" (id, "itemId", author, body, "createdAt")
+      VALUES (gen_random_uuid()::text, $1, $2, $3, CURRENT_TIMESTAMP)
+    `, itemId, author || "Anonymous", text);
     return NextResponse.json({ ok: true });
   }
 
