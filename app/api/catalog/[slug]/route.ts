@@ -19,7 +19,8 @@ export async function GET(
   const catalog = catalogs[0];
 
   const items: any[] = await prisma.$queryRawUnsafe(`
-    SELECT id, title, description, tier, price::float, discount::float, position, status
+    SELECT id, title, description, tier, price::float, discount::float, position, status,
+           "aiReasoning", "dataEvidence", "impactLevel", "estimatedWeeks", category
     FROM "CatalogItem" WHERE "catalogId" = $1
     ORDER BY position ASC
   `, catalog.id);
@@ -41,12 +42,12 @@ export async function PATCH(
     let idx = 2;
 
     for (const [key, val] of Object.entries(fields)) {
-      if (["title", "description", "tier", "status"].includes(key)) {
+      if (["title", "description", "tier", "status", "aiReasoning", "dataEvidence", "impactLevel", "category"].includes(key)) {
         sets.push(`"${key}" = $${idx}`);
         vals.push(val);
         idx++;
       }
-      if (["price", "discount", "position"].includes(key)) {
+      if (["price", "discount", "position", "estimatedWeeks"].includes(key)) {
         sets.push(`"${key}" = $${idx}`);
         vals.push(Number(val));
         idx++;

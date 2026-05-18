@@ -1212,18 +1212,23 @@ model ImprovementCatalog {
 }
 
 model CatalogItem {
-  id          String               @id @default(cuid())
-  catalog     ImprovementCatalog   @relation(fields: [catalogId], references: [id], onDelete: Cascade)
-  catalogId   String
-  title       String
-  description String               @db.Text
-  tier        String               // retainer, small, medium, large
-  price       Decimal              @default(0)
-  discount    Decimal              @default(0)
-  position    Int
-  status      String               @default("available") // available, shipped, selected, declined
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+  id             String               @id @default(cuid())
+  catalog        ImprovementCatalog   @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  catalogId      String
+  title          String
+  description    String               @db.Text
+  tier           String               // retainer, small, medium, large
+  price          Decimal              @default(0)
+  discount       Decimal              @default(0)
+  position       Int
+  status         String               @default("available") // available, shipped, selected, declined
+  aiReasoning    String?              @db.Text
+  dataEvidence   String?              @db.Text
+  impactLevel    String?              @default("medium") // high, medium, low
+  estimatedWeeks Int?                 @default(2)
+  category       String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
   @@index([catalogId])
 }
