@@ -6,6 +6,13 @@ export const authConfig = {
   },
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
+      const appHubHosts = new Set([
+        "apps.anc.com",
+        "app.anc.com",
+        "apps.ancsports.net",
+        "app.ancsports.net",
+      ]);
+      const isAppsHost = appHubHosts.has(nextUrl.hostname);
       const isLoggedIn = !!auth?.user;
       const isAuthPage = nextUrl.pathname.startsWith("/auth/");
       const isPublic =
@@ -18,6 +25,8 @@ export const authConfig = {
         nextUrl.pathname.startsWith("/api/jireh-reports/") ||
         nextUrl.pathname.startsWith("/api/crm-reports/") ||
         nextUrl.pathname.startsWith("/api/render/") ||
+        nextUrl.pathname.startsWith("/api/catalog") ||
+        nextUrl.pathname.startsWith("/catalog/") ||
         nextUrl.pathname.startsWith("/api/intelligence/") ||
         nextUrl.pathname.startsWith("/api/performance/seed") ||
         nextUrl.pathname.startsWith("/share/performance/") ||
@@ -25,12 +34,20 @@ export const authConfig = {
         nextUrl.pathname.startsWith("/favicon") ||
         nextUrl.pathname.includes(".");
       if (isAuthPage) {
-        if (isLoggedIn) return Response.redirect(new URL("/", nextUrl.origin));
+        if (isLoggedIn) return Response.redirect(new URL(isAppsHost ? "/hub" : "/", nextUrl.origin));
         return true;
       }
       if (isPublic) return true;
-      if (!isLoggedIn)
-        return Response.redirect(new URL("/auth/login", nextUrl.origin));
+      if (!isLoggedIn) {
+        const loginUrl = new URL("/auth/login", nextUrl.origin);
+        loginUrl.searchParams.set(
+          "callbackUrl",
+          isAppsHost && nextUrl.pathname === "/"
+            ? "/hub"
+            : `${nextUrl.pathname}${nextUrl.search}`,
+        );
+        return Response.redirect(loginUrl);
+      }
       return true;
     },
     jwt({ token, user }) {

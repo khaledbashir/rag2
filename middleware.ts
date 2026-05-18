@@ -43,7 +43,13 @@ const ROUTE_RULES: Array<{
 export default auth((req) => {
   const { pathname } = req.nextUrl;
   const host = req.headers.get("host")?.split(":")[0].toLowerCase() || "";
-  const isAppsHost = host === "apps.ancsports.net" || host === "app.ancsports.net";
+  const appHubHosts = new Set([
+    "apps.anc.com",
+    "app.anc.com",
+    "apps.ancsports.net",
+    "app.ancsports.net",
+  ]);
+  const isAppsHost = appHubHosts.has(host);
 
   // Canonicalize malformed paths like //demo/virtual-venue-v2 -> /demo/virtual-venue-v2
   // to avoid client-side history.replaceState cross-origin parsing issues.
@@ -88,6 +94,8 @@ export default auth((req) => {
     // here and the endpoint returns a saved xlsx. No rag2 session, no
     // business logic, no Twenty queries; just file rendering.
     pathname.startsWith("/api/render/") ||
+    pathname.startsWith("/api/catalog") ||
+    pathname.startsWith("/catalog/") ||
     pathname.startsWith("/share/performance/") ||
     pathname.startsWith("/auth/")
   ) {

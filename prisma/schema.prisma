@@ -1196,3 +1196,34 @@ model CmsBomLineItem {
   @@index([bomId])
   @@index([catalogItemId])
 }
+
+// ── Improvement Catalog (interactive client-facing scope menu) ──
+
+model ImprovementCatalog {
+  id         String   @id @default(cuid())
+  slug       String   @unique
+  clientName String
+  title      String
+  subtitle   String?  @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  items CatalogItem[]
+}
+
+model CatalogItem {
+  id          String               @id @default(cuid())
+  catalog     ImprovementCatalog   @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  catalogId   String
+  title       String
+  description String               @db.Text
+  tier        String               // retainer, small, medium, large
+  price       Decimal              @default(0)
+  discount    Decimal              @default(0)
+  position    Int
+  status      String               @default("available") // available, shipped, selected, declined
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([catalogId])
+}
