@@ -44,9 +44,5 @@ export const FEATURES = {
    * margin column. Flip ON when Option 3 scope is approved/billed.
    */
   CMS_PRICING_STRATEGIC: false,
-  /**
-   * Responsibility Matrix PDF/UI controls.
-   * Hidden 2026-05-18 while Matrix approval is pending.
-   */
-  RESPONSIBILITY_MATRIX: false,
+  RESPONSIBILITY_MATRIX: true,
 } as const;
