@@ -31,6 +31,7 @@ import type { PdfColors, PdfTemplateSpacing } from "./sections/shared";
 // Helpers
 import { formatCurrency } from "@/lib/helpers";
 import { resolveDocumentMode, getModeConfig } from "@/lib/documentMode";
+import { FEATURES } from "@/lib/featureFlags";
 import {
     DOCUMENT_MODES,
 } from "@/services/rfp/productCatalog";
@@ -232,7 +233,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const generatedScheduleTasks = Array.isArray(generatedSchedule?.tasks) ? generatedSchedule.tasks : [];
     const hasGeneratedSchedule = !mirrorMode && generatedScheduleTasks.length > 0;
     const showExhibitA = (details as any)?.showExhibitA ?? false;
-    const showResponsibilityMatrix = (details as any)?.showResponsibilityMatrix ?? true;
+    const showResponsibilityMatrix = FEATURES.RESPONSIBILITY_MATRIX && ((details as any)?.showResponsibilityMatrix ?? true);
     const shouldRenderLegalIntro = docModeConfig.includeLegalIntro;
     const shouldRenderPaymentTerms = docModeConfig.includePaymentTerms && showPaymentTerms;
     const shouldRenderSignatureBlock = docModeConfig.includeSignatures && showSignatureBlock;

@@ -26,16 +26,15 @@ export const FEATURES = {
    * Flip false to kill-switch the rag2-side surface if the change order isn't
    * approved. CRM-side kill-switch lives in scripts/disable-mns.py.
    */
-  M_AND_S_OPERATING_LAYER: true,
+  M_AND_S_OPERATING_LAYER: false,
   /**
    * CMS / Control System pricing module (Natalia/Jireh ask 2026-05-13).
    * Adds /estimator/[projectId]/cms picker + /admin/cms-catalog admin +
    * /api/cms/* endpoints. CMS subtotal flows into the LED estimate as a
    * single "Control System" line.
-   * Flipped ON 2026-05-13 — Ahmad wants the surface visible so he can
-   * demo to Natalia. Change-order paperwork follows.
+   * Hidden 2026-05-18 while CMS approval is pending.
    */
-  CMS_PRICING: true,
+  CMS_PRICING: false,
   /**
    * CMS Pricing — Option 3 "strategic" extras on top of the base picker.
    * When OFF, the picker shows only the equipment list, quantities, line
@@ -45,4 +44,9 @@ export const FEATURES = {
    * margin column. Flip ON when Option 3 scope is approved/billed.
    */
   CMS_PRICING_STRATEGIC: false,
+  /**
+   * Responsibility Matrix PDF/UI controls.
+   * Hidden 2026-05-18 while Matrix approval is pending.
+   */
+  RESPONSIBILITY_MATRIX: false,
 } as const;

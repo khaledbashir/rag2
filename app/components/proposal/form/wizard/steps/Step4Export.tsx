@@ -522,6 +522,11 @@ const Step4Export = () => {
         if (intelMatrix?.categories?.some((c: any) => c.items?.length > 0)) return true;
         return false;
     }, [pricingDocument, watch]);
+    const documentTextSettingsTab = headerType === "BUDGET"
+        ? "budget"
+        : headerType === "LOI" || headerType === "CONTRACT"
+            ? "loi"
+            : "proposal";
 
     // Auto-detect master table (roll-up / summary table) on first load
     const masterTableIndex = watch("details.masterTableIndex" as any);
@@ -1069,84 +1074,6 @@ const Step4Export = () => {
 
                     {/* Right Column: Global Export Action */}
                     <div className="lg:col-span-2 space-y-6">
-                        <Card className="bg-card/40 border border-border/60 overflow-hidden">
-                            <CardHeader className="pb-3">
-                                <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-[0.2em]">Document Mode</CardTitle>
-                                <CardDescription className="text-xs text-muted-foreground">
-                                    Select the output mode before generating/exporting PDF.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent className="pt-0">
-                                <div className="grid grid-cols-5 gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setHeaderType("BUDGET")}
-                                        className={cn(
-                                            "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors",
-                                            headerType === "BUDGET"
-                                                ? "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-200"
-                                                : "border-border bg-card/40 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                                        )}
-                                    >
-                                        <FileText className="w-3.5 h-3.5" />
-                                        Budget
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setHeaderType("PROPOSAL")}
-                                        className={cn(
-                                            "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors",
-                                            headerType === "PROPOSAL"
-                                                ? "border-brand-blue/50 bg-brand-blue/10 text-brand-blue"
-                                                : "border-border bg-card/40 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                                        )}
-                                    >
-                                        <FileCheck className="w-3.5 h-3.5" />
-                                        Proposal
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setHeaderType("LOI")}
-                                        className={cn(
-                                            "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors",
-                                            headerType === "LOI"
-                                                ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
-                                                : "border-border bg-card/40 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                                        )}
-                                    >
-                                        <FileSignature className="w-3.5 h-3.5" />
-                                        Short Form
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setHeaderType("CONTRACT")}
-                                        className={cn(
-                                            "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors",
-                                            headerType === "CONTRACT"
-                                                ? "border-indigo-500/50 bg-indigo-500/10 text-indigo-700 dark:text-indigo-200"
-                                                : "border-border bg-card/40 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                                        )}
-                                    >
-                                        <Shield className="w-3.5 h-3.5" />
-                                        Contract
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setHeaderType("CHANGE_ORDER")}
-                                        className={cn(
-                                            "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors",
-                                            headerType === "CHANGE_ORDER"
-                                                ? "border-rose-500/50 bg-rose-500/10 text-rose-700 dark:text-rose-200"
-                                                : "border-border bg-card/40 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                                        )}
-                                    >
-                                        <FileEdit className="w-3.5 h-3.5" />
-                                        Change Order
-                                    </button>
-                                </div>
-                            </CardContent>
-                        </Card>
-
                         {/* Change Order Details — visible only when CHANGE_ORDER is selected */}
                         {headerType === "CHANGE_ORDER" && (
                             <Card className="bg-card/40 border border-border/60 overflow-hidden">
@@ -1387,22 +1314,7 @@ const Step4Export = () => {
                                     )}
 
                                     {/* PDF Section Toggles */}
-                                    <Tabs defaultValue="budget" className="w-full">
-                                        <TabsList className="grid w-full grid-cols-3">
-                                            <TabsTrigger value="budget" className="flex items-center gap-1.5">
-                                                <FileSpreadsheet className="w-3.5 h-3.5" />
-                                                Budget
-                                            </TabsTrigger>
-                                            <TabsTrigger value="proposal" className="flex items-center gap-1.5">
-                                                <FileText className="w-3.5 h-3.5" />
-                                                Proposal
-                                            </TabsTrigger>
-                                            <TabsTrigger value="loi" className="flex items-center gap-1.5">
-                                                <FileCheck className="w-3.5 h-3.5" />
-                                                Short Form
-                                            </TabsTrigger>
-                                        </TabsList>
-
+                                    <Tabs value={documentTextSettingsTab} className="w-full">
                                         {/* Budget Tab */}
                                         <TabsContent value="budget" className="space-y-1 mt-4">
                                             <div className="flex items-start justify-between py-3 border-b border-border/30 gap-4">
@@ -1456,7 +1368,7 @@ const Step4Export = () => {
                                                 </div>
                                                 <Switch id="showScopeOfWork-budget" checked={watch("details.showScopeOfWork") || false} onCheckedChange={(checked) => setValue("details.showScopeOfWork", checked)} className="data-[state=checked]:bg-brand-blue shrink-0 mt-0.5" />
                                             </div>
-                                            <div className="flex flex-col gap-2 py-3">
+                                            <div className={cn("flex flex-col gap-2 py-3", !FEATURES.RESPONSIBILITY_MATRIX && "hidden")}>
                                                 <div className="flex items-start justify-between gap-4">
                                                     <div className="flex flex-col min-w-0">
                                                         <Label htmlFor="showRespMatrix-budget" className={cn("text-sm font-semibold block", hasRespMatrixData ? "text-foreground" : "text-muted-foreground")}>Responsibility Matrix</Label>
@@ -1543,7 +1455,7 @@ const Step4Export = () => {
                                                 </div>
                                                 <Switch id="showScopeOfWork-proposal" checked={watch("details.showScopeOfWork") || false} onCheckedChange={(checked) => setValue("details.showScopeOfWork", checked)} className="data-[state=checked]:bg-brand-blue" />
                                             </div>
-                                            <div className="flex flex-col gap-2 py-3">
+                                            <div className={cn("flex flex-col gap-2 py-3", !FEATURES.RESPONSIBILITY_MATRIX && "hidden")}>
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex flex-col">
                                                         <Label htmlFor="showRespMatrix-proposal" className={cn("text-sm font-semibold", hasRespMatrixData ? "text-foreground" : "text-muted-foreground")}>Responsibility Matrix</Label>
@@ -1637,7 +1549,7 @@ const Step4Export = () => {
                                                 </div>
                                                 <Switch id="showScopeOfWork" checked={watch("details.showScopeOfWork") || false} onCheckedChange={(checked) => setValue("details.showScopeOfWork", checked)} className="data-[state=checked]:bg-brand-blue" />
                                             </div>
-                                            <div className="flex flex-col gap-2 py-3 border-b border-border/30">
+                                            <div className={cn("flex flex-col gap-2 py-3 border-b border-border/30", !FEATURES.RESPONSIBILITY_MATRIX && "hidden")}>
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex flex-col">
                                                         <Label htmlFor="showRespMatrix-loi" className={cn("text-sm font-semibold", hasRespMatrixData ? "text-foreground" : "text-muted-foreground")}>Responsibility Matrix</Label>
