@@ -118,13 +118,6 @@ const WizardWrapper = ({ projectId, initialData, twentyOpportunityId }: Proposal
     debounceMs: 2000
   });
 
-  // Mirror Mode: skip Math step entirely
-  useEffect(() => {
-    if (isMirrorMode && activeStep === 2) {
-      wizard.goToStep(3);
-    }
-  }, [isMirrorMode, activeStep, wizard]);
-
   // Header: Logo | Stepper (center) | Actions
   const HeaderContent = (
     <StudioHeader
@@ -139,7 +132,7 @@ const WizardWrapper = ({ projectId, initialData, twentyOpportunityId }: Proposal
   );
 
   // Form Content (The Hub - Drafting Mode)
-  const effectiveStep = isMirrorMode && activeStep === 2 ? 3 : activeStep;
+  const effectiveStep = activeStep;
   const formSource = useWatch({ name: "details.source" as any, control }) as string | undefined;
   const formProposalId = useWatch({ name: "details.proposalId" as any, control }) as string | undefined;
   const isFromFilter = formSource === "rfp_filter";
@@ -169,7 +162,7 @@ const WizardWrapper = ({ projectId, initialData, twentyOpportunityId }: Proposal
               <Step2Intelligence />
             </WizardStep>
           )}
-          {!isMirrorMode && activeStep === 2 && (
+          {activeStep === 2 && (
             <WizardStep>
               <Step3Math />
             </WizardStep>
