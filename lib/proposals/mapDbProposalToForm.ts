@@ -121,6 +121,7 @@ export function mapDbProposalToFormSchema(dbProject: any) {
             changeOrderNumber: dbProject.changeOrderNumber || cfg.changeOrderNumber || "",
             changeOrderRequestedBy: dbProject.changeOrderRequestedBy || cfg.changeOrderRequestedBy || "",
             changeOrderDate: dbProject.changeOrderDate || cfg.changeOrderDate || "",
+            changeOrderOriginalContractNumber: dbProject.changeOrderOriginalContractNumber || cfg.changeOrderOriginalContractNumber || "",
             changeOrderOriginalContractAmount: Number(dbProject.changeOrderOriginalContractAmount || cfg.changeOrderOriginalContractAmount) || 0,
             changeOrderOverheadPct: Number(dbProject.changeOrderOverheadPct || cfg.changeOrderOverheadPct) || 0,
             changeOrderIntroText: dbProject.changeOrderIntroText || cfg.changeOrderIntroText || "",

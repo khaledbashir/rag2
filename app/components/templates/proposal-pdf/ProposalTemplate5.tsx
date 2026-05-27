@@ -66,6 +66,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const changeOrderNumber = (((details as any)?.changeOrderNumber || "") + "").trim();
     const changeOrderRequestedBy = (((details as any)?.changeOrderRequestedBy || "") + "").trim();
     const changeOrderDateRaw = (((details as any)?.changeOrderDate || "") + "").trim();
+    const changeOrderOriginalContractNumber = (((details as any)?.changeOrderOriginalContractNumber || "") + "").trim();
     const changeOrderOriginalContractAmount = Number((details as any)?.changeOrderOriginalContractAmount) || 0;
     const changeOrderOverheadPct = Number((details as any)?.changeOrderOverheadPct) || 0;
     const changeOrderIntroText = (((details as any)?.changeOrderIntroText || "") + "").trim();
@@ -400,6 +401,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         const rows: Array<[string, string]> = [
             ["Project", projectLabel],
             ["Change Order #", coNumberLabel],
+            ...(changeOrderOriginalContractNumber ? [["Original Contract #", changeOrderOriginalContractNumber] as [string, string]] : []),
             ["Requested By", requestedByLabel],
             ["Date", dateLabel],
         ];

@@ -211,6 +211,7 @@ export async function POST(
                 changeOrderNumber: (project as any).changeOrderNumber || cfg.changeOrderNumber || "",
                 changeOrderRequestedBy: (project as any).changeOrderRequestedBy || cfg.changeOrderRequestedBy || "",
                 changeOrderDate: (project as any).changeOrderDate || cfg.changeOrderDate || "",
+                changeOrderOriginalContractNumber: (project as any).changeOrderOriginalContractNumber || cfg.changeOrderOriginalContractNumber || "",
                 changeOrderOriginalContractAmount: Number((project as any).changeOrderOriginalContractAmount || cfg.changeOrderOriginalContractAmount) || 0,
                 changeOrderOverheadPct: Number((project as any).changeOrderOverheadPct || cfg.changeOrderOverheadPct) || 0,
                 changeOrderIntroText: (project as any).changeOrderIntroText || cfg.changeOrderIntroText || "",

@@ -1120,6 +1120,17 @@ const Step4Export = () => {
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="flex flex-col gap-1">
+                                            <Label htmlFor="changeOrderOriginalContractNumber" className="text-[11px] font-medium text-muted-foreground">Original Contract #</Label>
+                                            <Input
+                                                id="changeOrderOriginalContractNumber"
+                                                type="text"
+                                                placeholder="Contract reference"
+                                                value={watch("details.changeOrderOriginalContractNumber" as any) || ""}
+                                                onChange={(e) => setValue("details.changeOrderOriginalContractNumber" as any, e.target.value, { shouldDirty: true })}
+                                                className="h-8 text-xs"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-1">
                                             <Label htmlFor="changeOrderOriginalContractAmount" className="text-[11px] font-medium text-muted-foreground">Original Contract Amount</Label>
                                             <Input
                                                 id="changeOrderOriginalContractAmount"
@@ -1132,6 +1143,8 @@ const Step4Export = () => {
                                                 className="h-8 text-xs"
                                             />
                                         </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
                                         <div className="flex flex-col gap-1">
                                             <Label htmlFor="changeOrderOverheadPct" className="text-[11px] font-medium text-muted-foreground">ANC Overhead (%)</Label>
                                             <Input
