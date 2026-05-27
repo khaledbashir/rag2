@@ -3,7 +3,7 @@
 import React from "react";
 
 // RHF
-import { useFormContext, useWatch } from "react-hook-form";
+import { useFormContext } from "react-hook-form";
 
 // React Wizard
 import { WizardValues } from "react-use-wizard";
@@ -17,7 +17,6 @@ import { useDebouncedSave } from "@/app/hooks/useDebouncedSave";
 
 // Utils
 import { cn } from "@/lib/utils";
-import { isMirrorMode as checkMirrorMode } from "@/lib/modeDetection";
 
 // Icons
 import { Check } from "lucide-react";
@@ -37,7 +36,6 @@ const WizardStepper = ({ wizard }: WizardStepperProps) => {
 
     const {
         formState: { errors },
-        control,
     } = useFormContext<ProposalType>();
 
     const { _t } = useTranslationContext();
@@ -51,21 +49,12 @@ const WizardStepper = ({ wizard }: WizardStepperProps) => {
     const step3Valid = !errors.details?.items;
     const step4Valid = !errors.details?.paymentInformation;
 
-    const details = useWatch({ name: "details", control });
-    const isMirrorMode = checkMirrorMode(details);
-
-    const steps: Array<{ wizardStep: number; label: string; isValid?: boolean }> = isMirrorMode
-        ? [
-            { wizardStep: 0, label: "Setup", isValid: step1Valid },
-            { wizardStep: 1, label: "Configure", isValid: step2Valid },
-            { wizardStep: 3, label: "Review", isValid: step4Valid },
-        ]
-        : [
-            { wizardStep: 0, label: "Setup", isValid: step1Valid },
-            { wizardStep: 1, label: "Configure", isValid: step2Valid },
-            { wizardStep: 2, label: "Math", isValid: step3Valid },
-            { wizardStep: 3, label: "Review", isValid: step4Valid },
-        ];
+    const steps: Array<{ wizardStep: number; label: string; isValid?: boolean }> = [
+        { wizardStep: 0, label: "Setup", isValid: step1Valid },
+        { wizardStep: 1, label: "Configure", isValid: step2Valid },
+        { wizardStep: 2, label: "Math", isValid: step3Valid },
+        { wizardStep: 3, label: "Review", isValid: step4Valid },
+    ];
 
     const { saveToDb } = useDebouncedSave();
 
