@@ -204,6 +204,22 @@ const Step2Intelligence = () => {
                         </div>
                     </div>
                 )}
+
+                {screenCount === 0 && (
+                    <div className="flex flex-col gap-2 px-4 py-3 rounded-lg border border-dashed border-border bg-card/30">
+                        <div className="flex items-start gap-2">
+                            <Tv className="w-4 h-4 text-muted-foreground mt-0.5" />
+                            <div className="space-y-0.5">
+                                <h4 className="text-sm font-semibold text-foreground">
+                                    Screen Details for Exhibit A
+                                </h4>
+                                <p className="text-xs text-muted-foreground">
+                                    No screens detected in your Excel. Display names and brightness for the specs table are edited here once screens are added. Edit pricing rows above; section headers, descriptions, and totals come from your Excel and can be renamed inline in the Pricing Line Items table.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }

@@ -2,6 +2,7 @@
 
 import React from "react";
 import { useFormContext, useWatch } from "react-hook-form";
+import { useWizard } from "react-use-wizard";
 import {
     Calculator,
     DollarSign,
@@ -21,6 +22,9 @@ import {
     GripVertical,
     Package,
     RotateCcw,
+    FileSpreadsheet,
+    ArrowLeft,
+    ArrowRight,
 } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -111,6 +115,7 @@ const SortableQuoteItem = ({
 
 const Step3Math = () => {
     const { control, setValue, watch, getValues } = useFormContext();
+    const { goToStep } = useWizard();
     const internalAudit = useWatch({
         name: "details.internalAudit",
         control,
@@ -137,7 +142,72 @@ const Step3Math = () => {
     const fmtMoney = (amount: number, placeholder?: string) =>
         formatCurrency((amount || 0) * fxRate, placeholder, selectedCurrency as any);
 
-    if (isMirrorMode) return null;
+    if (isMirrorMode) {
+        return (
+            <div className="h-full flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <Card className="bg-card border-border">
+                    <CardHeader>
+                        <div className="flex items-start gap-3">
+                            <div className="rounded-lg bg-[#0A52EF]/10 p-2 text-[#0A52EF]">
+                                <FileSpreadsheet className="w-5 h-5" />
+                            </div>
+                            <div className="space-y-1">
+                                <CardTitle className="text-base font-semibold">
+                                    Math is handled by your Excel
+                                </CardTitle>
+                                <CardDescription className="text-xs text-muted-foreground">
+                                    Mirror Mode preserves the totals, taxes, and margins exactly as your imported spreadsheet calculates them. No recalculation runs here.
+                                </CardDescription>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="rounded-md border border-border bg-muted/30 p-4 space-y-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                Where to make changes
+                            </p>
+                            <ul className="space-y-2 text-sm text-foreground">
+                                <li className="flex items-start gap-2">
+                                    <span className="text-[#0A52EF] font-bold">·</span>
+                                    <span>
+                                        <span className="font-semibold">Edit names, descriptions, prices, section headers</span> — go back to <span className="font-semibold">Configure</span> and use the Pricing Line Items editor.
+                                    </span>
+                                </li>
+                                <li className="flex items-start gap-2">
+                                    <span className="text-[#0A52EF] font-bold">·</span>
+                                    <span>
+                                        <span className="font-semibold">Change document type, intro paragraph, payment terms</span> — go to <span className="font-semibold">Review</span>.
+                                    </span>
+                                </li>
+                                <li className="flex items-start gap-2">
+                                    <span className="text-[#0A52EF] font-bold">·</span>
+                                    <span>
+                                        <span className="font-semibold">Change underlying math</span> — edit the source Excel and re-upload from Setup.
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <BaseButton
+                                onClick={() => goToStep(1)}
+                                tooltipLabel="Back to Configure"
+                            >
+                                <ArrowLeft />
+                                Back to Configure
+                            </BaseButton>
+                            <BaseButton
+                                onClick={() => goToStep(3)}
+                                tooltipLabel="Continue to Review"
+                            >
+                                Continue to Review
+                                <ArrowRight />
+                            </BaseButton>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
 
     // P58: Drag-to-reorder sensors
     const sensors = useSensors(
