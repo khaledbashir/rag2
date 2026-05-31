@@ -40,6 +40,14 @@ const nextConfig = {
     async rewrites() {
         return [
             {
+                source: "/rfp-analyzer",
+                destination: "/tools/rfp-analyzer",
+            },
+            {
+                source: "/rfp-analyzer/:path*",
+                destination: "/tools/rfp-analyzer/:path*",
+            },
+            {
                 source: "/api/triage/:path*",
                 destination: "http://127.0.0.1:8000/api/triage/:path*",
             },
