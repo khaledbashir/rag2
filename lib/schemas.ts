@@ -341,6 +341,7 @@ const ProposalDetailsSchema = z.object({
     changeOrderDate: z.string().optional(),
     changeOrderOriginalContractNumber: z.string().optional(), // Reference # of the parent contract being amended
     changeOrderOriginalContractAmount: z.number().optional().default(0),
+    changeOrderPreviousTotalAmount: z.number().optional().default(0),
     changeOrderOverheadPct: z.number().optional().default(0), // ANC overhead %
     changeOrderIntroText: z.string().optional(), // Optional opening blurb (Krissy to provide)
     pageLayout: z.string().optional().default("portrait-letter"),
@@ -384,6 +385,7 @@ const ProposalDetailsSchema = z.object({
     // PDF Section Toggles (REQ-PdfConfig)
     includePricingBreakdown: z.boolean().optional().default(false), // Toggle for per-screen pricing detail
     showPricingTables: z.boolean().optional().default(true),
+    showChangeOrderTotals: z.boolean().optional().default(true),
     showIntroText: z.boolean().optional().default(true),
     showBaseBidTable: z.boolean().optional().default(false),
     showSpecifications: z.boolean().optional().default(true),

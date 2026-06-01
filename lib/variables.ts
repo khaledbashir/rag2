@@ -203,6 +203,7 @@ export const FORM_DEFAULT_VALUES = {
     changeOrderDate: "",
     changeOrderOriginalContractNumber: "",
     changeOrderOriginalContractAmount: 0,
+    changeOrderPreviousTotalAmount: 0,
     changeOrderOverheadPct: 0,
     changeOrderIntroText: "",
     pdfTemplate: 5, // Enterprise Standard: ANC Hybrid Template
@@ -219,6 +220,7 @@ export const FORM_DEFAULT_VALUES = {
     quoteItems: [],
     includePricingBreakdown: false,
     showPricingTables: true,
+    showChangeOrderTotals: true,
     showIntroText: true,
     showBaseBidTable: false,
     showSpecifications: true,

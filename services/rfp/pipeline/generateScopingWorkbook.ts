@@ -118,8 +118,13 @@ function chooseContextualFallbackProduct(
   }, envProducts[0]);
 }
 
-function getLoadedCostPerSqFtForProduct(product: any): number {
+export function getLoadedCostPerSqFtForProduct(product: any): number {
   const SPARE_PARTS_MULT = 1 + rc("spare_parts.led_pct", 0.05);
+  const dbCostPerSqFt = Number(product?.costPerSqFt ?? 0) || 0;
+  if (dbCostPerSqFt > 0) {
+    return round2(dbCostPerSqFt);
+  }
+
   const costPerSqm = HARDWARE_COST_PER_SQM[product.id];
   let baseCostPerSqFt = costPerSqm
     ? round2(costPerSqm / 10.7639)
@@ -424,8 +429,9 @@ export async function generateScopingWorkbook(
     pitch: number;
     nits: number;
     weightDensityLbm2: number;
-    powerDensityWm2: number;
-    productType?: string;
+	    powerDensityWm2: number;
+	    costPerSqFt?: number | null;
+	    productType?: string;
     extendedSpecs?: any;
     cabinetWidthMm?: number;
     cabinetHeightMm?: number;
@@ -446,6 +452,7 @@ export async function generateScopingWorkbook(
           nits: p.maxNits,
           weightDensityLbm2: (p.weightKgPerCabinet * 2.205) / ((p.cabinetWidthMm * p.cabinetHeightMm) / 1e6),
           powerDensityWm2: p.maxPowerWattsPerCab / ((p.cabinetWidthMm * p.cabinetHeightMm) / 1e6),
+          costPerSqFt: p.costPerSqFt != null ? Number(p.costPerSqFt) : null,
           productType: p.productType,
           extendedSpecs: p.extendedSpecs,
           cabinetWidthMm: (p as any).cabinetWidthMm,
@@ -487,6 +494,7 @@ export async function generateScopingWorkbook(
       environment: p.environment,
       productType: p.productType,
       maxPowerWattsPerCab: p.maxPowerWattsPerCab,
+      costPerSqFt: p.costPerSqFt != null ? Number(p.costPerSqFt) : null,
     }));
   } catch (err) {
     console.warn("[ScopingWorkbook] Full DB product preload failed:", err);
@@ -1774,7 +1782,7 @@ function buildLedCostSheet(
       productSheet!.getCell(r, 1).value = p.name;                       // A: Name
       productSheet!.getCell(r, 2).value = p.manufacturer || "";          // B: Vendor
       productSheet!.getCell(r, 3).value = p.pitchMm;                    // C: Pitch (mm)
-      // D: $/SqFt — fully loaded (catalog rate + spare parts) so VLOOKUP gives the real cost
+	      // D: $/SqFt — DB products use the exact rate-card cost; static fallbacks stay fully loaded.
       const costPerSqm = HARDWARE_COST_PER_SQM[p.id];
       let baseCostPerSqFt = costPerSqm
         ? round2(costPerSqm / 10.7639)

@@ -1159,6 +1159,19 @@ const Step4Export = () => {
                                                 className="h-8 text-xs"
                                             />
                                         </div>
+                                        <div className="flex flex-col gap-1">
+                                            <Label htmlFor="changeOrderPreviousTotalAmount" className="text-[11px] font-medium text-muted-foreground">Previous CO Total Amount</Label>
+                                            <Input
+                                                id="changeOrderPreviousTotalAmount"
+                                                type="number"
+                                                min={0}
+                                                step={100}
+                                                placeholder="0"
+                                                value={watch("details.changeOrderPreviousTotalAmount" as any) ?? 0}
+                                                onChange={(e) => setValue("details.changeOrderPreviousTotalAmount" as any, Number(e.target.value) || 0, { shouldDirty: true })}
+                                                className="h-8 text-xs"
+                                            />
+                                        </div>
                                     </div>
                                     <div className="flex flex-col gap-1">
                                         <Label htmlFor="changeOrderIntroText" className="text-[11px] font-medium text-muted-foreground">Intro Paragraph (optional)</Label>
@@ -1447,6 +1460,15 @@ const Step4Export = () => {
                                                 </div>
                                                 <Switch id="showPricingTables-proposal" checked={watch("details.showPricingTables") ?? true} onCheckedChange={(checked) => setValue("details.showPricingTables", checked)} className="data-[state=checked]:bg-brand-blue" />
                                             </div>
+                                            {headerType === "CHANGE_ORDER" && (
+                                                <div className="flex items-center justify-between py-3 border-b border-border/30">
+                                                    <div className="flex flex-col">
+                                                        <Label htmlFor="showChangeOrderTotals" className="text-sm font-semibold text-foreground">Revised Contract Totals</Label>
+                                                        <p className="text-[11px] text-muted-foreground">Include the contract total box in the PDF</p>
+                                                    </div>
+                                                    <Switch id="showChangeOrderTotals" checked={watch("details.showChangeOrderTotals" as any) ?? true} onCheckedChange={(checked) => setValue("details.showChangeOrderTotals" as any, checked, { shouldDirty: true })} className="data-[state=checked]:bg-brand-blue" />
+                                                </div>
+                                            )}
                                             <div className="flex items-center justify-between py-3 border-b border-border/30">
                                                 <div className="flex flex-col">
                                                     <Label htmlFor="showPaymentTerms-proposal" className="text-sm font-semibold text-foreground">Payment Terms</Label>

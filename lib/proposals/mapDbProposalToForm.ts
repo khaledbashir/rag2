@@ -123,8 +123,10 @@ export function mapDbProposalToFormSchema(dbProject: any) {
             changeOrderDate: dbProject.changeOrderDate || cfg.changeOrderDate || "",
             changeOrderOriginalContractNumber: dbProject.changeOrderOriginalContractNumber || cfg.changeOrderOriginalContractNumber || "",
             changeOrderOriginalContractAmount: Number(dbProject.changeOrderOriginalContractAmount || cfg.changeOrderOriginalContractAmount) || 0,
+            changeOrderPreviousTotalAmount: Number(cfg.changeOrderPreviousTotalAmount) || 0,
             changeOrderOverheadPct: Number(dbProject.changeOrderOverheadPct || cfg.changeOrderOverheadPct) || 0,
             changeOrderIntroText: dbProject.changeOrderIntroText || cfg.changeOrderIntroText || "",
+            showChangeOrderTotals: cfg.showChangeOrderTotals ?? true,
         },
         marginAnalysis: dbProject.marginAnalysis || undefined,
     };

@@ -137,7 +137,7 @@ describe("Document Modes", () => {
   it("renders PROPOSAL mode with correct header label", () => {
     const props = baseProps({ documentMode: "PROPOSAL" });
     const { container } = render(<ProposalTemplate5 {...props} />);
-    expect(container.textContent).toContain("SALES QUOTATION");
+    expect(container.textContent).toContain("PROPOSAL");
   });
 
   it("renders LOI mode with correct header label", () => {
@@ -287,6 +287,66 @@ describe("Signature Block", () => {
     // Default signature block text
     expect(container.textContent).toContain("entire understanding between the parties");
   });
+
+  it("CHANGE_ORDER mode includes signature block and agreement text by default", () => {
+    const props = baseProps({
+      documentMode: "CHANGE_ORDER",
+      showSignatureBlock: true,
+      showPaymentTerms: false,
+    });
+    const { container } = render(<ProposalTemplate5 {...props} />);
+    expect(container.textContent).toContain("Agreed To And Accepted");
+    expect(container.textContent).toContain("entire understanding between the parties");
+  });
+});
+
+describe("Change Order Totals", () => {
+  it("renders revised contract totals with tax, optional overhead, previous CO total, and new contract amount", () => {
+    const props = baseProps({
+      documentMode: "CHANGE_ORDER",
+      showSignatureBlock: false,
+      showPaymentTerms: false,
+      showChangeOrderTotals: true,
+      changeOrderOriginalContractAmount: 2000,
+      changeOrderPreviousTotalAmount: 500,
+      changeOrderOverheadPct: 3.25,
+      taxRateOverride: 0.075,
+      items: [
+        { name: "Added display work", quantity: 2, unitPrice: 500 },
+      ],
+    });
+    const { container } = render(<ProposalTemplate5 {...props} />);
+    expect(container.textContent).toContain("Total Change Order Amount");
+    expect(container.textContent).toContain("Original Contract Amount");
+    expect(container.textContent).toContain("Previous change order total amount");
+    expect(container.textContent).toContain("New Contract Amount");
+    expect(container.textContent).toContain("Tax (7.5%)");
+    expect(container.textContent).toContain("ANC Overhead (3.25%)");
+    expect(container.textContent).toContain("$3,608");
+  });
+
+  it("hides the revised totals box when the toggle is off and omits zero overhead", () => {
+    const hiddenProps = baseProps({
+      documentMode: "CHANGE_ORDER",
+      showSignatureBlock: false,
+      showPaymentTerms: false,
+      showChangeOrderTotals: false,
+      items: [{ name: "Added display work", quantity: 1, unitPrice: 100 }],
+    });
+    const hidden = render(<ProposalTemplate5 {...hiddenProps} />);
+    expect(hidden.container.textContent).not.toContain("Revised Contract Totals");
+
+    const zeroOverheadProps = baseProps({
+      documentMode: "CHANGE_ORDER",
+      showSignatureBlock: false,
+      showPaymentTerms: false,
+      showChangeOrderTotals: true,
+      changeOrderOverheadPct: 0,
+      items: [{ name: "Added display work", quantity: 1, unitPrice: 100 }],
+    });
+    const zeroOverhead = render(<ProposalTemplate5 {...zeroOverheadProps} />);
+    expect(zeroOverhead.container.textContent).not.toContain("ANC Overhead");
+  });
 });
 
 // ============================================================================
@@ -396,7 +456,7 @@ describe("Additional Regression", () => {
     const props = baseProps({
       documentMode: "BUDGET",
       showNotes: true,
-      additionalNotes: "All prices are valid for 30 days from date of proposal.",
+      customProposalNotes: "All prices are valid for 30 days from date of proposal.",
     });
     const { container } = render(<ProposalTemplate5 {...props} />);
     expect(container.textContent).toContain("Notes");

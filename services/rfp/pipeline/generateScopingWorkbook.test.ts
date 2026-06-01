@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
 
-import { generateScopingWorkbook } from "./generateScopingWorkbook";
+import { generateScopingWorkbook, getLoadedCostPerSqFtForProduct } from "./generateScopingWorkbook";
 
 describe("generateScopingWorkbook", () => {
+  it("uses product-specific rate-card cost per square foot before generic pitch fallback", () => {
+    expect(getLoadedCostPerSqFtForProduct({
+      id: "lgeus-ho10t-fm",
+      pitchMm: 10,
+      costPerSqFt: 161.38,
+    })).toBe(161.38);
+  });
+
   it("wires product-dependent LED Cost Sheet fields as live formulas", async () => {
     const { buffer } = await generateScopingWorkbook({
       project: {

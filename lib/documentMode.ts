@@ -80,6 +80,7 @@ export function applyDocumentModeDefaults(mode: DocumentMode, current: any) {
     if (base.showSubstantialCompletionDate === undefined) base.showSubstantialCompletionDate = false;
     if (base.showTermsAndConditions === undefined) base.showTermsAndConditions = false;
     if (base.showResponsibilityMatrix === undefined) base.showResponsibilityMatrix = false;
+    if (base.showChangeOrderTotals === undefined) base.showChangeOrderTotals = true;
     return base;
   }
 

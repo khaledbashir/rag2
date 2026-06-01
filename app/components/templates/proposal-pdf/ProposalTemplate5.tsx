@@ -68,6 +68,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const changeOrderDateRaw = (((details as any)?.changeOrderDate || "") + "").trim();
     const changeOrderOriginalContractNumber = (((details as any)?.changeOrderOriginalContractNumber || "") + "").trim();
     const changeOrderOriginalContractAmount = Number((details as any)?.changeOrderOriginalContractAmount) || 0;
+    const changeOrderPreviousTotalAmount = Number((details as any)?.changeOrderPreviousTotalAmount) || 0;
     const changeOrderOverheadPct = Number((details as any)?.changeOrderOverheadPct) || 0;
     const changeOrderIntroText = (((details as any)?.changeOrderIntroText || "") + "").trim();
 
@@ -228,6 +229,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const showPaymentTerms = (details as any)?.showPaymentTerms ?? true;
     const showSpecifications = (details as any)?.showSpecifications ?? true;
     const showPricingTables = (details as any)?.showPricingTables ?? true;
+    const showChangeOrderTotals = (details as any)?.showChangeOrderTotals ?? true;
     const showIntroText = (details as any)?.showIntroText ?? true;
     const showCompanyFooter = (details as any)?.showCompanyFooter ?? true;
     const generatedSchedule = (details as any)?.generatedSchedule;
@@ -461,7 +463,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         );
     };
 
-    // Change Order Totals — Subtotal / Overhead % / Total CO / Original Contract / New Contract
+    // Change Order Totals — Subtotal / Tax / Overhead / Total CO / Original + previous COs / New Contract
     const ChangeOrderTotalsBlock = () => {
         // Subtotal: prefer hand-entered line items; fall back to the project pricing total.
         const lineItems = Array.isArray((details as any)?.items)
@@ -474,16 +476,42 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
             const lineTotal = Number.isFinite(explicit) && explicit !== 0 ? explicit : qty * unit;
             return sum + lineTotal;
         }, 0);
-        const subtotal = lineItems.length > 0 ? itemsSubtotal : calculateProjectTotal();
+        const pricingTables = (pricingDocument?.tables || []) as Array<{ subtotal?: number; grandTotal?: number; tax?: { amount?: number; rate?: number } | null; items?: Array<{ sellingPrice?: number; price?: number }> }>;
+        const pricingSubtotal = pricingTables.reduce((sum, table) => {
+            const tableSubtotal = Number(table?.subtotal);
+            if (Number.isFinite(tableSubtotal) && Math.abs(tableSubtotal) >= 0.01) return sum + tableSubtotal;
+            const itemSubtotal = Array.isArray(table?.items)
+                ? table.items.reduce((itemSum, item) => itemSum + (Number(item?.sellingPrice ?? item?.price ?? 0) || 0), 0)
+                : 0;
+            return sum + itemSubtotal;
+        }, 0);
+        const subtotal = lineItems.length > 0
+            ? itemsSubtotal
+            : pricingSubtotal > 0
+                ? pricingSubtotal
+                : calculateProjectTotal();
+        const rawTaxRate = Number((details as any)?.changeOrderTaxRate ?? (details as any)?.taxRateOverride ?? 0) || 0;
+        const normalizedTaxRate = rawTaxRate > 1 ? rawTaxRate / 100 : rawTaxRate;
+        const pricingTaxAmount = pricingTables.reduce((sum, table) => {
+            const amount = Number((table?.tax as any)?.amount);
+            if (Number.isFinite(amount)) return sum + amount;
+            return sum;
+        }, 0);
+        const taxAmt = lineItems.length === 0 && Math.abs(pricingTaxAmount) >= 0.01
+            ? pricingTaxAmount
+            : Math.round((subtotal * normalizedTaxRate) * 100) / 100;
         const overheadAmt = Math.round((subtotal * (changeOrderOverheadPct / 100)) * 100) / 100;
-        const totalCO = subtotal + overheadAmt;
-        const newContract = changeOrderOriginalContractAmount + totalCO;
+        const totalCO = subtotal + taxAmt + overheadAmt;
+        const newContract = changeOrderOriginalContractAmount + changeOrderPreviousTotalAmount + totalCO;
         const fmt = (n: number) => formatCurrency((Number(n) || 0) * (exchangeRate || 1), undefined, currency);
+        const taxLabel = normalizedTaxRate > 0 ? `Tax (${Math.round(normalizedTaxRate * 10000) / 100}%)` : "Tax";
         const rows: Array<[string, string, boolean]> = [
             ["Subtotal", fmt(subtotal), false],
-            [`ANC Overhead (${changeOrderOverheadPct}%)`, fmt(overheadAmt), false],
+            ...(Math.abs(taxAmt) >= 0.01 ? [[taxLabel, fmt(taxAmt), false] as [string, string, boolean]] : []),
+            ...(Math.abs(overheadAmt) >= 0.01 ? [[`ANC Overhead (${changeOrderOverheadPct}%)`, fmt(overheadAmt), false] as [string, string, boolean]] : []),
             ["Total Change Order Amount", fmt(totalCO), true],
             ["Original Contract Amount", fmt(changeOrderOriginalContractAmount), false],
+            ["Previous change order total amount", fmt(changeOrderPreviousTotalAmount), false],
             ["New Contract Amount", fmt(newContract), true],
         ];
         return (
@@ -727,7 +755,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                             <ChangeOrderDescriptionOfWork />
                         </div>
                     )}
-                    <ChangeOrderTotalsBlock />
+                    {showChangeOrderTotals && <ChangeOrderTotalsBlock />}
                     {showNotes && (
                         <div className="px-6">
                             <NotesSection />
