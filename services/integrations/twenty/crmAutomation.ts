@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
@@ -18,6 +19,35 @@ type GraphqlResponse<T> = {
   data?: T;
   errors?: Array<{ message?: string }>;
 };
+
+export type CrmSyncPayloadLike = {
+  action: "rfp_analyzed" | "proposal_generated" | "deal_won";
+  companyName: string;
+  venueName?: string;
+  dealName: string;
+  amount?: number;
+  ledSqFt?: number;
+  manufacturer?: string;
+  proposalUrl?: string;
+  estimatorName?: string;
+};
+
+export type ExistingCrmOpportunityResolution =
+  | {
+      status: "matched";
+      opportunityId: string;
+      companyId: string;
+      opportunityName: string;
+      companyName: string;
+      match: "exact_opportunity";
+    }
+  | {
+      status: "review_required";
+      reason: string;
+      companyId?: string;
+      companyName?: string;
+      candidates?: Array<{ id: string; name: string }>;
+    };
 
 function getBaseUrl() {
   const raw = process.env.NEXT_PUBLIC_BASE_URL?.trim();
@@ -152,6 +182,18 @@ function truncate(value: string, max = 255) {
   return `${value.slice(0, max - 1)}…`;
 }
 
+function normalizeCrmName(value?: string | null) {
+  return (value || "")
+    .toLowerCase()
+    .replace(/[–—]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function uniqueNonEmpty(values: Array<string | null | undefined>) {
+  return Array.from(new Set(values.map((value) => value?.trim()).filter(Boolean) as string[]));
+}
+
 async function createProposalEngineActivityRecord(input: {
   name: string;
   eventType: string;
@@ -210,6 +252,126 @@ function pluralize(count: number, singular: string, plural = `${singular}s`) {
 
 function buildWorkspaceUrl(proposalId?: string | null) {
   return proposalId ? `${getBaseUrl()}/projects/${proposalId}` : null;
+}
+
+async function findExactCompany(companyName: string): Promise<{ id: string; name: string } | null> {
+  const normalized = normalizeCrmName(companyName);
+  if (!normalized) return null;
+
+  const result = await twentyGraphql<{
+    companies: { edges: Array<{ node: { id: string; name: string } }> };
+  }>(
+    `query FindCompany($filter: CompanyFilterInput) {
+      companies(filter: $filter, first: 10) {
+        edges { node { id name } }
+      }
+    }`,
+    { filter: { name: { ilike: `%${companyName.trim()}%` } } },
+  );
+
+  return (
+    result.companies.edges
+      .map((edge) => edge.node)
+      .find((company) => normalizeCrmName(company.name) === normalized) || null
+  );
+}
+
+async function findExactOpportunityForCompany(
+  companyId: string,
+  possibleNames: string[],
+): Promise<ExistingCrmOpportunityResolution> {
+  const names = uniqueNonEmpty(possibleNames);
+  const normalizedNames = new Set(names.map(normalizeCrmName));
+  const candidateMap = new Map<string, { id: string; name: string }>();
+
+  for (const name of names) {
+    const result = await twentyGraphql<{
+      opportunities: {
+        edges: Array<{ node: { id: string; name: string | null; companyId?: string | null } }>;
+      };
+    }>(
+      `query FindOpportunity($filter: OpportunityFilterInput) {
+        opportunities(filter: $filter, first: 10) {
+          edges { node { id name companyId } }
+        }
+      }`,
+      {
+        filter: {
+          companyId: { eq: companyId },
+          name: { ilike: `%${name}%` },
+        },
+      },
+    );
+
+    for (const edge of result.opportunities.edges) {
+      const candidateName = edge.node.name || "";
+      candidateMap.set(edge.node.id, { id: edge.node.id, name: candidateName });
+      if (normalizedNames.has(normalizeCrmName(candidateName))) {
+        return {
+          status: "matched",
+          opportunityId: edge.node.id,
+          companyId,
+          opportunityName: candidateName,
+          companyName: "",
+          match: "exact_opportunity",
+        };
+      }
+    }
+  }
+
+  return {
+    status: "review_required",
+    reason: "No exact opportunity match found for the existing account.",
+    companyId,
+    candidates: Array.from(candidateMap.values()).slice(0, 5),
+  };
+}
+
+export async function resolveExistingOpportunityForCrmSync(
+  payload: CrmSyncPayloadLike,
+): Promise<ExistingCrmOpportunityResolution> {
+  const companyName = payload.companyName?.trim();
+  const dealName = payload.dealName?.trim();
+  if (!companyName) {
+    return { status: "review_required", reason: "Missing account name." };
+  }
+  if (!dealName) {
+    return { status: "review_required", reason: "Missing opportunity name." };
+  }
+
+  const company = await findExactCompany(companyName);
+  if (!company) {
+    return {
+      status: "review_required",
+      reason: `No exact account match found for "${companyName}".`,
+    };
+  }
+
+  const possibleNames = uniqueNonEmpty([
+    dealName,
+    payload.venueName ? `${companyName} - ${payload.venueName}` : null,
+    payload.venueName ? `${companyName} — ${payload.venueName}` : null,
+    companyName,
+  ]);
+  const resolution = await findExactOpportunityForCompany(company.id, possibleNames);
+  if (resolution.status === "matched") {
+    return { ...resolution, companyName: company.name };
+  }
+  return { ...resolution, companyId: company.id, companyName: company.name };
+}
+
+export function buildCrmReviewRequiredMessage(
+  resolution: ExistingCrmOpportunityResolution,
+  context: { companyName?: string | null; dealName?: string | null; action?: string } = {},
+) {
+  const parts = [
+    "CRM review required",
+    context.action ? `action=${context.action}` : null,
+    context.companyName ? `account=${context.companyName}` : null,
+    context.dealName ? `opportunity=${context.dealName}` : null,
+    resolution.status === "review_required" ? resolution.reason : null,
+  ];
+  return parts.filter(Boolean).join(" | ");
 }
 
 export function buildRfpAnalyzedNoteMarkdown(input: {
@@ -767,19 +929,46 @@ export async function universalCrmPush(input: {
   let opportunityId = proposal.twentyOpportunityId || await resolveOpportunityIdForProposal(input.proposalId);
 
   if (!opportunityId) {
-    // No existing opportunity — create Company + Opportunity in Twenty
+    // No confident existing opportunity — hold for review instead of creating
+    // live CRM records. This keeps the CRM clean while preserving a queueable
+    // trail for the user to approve/link later.
     try {
-      opportunityId = await ensureOpportunityForProposal(proposal);
-      if (opportunityId) {
-        // Persist on the Proposal row so next call is instant
+      const resolution = await resolveExistingOpportunityForCrmSync({
+        action: input.actionType === "rfp_analyzed" ? "rfp_analyzed" : "proposal_generated",
+        companyName: proposal.clientName,
+        venueName: proposal.venue || undefined,
+        dealName: proposal.venue
+          ? `${proposal.clientName} — ${proposal.venue}`
+          : proposal.clientName,
+      });
+      if (resolution.status === "matched") {
+        opportunityId = resolution.opportunityId;
         await prisma.proposal.update({
           where: { id: proposal.id },
           data: { twentyOpportunityId: opportunityId },
         });
+      } else {
+        await logCrmReviewRequiredForProposal(proposal.id, {
+          actionType: input.actionType,
+          clientName: proposal.clientName,
+          venue: proposal.venue,
+          reason: buildCrmReviewRequiredMessage(resolution, {
+            action: input.actionType,
+            companyName: proposal.clientName,
+            dealName: proposal.venue
+              ? `${proposal.clientName} — ${proposal.venue}`
+              : proposal.clientName,
+          }),
+          candidates: resolution.candidates || [],
+        });
+        return {
+          reviewRequired: true,
+          reason: resolution.reason,
+        };
       }
     } catch (err) {
-      console.error("[universalCrmPush] Failed to create Company/Opportunity:", err);
-      return; // Can't proceed without an opportunity
+      console.error("[universalCrmPush] Failed to resolve existing CRM opportunity:", err);
+      return; // Can't proceed without an existing opportunity
     }
   }
 
@@ -789,13 +978,13 @@ export async function universalCrmPush(input: {
   const workspaceUrl = buildWorkspaceUrl(proposal.id);
   const artifacts = input.artifacts || [];
 
-  const noteLines: string[] = [
+  const noteLines = [
     `**Action:** ${input.actionType.replace(/_/g, " ")}`,
     `**Client:** ${proposal.clientName}`,
     proposal.venue ? `**Venue:** ${proposal.venue}` : null,
     `**Time:** ${new Date().toISOString()}`,
     "",
-  ];
+  ].filter((line): line is string => typeof line === "string");
   if (input.markdownText) {
     noteLines.push(input.markdownText, "");
   }
@@ -834,6 +1023,32 @@ export async function universalCrmPush(input: {
   return { opportunityId };
 }
 
+async function logCrmReviewRequiredForProposal(
+  proposalId: string,
+  metadata: Record<string, unknown>,
+) {
+  const description = "CRM link needs review before creating or attaching records.";
+  const existing = await prisma.activityLog.findFirst({
+    where: {
+      proposalId,
+      action: "crm_review_required",
+      description,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (existing) return;
+
+  await prisma.activityLog.create({
+    data: {
+      proposalId,
+      action: "crm_review_required",
+      description,
+      actor: "Proposal Engine",
+      metadata: metadata as Prisma.InputJsonValue,
+    },
+  });
+}
+
 /**
  * Workflow side-effect runner — keeps "when X happens in engine → Y in CRM"
  * automations co-located with the push call. Pure additive: any failure here
@@ -860,79 +1075,5 @@ async function applyOpportunityWorkflowAction(opportunityId: string, actionType:
     default:
       // No workflow registered for this actionType (e.g. excel_uploaded, rfp_analyzed).
       return;
-  }
-}
-
-/**
- * Creates a Company + Opportunity in Twenty for a proposal that has none.
- * Uses clientName as the Company name. Deduplicates by exact name match.
- */
-async function ensureOpportunityForProposal(proposal: {
-  id: string;
-  clientName: string;
-  venue?: string | null;
-}): Promise<string | null> {
-  const companyName = proposal.clientName?.trim();
-  if (!companyName) return null;
-
-  // ── Find or create Company ──────────────────────────────────────────
-  const existingCompany = await twentyGraphql<{
-    companies: { edges: Array<{ node: { id: string } }> };
-  }>(
-    `query FindCompany($filter: CompanyFilterInput) {
-      companies(filter: $filter, first: 1) {
-        edges { node { id } }
-      }
-    }`,
-    { filter: { name: { eq: companyName } } },
-  );
-
-  const companyId = existingCompany.companies.edges[0]?.node.id || await createCompany(companyName);
-  if (!companyId) return null;
-
-  // ── Create Opportunity linked to that Company ───────────────────────
-  const oppName = proposal.venue
-    ? `${companyName} — ${proposal.venue}`
-    : companyName;
-
-  const opp = await twentyGraphql<{ createOpportunity: { id: string } }>(
-    `mutation CreateOpp($data: OpportunityCreateInput!) {
-      createOpportunity(data: $data) { id }
-    }`,
-    {
-      data: {
-        name: oppName,
-        companyId,
-        // Twenty's OpportunityStageEnum was changed away from the old
-        // {NEW,SCREENING,MEETING,PROPOSAL,CUSTOMER} set. Sending "PROPOSAL"
-        // here was the silent-fail root cause: the GraphQL mutation rejected
-        // the value, the wrapping try/catch swallowed it, and the Note +
-        // Activity steps never ran. Current valid values:
-        //   EXISTING_CUSTOMER, NEW_OPPORTUNITY, MEETING_SALES_PROCESS,
-        //   SALES_LEAD_FORMAL_PROPOSAL, SALES_LEAD_BUDGET_PROPOSAL, RFP,
-        //   BAFO_NEGOTIATION
-        // SALES_LEAD_FORMAL_PROPOSAL is the closest match for a freshly
-        // created proposal-engine opportunity.
-        stage: "SALES_LEAD_FORMAL_PROPOSAL",
-        bidStatus: "SCOPING",
-      },
-    },
-  );
-
-  return opp.createOpportunity.id;
-}
-
-async function createCompany(name: string): Promise<string | null> {
-  try {
-    const result = await twentyGraphql<{ createCompany: { id: string } }>(
-      `mutation CreateCompany($data: CompanyCreateInput!) {
-        createCompany(data: $data) { id }
-      }`,
-      { data: { name } },
-    );
-    return result.createCompany.id;
-  } catch (err) {
-    console.error("[ensureOpportunityForProposal] createCompany failed:", err);
-    return null;
   }
 }

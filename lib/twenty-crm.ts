@@ -1,20 +1,20 @@
 /**
  * Twenty CRM Sync — background integration with retry + persistence
  *
- * Calls the Twenty serverless function at /s/integration/sync-opportunity
- * to create/update Opportunities in the CRM. Fire-and-forget from the caller's
- * perspective — never blocks the main flow.
+ * Links Proposal Engine activity to an existing CRM opportunity. Fire-and-forget
+ * from the caller's perspective — never blocks the main flow.
  *
- * Retries on transient failures (Twenty cold-start windows, network blips).
- * When an analysisId is supplied, the result — success or final failure — is
- * persisted to the RfpAnalysis row so nothing is ever silently lost and a
- * replay endpoint can pick it up later.
+ * Default behavior is controlled: find an existing exact account/opportunity
+ * match and persist that link. If there is no confident match, record review
+ * required instead of creating duplicate live CRM records.
  */
 
 import { prisma } from "@/lib/prisma";
 
 const TWENTY_SYNC_URL =
   'https://abc-twenty.izcgmb.easypanel.host/s/integration/sync-opportunity';
+const TWENTY_SYNC_CREATE_MODE =
+  (process.env.TWENTY_SYNC_CREATE_MODE || 'review').toLowerCase();
 
 // Retry budget: 4 attempts over ~39 seconds. Chosen to survive a full Twenty
 // Nest boot cycle (we've seen ~40 second cold starts during EasyPanel rolling
@@ -83,6 +83,10 @@ export async function syncToTwenty(
     return { ok: false, error: 'sync disabled', attempts: 0 };
   }
 
+  if (TWENTY_SYNC_CREATE_MODE !== 'auto') {
+    return syncToExistingOpportunityOnly(payload, options);
+  }
+
   let lastError = 'unknown';
   for (let i = 0; i < RETRY_DELAYS_MS.length; i++) {
     if (RETRY_DELAYS_MS[i] > 0) await sleep(RETRY_DELAYS_MS[i]);
@@ -119,6 +123,58 @@ export async function syncToTwenty(
     `[Twenty CRM Sync] ${payload.action} gave up after ${RETRY_DELAYS_MS.length} attempts: ${lastError}`,
   );
   return { ok: false, error: lastError, attempts: RETRY_DELAYS_MS.length };
+}
+
+async function syncToExistingOpportunityOnly(
+  payload: TwentySyncPayload,
+  options: SyncOptions,
+): Promise<SyncOutcome> {
+  try {
+    const {
+      buildCrmReviewRequiredMessage,
+      postRfpAnalyzedNote,
+      resolveExistingOpportunityForCrmSync,
+    } = await import("@/services/integrations/twenty/crmAutomation");
+
+    const resolution = await resolveExistingOpportunityForCrmSync(payload);
+    if (resolution.status === "matched") {
+      if (options.analysisId) {
+        await persistSuccess(options.analysisId, resolution.opportunityId).catch((e) =>
+          console.warn('[Twenty CRM Sync] DB persist success failed:', e?.message),
+        );
+        if (payload.action === 'rfp_analyzed') {
+          postRfpAnalyzedNote(options.analysisId, resolution.opportunityId).catch((e) =>
+            console.warn('[Twenty CRM Sync] CRM note sync failed:', e?.message),
+          );
+        }
+      }
+      console.log(
+        `[Twenty CRM Sync] ${payload.action} linked to existing opp=${resolution.opportunityId}`,
+      );
+      return { ok: true, opportunityId: resolution.opportunityId, attempt: 1 };
+    }
+
+    const reviewMessage = buildCrmReviewRequiredMessage(resolution, {
+      action: payload.action,
+      companyName: payload.companyName,
+      dealName: payload.dealName,
+    });
+    if (options.analysisId) {
+      await persistFailure(options.analysisId, reviewMessage).catch((e) =>
+        console.warn('[Twenty CRM Sync] DB persist review state failed:', e?.message),
+      );
+    }
+    console.warn(`[Twenty CRM Sync] ${reviewMessage}`);
+    return { ok: false, error: reviewMessage, attempts: 0 };
+  } catch (err: any) {
+    const message = err?.message?.slice(0, 500) || 'CRM review gate failed';
+    if (options.analysisId) {
+      await persistFailure(options.analysisId, message).catch((e) =>
+        console.warn('[Twenty CRM Sync] DB persist failure failed:', e?.message),
+      );
+    }
+    return { ok: false, error: message, attempts: 0 };
+  }
 }
 
 async function persistSuccess(analysisId: string, opportunityId: string | null): Promise<void> {

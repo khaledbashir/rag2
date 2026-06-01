@@ -1,13 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildArtifactNoteMarkdown,
+  buildCrmReviewRequiredMessage,
   buildClientChangeRequestNoteMarkdown,
   buildProposalCreatedNoteMarkdown,
   buildProposalStatusNoteMarkdown,
   buildRfpAnalyzedNoteMarkdown,
+  resolveExistingOpportunityForCrmSync,
 } from "./crmAutomation";
 
 describe("Twenty CRM automation note builders", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("builds an RFP analyzed note with core milestones", () => {
     const note = buildRfpAnalyzedNoteMarkdown({
       analysisId: "analysis_123",
@@ -91,5 +97,76 @@ describe("Twenty CRM automation note builders", () => {
     expect(note).toContain("download-pdf");
     expect(note).toContain("download-excel");
     expect(note).toContain("Workspace:");
+  });
+
+  it("holds CRM sync for review when no exact account exists", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ data: { companies: { edges: [] } } }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await resolveExistingOpportunityForCrmSync({
+      action: "rfp_analyzed",
+      companyName: "Codex No Create Smoke 20260601",
+      venueName: "Smoke Venue",
+      dealName: "Codex No Create Smoke 20260601 - RFP",
+    });
+
+    expect(result.status).toBe("review_required");
+    expect(buildCrmReviewRequiredMessage(result)).toContain("CRM review required");
+    const requestBodies = fetchMock.mock.calls.map((call) => String(((call as any[])[1] as RequestInit)?.body || ""));
+    expect(requestBodies.join("\n")).not.toContain("createCompany");
+    expect(requestBodies.join("\n")).not.toContain("createOpportunity");
+  });
+
+  it("matches an existing exact account and opportunity without creating records", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            companies: {
+              edges: [{ node: { id: "company_123", name: "ANC Test Account" } }],
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            opportunities: {
+              edges: [
+                {
+                  node: {
+                    id: "opp_123",
+                    name: "ANC Test Account - Arena",
+                    companyId: "company_123",
+                  },
+                },
+              ],
+            },
+          },
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await resolveExistingOpportunityForCrmSync({
+      action: "proposal_generated",
+      companyName: "ANC Test Account",
+      venueName: "Arena",
+      dealName: "ANC Test Account - Arena",
+    });
+
+    expect(result).toMatchObject({
+      status: "matched",
+      opportunityId: "opp_123",
+      companyId: "company_123",
+    });
+    const requestBodies = fetchMock.mock.calls.map((call) => String(((call as any[])[1] as RequestInit)?.body || ""));
+    expect(requestBodies.join("\n")).not.toContain("createCompany");
+    expect(requestBodies.join("\n")).not.toContain("createOpportunity");
   });
 });
