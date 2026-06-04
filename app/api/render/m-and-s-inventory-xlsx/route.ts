@@ -209,6 +209,17 @@ function shortSponsor(name: string | null | undefined) {
   return SHORT_SPONSOR[name] || name;
 }
 
+// Excel forbids * ? : \ / [ ] in sheet names, ≤31 chars, no leading/trailing apostrophe.
+function safeSheetName(name: string): string {
+  return (name || "")
+    .replace(/[\*\?:\\\/\[\]]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^'+|'+$/g, "")
+    .slice(0, 31)
+    .trim();
+}
+
 async function buildWorkbook(season: number, league: string): Promise<Buffer> {
   const [placements, contracts] = await Promise.all([
     fetchAllPlacements(season, league),
@@ -301,8 +312,16 @@ async function buildWorkbook(season: number, league: string): Promise<Buffer> {
 
   // For each team, group placements by gameDate, then list sponsors per date
   const sortedTeams = [...byHomeTeam.keys()].sort();
+  const usedSheetNames = new Set<string>();
   for (const team of sortedTeams) {
-    const sheetName = shortTeam(team).slice(0, 31) || team.slice(0, 31);
+    let sheetName = safeSheetName(shortTeam(team) || team);
+    // Excel requires unique, non-empty, ≤31-char sheet names.
+    let base = sheetName || "Team";
+    let n = 2;
+    while (usedSheetNames.has(sheetName)) {
+      sheetName = `${base.slice(0, 28)} ${n++}`;
+    }
+    usedSheetNames.add(sheetName);
     const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });
 
     ws.getCell("A1").value = `${season} ANC ${league} Inventory`;
