@@ -96,6 +96,7 @@ export default auth((req) => {
     pathname.startsWith("/api/render/") ||
     pathname.startsWith("/api/catalog") ||
     pathname.startsWith("/catalog/") ||
+    pathname.startsWith("/m-and-s-sync") ||
     pathname.startsWith("/share/performance/") ||
     pathname.startsWith("/auth/")
   ) {
