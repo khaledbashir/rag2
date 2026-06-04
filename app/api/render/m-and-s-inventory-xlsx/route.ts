@@ -43,6 +43,9 @@ type Placement = {
   homeTeam: { id: string; name: string } | null;
   awayTeam: { id: string; name: string } | null;
   sponsor: { id: string; name: string } | null;
+  slotRate: { amountMicros: number | null } | null;
+  ancMargin: { amountMicros: number | null } | null;
+  marginPercent: number | null;
 };
 
 type Contract = {
@@ -146,6 +149,7 @@ async function fetchAllPlacements(season: number, league: string): Promise<Place
             id gameDate gameTime inningScheduled placementType executionStatus
             homeTVNetwork awayTVNetwork nationalTVNetwork league season
             homeTeam { id name } awayTeam { id name } sponsor { id name }
+            slotRate { amountMicros } ancMargin { amountMicros } marginPercent
           } cursor }
           pageInfo { hasNextPage endCursor }
         }
@@ -370,6 +374,47 @@ async function buildWorkbook(season: number, league: string): Promise<Buffer> {
     // Freeze header
     ws.views = [{ state: "frozen", ySplit: 4, showGridLines: false }];
   }
+
+  // ----- Deal Value sheet (round-trip: M&S team fills Slot Rate + ANC Margin, re-upload) -----
+  const val = wb.addWorksheet("Deal Value", { views: [{ showGridLines: false }] });
+  val.columns = [
+    { header: "Placement ID (do not edit)", key: "id", width: 38 },
+    { header: "Game Date", key: "date", width: 12 },
+    { header: "Home Team", key: "home", width: 22 },
+    { header: "Away Team", key: "away", width: 22 },
+    { header: "Sponsor", key: "sponsor", width: 22 },
+    { header: "Position", key: "position", width: 20 },
+    { header: "Slot Rate ($)", key: "slotRate", width: 14 },
+    { header: "ANC Margin ($)", key: "ancMargin", width: 16 },
+    { header: "Margin % (auto)", key: "marginPct", width: 14 },
+  ];
+  val.getRow(1).font = { bold: true };
+  val.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE6F4FF" } };
+  const valSorted = placements.slice().sort((a, b) => {
+    const da = (a.gameDate || "") + (a.gameTime || "");
+    const db = (b.gameDate || "") + (b.gameTime || "");
+    if (da !== db) return da.localeCompare(db);
+    return (a.homeTeam?.name || "").localeCompare(b.homeTeam?.name || "");
+  });
+  for (const p of valSorted) {
+    const r = val.addRow({
+      id: p.id,
+      date: p.gameDate ? new Date(p.gameDate) : "",
+      home: shortTeam(p.homeTeam?.name),
+      away: shortTeam(p.awayTeam?.name),
+      sponsor: shortSponsor(p.sponsor?.name),
+      position: POSITION_LABEL[p.placementType || ""] || "",
+      slotRate: p.slotRate?.amountMicros != null ? p.slotRate.amountMicros / 1_000_000 : "",
+      ancMargin: p.ancMargin?.amountMicros != null ? p.ancMargin.amountMicros / 1_000_000 : "",
+      marginPct: p.marginPercent != null ? p.marginPercent : "",
+    });
+    r.getCell("date").numFmt = "yyyy-mm-dd";
+    r.getCell("slotRate").numFmt = '#,##0.00';
+    r.getCell("ancMargin").numFmt = '#,##0.00';
+    r.getCell("marginPct").numFmt = '0.0"%"';
+    r.getCell("id").font = { color: { argb: "FF9A9A96" }, size: 9 };
+  }
+  val.views = [{ state: "frozen", ySplit: 1, showGridLines: false }];
 
   return Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
 }
