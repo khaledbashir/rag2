@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { FileText, ChevronRight, DollarSign, MessageSquare, Scale, ShieldCheck } from "lucide-react";
+import { FileText, ChevronRight, DollarSign, MessageSquare, Scale, ShieldCheck, CalendarDays } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +30,7 @@ export function TextEditorPanel() {
     const additionalNotes = watch("details.customProposalNotes") || "";
     const purchaserLegalName = watch("details.purchaserLegalName") || "";
     const signatureLegalText = watch("details.signatureBlockText") || "";
+    const substantialCompletionDate = watch("details.substantialCompletionDate") || "";
     const documentMode = watch("details.documentMode") || "BUDGET";
 
     // T&C exhibit toggles (CONTRACT mode only)
@@ -40,7 +41,7 @@ export function TextEditorPanel() {
     const tcIncludeGraphics = watch("details.tcIncludeGraphics") ?? false;
     const tcWarrantyYears = watch("details.tcWarrantyYears") ?? 5;
 
-    const hasContent = introText.length > 0 || paymentTerms.length > 0 || additionalNotes.length > 0 || purchaserLegalName.length > 0 || signatureLegalText.length > 0;
+    const hasContent = introText.length > 0 || paymentTerms.length > 0 || additionalNotes.length > 0 || purchaserLegalName.length > 0 || signatureLegalText.length > 0 || substantialCompletionDate.length > 0;
 
     return (
         <Card className="bg-card/40 border border-border/60">
@@ -57,7 +58,7 @@ export function TextEditorPanel() {
                             )}
                         </CardTitle>
                         <CardDescription className="text-xs text-muted-foreground">
-                            Edit introduction, payment terms, and additional notes
+                            Edit introduction, payment terms, dates, and additional notes
                         </CardDescription>
                     </div>
                     <ChevronRight className={cn(
@@ -149,14 +150,14 @@ export function TextEditorPanel() {
                         </p>
                     </div>
 
-                    {/* Purchaser Legal Name (LOI only) - Prompt 42 */}
+                    {/* Purchaser Legal Name (Short Form only) - Prompt 42 */}
                     {(documentMode === "LOI" || documentMode === "CONTRACT") && (
                         <div className="space-y-2 border-t border-border/40 pt-6">
                             <Label htmlFor="purchaserLegalName" className="text-xs font-semibold text-foreground flex items-center gap-2">
                                 <FileText className="w-3.5 h-3.5 text-indigo-500" />
                                 Purchaser Legal Name
                                 <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-indigo-500/30 text-indigo-600">
-                                    LOI Only
+                                    Short Form
                                 </Badge>
                             </Label>
                             <Textarea
@@ -166,7 +167,30 @@ export function TextEditorPanel() {
                                 className="min-h-[60px] text-xs resize-y"
                             />
                             <p className="text-[10px] text-muted-foreground">
-                                Legal entity name for the Purchaser in LOI legal paragraph. Defaults to client name if left blank. The project name will still appear at the end of the paragraph.
+                                Legal entity name for the Purchaser in the short form legal paragraph. Defaults to client name if left blank.
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Substantial Completion Date (Short Form / Contract only) */}
+                    {(documentMode === "LOI" || documentMode === "CONTRACT") && (
+                        <div className="space-y-2 border-t border-border/40 pt-6">
+                            <Label htmlFor="substantialCompletionDate" className="text-xs font-semibold text-foreground flex items-center gap-2">
+                                <CalendarDays className="w-3.5 h-3.5 text-sky-500" />
+                                Substantial Completion Date
+                                <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-sky-500/30 text-sky-600">
+                                    Short Form
+                                </Badge>
+                            </Label>
+                            <Input
+                                id="substantialCompletionDate"
+                                type="date"
+                                value={substantialCompletionDate}
+                                onChange={(e) => setValue("details.substantialCompletionDate", e.target.value, { shouldDirty: true })}
+                                className="h-9 text-xs"
+                            />
+                            <p className="text-[10px] text-muted-foreground">
+                                Optional. Toggle visibility in PDF Section Toggles.
                             </p>
                         </div>
                     )}
@@ -178,7 +202,7 @@ export function TextEditorPanel() {
                                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
                                 Terms &amp; Conditions Exhibit
                                 <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-emerald-500/30 text-emerald-600">
-                                    Contract Only
+                                    Short Form Contract
                                 </Badge>
                             </Label>
                             <p className="text-[10px] text-muted-foreground -mt-2">

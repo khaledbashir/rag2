@@ -4,8 +4,9 @@ import React, { useEffect, useState } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { ProposalType } from "@/types";
 import { PricingDocument, PricingTable } from "@/types/pricing";
-import { DollarSign, ChevronDown, ChevronUp, RotateCcw, EyeOff, Eye, Plus, Trash2 } from "lucide-react";
+import { DollarSign, ChevronDown, ChevronUp, RotateCcw, EyeOff, Eye, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { formatCurrency } from "@/lib/helpers";
+import { findHiddenRowGaps } from "@/lib/pricingMath";
 
 // ─── Debounced Inputs ────────────────────────────────────────────────────────
 
@@ -202,6 +203,16 @@ export default function PricingTableEditor() {
     const showHiddenRows: boolean = useWatch({ control, name: "details.showHiddenRows" as any }) ?? false;
     const hiddenItemCount = tables.reduce((count, t) =>
         count + (t.items || []).filter((item) => item.isHidden).length, 0
+    );
+
+    // Reconciliation safeguard: a hidden priced row inside an otherwise-visible
+    // section leaves money in the printed total with no line to show it, so the
+    // line items no longer add up. Catch it here before the contract goes out.
+    // (Eagles / Structural Materials regression, 2026-06-09.)
+    const reconciliationGaps = findHiddenRowGaps(
+        pricingDocument,
+        priceOverrides,
+        descriptionOverrides,
     );
 
     // ── Handlers ──
@@ -445,6 +456,50 @@ export default function PricingTableEditor() {
                     {/* Grand Total intentionally hidden — Natalia request */}
                 </div>
             </div>
+
+            {/* ── Reconciliation Safeguard: hidden priced row leaves a gap in the total ── */}
+            {reconciliationGaps.length > 0 && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+                    <div className="flex items-start gap-2.5">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                        <div className="min-w-0 text-amber-900">
+                            <p className="text-xs font-semibold">
+                                Line items don&apos;t add up to the total
+                            </p>
+                            <p className="text-[11px] text-amber-800 mt-0.5">
+                                A priced row is hidden, so its amount is in the section total but won&apos;t show on the contract. Show the hidden row (or unhide it in your sheet) so everything ties out before you send.
+                            </p>
+                            <ul className="mt-1.5 space-y-0.5">
+                                {reconciliationGaps.map((g) => (
+                                    <li key={g.tableId} className="text-[11px]">
+                                        <span className="font-medium">{g.tableName || "Section"}</span>
+                                        {": "}
+                                        {formatCurrency(g.gap)} not shown
+                                        {g.hiddenPricedItems.length > 0 && (
+                                            <span className="text-amber-700">
+                                                {" — "}
+                                                {g.hiddenPricedItems
+                                                    .map((h) => `${h.description.replace(/:\s*$/, "")} (${formatCurrency(h.price)})`)
+                                                    .join(", ")}
+                                            </span>
+                                        )}
+                                    </li>
+                                ))}
+                            </ul>
+                            {!showHiddenRows && (
+                                <button
+                                    type="button"
+                                    onClick={() => setValue("details.showHiddenRows", true)}
+                                    className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium px-3 py-1 rounded-full bg-amber-200 text-amber-900 hover:bg-amber-300 transition-colors"
+                                >
+                                    <Eye className="w-3 h-3" />
+                                    Show hidden rows
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ── Hidden Rows Toggle (only show if Excel had hidden rows) ── */}
             {hiddenItemCount > 0 && (

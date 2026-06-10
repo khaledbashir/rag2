@@ -32,8 +32,8 @@ Source: `i18n/ANC_Engineering_Excellence_Playbook.docx.pdf`
 - [ ] Load testing (k6 or Artillery)
 
 ## Infrastructure Details
-- **VPS IP**: 138.201.126.110
-- **EasyPanel**: port 3000 (container) → 80 (proxy)
+- **VPS IP**: 95.217.76.248 (only VPS)
+- **EasyPanel / VPS UI**: http://95.217.76.248:3000/
 - **Production URL**: basheer-natalia.prd42b.easypanel.host (also proposals.anc.com)
 - **Browserless**: separate EasyPanel service, WSS external + WS internal (Docker network)
 - **Database**: PostgreSQL on same VPS via EasyPanel

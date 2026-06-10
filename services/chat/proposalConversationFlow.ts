@@ -249,7 +249,7 @@ const STAGE_PROMPTS: Record<ConversationStage, string> = {
     [ConversationStage.REVIEW]:
         "", // Dynamic — shows summary
     [ConversationStage.GENERATE]:
-        "What are we generating — budget estimate, formal proposal, or LOI?",
+        "What are we generating — budget estimate, formal proposal, or short form agreement?",
     [ConversationStage.DONE]:
         "Done! Your PDF is being generated now.",
 };
@@ -289,7 +289,7 @@ function buildReviewSummary(collected: CollectedData): string {
     if (collected.taxRate) summary += `• Tax (${(collected.taxRate * 100).toFixed(1)}%): ${fmt(taxAmt)}\n`;
     if (collected.bondRate) summary += `• Bond (${(collected.bondRate * 100).toFixed(1)}%): ${fmt(bondAmt)}\n`;
     summary += `• Grand Total: ${fmt(grandTotal)}\n\n`;
-    summary += `Ready to generate? Say "budget estimate", "proposal", or "LOI".`;
+    summary += `Ready to generate? Say "budget estimate", "proposal", or "short form agreement".`;
 
     return summary;
 }
@@ -591,18 +591,18 @@ export function processStage(
                 collected.documentType = "BUDGET";
             } else if (/proposal|formal|quote/i.test(text)) {
                 collected.documentType = "PROPOSAL";
-            } else if (/loi|letter/i.test(text)) {
+            } else if (/loi|letter|short\s*form/i.test(text)) {
                 collected.documentType = "LOI";
             } else if (/yes|yeah|yep|sure|go|ready|generate/i.test(text)) {
                 collected.documentType = "BUDGET"; // Default
             } else {
-                reply = "Say \"budget estimate\", \"proposal\", or \"LOI\" to generate.";
+                reply = "Say \"budget estimate\", \"proposal\", or \"short form agreement\" to generate.";
                 break;
             }
 
             actions.push({ type: "generate_pdf", data: { documentType: collected.documentType } });
             nextStage = ConversationStage.DONE;
-            reply = `Generating ${collected.documentType === "BUDGET" ? "Budget Estimate" : collected.documentType === "PROPOSAL" ? "Formal Proposal" : "Letter of Intent"}... Your PDF will download shortly.`;
+            reply = `Generating ${collected.documentType === "BUDGET" ? "Budget Estimate" : collected.documentType === "PROPOSAL" ? "Formal Proposal" : "Short Form Agreement"}... Your PDF will download shortly.`;
             break;
         }
 

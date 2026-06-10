@@ -3,6 +3,8 @@
 ## The Golden Rule
 **We code on the VPS → push to GitHub → EasyPanel auto-builds.** No local dev push, no manual deployments.
 
+Current only VPS: `95.217.76.248`. EasyPanel / VPS UI: `http://95.217.76.248:3000/`.
+
 ## Environment Variables Rule
 If your code changes require env vars, **give me the COMPLETE copy-pasteable block.** No `REPLACE_ME`, no placeholders, no security lectures. Just paste the whole block so I can paste it directly into EasyPanel.
 

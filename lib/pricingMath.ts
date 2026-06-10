@@ -202,6 +202,117 @@ export function computeTableTotals(
 }
 
 // ============================================================================
+// RECONCILIATION SAFEGUARD
+// ============================================================================
+// A hidden Excel row is suppressed from the rendered contract, but its value
+// still lives inside the trusted (Excel-sourced) subtotal/grandTotal. When a
+// hidden row carries a real price and sits inside an OTHERWISE-VISIBLE section,
+// the printed line items no longer add up to the printed subtotal — the contract
+// shows a total with no line to explain part of it. (Eagles / Structural
+// Materials, 2026-06-09.)
+//
+// This check flags exactly that situation BEFORE a contract goes out. It is
+// purely a detector — it never changes any rendered value or total.
+//
+// Fully-hidden sections (every priced row hidden, e.g. a collapsed alternate)
+// are intentionally skipped at render time, so they are NOT flagged here: a
+// table only counts as "rendered" when it has at least one visible priced line.
+
+export interface TableReconciliation {
+    tableId: string;
+    tableName: string;
+    /** Trusted subtotal that prints on the contract (includes hidden rows). */
+    subtotal: number;
+    /** Sum of the priced line items that are actually VISIBLE on the contract. */
+    visibleSum: number;
+    /** subtotal − visibleSum. Positive ⇒ money in the total with no visible line. */
+    gap: number;
+    /** Count of priced line items that render (used to detect fully-hidden sections). */
+    visibleCount: number;
+    /** Hidden priced rows whose value is silently inside the total. */
+    hiddenPricedItems: Array<{ description: string; price: number }>;
+    /** True when visible line items add up to the trusted subtotal. */
+    reconciles: boolean;
+}
+
+/** Gaps under this many display units are round-then-sum noise, not a missing line. */
+const RECONCILIATION_TOLERANCE = 1;
+
+/**
+ * Reconcile a single table's visible line items against its trusted subtotal.
+ * Mirrors computeTableTotals' per-item rounding exactly so the comparison is
+ * apples-to-apples.
+ */
+export function computeTableReconciliation(
+    table: PricingTable,
+    priceOverrides: Record<string, number> = {},
+    descriptionOverrides: Record<string, string> = {},
+    exchangeRate: number | null | undefined = 1,
+): TableReconciliation {
+    const fx = resolveExchangeRate(exchangeRate);
+    const subtotal = computeTableTotals(table, priceOverrides, descriptionOverrides, fx).subtotal;
+    const minDisplay = (1 / DISPLAY_SCALE) || 0.01;
+
+    let visibleSum = 0;
+    let visibleCount = 0;
+    const hiddenPricedItems: Array<{ description: string; price: number }> = [];
+
+    for (let idx = 0; idx < (table.items || []).length; idx++) {
+        const item = table.items[idx];
+        const rawPrice = getEffectivePrice(priceOverrides, table.id, idx, item.sellingPrice);
+        const roundedPrice = roundToDisplay(rawPrice * fx);
+        const hasTextOverride = item.isIncluded || item.isExcluded || !!item.textValue;
+        const isPriced = !hasTextOverride && Math.abs(roundedPrice) >= minDisplay;
+        if (!isPriced) continue;
+
+        if (item.isHidden) {
+            hiddenPricedItems.push({
+                description: getEffectiveDescription(descriptionOverrides, table.id, idx, item.description),
+                price: roundedPrice,
+            });
+        } else {
+            visibleSum += roundedPrice;
+            visibleCount += 1;
+        }
+    }
+
+    const gap = roundToDisplay(subtotal - visibleSum);
+    return {
+        tableId: table.id,
+        tableName: table.name,
+        subtotal,
+        visibleSum,
+        gap,
+        visibleCount,
+        hiddenPricedItems,
+        reconciles: Math.abs(gap) < RECONCILIATION_TOLERANCE,
+    };
+}
+
+/**
+ * Document-level safeguard: returns the rendered tables whose visible line items
+ * do NOT add up to the printed subtotal because a hidden priced row is sitting
+ * inside the total. Empty array = every contract section reconciles.
+ */
+export function findHiddenRowGaps(
+    document: PricingDocument,
+    priceOverrides: Record<string, number> = {},
+    descriptionOverrides: Record<string, string> = {},
+    exchangeRate: number | null | undefined = 1,
+): TableReconciliation[] {
+    return (document.tables || [])
+        .map((table) =>
+            computeTableReconciliation(table, priceOverrides, descriptionOverrides, exchangeRate),
+        )
+        .filter(
+            (r) =>
+                r.visibleCount > 0 && // rendered section (not a fully-hidden/collapsed table)
+                r.hiddenPricedItems.length > 0 && // hidden priced rows present
+                !r.reconciles, // and they actually break the math
+        );
+}
+
+// ============================================================================
 // DOCUMENT-LEVEL TOTAL
 // ============================================================================
 

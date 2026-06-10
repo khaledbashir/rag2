@@ -34,7 +34,7 @@ const typeFilters = [
     { key: "all", label: "All Types" },
     { key: "BUDGET", label: "Budgets" },
     { key: "PROPOSAL", label: "Proposals" },
-    { key: "LOI", label: "LOIs" },
+    { key: "LOI", label: "Short Forms" },
     { key: "CONTRACT", label: "Contracts" },
 ];
 

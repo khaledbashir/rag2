@@ -184,7 +184,7 @@ export default function ProjectCard({ project, onStatusChange, onBriefMe, onDele
                     {isEstimate ? (
                         <span className="inline-flex items-center gap-1 text-emerald-500 font-medium">Estimate</span>
                     ) : (
-                        project.documentMode === "LOI" ? "LOI" : project.documentMode.charAt(0) + project.documentMode.slice(1).toLowerCase()
+                        project.documentMode === "LOI" ? "Short Form" : project.documentMode === "CONTRACT" ? "Contract" : project.documentMode.charAt(0) + project.documentMode.slice(1).toLowerCase()
                     )}
                 </div>
 
@@ -279,7 +279,7 @@ export default function ProjectCard({ project, onStatusChange, onBriefMe, onDele
                     {isEstimate ? (
                         <span className="text-emerald-500 font-medium">Estimate</span>
                     ) : (
-                        <span>{project.documentMode === "LOI" ? "LOI" : project.documentMode.charAt(0) + project.documentMode.slice(1).toLowerCase()}</span>
+                        <span>{project.documentMode === "LOI" ? "Short Form" : project.documentMode === "CONTRACT" ? "Contract" : project.documentMode.charAt(0) + project.documentMode.slice(1).toLowerCase()}</span>
                     )}
                     {project.screenCount > 0 && <span>{project.screenCount} screens</span>}
                 </div>

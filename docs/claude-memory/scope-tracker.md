@@ -11,6 +11,13 @@
 
 ---
 
+## From Stevie/Joe (ANC Services)
+
+### Bug Fixes / Polish (FREE)
+1. Post-game Slack reminder cards now stop for completed workflows and are removed after the post-game report is submitted — FIXED (2026-05-26)
+
+---
+
 ## From Natalia (RFP Analyzer)
 
 ### Built (FREE)
@@ -70,6 +77,22 @@
 
 ### Not Built Yet (QUEUED)
 _(none currently)_
+
+---
+
+## From Jireh (ANC CRM)
+
+### Bug Fixes / Polish (FREE)
+1. Account page moved League / Org, Vendor Type, and Revenue Type into the General field group near the top of the account record — FIXED (2026-05-26)
+2. Active Pricing Priority List default sort changed from Opportunity Name to Proposal Due Date ascending so due dates sort chronologically — FIXED (2026-05-26)
+3. Sales role granted Views access so Daniel Croci and other Sales users can open shared CRM reports like Active Pricing Priority List — FIXED (2026-05-26)
+
+---
+
+## From Grant / Ahmad (ANC CRM M&S)
+
+### Workflow Automation (FREE)
+1. M&S Account Workspace added AI Verify tab to paste Nielsen exports, auto-match clean rows to open Media Placements, and apply verified status/date/executed status/notes while leaving ambiguous rows in review — BUILT (2026-05-26)
 
 ---
 

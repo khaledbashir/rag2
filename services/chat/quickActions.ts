@@ -43,7 +43,7 @@ const STEP2_ACTIONS: QuickAction[] = [
     { label: "➕ Add a new screen", prompt: "Add a new screen" },
     { label: "🔍 Recommend a product for indoor lobby", prompt: "Recommend an LED product for a 15ft x 8ft indoor lobby display" },
     { label: "📐 Help me size a display", prompt: "How do I determine the right pixel pitch and dimensions for my display?" },
-    { label: "🏷️ What document modes are available?", prompt: "Explain the difference between Budget, Proposal, and LOI document modes" },
+    { label: "🏷️ What document modes are available?", prompt: "Explain the difference between Budget, Proposal, and Short Form document modes" },
 ];
 
 const STEP3_ACTIONS: QuickAction[] = [

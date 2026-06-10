@@ -113,6 +113,7 @@ export async function PATCH(
             documentConfig,
             quoteItems,
             paymentTerms,
+            substantialCompletionDate,
             additionalNotes,
             signatureBlockText, // Bug #4: Signature block text persistence
             loiHeaderText,      // LOI opening legal paragraph (Prompt 10)
@@ -229,6 +230,7 @@ export async function PATCH(
         if (documentConfig !== undefined) updateData.documentConfig = documentConfig;
         if (quoteItems !== undefined) updateData.quoteItems = quoteItems;
         if (paymentTerms !== undefined) updateData.paymentTerms = paymentTerms;
+        if (substantialCompletionDate !== undefined) updateData.substantialCompletionDate = substantialCompletionDate;
         if (additionalNotes !== undefined) updateData.additionalNotes = additionalNotes;
         if (signatureBlockText !== undefined) updateData.signatureBlockText = signatureBlockText;
         if (loiHeaderText !== undefined) updateData.loiHeaderText = loiHeaderText;

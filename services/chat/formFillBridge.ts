@@ -284,6 +284,10 @@ function setDocumentType(ctx: FormFillContext, docType: "BUDGET" | "PROPOSAL" | 
     } else if (docType === "LOI" || docType === "CONTRACT") {
         ctx.setValue("details.documentType", "LOI", { shouldDirty: true });
         ctx.setValue("details.pricingType", "Hard Quoted", { shouldDirty: true });
+        ctx.setValue("details.showPaymentTerms", true, { shouldDirty: true });
+        ctx.setValue("details.showSignatureBlock", true, { shouldDirty: true });
+        ctx.setValue("details.showTermsAndConditions", docType === "CONTRACT", { shouldDirty: true });
+        ctx.setValue("details.showSubstantialCompletionDate", docType === "CONTRACT", { shouldDirty: true });
     }
 }
 
@@ -500,10 +504,15 @@ export function executeScreenActions(
             }
 
             case "set_document_mode": {
-                const mode = String(sa.value).toUpperCase() as "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT";
+                const normalized = String(sa.value).trim().toUpperCase().replace(/[\s-]+/g, "_");
+                const mode = (normalized === "SHORT_FORM" || normalized === "SHORT_FORM_AGREEMENT")
+                    ? "LOI"
+                    : normalized === "SHORT_FORM_CONTRACT"
+                        ? "CONTRACT"
+                        : normalized as "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT";
                 if (["BUDGET", "PROPOSAL", "LOI", "CONTRACT"].includes(mode)) {
                     setDocumentType(ctx, mode);
-                    log.push(`Switched document type to ${mode}`);
+                    log.push(`Switched document type to ${mode === "LOI" ? "Short Form Agreement" : mode === "CONTRACT" ? "Short Form Contract" : mode}`);
                 }
                 break;
             }

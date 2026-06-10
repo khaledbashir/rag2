@@ -40,6 +40,7 @@ enum DocumentMode {
   BUDGET
   PROPOSAL
   LOI
+  CONTRACT
 }
 
 enum ChangeRequestStatus {
@@ -88,6 +89,7 @@ model Proposal {
   documentConfig       Json?
   quoteItems           Json?
   paymentTerms         String?
+  substantialCompletionDate String?
   additionalNotes      String?
   status               ProposalStatus      @default(DRAFT)
   calculationMode      CalculationMode     @default(INTELLIGENCE)

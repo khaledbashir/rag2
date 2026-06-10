@@ -664,34 +664,38 @@ const OPPORTUNITY_URL_BASE = "https://crm.ancsports.net/object/opportunity";
 
 const SECTION_COLUMNS = [
   "Opp #",
-  "Account Name",
-  "Opportunity Name",
+  "Account",
+  "Opportunity",
   "Revenue (year)",
   "Costs (year)",
   "Margin (year)",
-  "Substantial Completion",
-  "Close Date",
-  "Created Date",
-  "Status Update",
+  "Close",
+  "Sub. Complete",
 ];
+// Fixed column widths (sum = 100%) so the table renders predictably in Outlook,
+// which ignores max-width and otherwise lets columns jiggle/collapse.
+const SECTION_COLUMN_WIDTHS = ["7%", "16%", "25%", "13%", "12%", "13%", "7%", "7%"];
 const SECTION_COLUMN_COUNT = SECTION_COLUMNS.length;
 const SECTION_LABEL_COLSPAN = 3;
 const SECTION_TRAILING_COLSPAN = SECTION_COLUMN_COUNT - SECTION_LABEL_COLSPAN - 3;
 
-function dataRow(row: ClosedWonReportRow, year: number) {
+function dataRow(row: ClosedWonReportRow, year: number, idx = 0) {
   const oppLink = `${OPPORTUNITY_URL_BASE}/${esc(row.id)}`;
+  const bg = idx % 2 === 1 ? "#f8fafc" : "#ffffff";
+  const base = `padding:7px 9px;border:1px solid #e5e7eb;background:${bg};`;
+  const num = `${base}text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;`;
+  const txt = `${base}word-break:break-word;`;
+  const date = `${base}white-space:nowrap;`;
   return `
     <tr>
-      <td style="padding:8px;border:1px solid #e5e7eb;font-family:monospace;">${esc(row.opportunityNumber || "-")}</td>
-      <td style="padding:8px;border:1px solid #e5e7eb;">${esc(row.accountName)}</td>
-      <td style="padding:8px;border:1px solid #e5e7eb;"><a href="${oppLink}" style="color:#2563eb;text-decoration:none;">${esc(row.opportunityName)}</a></td>
-      <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;">${esc(formatCurrency(row.revenue))}</td>
-      <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;">${esc(formatCurrency(row.costs))}</td>
-      <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;">${esc(formatCurrency(row.margin))}</td>
-      <td style="padding:8px;border:1px solid #e5e7eb;">${esc(formatShortDate(row.substantialCompletionDate))}</td>
-      <td style="padding:8px;border:1px solid #e5e7eb;">${esc(formatShortDate(row.awardDate))}</td>
-      <td style="padding:8px;border:1px solid #e5e7eb;">${esc(formatShortDate(row.createdDate))}</td>
-      <td style="padding:8px;border:1px solid #e5e7eb;">${esc(row.statusUpdate)}</td>
+      <td style="${base}font-family:monospace;white-space:nowrap;">${esc(row.opportunityNumber || "-")}</td>
+      <td style="${txt}">${esc(row.accountName)}</td>
+      <td style="${txt}"><a href="${oppLink}" style="color:#2563eb;text-decoration:none;">${esc(row.opportunityName)}</a></td>
+      <td style="${num}">${esc(formatCurrency(row.revenue))}</td>
+      <td style="${num}">${esc(formatCurrency(row.costs))}</td>
+      <td style="${num}">${esc(formatCurrency(row.margin))}</td>
+      <td style="${date}">${esc(formatShortDate(row.awardDate))}</td>
+      <td style="${date}">${esc(formatShortDate(row.substantialCompletionDate))}</td>
     </tr>
   `;
 }
@@ -709,9 +713,10 @@ function subtotalRow(label: string, totals: ReportTotals) {
 }
 
 function sectionTable(year: number, label: string, accent: string, section: SectionData, emptyMessage: string) {
-  const headerCells = SECTION_COLUMNS.map((columnLabel) => {
+  const headerCells = SECTION_COLUMNS.map((columnLabel, ci) => {
     const display = columnLabel.replace("(year)", `(${year})`);
-    return `<th style="padding:8px;border:1px solid #d1d5db;background:#e2e8f0;text-align:left;font-weight:700;">${esc(display)}</th>`;
+    const align = ci >= 3 && ci <= 5 ? "right" : "left";
+    return `<th style="padding:8px 9px;border:1px solid #334155;background:#1e293b;color:#f8fafc;text-align:${align};font-weight:700;">${esc(display)}</th>`;
   }).join("");
 
   const groupsHtml = section.departmentGroups.length
@@ -723,7 +728,7 @@ function sectionTable(year: number, label: string, accent: string, section: Sect
                 ${esc(group.department)} (${group.totals.records} ${group.totals.records === 1 ? "deal" : "deals"})
               </td>
             </tr>
-            ${group.rows.map((row) => dataRow(row, year)).join("")}
+            ${group.rows.map((row, i) => dataRow(row, year, i)).join("")}
             ${subtotalRow(`${group.department} subtotal`, group.totals)}
           `,
         )
@@ -737,7 +742,8 @@ function sectionTable(year: number, label: string, accent: string, section: Sect
   return `
     <div style="margin-bottom:24px;">
       <div style="font-size:14px;font-weight:700;color:#111827;margin:0 0 10px 0;">${esc(label)}</div>
-      <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:12px;">
+      <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:11px;table-layout:fixed;">
+        <colgroup>${SECTION_COLUMN_WIDTHS.map((w) => `<col style="width:${w};" />`).join("")}</colgroup>
         <thead><tr>${headerCells}</tr></thead>
         <tbody>
           ${groupsHtml}
@@ -902,7 +908,7 @@ export function renderClosedWonReportHtml(report: ClosedWonReport) {
   return `<!doctype html>
 <html>
   <body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#111827;">
-    <div style="max-width:1180px;margin:0 auto;padding:24px;">
+    <div style="max-width:960px;margin:0 auto;padding:24px;">
       <div style="background:#ffffff;border:1px solid #d7dce2;border-radius:8px;overflow:hidden;">
         <div style="padding:22px 24px;border-bottom:1px solid #e5e7eb;">
           <div style="font-size:22px;font-weight:700;">${esc(report.title)}</div>

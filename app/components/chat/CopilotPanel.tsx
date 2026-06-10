@@ -1094,19 +1094,19 @@ export default function CopilotPanel({
         }
 
         // Document mode intent
-        if (/(loi|budget|proposal|document mode)/i.test(convo)) {
-            return uniqueSuggestions(["Switch to LOI", "Switch to Proposal", "Switch to Budget"]).slice(0, 3);
+        if (/(loi|short\s*form|budget|proposal|document mode)/i.test(convo)) {
+            return uniqueSuggestions(["Switch to Short Form", "Switch to Proposal", "Switch to Budget"]).slice(0, 3);
         }
 
         // Preview/export intent
         if (/(preview|pdf|export|download)/i.test(convo)) {
-            return uniqueSuggestions(["Preview PDF", "Summarize project", "Switch to LOI"]).slice(0, 3);
+            return uniqueSuggestions(["Preview PDF", "Summarize project", "Switch to Short Form"]).slice(0, 3);
         }
 
         // Fallback (state-driven)
         if (!clientName) return ["Start a new proposal", "What can you do?", "Fill client info"];
         if (screens.length === 0) return ["Add display specs", "Set pricing", "Look up address"];
-        if (docMode) return ["Preview PDF", "Summarize project", "Switch to LOI"];
+        if (docMode) return ["Preview PDF", "Summarize project", "Switch to Short Form"];
         return ["Set document mode", "Summarize project", "Look up address"];
     }, [formFillContext, quickActions, messages]);
 

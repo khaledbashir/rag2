@@ -97,7 +97,7 @@ const fmtCurrency = (n: number) =>
 const modeLabels: Record<string, string> = {
   BUDGET: "Budget",
   PROPOSAL: "Proposal",
-  LOI: "LOI",
+  LOI: "Short Form",
   CONTRACT: "Contract",
 };
 

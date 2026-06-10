@@ -29,6 +29,9 @@ DO NOT TOUCH. Behavior must remain IDENTICAL. No "quick fixes" or "improvements"
 - ANC Twenty CRM mobile metadata quota/chunk-cache crash fixed in live image `twenty-anc:metadata-field-quota-fix-20260501e` (2026-05-01)
 - ANC Forms + Scout form-builder live: CRM AI can create shareable forms from chat; `companies` target creates Company records and linked People on submit (2026-05-08)
 - CMS / Control System pricing module shipped behind `FEATURES.CMS_PRICING` flag (default OFF): `/admin/cms-catalog` + `/estimator/[projectId]/cms` picker + CMS summary banner on every LED estimate. 80 SKUs seeded from Natalia's CMS_BASE_BOM, smart-defaults engine for soft costs, heat/power AC-capacity flag, CRM sanity check vs 193 historical CMS/LiveSync deals, prior-client prefill, BOM Excel export matching Natalia's layout. Migration: `20260513210000_add_cms_pricing_module` (2026-05-13)
+- ANC CRM Account LTV v0.2.2 live: Account page widget now has direct branded Excel export; Scout `account-ltv-report` routes "export this LTV view to Excel" to the real workbook tool using current Company id (2026-05-22)
+- ANC CRM legacy LTV revenue backfill: 1,644 exact-matched WON opportunities recovered from `/root/rag2/docs/salesforce-export/opportunities.json`; Dodgers opp `100924` now shows `$7.84M` revenue / `$424.6K` margin and Dodgers LTV export shows `$27.8M` (2026-05-22)
+- ANC CRM Account Cockpit v0.1.9 live: first main Company tab after native Home, with account KPIs, workspace jumps, business-unit bars, recent deal motion, quick actions, and real Ask AI brief; M&S shifted to position 12 so Home fields rail stays intact (2026-05-26)
 
 ## 🎯 ANC Twenty CRM — #1 priority (decision Mon-Tue 2026-04-21/22)
 - Live at `https://crm.ancsports.net` — replaces Salesforce

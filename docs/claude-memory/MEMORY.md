@@ -64,7 +64,7 @@
 - **Message style for stakeholders:** No filler, no "once the build deploys" type caveats. Remove "going forward" — redundant. Don't repeat the same point twice. Short punchy sentences. State the fix, tell them what to do, done. Ahmad trims anything that sounds like a developer wrote it.
 - NEVER local dev. Code → commit → push → EasyPanel auto-builds. Just push.
 - **Git worktree = clean repo check.** Ahmad uses `git worktree list` / `git status` to confirm everything is pushed. No dangling worktrees, no uncommitted files. Always clean up before saying "done."
-- GitHub: khaledbashir/rag2 | VPS: 138.201.126.110
+- GitHub: khaledbashir/rag2 | only VPS: 95.217.76.248
 
 ## What ANC Does
 - LED display integration for stadiums (NFL, NBA, MLS, NCAA)
