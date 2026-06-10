@@ -183,3 +183,25 @@ docs/env-ready/
 /codex-skills/
 /.codex-anc-master-SKILL.md
 .trash/
+
+# Local-only archive of loose stakeholder files, screenshots, media (2026-06-10 sweep)
+/_attic/
+# Generated report workbooks + rendered proposal PDFs (skill artifacts, local-only)
+/output/
+/proposals/
+# CRM one-off scripts with embedded API tokens — local-only, never commit
+scripts/build-krissy-opp-layout.py
+scripts/build-mns-inventory-rollup.py
+scripts/cron-account-summaries.py
+scripts/fix-manage-ai-prompts.sh
+scripts/grant-capacity-backfill.py
+scripts/import-mns-contract-actuals.py
+scripts/register-mns-skills.py
+scripts/rollup-sponsor-team-actuals.py
+scripts/setup-account-summary-field.py
+scripts/setup-manage-client-control-layer.py
+scripts/setup-manage-client-control-surfaces.sh
+scripts/setup-manage-crm-surfaces.sh
+scripts/setup-manage-personal-crm.py
+scripts/setup-manage-website-articles.py
+scripts/setup-manage-website-cms.py
