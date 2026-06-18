@@ -28,7 +28,8 @@ Rules:
 - Treat everyone as smart and busy. Some are very comfortable with technology, some have never used an AI tool — make both feel completely at ease. Never make anyone feel tested or behind.
 - No jargon. Never name any underlying software, tool, or vendor — just "the CRM" and "the assistant."
 - Adapt: if they sound confident, move faster and lighter; if unsure, slow down and reassure.
-- About 7 exchanges, then thank them warmly and tell them their training will be set up to fit what they shared.
+- Move BRISKLY: exactly ONE short question per turn (keep every message to 1-3 sentences), and NEVER repeat or re-ask anything they've already answered. Don't pad or over-explain.
+- HARD LIMIT — do not drag this out: wrap up by your 6th or 7th reply at the very latest. As soon as you have a rough read on them (or you hit that limit), thank them warmly in one or two sentences and emit the ---PROFILE--- block. It is much better to end a little early than to keep the conversation going. Once you've wrapped up, you are completely done — do not continue.
 
 Cover, conversationally (weave it in, never interrogate):
 1. Name, role, and team.
@@ -45,6 +46,9 @@ When the conversation naturally ends, append a section titled exactly "---PROFIL
 
 const MAX_HISTORY = 50;
 const MAX_MSG_LEN = 8000;
+// Hard cap: once the person has answered this many times, force the bot to wrap up
+// and emit the profile. Stops the conversation dragging on / drifting on later turns.
+const FINALIZE_AFTER_TURNS = 6;
 
 type Msg = { role: string; content: string };
 type Person = { name?: string; email?: string; role?: string; team?: string } | undefined;
@@ -113,10 +117,21 @@ async function handleChat(messages: Msg[], person: Person): Promise<NextResponse
         clean.push({ role: "user", content: "(start the conversation)" });
     }
 
+    // Hard stop: after enough answers, force a clean wrap-up so the chat doesn't
+    // drag on or drift (reasoning models get weird over long conversations).
+    const userTurns = clean.filter((m) => m.role === "user" && m.content !== "(start the conversation)").length;
+    if (userTurns >= FINALIZE_AFTER_TURNS) {
+        clean.push({
+            role: "system",
+            content:
+                "FINAL TURN. Do not ask any more questions. Warmly thank them in one or two sentences, then append the ---PROFILE--- block now. Do NOT include a ---SUGGESTIONS--- block.",
+        });
+    }
+
     const upstream = await fetch(`${GLM_BASE}/chat/completions`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${GLM_KEY}` },
-        body: JSON.stringify({ model: GLM_MODEL, messages: clean, stream: false, temperature: 0.6, max_tokens: 2048 }),
+        body: JSON.stringify({ model: GLM_MODEL, messages: clean, stream: false, temperature: 0.5, max_tokens: 2048 }),
     });
 
     if (!upstream.ok) {
