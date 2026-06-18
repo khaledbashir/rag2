@@ -27,11 +27,14 @@ export default function TrainingIntakePage() {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        setSessionId(crypto.randomUUID());
-        // Personalization hook — links can carry ?name=&email=&role=&team= (e.g. one per
-        // person from Charlie's roster). Read on the client only; no Suspense boundary.
+        // Personalization hook — links can carry ?sid=&name=&email=&role=&team= (one per
+        // person from the roster). Read on the client only; no Suspense boundary.
+        // A stable ?sid= ties this person's invite row + their completion to ONE record,
+        // so /admin/training-intake tracks status (invited → completed). Falls back to a
+        // random id for ad-hoc visitors with no sid.
         try {
             const sp = new URLSearchParams(window.location.search);
+            setSessionId(sp.get("sid") || crypto.randomUUID());
             const p: Person = {
                 name: sp.get("name") || undefined,
                 email: sp.get("email") || undefined,
@@ -40,7 +43,7 @@ export default function TrainingIntakePage() {
             };
             if (p.name || p.email || p.role || p.team) setPerson(p);
         } catch {
-            /* no-op */
+            setSessionId(crypto.randomUUID());
         }
     }, []);
 
