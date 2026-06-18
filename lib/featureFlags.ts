@@ -45,4 +45,10 @@ export const FEATURES = {
    */
   CMS_PRICING_STRATEGIC: false,
   RESPONSIBILITY_MATRIX: true,
+  /**
+   * Training intake assessor bot (Natalia 2026-06-18). Public shareable chat at
+   * /training-intake that profiles each CRM user; results at /admin/training-intake.
+   * Distribution goes through Natalia. Flip false to hide the public page.
+   */
+  TRAINING_INTAKE: true,
 } as const;

@@ -1,0 +1,172 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
+
+/**
+ * POST /api/training-intake  (public — no auth)
+ *
+ * Conversational training-intake assessor bot. Profiles each CRM user so their
+ * training can be tailored. Two actions:
+ *   - { action: "chat", messages, sessionId }  -> { reply }
+ *   - { action: "save", sessionId, messages, profile? } -> { ok: true }
+ *
+ * Uses Z.AI GLM directly (same provider as /api/chat/stream). Strips <think>
+ * blocks so the reasoning model's output is clean for non-technical users.
+ */
+
+const GLM_BASE = process.env.Z_AI_BASE_URL || process.env.GLM_API_BASE || "https://api.z.ai/api/coding/paas/v4";
+const GLM_KEY = process.env.Z_AI_API_KEY || process.env.GLM_API_KEY || "";
+const GLM_MODEL = process.env.Z_AI_MODEL_NAME || process.env.GLM_MODEL || "glm-5";
+
+const SYSTEM_PROMPT = `You are the ANC CRM onboarding guide. Your only job is a short, warm, upbeat conversation (about 2 minutes) to learn how this person works, so we can tailor their CRM training to them personally. You are NOT tech support and you do not answer CRM how-to questions — if asked, say warmly that the training will cover it.
+
+Your VERY FIRST message: introduce yourself in one friendly line, say this takes about two minutes and there are no wrong answers, and offer a light choice to start, e.g. "Want the quick version or a proper chat?" Warm and human, never robotic.
+
+Rules:
+- Plain, friendly language. Short messages, ONE question at a time. A little personality is good; never condescending.
+- Treat everyone as smart and busy. Some are very comfortable with technology, some have never used an AI tool — make both feel completely at ease. Never make anyone feel tested or behind.
+- No jargon. Never name any underlying software, tool, or vendor — just "the CRM" and "the assistant."
+- Adapt: if they sound confident, move faster and lighter; if unsure, slow down and reassure.
+- About 7 exchanges, then thank them warmly and tell them their training will be set up to fit what they shared.
+
+Cover, conversationally (weave it in, never interrogate):
+1. Name, role, and team.
+2. How they use the CRM today (create records / pull reports / look things up / haven't started).
+3. What they leaned on most in the old system (to map their workflow).
+4. How comfortable they feel with new tools, and whether they have ever used an AI chat assistant (ask gently and positively).
+5. How they like to learn something new (full walkthrough / quick cheat sheet / explore on their own).
+6. What feels confusing or annoying about the CRM right now.
+7. What would make it genuinely useful for them, and a good day/time for a short weekly session.
+
+When the conversation naturally ends, append a section titled exactly "---PROFILE---" then a compact one-line JSON object with keys: name, role, team, usageLevel (none|viewer|operator|power), techComfort (1-5), aiExposure (none|tried_once|regular), learningStyle (walkthrough|cheatsheet|explore), painPoints (array of strings), interests (array of strings), recommendedTrack (basics|ai_ready|power_user|report_focused), preferredTime (string). This block is for the ANC team — keep it short. Do not mention the profile block to the user.`;
+
+const MAX_HISTORY = 50;
+const MAX_MSG_LEN = 8000;
+
+function stripThink(text: string): string {
+    if (!text) return text;
+    // Remove closed <think>...</think> blocks (case-insensitive, multiline).
+    let out = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
+    // Remove an unclosed trailing <think> with no close.
+    out = out.replace(/<think>[\s\S]*$/i, "");
+    return out.trim();
+}
+
+type Msg = { role: string; content: string };
+
+async function handleChat(messages: Msg[]): Promise<NextResponse> {
+    if (!GLM_KEY) {
+        return NextResponse.json({ error: "LLM not configured (Z_AI_API_KEY missing)." }, { status: 500 });
+    }
+
+    const clean: Msg[] = [{ role: "system", content: SYSTEM_PROMPT }];
+    if (Array.isArray(messages)) {
+        for (const m of messages.slice(-MAX_HISTORY)) {
+            if (m && m.role && typeof m.content === "string") {
+                const role = m.role === "assistant" ? "assistant" : "user";
+                clean.push({ role, content: m.content.slice(0, MAX_MSG_LEN) });
+            }
+        }
+    }
+    // If the very first turn has no user message yet, nudge the bot to open.
+    if (clean.length === 1) {
+        clean.push({ role: "user", content: "(start the conversation)" });
+    }
+
+    const upstream = await fetch(`${GLM_BASE}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${GLM_KEY}` },
+        body: JSON.stringify({ model: GLM_MODEL, messages: clean, stream: false, temperature: 0.6, max_tokens: 2048 }),
+    });
+
+    if (!upstream.ok) {
+        const body = await upstream.text().catch(() => "");
+        log.error(`[TrainingIntake] LLM ${upstream.status}: ${body.slice(0, 200)}`);
+        return NextResponse.json({ error: "The assistant is busy right now. Please try again in a moment." }, { status: 502 });
+    }
+
+    const data = await upstream.json().catch(() => null);
+    const raw = data?.choices?.[0]?.message?.content || "";
+    const reply = stripThink(String(raw));
+    return NextResponse.json({ reply });
+}
+
+function parseProfile(messages: Msg[]): { profile: Record<string, unknown> | null; raw: string | null } {
+    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+    if (!lastAssistant) return { profile: null, raw: null };
+    const idx = lastAssistant.content.indexOf("---PROFILE---");
+    if (idx === -1) return { profile: null, raw: null };
+    const raw = lastAssistant.content.slice(idx + "---PROFILE---".length).trim();
+    // Pull the first {...} JSON object out of the block.
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) return { profile: null, raw };
+    try {
+        return { profile: JSON.parse(match[0]), raw };
+    } catch {
+        return { profile: null, raw };
+    }
+}
+
+function asStringArray(v: unknown): string[] {
+    if (Array.isArray(v)) return v.map((x) => String(x)).filter(Boolean);
+    if (typeof v === "string" && v.trim()) return [v.trim()];
+    return [];
+}
+function asStr(v: unknown): string | null {
+    if (v === null || v === undefined) return null;
+    const s = String(v).trim();
+    return s ? s : null;
+}
+function asInt(v: unknown): number | null {
+    const n = parseInt(String(v), 10);
+    return Number.isFinite(n) ? n : null;
+}
+
+async function handleSave(sessionId: string, messages: Msg[], profileIn?: Record<string, unknown>): Promise<NextResponse> {
+    const parsed = profileIn ? { profile: profileIn, raw: JSON.stringify(profileIn) } : parseProfile(messages);
+    const p = parsed.profile || {};
+    const data = {
+        name: asStr(p.name),
+        role: asStr(p.role),
+        team: asStr(p.team),
+        usageLevel: asStr(p.usageLevel),
+        techComfort: asInt(p.techComfort),
+        aiExposure: asStr(p.aiExposure),
+        learningStyle: asStr(p.learningStyle),
+        recommendedTrack: asStr(p.recommendedTrack),
+        preferredTime: asStr(p.preferredTime),
+        painPoints: asStringArray(p.painPoints),
+        interests: asStringArray(p.interests),
+        transcript: (messages as unknown) as object,
+        rawProfile: parsed.raw,
+        completed: true,
+    };
+
+    await prisma.trainingProfile.upsert({
+        where: { sessionId },
+        create: { sessionId, ...data },
+        update: data,
+    });
+    return NextResponse.json({ ok: true });
+}
+
+export async function POST(req: NextRequest) {
+    try {
+        const body = await req.json();
+        const action = body?.action;
+
+        if (action === "chat") {
+            return await handleChat(body.messages || []);
+        }
+        if (action === "save") {
+            if (!body?.sessionId) {
+                return NextResponse.json({ error: "sessionId required" }, { status: 400 });
+            }
+            return await handleSave(body.sessionId, body.messages || [], body.profile);
+        }
+        return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+    } catch (err: any) {
+        log.error(`[TrainingIntake] ${err?.message || err}`);
+        return NextResponse.json({ error: "Something went wrong." }, { status: 500 });
+    }
+}

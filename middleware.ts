@@ -98,6 +98,10 @@ export default auth((req) => {
     pathname.startsWith("/catalog/") ||
     pathname.startsWith("/m-and-s-sync") ||
     pathname.startsWith("/share/performance/") ||
+    // Training intake assessor bot — public shareable chat sent to CRM users.
+    // (/admin/training-intake stays admin-gated; it starts with /admin.)
+    pathname.startsWith("/training-intake") ||
+    pathname.startsWith("/api/training-intake") ||
     pathname.startsWith("/auth/")
   ) {
     return NextResponse.next();

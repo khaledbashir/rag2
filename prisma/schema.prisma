@@ -1250,3 +1250,26 @@ model CatalogComment {
 
   @@index([itemId])
 }
+
+// Training intake assessor bot — profiles each CRM user so training can be
+// tailored. Public shareable page /training-intake, results at /admin/training-intake.
+model TrainingProfile {
+  id               String   @id @default(cuid())
+  sessionId        String   @unique
+  name             String?
+  role             String?
+  team             String?
+  usageLevel       String?
+  techComfort      Int?
+  aiExposure       String?
+  learningStyle    String?
+  recommendedTrack String?
+  preferredTime    String?
+  painPoints       String[]
+  interests        String[]
+  transcript       Json?
+  rawProfile       String?  @db.Text
+  completed        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}

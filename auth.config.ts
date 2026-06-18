@@ -28,6 +28,8 @@ export const authConfig = {
         nextUrl.pathname.startsWith("/api/catalog") ||
         nextUrl.pathname.startsWith("/catalog/") ||
         nextUrl.pathname.startsWith("/m-and-s-sync") ||
+        nextUrl.pathname.startsWith("/training-intake") ||
+        nextUrl.pathname.startsWith("/api/training-intake") ||
         nextUrl.pathname.startsWith("/api/intelligence/") ||
         nextUrl.pathname.startsWith("/api/performance/seed") ||
         nextUrl.pathname.startsWith("/share/performance/") ||
