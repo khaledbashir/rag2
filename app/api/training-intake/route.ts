@@ -7,11 +7,12 @@ import { log } from "@/lib/logger";
  *
  * Conversational training-intake assessor bot. Profiles each CRM user so their
  * training can be tailored. Two actions:
- *   - { action: "chat", messages, sessionId }  -> { reply }
- *   - { action: "save", sessionId, messages, profile? } -> { ok: true }
+ *   - { action: "chat", messages, sessionId, person? }  -> { reply, thinking, suggestions }
+ *   - { action: "save", sessionId, messages, person?, profile? } -> { ok: true }
  *
- * Uses Z.AI GLM directly (same provider as /api/chat/stream). Strips <think>
- * blocks so the reasoning model's output is clean for non-technical users.
+ * Uses Z.AI GLM directly (same provider as /api/chat/stream). <think> blocks are
+ * split out (returned separately so the UI can show them in a collapsed accordion),
+ * and per-turn quick-reply suggestions are parsed from a ---SUGGESTIONS--- block.
  */
 
 const GLM_BASE = process.env.Z_AI_BASE_URL || process.env.GLM_API_BASE || "https://api.z.ai/api/coding/paas/v4";
@@ -38,28 +39,67 @@ Cover, conversationally (weave it in, never interrogate):
 6. What feels confusing or annoying about the CRM right now.
 7. What would make it genuinely useful for them, and a good day/time for a short weekly session.
 
-When the conversation naturally ends, append a section titled exactly "---PROFILE---" then a compact one-line JSON object with keys: name, role, team, usageLevel (none|viewer|operator|power), techComfort (1-5), aiExposure (none|tried_once|regular), learningStyle (walkthrough|cheatsheet|explore), painPoints (array of strings), interests (array of strings), recommendedTrack (basics|ai_ready|power_user|report_focused), preferredTime (string). This block is for the ANC team — keep it short. Do not mention the profile block to the user.`;
+SUGGESTED REPLIES: After EVERY message EXCEPT your final one, append a line containing exactly "---SUGGESTIONS---" and then a compact one-line JSON array of 2 to 4 short, natural, FIRST-PERSON quick replies the person could tap to answer the question you just asked. Example: ---SUGGESTIONS---["I mostly pull reports","I create deals","I just look things up","Haven't really started"]. Keep each under ~6 words. Do NOT include suggestions on your final message.
+
+When the conversation naturally ends, append a section titled exactly "---PROFILE---" then a compact one-line JSON object with keys: name, role, team, usageLevel (none|viewer|operator|power), techComfort (1-5), aiExposure (none|tried_once|regular), learningStyle (walkthrough|cheatsheet|explore), painPoints (array of strings), interests (array of strings), recommendedTrack (basics|ai_ready|power_user|report_focused), preferredTime (string). This block is for the ANC team — keep it short. On this final message do NOT include a ---SUGGESTIONS--- block. Do not mention the profile block to the user.`;
 
 const MAX_HISTORY = 50;
 const MAX_MSG_LEN = 8000;
 
-function stripThink(text: string): string {
-    if (!text) return text;
-    // Remove closed <think>...</think> blocks (case-insensitive, multiline).
-    let out = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
-    // Remove an unclosed trailing <think> with no close.
-    out = out.replace(/<think>[\s\S]*$/i, "");
-    return out.trim();
+type Msg = { role: string; content: string };
+type Person = { name?: string; email?: string; role?: string; team?: string } | undefined;
+
+/** Split <think> blocks out of the model output. Returns the visible reply + the thinking text. */
+function splitThink(text: string): { reply: string; thinking: string } {
+    if (!text) return { reply: "", thinking: "" };
+    const thinks: string[] = [];
+    let reply = text.replace(/<think>([\s\S]*?)<\/think>/gi, (_m, inner) => {
+        thinks.push(String(inner).trim());
+        return "";
+    });
+    // Unclosed trailing <think> with no closing tag.
+    const openIdx = reply.search(/<think>/i);
+    if (openIdx !== -1) {
+        thinks.push(reply.slice(openIdx).replace(/<\/?think>/gi, "").trim());
+        reply = reply.slice(0, openIdx);
+    }
+    return { reply: reply.trim(), thinking: thinks.filter(Boolean).join("\n\n").trim() };
 }
 
-type Msg = { role: string; content: string };
+/** Pull the ---SUGGESTIONS--- JSON array out, returning the cleaned reply + the chips. */
+function extractSuggestions(text: string): { reply: string; suggestions: string[] } {
+    const marker = "---SUGGESTIONS---";
+    const idx = text.indexOf(marker);
+    if (idx === -1) return { reply: text, suggestions: [] };
+    const before = text.slice(0, idx).trim();
+    const after = text.slice(idx + marker.length);
+    const m = after.match(/\[[\s\S]*?\]/);
+    let suggestions: string[] = [];
+    if (m) {
+        try {
+            const arr = JSON.parse(m[0]);
+            if (Array.isArray(arr)) suggestions = arr.map((x) => String(x).trim()).filter(Boolean).slice(0, 4);
+        } catch {
+            /* tolerate garbled suggestions */
+        }
+    }
+    return { reply: before, suggestions };
+}
 
-async function handleChat(messages: Msg[]): Promise<NextResponse> {
+function personLine(person: Person): string {
+    if (!person || !person.name) return "";
+    const tail = [person.role ? `their role is ${person.role}` : "", person.team ? `they're on the ${person.team} team` : ""]
+        .filter(Boolean)
+        .join(", ");
+    return `\n\nYou are speaking with ${person.name}${tail ? ` — ${tail}` : ""}. Greet them by their first name. Skip asking for details you already know — confirm rather than re-ask.`;
+}
+
+async function handleChat(messages: Msg[], person: Person): Promise<NextResponse> {
     if (!GLM_KEY) {
         return NextResponse.json({ error: "LLM not configured (Z_AI_API_KEY missing)." }, { status: 500 });
     }
 
-    const clean: Msg[] = [{ role: "system", content: SYSTEM_PROMPT }];
+    const clean: Msg[] = [{ role: "system", content: SYSTEM_PROMPT + personLine(person) }];
     if (Array.isArray(messages)) {
         for (const m of messages.slice(-MAX_HISTORY)) {
             if (m && m.role && typeof m.content === "string") {
@@ -86,9 +126,11 @@ async function handleChat(messages: Msg[]): Promise<NextResponse> {
     }
 
     const data = await upstream.json().catch(() => null);
-    const raw = data?.choices?.[0]?.message?.content || "";
-    const reply = stripThink(String(raw));
-    return NextResponse.json({ reply });
+    const raw = String(data?.choices?.[0]?.message?.content || "");
+    const { reply: noThink, thinking } = splitThink(raw);
+    // Leave ---PROFILE--- intact (the page splits it); strip only ---SUGGESTIONS---.
+    const { reply, suggestions } = extractSuggestions(noThink);
+    return NextResponse.json({ reply, thinking, suggestions });
 }
 
 function parseProfile(messages: Msg[]): { profile: Record<string, unknown> | null; raw: string | null } {
@@ -122,13 +164,19 @@ function asInt(v: unknown): number | null {
     return Number.isFinite(n) ? n : null;
 }
 
-async function handleSave(sessionId: string, messages: Msg[], profileIn?: Record<string, unknown>): Promise<NextResponse> {
+async function handleSave(
+    sessionId: string,
+    messages: Msg[],
+    person: Person,
+    profileIn?: Record<string, unknown>
+): Promise<NextResponse> {
     const parsed = profileIn ? { profile: profileIn, raw: JSON.stringify(profileIn) } : parseProfile(messages);
     const p = parsed.profile || {};
     const data = {
-        name: asStr(p.name),
-        role: asStr(p.role),
-        team: asStr(p.team),
+        // Fall back to the link-provided person details when the bot didn't capture them.
+        name: asStr(p.name) || asStr(person?.name),
+        role: asStr(p.role) || asStr(person?.role),
+        team: asStr(p.team) || asStr(person?.team),
         usageLevel: asStr(p.usageLevel),
         techComfort: asInt(p.techComfort),
         aiExposure: asStr(p.aiExposure),
@@ -137,7 +185,8 @@ async function handleSave(sessionId: string, messages: Msg[], profileIn?: Record
         preferredTime: asStr(p.preferredTime),
         painPoints: asStringArray(p.painPoints),
         interests: asStringArray(p.interests),
-        transcript: (messages as unknown) as object,
+        // Keep person (incl. email — no column for it) in the transcript so nothing is lost.
+        transcript: ({ messages, person: person || null } as unknown) as object,
         rawProfile: parsed.raw,
         completed: true,
     };
@@ -154,15 +203,16 @@ export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
         const action = body?.action;
+        const person: Person = body?.person && typeof body.person === "object" ? body.person : undefined;
 
         if (action === "chat") {
-            return await handleChat(body.messages || []);
+            return await handleChat(body.messages || [], person);
         }
         if (action === "save") {
             if (!body?.sessionId) {
                 return NextResponse.json({ error: "sessionId required" }, { status: 400 });
             }
-            return await handleSave(body.sessionId, body.messages || [], body.profile);
+            return await handleSave(body.sessionId, body.messages || [], person, body.profile);
         }
         return NextResponse.json({ error: "Unknown action" }, { status: 400 });
     } catch (err: any) {

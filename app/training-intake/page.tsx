@@ -1,14 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { FEATURES } from "@/lib/featureFlags";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = {
+    role: "user" | "assistant";
+    content: string;
+    thinking?: string;
+    suggestions?: string[];
+};
+
+type Person = { name?: string; email?: string; role?: string; team?: string };
 
 const PROFILE_MARKER = "---PROFILE---";
 
 export default function TrainingIntakePage() {
     const [sessionId, setSessionId] = useState<string>("");
+    const [person, setPerson] = useState<Person>({});
     const [messages, setMessages] = useState<Msg[]>([]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
@@ -18,6 +28,20 @@ export default function TrainingIntakePage() {
 
     useEffect(() => {
         setSessionId(crypto.randomUUID());
+        // Personalization hook — links can carry ?name=&email=&role=&team= (e.g. one per
+        // person from Charlie's roster). Read on the client only; no Suspense boundary.
+        try {
+            const sp = new URLSearchParams(window.location.search);
+            const p: Person = {
+                name: sp.get("name") || undefined,
+                email: sp.get("email") || undefined,
+                role: sp.get("role") || undefined,
+                team: sp.get("team") || undefined,
+            };
+            if (p.name || p.email || p.role || p.team) setPerson(p);
+        } catch {
+            /* no-op */
+        }
     }, []);
 
     useEffect(() => {
@@ -26,11 +50,13 @@ export default function TrainingIntakePage() {
 
     if (!FEATURES.TRAINING_INTAKE) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">
+            <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500" style={{ colorScheme: "light" }}>
                 This page isn&apos;t available right now.
             </div>
         );
     }
+
+    const firstName = person.name ? person.name.trim().split(/\s+/)[0] : "";
 
     async function send(text: string) {
         const trimmed = text.trim();
@@ -44,22 +70,31 @@ export default function TrainingIntakePage() {
             const res = await fetch("/api/training-intake", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "chat", messages: next, sessionId }),
+                body: JSON.stringify({ action: "chat", messages: next, sessionId, person }),
             });
             const data = await res.json();
             const reply: string = data.reply || data.error || "Sorry, I didn't catch that — could you try again?";
+            const thinking: string = data.thinking || "";
+            const suggestions: string[] = Array.isArray(data.suggestions) ? data.suggestions : [];
 
             const hasProfile = reply.includes(PROFILE_MARKER);
             const visible = hasProfile ? reply.split(PROFILE_MARKER)[0].trim() : reply;
-            const full: Msg[] = [...next, { role: "assistant", content: reply }];
-            setMessages(hasProfile ? [...next, { role: "assistant", content: visible }] : full);
+
+            // Shown to the user (clean); chips suppressed on the closing message.
+            const shown: Msg[] = [
+                ...next,
+                { role: "assistant", content: visible, thinking, suggestions: hasProfile ? [] : suggestions },
+            ];
+            setMessages(shown);
 
             if (hasProfile) {
                 setDone(true);
+                // Save the FULL reply (with the profile block) so the server can parse it.
+                const full: Msg[] = [...next, { role: "assistant", content: reply }];
                 fetch("/api/training-intake", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ action: "save", sessionId, messages: full }),
+                    body: JSON.stringify({ action: "save", sessionId, messages: full, person }),
                 }).catch(() => {});
             }
         } catch {
@@ -69,8 +104,11 @@ export default function TrainingIntakePage() {
         }
     }
 
+    const last = messages[messages.length - 1];
+    const liveSuggestions = !done && !loading && last && last.role === "assistant" ? last.suggestions || [] : [];
+
     return (
-        <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex flex-col">
+        <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex flex-col" style={{ colorScheme: "light" }}>
             {/* Header */}
             <header className="border-b border-blue-100 bg-white/80 backdrop-blur">
                 <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
@@ -88,8 +126,9 @@ export default function TrainingIntakePage() {
                     {!started && (
                         <div className="space-y-4">
                             <Bubble role="assistant">
-                                Hi! 👋 I&apos;m here to set up your CRM training so it actually fits you — takes about two
-                                minutes, and there are no wrong answers. Want the quick version or a proper chat?
+                                {firstName ? `Hi ${firstName}! 👋 ` : "Hi! 👋 "}
+                                I&apos;m here to set up your CRM training so it actually fits you — takes about two minutes, and
+                                there are no wrong answers. Want the quick version or a proper chat?
                             </Bubble>
                             <div className="flex flex-wrap gap-2">
                                 <StarterButton onClick={() => send("Let's do the quick version")}>⚡ Quick version</StarterButton>
@@ -99,7 +138,12 @@ export default function TrainingIntakePage() {
                     )}
 
                     {messages.map((m, i) => (
-                        <Bubble key={i} role={m.role}>{m.content}</Bubble>
+                        <div key={i} className="space-y-1">
+                            {m.role === "assistant" && m.thinking ? <Thinking text={m.thinking} /> : null}
+                            <Bubble role={m.role}>
+                                {m.role === "assistant" ? <Markdown>{m.content}</Markdown> : m.content}
+                            </Bubble>
+                        </div>
                     ))}
 
                     {loading && (
@@ -108,6 +152,14 @@ export default function TrainingIntakePage() {
                                 <Dot /> <Dot /> <Dot />
                             </span>
                         </Bubble>
+                    )}
+
+                    {liveSuggestions.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                            {liveSuggestions.map((s, i) => (
+                                <StarterButton key={i} onClick={() => send(s)}>{s}</StarterButton>
+                            ))}
+                        </div>
                     )}
 
                     {done && (
@@ -133,7 +185,7 @@ export default function TrainingIntakePage() {
                             }}
                             rows={1}
                             placeholder="Type your answer…"
-                            className="flex-1 resize-none rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            className="flex-1 resize-none rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
                         />
                         <button
                             onClick={() => send(input)}
@@ -154,11 +206,52 @@ function Bubble({ role, children }: { role: "user" | "assistant"; children: Reac
     return (
         <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
             <div
-                className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                    isUser ? "bg-blue-600 text-white rounded-br-sm" : "bg-white text-slate-800 border border-slate-200 rounded-bl-sm"
+                className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                    isUser
+                        ? "bg-blue-600 text-white rounded-br-sm whitespace-pre-wrap"
+                        : "bg-white text-slate-800 border border-slate-200 rounded-bl-sm"
                 }`}
             >
                 {children}
+            </div>
+        </div>
+    );
+}
+
+/** Renders assistant replies as markdown (bold, lists, links) without the typography plugin. */
+function Markdown({ children }: { children: string }) {
+    return (
+        <div className="text-sm leading-relaxed [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_a]:text-blue-600 [&_a]:underline [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.85em]">
+            <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                    a: ({ node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+                }}
+            >
+                {children}
+            </ReactMarkdown>
+        </div>
+    );
+}
+
+/** AnythingLLM-style collapsed "Thinking" accordion. */
+function Thinking({ text }: { text: string }) {
+    const [open, setOpen] = useState(false);
+    return (
+        <div className="flex justify-start">
+            <div className="max-w-[85%] w-full">
+                <button
+                    onClick={() => setOpen((o) => !o)}
+                    className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition"
+                >
+                    <span className={`inline-block transition-transform ${open ? "rotate-90" : ""}`}>▸</span>
+                    💭 Thinking
+                </button>
+                {open && (
+                    <div className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 whitespace-pre-wrap font-mono leading-relaxed">
+                        {text}
+                    </div>
+                )}
             </div>
         </div>
     );
