@@ -2100,6 +2100,11 @@ const Step4Export = () => {
 
                                 {/* Individual Options */}
                                 <div className="border-t border-border/60 grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border/60">
+                                    {/* Excel Only / Audit Workbook — hidden in Mirror Mode: it regenerates its own
+                                        computed margin/budget numbers, which diverge from the uploaded source Excel
+                                        (Natalia's 73→191 report). In Mirror Mode the source of truth is "Original Excel".
+                                        Kept for standard estimator flows where the audit workbook is the intended output. */}
+                                    {!mirrorMode && (
                                     <div className="p-4 flex items-center justify-between hover:bg-card/40 transition-colors">
                                         <div className="flex items-center gap-3">
                                             <div className="p-2 rounded-lg bg-muted/50 text-muted-foreground">
@@ -2127,6 +2132,7 @@ const Step4Export = () => {
                                             )}
                                         </Tooltip>
                                     </div>
+                                    )}
 
                                     <div className="p-4 flex items-center justify-between hover:bg-card/40 transition-colors">
                                         <div className="flex items-center gap-3">
