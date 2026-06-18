@@ -124,7 +124,7 @@ async function handleChat(messages: Msg[], person: Person): Promise<NextResponse
         clean.push({
             role: "system",
             content:
-                "FINAL TURN. Do not ask any more questions. Warmly thank them in one or two sentences, then append the ---PROFILE--- block now. Do NOT include a ---SUGGESTIONS--- block.",
+                "FINAL TURN. Do not ask any more questions. Warmly thank them in one or two sentences, then append exactly '---PROFILE---' followed by a compact ONE-LINE JSON object (valid JSON only — not markdown, not bullet points) with keys: name, role, team, usageLevel, techComfort, aiExposure, learningStyle, painPoints, interests, recommendedTrack, preferredTime. Do NOT include a ---SUGGESTIONS--- block.",
         });
     }
 
