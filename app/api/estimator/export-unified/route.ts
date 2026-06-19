@@ -16,6 +16,7 @@ import { scaleWorkbookByFx } from "@/services/pricing/scaleWorkbookByFx";
 import { log } from "@/lib/logger";
 import { logActivity } from "@/services/proposal/server/activityLogService";
 import { universalCrmPush, saveCrmArtifact } from "@/services/integrations/twenty/crmAutomation";
+import { augmentCoverPage } from "@/services/proposal/server/augmentCoverPage";
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,23 +34,44 @@ export async function POST(req: NextRequest) {
     const options = mapEstimatorToScoping(answers);
 
     // Generate using the same generator as RFP path
-    const { buffer: rawBuffer, workbook: wb } = await generateScopingWorkbook(options);
+    const { workbook: wb } = await generateScopingWorkbook(options);
 
-    // Apply user-entered USD→target exchange rate to every currency-formatted
-    // cell, then re-serialize. When the rate is 1 or absent, skip the rewrite
-    // and reuse the generator's buffer as-is.
+    // Apply user-entered USD→target exchange rate to every currency-formatted cell.
     const needsFxScale = typeof answers.exchangeRate === "number"
         && Number.isFinite(answers.exchangeRate)
         && answers.exchangeRate > 0
         && answers.exchangeRate !== 1;
-
-    let buffer: Buffer;
     if (needsFxScale) {
       scaleWorkbookByFx(wb, answers.exchangeRate);
-      buffer = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
-    } else {
-      buffer = rawBuffer;
     }
+
+    // Estimator-only: append Natalia's cover-page sections (Information Needed +
+    // Warranty Options) to the Project Overview sheet. The RFP path never calls
+    // this, so RFP output stays byte-identical.
+    const a = answers as typeof answers & {
+      venueName?: string; venueAddress?: string; paymentTerms?: string;
+      substantialCompletionDate?: string; changeOrders?: string;
+      laborWarranty?: string; eventSupport?: string; preSeasonChecks?: string;
+    };
+    const wYears = parseInt(a.warrantyYears, 10);
+    augmentCoverPage(wb, {
+      clientName: a.clientName,
+      venueName: a.venueName || a.projectName,
+      venueAddress: a.venueAddress || a.location,
+      paymentTerms: a.paymentTerms,
+      supplyOnly: a.servicesMargin === 0,
+      substantialCompletionDate: a.substantialCompletionDate,
+      changeOrders: a.changeOrders,
+      partsWarranty: a.includeWarranty !== "none" && Number.isFinite(wYears) && wYears > 0
+        ? `${wYears} year${wYears > 1 ? "s" : ""}`
+        : undefined,
+      laborWarranty: a.laborWarranty,
+      eventSupport: a.eventSupport,
+      preSeasonChecks: a.preSeasonChecks,
+    });
+
+    // Always re-serialize (we mutated the workbook).
+    const buffer = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
 
     const safeName = (answers.projectName || answers.clientName || "Budget")
       .replace(/\s+/g, "_")

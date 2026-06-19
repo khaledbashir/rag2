@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { log } from "@/lib/logger";
+import { matchRoster } from "./roster";
 
 /**
  * POST /api/training-intake  (public — no auth)
@@ -220,6 +221,11 @@ export async function POST(req: NextRequest) {
         const action = body?.action;
         const person: Person = body?.person && typeof body.person === "object" ? body.person : undefined;
 
+        if (action === "lookup") {
+            // Name-first identity match: type a name → surface "Is this you?" cards.
+            const q = typeof body.name === "string" ? body.name : "";
+            return NextResponse.json({ matches: matchRoster(q) });
+        }
         if (action === "chat") {
             return await handleChat(body.messages || [], person);
         }

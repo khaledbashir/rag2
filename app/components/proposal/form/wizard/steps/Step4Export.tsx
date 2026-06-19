@@ -2100,39 +2100,10 @@ const Step4Export = () => {
 
                                 {/* Individual Options */}
                                 <div className="border-t border-border/60 grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border/60">
-                                    {/* Excel Only / Audit Workbook — hidden in Mirror Mode: it regenerates its own
-                                        computed margin/budget numbers, which diverge from the uploaded source Excel
-                                        (Natalia's 73→191 report). In Mirror Mode the source of truth is "Original Excel".
-                                        Kept for standard estimator flows where the audit workbook is the intended output. */}
-                                    {!mirrorMode && (
-                                    <div className="p-4 flex items-center justify-between hover:bg-card/40 transition-colors">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 rounded-lg bg-muted/50 text-muted-foreground">
-                                                <FileSpreadsheet className="w-4 h-4" />
-                                            </div>
-                                            <div>
-                                                <div className="text-xs font-bold text-zinc-900 dark:text-foreground">Excel Only</div>
-                                                <div className="text-[10px] text-zinc-500 dark:text-muted-foreground">Audit Workbook</div>
-                                            </div>
-                                        </div>
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <button
-                                                    onClick={exportAudit}
-                                                    disabled={(mirrorMode && !isMirrorReadyToExport) || isGatekeeperLocked}
-                                                    className="p-2 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    <Download className="w-4 h-4" />
-                                                </button>
-                                            </TooltipTrigger>
-                                            {getExcelOnlyErrorMessage() && (
-                                                <TooltipContent side="left" className="max-w-xs">
-                                                    <p className="text-xs">{getExcelOnlyErrorMessage()}</p>
-                                                </TooltipContent>
-                                            )}
-                                        </Tooltip>
-                                    </div>
-                                    )}
+                                    {/* "Excel Only" (Audit Workbook) export removed from the UI per Natalia (2026-06-18):
+                                        it regenerates its own computed margin/budget numbers that diverge from the
+                                        uploaded source Excel (her 73→191 report). The exportAudit() capability is kept
+                                        in code for any Finance/Internal-Audit RBAC path, just not surfaced here. */}
 
                                     <div className="p-4 flex items-center justify-between hover:bg-card/40 transition-colors">
                                         <div className="flex items-center gap-3">
