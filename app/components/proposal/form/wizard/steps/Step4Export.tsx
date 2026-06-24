@@ -514,14 +514,10 @@ const Step4Export = () => {
         : !allScreensValid || isGatekeeperLocked;
     const pricingTables = useMemo(() => (((pricingDocument as any)?.tables || []) as any[]), [pricingDocument]);
 
-    // Detect if any responsibility matrix data actually exists (Mirror or Intelligence)
-    const hasRespMatrixData = useMemo(() => {
-        const mirrorMatrix = (pricingDocument as any)?.respMatrix;
-        if (mirrorMatrix?.categories?.some((c: any) => c.items?.length > 0)) return true;
-        const intelMatrix = watch("details.responsibilityMatrix" as any);
-        if (intelMatrix?.categories?.some((c: any) => c.items?.length > 0)) return true;
-        return false;
-    }, [pricingDocument, watch]);
+    // Responsibility matrix data source. The ANC master matrix is now baked into the platform,
+    // so a matrix is ALWAYS available (parsed sheet → manual override → master fallback) — the
+    // toggle is therefore always enabled, mirroring the auto-generated LED Exhibit A specs page.
+    const hasRespMatrixData = true;
     const documentTextSettingsTab = headerType === "BUDGET"
         ? "budget"
         : headerType === "LOI" || headerType === "CONTRACT"

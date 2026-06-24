@@ -40,6 +40,7 @@ import type { DocumentMode as CatalogDocumentMode } from "@/services/rfp/product
 // Types
 import { ProposalType } from "@/types";
 import { RespMatrix } from "@/types/pricing";
+import { getMasterRespMatrix } from "@/lib/respMatrixMaster";
 
 interface ProposalTemplate5Props extends ProposalType {
     forceWhiteLogo?: boolean;
@@ -590,7 +591,12 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const intelligenceRespMatrix = (details as any)?.includeResponsibilityMatrix === true
         ? ((details as any)?.responsibilityMatrix ?? null)
         : null;
-    const respMatrixRaw: RespMatrix | null = pricingDocument?.respMatrix ?? intelligenceRespMatrix;
+    // Resolution order: (1) parsed sheet from uploaded workbook, (2) manually-edited override,
+    // (3) ANC master matrix baked into the platform. The master makes the matrix auto-appear on
+    // every proposal with no Excel sheet and no wizard — mirroring how the LED Exhibit A specs
+    // page is auto-generated. Authors can still hide it via the showResponsibilityMatrix toggle.
+    const respMatrixRaw: RespMatrix | null =
+        pricingDocument?.respMatrix ?? intelligenceRespMatrix ?? getMasterRespMatrix();
     // Apply manual format override if set (auto = use detected format)
     const respMatrixFormatOverride: string = (details as any)?.respMatrixFormatOverride || "auto";
     const respMatrix: RespMatrix | null = respMatrixRaw

@@ -19,6 +19,8 @@
 import ExcelJS from 'exceljs';
 import { ScreenInput, ScreenAudit } from '@/lib/estimator';
 import { excelCurrencyFmt } from '@/services/pricing/currencyService';
+import type { RespMatrix } from '@/types/pricing';
+import { getMasterRespMatrix } from '@/lib/respMatrixMaster';
 
 import { ProjectSummaryInfo, buildProjectSummary } from "./exportMirrorUglySheetExcel";
 
@@ -43,6 +45,12 @@ export interface AuditExcelOptions {
         editedByUser?: boolean;
     };
     detectedRisks?: string[];
+    /**
+     * Responsibility matrix to embed. When omitted, the ANC master matrix is used so EVERY
+     * generated workbook includes the matrix automatically (no wizard, no Excel upload required).
+     * Pass a parsed/edited matrix to override the master.
+     */
+    responsibilityMatrix?: RespMatrix | null;
 }
 
 // ============================================================================
@@ -159,7 +167,14 @@ export async function generateAuditExcel(
     });
     buildSOWSheet(sowSheet, options);
 
-    // 13. Tech Specs Only (no pricing — for installers/subs) — with cross-sheet formulas
+    // 13. Responsibility Matrix (Statement of Work) — auto-included on EVERY workbook.
+    // Uses the ANC master matrix unless an override is supplied via options.
+    const respMatrixSheet = workbook.addWorksheet('Responsibility Matrix', {
+        properties: { tabColor: { argb: 'FF0A52EF' } } // ANC French Blue
+    });
+    buildResponsibilityMatrixSheet(respMatrixSheet, options?.responsibilityMatrix ?? getMasterRespMatrix());
+
+    // 14. Tech Specs Only (no pricing — for installers/subs) — with cross-sheet formulas
     const techSpecsSheet = workbook.addWorksheet('Tech Specs (Installers)', {
         properties: { tabColor: { argb: 'FF6C757D' } } // Grey
     });
@@ -769,6 +784,77 @@ function buildSOWSheet(sheet: ExcelJS.Worksheet, options?: AuditExcelOptions) {
     sheet.getColumn(4).width = 20;
     sheet.getColumn(5).width = 20;
     sheet.getColumn(6).width = 20;
+}
+
+/**
+ * Build the Responsibility Matrix sheet (DESCRIPTION | ANC | PURCHASER).
+ * Renders the ANC master matrix (or a supplied override) so every workbook ships with the
+ * Statement of Work responsibility split baked in — no wizard, mirroring the LED Exhibit A page.
+ */
+function buildResponsibilityMatrixSheet(sheet: ExcelJS.Worksheet, matrix: RespMatrix) {
+    const BLUE = 'FF0A52EF';
+    const HEADER_GREY = 'FFE5E7EB';
+    const ZEBRA = 'FFF5F7FA';
+    const border = (): Partial<ExcelJS.Borders> => ({
+        top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+        bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+        left: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+        right: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+    });
+
+    // Title banner
+    sheet.mergeCells('A1:C1');
+    const titleCell = sheet.getCell('A1');
+    titleCell.value = 'RESPONSIBILITY MATRIX — STATEMENT OF WORK';
+    titleCell.font = { size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BLUE } };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    sheet.getRow(1).height = 24;
+
+    let row = 3;
+
+    for (const category of matrix.categories || []) {
+        const items = (category.items || []).filter((i) => i && (i.description || '').trim());
+        if (items.length === 0) continue;
+
+        // Category header row with ANC / PURCHASER column labels
+        const headerRow = sheet.getRow(row);
+        headerRow.getCell(1).value = category.name;
+        headerRow.getCell(2).value = 'ANC';
+        headerRow.getCell(3).value = 'PURCHASER';
+        for (let c = 1; c <= 3; c++) {
+            const cell = headerRow.getCell(c);
+            cell.font = { bold: true, color: { argb: 'FF111827' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_GREY } };
+            cell.alignment = { vertical: 'middle', horizontal: c === 1 ? 'left' : 'center', wrapText: true };
+            cell.border = border();
+        }
+        row++;
+
+        // Item rows
+        items.forEach((item, idx) => {
+            const r = sheet.getRow(row);
+            r.getCell(1).value = item.description;
+            r.getCell(2).value = item.anc || '';
+            r.getCell(3).value = item.purchaser || '';
+            for (let c = 1; c <= 3; c++) {
+                const cell = r.getCell(c);
+                cell.alignment = { vertical: 'top', horizontal: c === 1 ? 'left' : 'center', wrapText: true };
+                cell.border = border();
+                if (idx % 2 === 1) {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ZEBRA } };
+                }
+                if (c > 1) cell.font = { bold: true, color: { argb: BLUE } };
+            }
+            row++;
+        });
+
+        row++; // spacer between categories
+    }
+
+    sheet.getColumn(1).width = 95;
+    sheet.getColumn(2).width = 12;
+    sheet.getColumn(3).width = 14;
 }
 
 // Helpers
