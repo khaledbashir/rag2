@@ -89,6 +89,7 @@ const ACTION_FIELD_ALIASES: Record<string, string> = {
 };
 
 const COPILOT_TO_PATCH: Record<string, { target: "top" | "receiver" | "sender"; key: string }> = {
+    proposalName: { target: "top", key: "proposalName" },
     clientName: { target: "top", key: "clientName" },
     clientAddress: { target: "top", key: "clientAddress" },
     clientCity: { target: "top", key: "clientCity" },
