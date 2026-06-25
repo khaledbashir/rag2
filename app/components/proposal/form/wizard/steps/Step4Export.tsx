@@ -1395,7 +1395,7 @@ const Step4Export = () => {
                                                     <div className="flex flex-col min-w-0">
                                                         <Label htmlFor="showRespMatrix-budget" className={cn("text-sm font-semibold block", hasRespMatrixData ? "text-foreground" : "text-muted-foreground")}>Responsibility Matrix</Label>
                                                         <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                                            {hasRespMatrixData ? "Include responsibility matrix table" : "No responsibility matrix found in imported file"}
+                                                            {hasRespMatrixData ? "Use the standard ANC matrix automatically" : "Responsibility matrix unavailable"}
                                                         </p>
                                                     </div>
                                                     <Switch id="showRespMatrix-budget" disabled={!hasRespMatrixData} checked={hasRespMatrixData ? (watch("details.showResponsibilityMatrix" as any) ?? true) : false} onCheckedChange={(checked) => setValue("details.showResponsibilityMatrix" as any, checked)} className="data-[state=checked]:bg-brand-blue shrink-0 mt-0.5" />
@@ -1491,7 +1491,7 @@ const Step4Export = () => {
                                                     <div className="flex flex-col">
                                                         <Label htmlFor="showRespMatrix-proposal" className={cn("text-sm font-semibold", hasRespMatrixData ? "text-foreground" : "text-muted-foreground")}>Responsibility Matrix</Label>
                                                         <p className="text-[11px] text-muted-foreground">
-                                                            {hasRespMatrixData ? "Include responsibility matrix table" : "No responsibility matrix found in imported file"}
+                                                            {hasRespMatrixData ? "Use the standard ANC matrix automatically" : "Responsibility matrix unavailable"}
                                                         </p>
                                                     </div>
                                                     <Switch id="showRespMatrix-proposal" disabled={!hasRespMatrixData} checked={hasRespMatrixData ? (watch("details.showResponsibilityMatrix" as any) ?? true) : false} onCheckedChange={(checked) => setValue("details.showResponsibilityMatrix" as any, checked)} className="data-[state=checked]:bg-brand-blue" />
@@ -1585,7 +1585,7 @@ const Step4Export = () => {
                                                     <div className="flex flex-col">
                                                         <Label htmlFor="showRespMatrix-loi" className={cn("text-sm font-semibold", hasRespMatrixData ? "text-foreground" : "text-muted-foreground")}>Responsibility Matrix</Label>
                                                         <p className="text-[11px] text-muted-foreground">
-                                                            {hasRespMatrixData ? "Include responsibility matrix table" : "No responsibility matrix found in imported file"}
+                                                            {hasRespMatrixData ? "Use the standard ANC matrix automatically" : "Responsibility matrix unavailable"}
                                                         </p>
                                                     </div>
                                                     <Switch id="showRespMatrix-loi" disabled={!hasRespMatrixData} checked={hasRespMatrixData ? (watch("details.showResponsibilityMatrix" as any) ?? true) : false} onCheckedChange={(checked) => setValue("details.showResponsibilityMatrix" as any, checked)} className="data-[state=checked]:bg-brand-blue" />

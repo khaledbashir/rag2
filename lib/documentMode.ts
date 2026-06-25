@@ -62,6 +62,7 @@ export function applyDocumentModeDefaults(mode: DocumentMode, current: any) {
   if (base.showSignatureBlock === undefined) base.showSignatureBlock = config.includeSignatures;
   if (base.showNotes === undefined) base.showNotes = true;
   if (base.showScopeOfWork === undefined) base.showScopeOfWork = false;
+  if (base.showResponsibilityMatrix === undefined) base.showResponsibilityMatrix = true;
 
   if (mode === "LOI" || mode === "CONTRACT") {
     if (base.showExhibitA === undefined) base.showExhibitA = true;
@@ -79,7 +80,7 @@ export function applyDocumentModeDefaults(mode: DocumentMode, current: any) {
     if (base.showSpecifications === undefined) base.showSpecifications = false;
     if (base.showSubstantialCompletionDate === undefined) base.showSubstantialCompletionDate = false;
     if (base.showTermsAndConditions === undefined) base.showTermsAndConditions = false;
-    if (base.showResponsibilityMatrix === undefined) base.showResponsibilityMatrix = false;
+    base.showResponsibilityMatrix = false;
     if (base.showChangeOrderTotals === undefined) base.showChangeOrderTotals = true;
     return base;
   }

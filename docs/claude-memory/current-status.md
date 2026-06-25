@@ -6,6 +6,9 @@
 
 ## Live Features (26 items ✅)
 
+### June 2026 Update
+- Responsibility Matrix is now a no-question/default-on flow: workbooks include the matrix tab, PDF output falls back to the standard ANC master matrix when an uploaded workbook does not have one, and the export UI says the standard matrix is used automatically instead of saying no matrix was found.
+
 ### Core Functionality
 - Upload Excel → auto-detect sections, specs, and pricing
 - Three document types: Budget, Proposal, and LOI

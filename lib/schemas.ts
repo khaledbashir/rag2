@@ -406,8 +406,9 @@ const ProposalDetailsSchema = z.object({
     descriptionOverrides: z.record(z.string()).optional().default({}),
     // Mirror Mode: Line item price/amount overrides (key: "tableId:itemIndex")
     priceOverrides: z.record(z.number()).optional().default({}),
-    // Mirror LOI responsibility matrix controls
-    includeResponsibilityMatrix: z.boolean().optional().default(false),
+    // Responsibility matrix controls: platform master matrix is available by default.
+    includeResponsibilityMatrix: z.boolean().optional().default(true),
+    showResponsibilityMatrix: z.boolean().optional(),
     responsibilityMatrix: z.any().optional().nullable(),
     respMatrixFormatOverride: z.enum(["auto", "short", "long", "hybrid"]).optional().default("auto"),
     parserValidationReport: z.any().optional().nullable(),
