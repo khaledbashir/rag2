@@ -5,6 +5,7 @@ import { calculateProposalAudit, ScreenInput } from "@/lib/estimator";
 import { logActivity } from "@/services/proposal/server/activityLogService";
 import { provisionProjectWorkspace } from "@/lib/anything-llm";
 import { log } from "@/lib/logger";
+import { resolveProposalTitle } from "@/lib/proposals/resolveProposalTitle";
 
 export interface CreateProposalRequest {
   workspaceId: string;
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
     const userId = session?.user?.email
       ? (await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } }))?.id
       : null;
+    const projectTitle = resolveProposalTitle(body.clientName);
 
     // Convert incoming screens to the estimator's ScreenInput shape
     const screenInputs: ScreenInput[] = body.screens.map((s) => ({
@@ -76,7 +78,7 @@ export async function POST(request: NextRequest) {
     const proposal = await prisma.proposal.create({
       data: {
         workspaceId: body.workspaceId,
-        clientName: body.clientName,
+        clientName: projectTitle,
         status: "DRAFT",
         ...(userId ? { createdByUserId: userId } : {}),
         internalAudit: JSON.stringify(audit.internalAudit),
@@ -138,13 +140,13 @@ export async function POST(request: NextRequest) {
     logActivity(
       proposal.id,
       "created",
-      `Project created for ${body.clientName} with ${body.screens.length} screen(s)`,
+      `Project created for ${projectTitle} with ${body.screens.length} screen(s)`,
       null,
-      { clientName: body.clientName, screenCount: body.screens.length },
+      { clientName: projectTitle, screenCount: body.screens.length },
     ).catch((err) => log.error("[Proposals/Create] Activity log failed:", err));
 
     // Provision dedicated AnythingLLM workspace (non-blocking)
-    provisionProjectWorkspace(body.clientName, proposal.id).then(async (slug) => {
+    provisionProjectWorkspace(projectTitle, proposal.id).then(async (slug) => {
       if (!slug) return;
       await prisma.proposal.update({
         where: { id: proposal.id },

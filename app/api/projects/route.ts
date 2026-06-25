@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { log } from "@/lib/logger";
 
 import { prisma } from "@/lib/prisma";
+import { resolveProposalTitle } from "@/lib/proposals/resolveProposalTitle";
 
 type PricingDocumentLike = {
     documentTotal?: number | string | null;
@@ -347,7 +348,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { workspaceId, clientName } = body;
+        const { workspaceId, clientName, proposalName } = body;
 
         if (!workspaceId || !clientName) {
             return NextResponse.json(
@@ -359,12 +360,13 @@ export async function POST(req: NextRequest) {
         // Get current user for ownership tracking
         const session = await auth();
         const userId = session?.user?.id || null;
+        const projectTitle = resolveProposalTitle(proposalName, clientName);
 
         // Create the project in the database first (so we have an ID for the slug)
         const project = await prisma.proposal.create({
             data: {
                 workspaceId,
-                clientName,
+                clientName: projectTitle,
                 status: "DRAFT",
                 ...(userId ? { createdByUserId: userId } : {}),
             },
@@ -372,7 +374,7 @@ export async function POST(req: NextRequest) {
 
         // Provision a dedicated AnythingLLM workspace (non-blocking for fast UI)
         const warnings: string[] = [];
-        const aiWorkspaceSlug = await provisionProjectWorkspace(clientName, project.id);
+        const aiWorkspaceSlug = await provisionProjectWorkspace(projectTitle, project.id);
 
         if (aiWorkspaceSlug) {
             await prisma.proposal.update({

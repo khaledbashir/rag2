@@ -21,6 +21,7 @@ import useToasts from "@/hooks/useToasts";
 // Services
 import { exportProposal } from "@/services/proposal/client/exportProposal";
 import { apiFetch, isForbidden } from "@/lib/api-client";
+import { resolveProposalTitle } from "@/lib/proposals/resolveProposalTitle";
 
 // Variables
 import {
@@ -883,7 +884,11 @@ export const ProposalContextProvider = ({
                     // Construct payload matching PATCH handler — must mirror saveDraft() fields
                     const d = currentValues.details as any;
                     const payload = {
-                        clientName: currentValues.receiver?.name || "Unnamed Client",
+                        clientName: resolveProposalTitle(
+                            d?.proposalName,
+                            d?.clientName,
+                            currentValues.receiver?.name,
+                        ),
                         clientAddress: currentValues.receiver?.address,
                         clientCity: currentValues.receiver?.city,
                         clientZip: currentValues.receiver?.zipCode,
@@ -2054,11 +2059,11 @@ export const ProposalContextProvider = ({
 
         if (!effectiveId || effectiveId === "new") {
             try {
-                const clientName =
-                    formValues?.receiver?.name ||
-                    formValues?.details?.clientName ||
-                    formValues?.details?.proposalName ||
-                    "Untitled Project";
+                const clientName = resolveProposalTitle(
+                    formValues?.details?.proposalName,
+                    formValues?.details?.clientName,
+                    formValues?.receiver?.name,
+                );
                 // Prompt 52: Diagnostic logging for save pipeline
                 console.log("[SAVE_DRAFT] Creating new project:", {
                     clientName,
@@ -2118,7 +2123,12 @@ export const ProposalContextProvider = ({
                         const fullValues = getValues();
                         const d = fullValues.details as any;
                         const fullPayload = {
-                            clientName: fullValues?.receiver?.name || clientName,
+                            clientName: resolveProposalTitle(
+                                d?.proposalName,
+                                d?.clientName,
+                                fullValues?.receiver?.name,
+                                clientName,
+                            ),
                             clientAddress: fullValues?.receiver?.address,
                             clientCity: fullValues?.receiver?.city,
                             clientZip: fullValues?.receiver?.zipCode,
@@ -2200,10 +2210,11 @@ export const ProposalContextProvider = ({
 
         try {
             const payload = {
-                clientName:
-                    formValues?.receiver?.name ||
-                    formValues?.details?.clientName ||
-                    "Unnamed Client",
+                clientName: resolveProposalTitle(
+                    formValues?.details?.proposalName,
+                    formValues?.details?.clientName,
+                    formValues?.receiver?.name,
+                ),
                 clientAddress: formValues?.receiver?.address,
                 clientCity: formValues?.receiver?.city,
                 clientZip: formValues?.receiver?.zipCode,

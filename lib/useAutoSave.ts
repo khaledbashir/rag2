@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import { useFormContext } from "react-hook-form";
+import { resolveProposalTitle } from "@/lib/proposals/resolveProposalTitle";
 
 export type AutoSaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -75,6 +76,11 @@ export function useAutoSave({
                 body: JSON.stringify({
                     senderData: formData.sender,
                     receiverData: formData.receiver,
+                    clientName: resolveProposalTitle(
+                        formData.details?.proposalName,
+                        (formData.details as any)?.clientName,
+                        formData.receiver?.name,
+                    ),
                     proposalName: formData.details?.proposalName,
                     status: formData.details?.status,
                     calculationMode: formData.details?.calculationMode,

@@ -5,6 +5,7 @@ import { provisionProjectWorkspace } from "@/lib/anything-llm";
 import { findClientLogo } from "@/lib/brand-discovery";
 import { ensureAnythingLlmUser, assignWorkspaceToUser } from "@/services/anythingllm/userProvisioner";
 import { log } from "@/lib/logger";
+import { resolveProposalTitle } from "@/lib/proposals/resolveProposalTitle";
 
 export interface CreateWorkspaceRequest {
   name: string;
@@ -45,13 +46,24 @@ export async function POST(request: NextRequest) {
     }
 
     // NEW: Auto-discover client logo (Consultant Quick Win)
-    const clientNameForLogo = body.excelData?.receiverName || body.clientName || body.name;
+    const projectTitle = resolveProposalTitle(
+      body.excelData?.proposalName,
+      body.clientName,
+      body.excelData?.receiverName,
+      body.name,
+    );
+    const clientNameForLogo = resolveProposalTitle(
+      body.excelData?.receiverName,
+      body.clientName,
+      body.name,
+      projectTitle,
+    );
     const clientLogo = await findClientLogo(clientNameForLogo);
 
     // 2. PROJECT VAULT PERSISTENCE (Bulletproof)
     const workspace = await prisma.workspace.create({
       data: {
-        name: body.name,
+        name: projectTitle,
         clientLogo, // Store found logo
         users: {
           connectOrCreate: {
@@ -85,7 +97,7 @@ export async function POST(request: NextRequest) {
       proposal = await prisma.proposal.create({
         data: {
           workspaceId: workspace.id,
-          clientName: clientNameForLogo,
+          clientName: projectTitle,
           clientLogo, // Store found logo here too
           status: "DRAFT",
           ...(creatorUser ? { createdByUserId: creatorUser.id } : {}),

@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 
 import { prisma } from "@/lib/prisma";
 import { log } from "@/lib/logger";
+import { resolveProposalTitle } from "@/lib/proposals/resolveProposalTitle";
 
 /**
  * GET /api/projects/[id]
@@ -212,9 +213,20 @@ export async function PATCH(
 
         const updateData: any = {};
 
-        // Map receiver name or proposalName to clientName when clientName is not sent (auto-save sends receiverData.name, not body.clientName)
-        const effectiveClientName = clientName ?? receiverData?.name ?? proposalName;
-        if (effectiveClientName !== undefined) updateData.clientName = effectiveClientName;
+        // Keep the project list title aligned with the real deal/proposal name.
+        // Several save paths send placeholder receiver/client names while the
+        // actual deal name lives in details.proposalName.
+        const hasTitleCandidate = clientName !== undefined || receiverData?.name !== undefined || proposalName !== undefined;
+        let effectiveClientName: string | undefined;
+        if (hasTitleCandidate) {
+            effectiveClientName = resolveProposalTitle(
+                proposalName,
+                clientName,
+                receiverData?.name,
+                existingProject.clientName,
+            );
+            updateData.clientName = effectiveClientName;
+        }
 
         if (status !== undefined) updateData.status = status;
         if (calculationMode !== undefined) updateData.calculationMode = calculationMode;
@@ -374,6 +386,7 @@ export async function PATCH(
 
         // Webhook: notify ANC Service Dashboard when proposal is signed/closed
         if (status === 'SIGNED' || status === 'CLOSED') {
+            const session = await auth();
             postProposalStatusNote({
                 proposalId: id,
                 status,
@@ -400,7 +413,7 @@ export async function PATCH(
                             try {
                                 const screens = await prisma.installedScreen.findMany({
                                     where: { venue: { sourceProposalId: id } },
-                                    select: { displayName: true, manufacturer: true, modelNumber: true, pixelPitch: true, widthFt: true, heightFt: true, installDate: true, isActive: true }
+                                    select: { name: true, manufacturer: true, modelNumber: true, pixelPitch: true, widthFt: true, heightFt: true, installDate: true, isActive: true }
                                 })
                                 if (screens.length > 0) return screens
                                 // Fallback: try to get from proposal screens config
