@@ -139,6 +139,7 @@ _(none currently)_
 ### Built (FREE)
 6. **Alt pitch system** — 2-3 pixel pitch alternates per display, only LED hardware cost changes. Multi-select question after pixel pitch, interleaved alt rows in Display Details + Budget Summary with yellow highlighting, totals exclude alts. — BUILT (5c2bd11b)
 7. **PDF download unblock** — Mirror mode PDF-only download no longer blocked by missing audit/verification. Download Bundle still requires full checks. — BUILT (0b393948)
+8. **Responsibility Matrix online editor** — Step 4 export settings now opens the standard matrix in-platform for PDF output edits, including section names, rows, ANC/Purchaser marks, add/remove rows, and reset to standard. — BUILT (2026-06-25)
 
 ### Requested / Discussed (QUEUED → BUILT)
 1. **Spec Generator Tool (Product Data Forms)** — Full platform tool at /tools/spec-generator. Upload blank template + cost analysis → auto-match from 14+ product DB → editable WorkbookShell preview → download formatted .xlsx. Includes LED Product KB (18 products, 4 vendors) + Gemini prompt for Natalia's "Product Form Genie" mini-app. — BUILT (c15dc104)

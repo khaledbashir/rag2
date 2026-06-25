@@ -26,7 +26,10 @@ import {
     FileEdit,
     ChevronRight,
     ChevronDown,
-    PenLine
+    PenLine,
+    Plus,
+    RotateCcw,
+    Trash2
 } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,7 +47,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import ExcelGridViewer from "@/app/components/ExcelGridViewer";
 import { FEATURES } from "@/lib/featureFlags";
+import { getMasterRespMatrix } from "@/lib/respMatrixMaster";
 import type { ProposalType } from "@/types";
+import type { RespMatrix } from "@/types/pricing";
 
 const PREVIEW_SECTION_CONTROL_MAP: Record<string, string> = {
     header: "template-control-header-to-intro-gap",
@@ -255,6 +260,236 @@ const CurrencyAndRatePanel = () => {
             {effectiveCurrency !== "USD" && effectiveRate !== 1 && (
                 <div className="mt-3 text-[11px] text-muted-foreground">
                     {`Totals and PDF will show ${effectiveCurrency} using 1 USD = ${effectiveRate} ${effectiveCurrency}.`}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const cloneRespMatrix = (matrix: RespMatrix): RespMatrix => JSON.parse(JSON.stringify(matrix)) as RespMatrix;
+
+const normalizeEditableRespMatrix = (matrix: RespMatrix | null | undefined): RespMatrix => {
+    const base = matrix?.categories?.length ? matrix : getMasterRespMatrix();
+    return {
+        ...cloneRespMatrix(base),
+        projectName: base.projectName || "",
+        date: base.date || "",
+        format: base.format || "long",
+        categories: (base.categories || []).map((category) => ({
+            name: category.name || "New Section",
+            items: (category.items || []).map((item) => ({
+                description: item.description || "",
+                anc: item.anc || "",
+                purchaser: item.purchaser || "",
+            })),
+        })),
+    };
+};
+
+const ResponsibilityMatrixEditor = () => {
+    const { watch, setValue } = useFormContext<ProposalType>();
+    const [open, setOpen] = useState(false);
+    const matrix = watch("details.responsibilityMatrix" as any) as RespMatrix | null | undefined;
+    const editableMatrix = useMemo(() => normalizeEditableRespMatrix(matrix), [matrix]);
+    const hasCustomMatrix = Boolean(matrix?.categories?.length);
+    const totalRows = editableMatrix.categories.reduce((sum, category) => sum + category.items.length, 0);
+
+    const commitMatrix = (next: RespMatrix) => {
+        setValue("details.includeResponsibilityMatrix" as any, true, { shouldDirty: true });
+        setValue("details.showResponsibilityMatrix" as any, true, { shouldDirty: true });
+        setValue("details.responsibilityMatrix" as any, normalizeEditableRespMatrix(next), { shouldDirty: true });
+    };
+
+    const ensureCustomMatrix = () => {
+        if (hasCustomMatrix) return;
+        commitMatrix(editableMatrix);
+    };
+
+    const updateCategoryName = (categoryIndex: number, name: string) => {
+        const next = cloneRespMatrix(editableMatrix);
+        next.categories[categoryIndex].name = name;
+        commitMatrix(next);
+    };
+
+    const updateItem = (
+        categoryIndex: number,
+        itemIndex: number,
+        field: "description" | "anc" | "purchaser",
+        value: string,
+    ) => {
+        const next = cloneRespMatrix(editableMatrix);
+        next.categories[categoryIndex].items[itemIndex][field] = value;
+        commitMatrix(next);
+    };
+
+    const addCategory = () => {
+        const next = cloneRespMatrix(editableMatrix);
+        next.categories.push({
+            name: "New Section",
+            items: [{ description: "", anc: "X", purchaser: "" }],
+        });
+        commitMatrix(next);
+        setOpen(true);
+    };
+
+    const removeCategory = (categoryIndex: number) => {
+        const next = cloneRespMatrix(editableMatrix);
+        next.categories.splice(categoryIndex, 1);
+        commitMatrix(next);
+    };
+
+    const addItem = (categoryIndex: number) => {
+        const next = cloneRespMatrix(editableMatrix);
+        next.categories[categoryIndex].items.push({ description: "", anc: "X", purchaser: "" });
+        commitMatrix(next);
+    };
+
+    const removeItem = (categoryIndex: number, itemIndex: number) => {
+        const next = cloneRespMatrix(editableMatrix);
+        next.categories[categoryIndex].items.splice(itemIndex, 1);
+        commitMatrix(next);
+    };
+
+    const resetToStandard = () => {
+        setValue("details.includeResponsibilityMatrix" as any, true, { shouldDirty: true });
+        setValue("details.showResponsibilityMatrix" as any, true, { shouldDirty: true });
+        setValue("details.responsibilityMatrix" as any, null, { shouldDirty: true });
+    };
+
+    return (
+        <div className="mt-2 rounded-md border border-border/50 bg-muted/20">
+            <div className="flex items-center justify-between gap-3 p-2">
+                <div className="min-w-0">
+                    <div className="text-[11px] font-semibold text-foreground">
+                        {hasCustomMatrix ? "Online edits active" : "Standard matrix"}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">
+                        {editableMatrix.categories.length} sections · {totalRows} rows
+                    </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        ensureCustomMatrix();
+                                        setOpen((prev) => !prev);
+                                    }}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded border border-border bg-background text-muted-foreground hover:text-foreground"
+                                    aria-label="Edit responsibility matrix"
+                                >
+                                    <PenLine className="h-3.5 w-3.5" />
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent>Edit online</TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                    {hasCustomMatrix && (
+                        <TooltipProvider>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <button
+                                        type="button"
+                                        onClick={resetToStandard}
+                                        className="inline-flex h-8 w-8 items-center justify-center rounded border border-border bg-background text-muted-foreground hover:text-foreground"
+                                        aria-label="Reset responsibility matrix"
+                                    >
+                                        <RotateCcw className="h-3.5 w-3.5" />
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Reset to standard</TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+                    )}
+                </div>
+            </div>
+
+            {open && (
+                <div className="max-h-[34rem] overflow-y-auto border-t border-border/50 p-3 space-y-4">
+                    {editableMatrix.categories.map((category, categoryIndex) => (
+                        <div key={categoryIndex} className="rounded border border-border/60 bg-background">
+                            <div className="flex items-center gap-2 border-b border-border/50 p-2">
+                                <Input
+                                    value={category.name}
+                                    onChange={(event) => updateCategoryName(categoryIndex, event.target.value)}
+                                    className="h-8 text-xs font-semibold"
+                                    aria-label="Matrix section name"
+                                />
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                type="button"
+                                                onClick={() => addItem(categoryIndex)}
+                                                className="inline-flex h-8 w-8 items-center justify-center rounded border border-border text-muted-foreground hover:text-foreground"
+                                                aria-label="Add matrix row"
+                                            >
+                                                <Plus className="h-3.5 w-3.5" />
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Add row</TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                type="button"
+                                                onClick={() => removeCategory(categoryIndex)}
+                                                className="inline-flex h-8 w-8 items-center justify-center rounded border border-border text-muted-foreground hover:text-red-600"
+                                                aria-label="Remove matrix section"
+                                            >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Remove section</TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            </div>
+                            <div className="divide-y divide-border/40">
+                                {category.items.map((item, itemIndex) => (
+                                    <div key={itemIndex} className="grid grid-cols-[minmax(0,1fr)_4.5rem_5.75rem_2rem] gap-2 p-2">
+                                        <Textarea
+                                            value={item.description}
+                                            onChange={(event) => updateItem(categoryIndex, itemIndex, "description", event.target.value)}
+                                            className="min-h-[3.25rem] resize-y text-xs leading-snug"
+                                            aria-label="Matrix row description"
+                                        />
+                                        <Input
+                                            value={item.anc}
+                                            onChange={(event) => updateItem(categoryIndex, itemIndex, "anc", event.target.value)}
+                                            className="h-9 text-center text-xs font-semibold"
+                                            aria-label="ANC responsibility"
+                                        />
+                                        <Input
+                                            value={item.purchaser}
+                                            onChange={(event) => updateItem(categoryIndex, itemIndex, "purchaser", event.target.value)}
+                                            className="h-9 text-center text-xs font-semibold"
+                                            aria-label="Purchaser responsibility"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => removeItem(categoryIndex, itemIndex)}
+                                            className="inline-flex h-9 w-8 items-center justify-center rounded border border-border text-muted-foreground hover:text-red-600"
+                                            aria-label="Remove matrix row"
+                                        >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                    <button
+                        type="button"
+                        onClick={addCategory}
+                        className="inline-flex h-8 items-center gap-2 rounded border border-border bg-background px-3 text-xs font-medium text-muted-foreground hover:text-foreground"
+                    >
+                        <Plus className="h-3.5 w-3.5" />
+                        Add section
+                    </button>
                 </div>
             )}
         </div>
@@ -1414,6 +1649,9 @@ const Step4Export = () => {
                                                         </Select>
                                                     </div>
                                                 )}
+                                                {hasRespMatrixData && (watch("details.showResponsibilityMatrix" as any) ?? true) && (
+                                                    <ResponsibilityMatrixEditor />
+                                                )}
                                             </div>
                                         </TabsContent>
 
@@ -1510,6 +1748,9 @@ const Step4Export = () => {
                                                         </Select>
                                                     </div>
                                                 )}
+                                                {hasRespMatrixData && (watch("details.showResponsibilityMatrix" as any) ?? true) && (
+                                                    <ResponsibilityMatrixEditor />
+                                                )}
                                             </div>
                                         </TabsContent>
 
@@ -1603,6 +1844,9 @@ const Step4Export = () => {
                                                             </SelectContent>
                                                         </Select>
                                                     </div>
+                                                )}
+                                                {hasRespMatrixData && (watch("details.showResponsibilityMatrix" as any) ?? true) && (
+                                                    <ResponsibilityMatrixEditor />
                                                 )}
                                             </div>
                                             <div className="flex items-center justify-between py-3 border-b border-border/30">

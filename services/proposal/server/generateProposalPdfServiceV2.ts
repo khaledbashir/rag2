@@ -112,18 +112,9 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 			]
 		);
 	}
-	const hadRespMatrixCandidates = Array.isArray(validation?.evidence?.respMatrixSheetCandidates) && validation.evidence.respMatrixSheetCandidates.length > 0;
-	const hasParsedRespMatrix = !!(pricingDocument?.respMatrix?.categories?.length);
-	if (isMirrorMode && (documentMode === "LOI" || documentMode === "CONTRACT") && hadRespMatrixCandidates && !hasParsedRespMatrix) {
-		return preflightError(
-			"We couldn't find a usable Responsibility Matrix in this Excel.",
-			[
-				"If your file includes one, make sure the sheet name starts with 'Resp Matrix'.",
-				"Make sure the matrix has Description, ANC, and Purchaser columns.",
-				"Upload again, or continue without the matrix section.",
-			]
-		);
-	}
+	// Responsibility Matrix is now platform-backed: if Excel parsing fails or no
+	// matrix sheet exists, ProposalTemplate5 falls back to the standard matrix,
+	// and authors can override it with the online editor.
 
 	try {
 		const ReactDOMServer = (await import("react-dom/server")).default;
