@@ -90,6 +90,9 @@ export default auth((req) => {
     // CRM scheduled reports — cron calls these with their own report secret.
     // They do not have a rag2 browser session.
     pathname.startsWith("/api/crm-reports") ||
+    // Email-to-quote intake can parse inbound request text without side
+    // effects. Draft creation is still protected inside the route.
+    pathname.startsWith("/api/intake") ||
     // CRM-side renderers — Twenty logic functions POST pre-aggregated rows
     // here and the endpoint returns a saved xlsx. No rag2 session, no
     // business logic, no Twenty queries; just file rendering.
