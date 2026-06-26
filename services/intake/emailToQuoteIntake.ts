@@ -74,6 +74,7 @@ export interface EmailQuoteAiReview {
     reviewedAt: string;
     confidence?: number;
     summary?: string;
+    reasoningMarkdown?: string;
     evidence: EmailQuoteAiEvidence[];
     questions: EmailQuoteAiQuestion[];
     riskFlags: string[];

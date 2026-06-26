@@ -17,6 +17,16 @@ interface ProviderConfig {
 function configuredProviders(): ProviderConfig[] {
     const providers: ProviderConfig[] = [];
 
+    if (process.env.OLLAMA_API_KEY) {
+        providers.push({
+            provider: "ollama-cloud",
+            baseUrl: process.env.OLLAMA_BASE_URL || "https://ollama.com/v1",
+            apiKey: process.env.OLLAMA_API_KEY,
+            model: process.env.OLLAMA_MODEL || "glm-5.2",
+            maxTokensKey: "max_tokens",
+        });
+    }
+
     if (process.env.Z_AI_API_KEY) {
         providers.push({
             provider: "z-ai",
@@ -40,6 +50,10 @@ function configuredProviders(): ProviderConfig[] {
     return providers;
 }
 
+export function getEmailReviewProviders() {
+    return configuredProviders();
+}
+
 function emptyReview(status: EmailQuoteAiReview["status"], error?: string): EmailQuoteAiReview {
     return {
         status,
@@ -52,7 +66,7 @@ function emptyReview(status: EmailQuoteAiReview["status"], error?: string): Emai
     };
 }
 
-function extractJson(raw: string): unknown {
+export function extractEmailReviewJson(raw: string): unknown {
     const cleaned = raw.trim();
     const fenced = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
     const candidate = fenced ? fenced[1].trim() : cleaned;
@@ -60,10 +74,48 @@ function extractJson(raw: string): unknown {
     try {
         return JSON.parse(candidate);
     } catch {
-        const objectMatch = candidate.match(/\{[\s\S]*\}/);
-        if (!objectMatch) throw new Error("AI response did not contain JSON");
-        return JSON.parse(objectMatch[0]);
+        const object = extractBalancedObject(candidate);
+        if (!object) throw new Error("AI response did not contain JSON");
+        return JSON.parse(object);
     }
+}
+
+function extractBalancedObject(value: string): string | null {
+    const start = value.indexOf("{");
+    if (start < 0) return null;
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = start; i < value.length; i += 1) {
+        const char = value[i];
+
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+
+        if (char === "\\") {
+            escaped = true;
+            continue;
+        }
+
+        if (char === "\"") {
+            inString = !inString;
+            continue;
+        }
+
+        if (inString) continue;
+
+        if (char === "{") depth += 1;
+        if (char === "}") {
+            depth -= 1;
+            if (depth === 0) return value.slice(start, i + 1);
+        }
+    }
+
+    return null;
 }
 
 function asString(value: unknown): string {
@@ -88,7 +140,7 @@ function normalizeDisplayStatus(value: unknown): "confirmed" | "needs_review" | 
     return "needs_review";
 }
 
-function normalizeReview(parsed: any, provider: ProviderConfig): EmailQuoteAiReview {
+export function normalizeEmailReview(parsed: any, provider: Pick<ProviderConfig, "provider" | "model">): EmailQuoteAiReview {
     const evidence = Array.isArray(parsed.evidence) ? parsed.evidence : [];
     const questions = Array.isArray(parsed.questions) ? parsed.questions : [];
     const riskFlags = Array.isArray(parsed.riskFlags) ? parsed.riskFlags : [];
@@ -101,6 +153,7 @@ function normalizeReview(parsed: any, provider: ProviderConfig): EmailQuoteAiRev
         reviewedAt: new Date().toISOString(),
         confidence: asConfidence(parsed.confidence),
         summary: asString(parsed.summary),
+        reasoningMarkdown: asString(parsed.reasoningMarkdown),
         evidence: evidence
             .map((item: any) => ({
                 claim: asString(item.claim),
@@ -131,13 +184,14 @@ function normalizeReview(parsed: any, provider: ProviderConfig): EmailQuoteAiRev
     };
 }
 
-function buildPrompt(input: AiReviewInput): string {
+export function buildEmailReviewPrompt(input: AiReviewInput): string {
     return `You are reviewing an inbound rough-estimate email for ANC Sports LED display estimating.
 
 Your job is NOT to invent a quote. Your job is to verify what the parser extracted, identify what is directly supported by the email, and flag anything that needs human review.
 
 Rules:
 - Return only JSON. No markdown.
+- Include reasoningMarkdown as a concise public markdown review log. This is shown to the user while reviewing; do not include private chain-of-thought.
 - Do not invent dimensions, pixel pitch, product vendor, pricing, or install assumptions.
 - If a value is not explicitly in the email, mark it as missing or inferred.
 - Use short sourceText snippets copied from the email for evidence.
@@ -146,6 +200,7 @@ Rules:
 
 Return this JSON shape:
 {
+  "reasoningMarkdown": "### Review notes\\n- Checked project areas against the email.\\n- Confirmed explicit dimensions only.\\n- Flagged same-size/specs-below gaps.",
   "summary": "one short sentence",
   "confidence": 0.82,
   "evidence": [
@@ -206,7 +261,7 @@ async function callProvider(provider: ProviderConfig, prompt: string): Promise<E
             [provider.maxTokensKey]: 2500,
             ...(provider.provider === "openai" ? { response_format: { type: "json_object" } } : {}),
         }),
-        signal: AbortSignal.timeout(35_000),
+        signal: AbortSignal.timeout(90_000),
     });
 
     if (!response.ok) {
@@ -220,7 +275,7 @@ async function callProvider(provider: ProviderConfig, prompt: string): Promise<E
         throw new Error(`${provider.provider} returned no message content`);
     }
 
-    return normalizeReview(extractJson(content), provider);
+    return normalizeEmailReview(extractEmailReviewJson(content), provider);
 }
 
 export async function reviewEmailToQuoteWithAi(input: AiReviewInput): Promise<EmailQuoteAiReview> {
@@ -229,7 +284,7 @@ export async function reviewEmailToQuoteWithAi(input: AiReviewInput): Promise<Em
         return emptyReview("unavailable", "No AI provider is configured.");
     }
 
-    const prompt = buildPrompt(input);
+    const prompt = buildEmailReviewPrompt(input);
     const errors: string[] = [];
 
     for (const provider of providers) {

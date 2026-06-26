@@ -2,6 +2,8 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
     AlertTriangle,
     ArrowRight,
@@ -45,6 +47,13 @@ interface DraftProject {
 }
 
 type ParseState = "idle" | "parsing" | "parsed" | "creating";
+
+interface ReviewStreamState {
+    active: boolean;
+    status: string;
+    detail: string;
+    markdown: string;
+}
 
 function formatDimension(width?: number, height?: number) {
     if (!width || !height) return "Needs dimensions";
@@ -117,6 +126,12 @@ export default function EmailToQuoteClient() {
     const [draft, setDraft] = useState<DraftProject | null>(null);
     const [state, setState] = useState<ParseState>("idle");
     const [error, setError] = useState<string | null>(null);
+    const [reviewStream, setReviewStream] = useState<ReviewStreamState>({
+        active: false,
+        status: "Ready",
+        detail: "",
+        markdown: "",
+    });
 
     const missingAssumptions = useMemo(() => uniqueMissing(intake), [intake]);
     const parsedDisplays = intake?.estimatorAnswers.displays.length || 0;
@@ -130,13 +145,102 @@ export default function EmailToQuoteClient() {
         });
     }, [intake]);
 
-    const callIntake = async (createDraft: boolean) => {
+    const reviewEmail = async () => {
         if (!body.trim()) {
             setError("Paste the email body first.");
             return;
         }
 
-        setState(createDraft ? "creating" : "parsing");
+        setState("parsing");
+        setError(null);
+        setDraft(null);
+        setReviewStream({
+            active: true,
+            status: "Starting review",
+            detail: "Reading the email and preparing the AI review.",
+            markdown: "",
+        });
+
+        try {
+            const res = await fetch("/api/intake/email-to-quote/review-stream", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ subject, body }),
+            });
+
+            if (!res.ok || !res.body) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || "Email review failed");
+            }
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const events = buffer.split("\n\n");
+                buffer = events.pop() || "";
+
+                for (const event of events) {
+                    const line = event.split("\n").find((item) => item.startsWith("data: "));
+                    if (!line) continue;
+
+                    const chunk = JSON.parse(line.slice(6));
+                    if (chunk.type === "status") {
+                        setReviewStream((current) => ({
+                            ...current,
+                            status: chunk.label || current.status,
+                            detail: chunk.detail || "",
+                        }));
+                    }
+
+                    if (chunk.type === "reasoning" && chunk.markdown) {
+                        setReviewStream((current) => ({
+                            ...current,
+                            markdown: `${current.markdown}${chunk.markdown}`,
+                        }));
+                    }
+
+                    if (chunk.type === "review" && chunk.intake) {
+                        setIntake(chunk.intake);
+                        setReviewStream((current) => ({
+                            active: false,
+                            status: chunk.intake.aiReview?.status === "reviewed" ? "AI review complete" : "Review needs attention",
+                            detail: chunk.intake.aiReview?.summary || chunk.intake.aiReview?.error || "",
+                            markdown: chunk.intake.aiReview?.reasoningMarkdown || current.markdown,
+                        }));
+                    }
+
+                    if (chunk.type === "done") {
+                        setState("parsed");
+                    }
+                }
+            }
+
+            setState("parsed");
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Email review failed");
+            setReviewStream((current) => ({
+                ...current,
+                active: false,
+                status: "Review failed",
+                detail: err instanceof Error ? err.message : "Email review failed",
+            }));
+            setState(intake ? "parsed" : "idle");
+        }
+    };
+
+    const createDraft = async () => {
+        if (!body.trim()) {
+            setError("Paste the email body first.");
+            return;
+        }
+
+        setState("creating");
         setError(null);
         setDraft(null);
 
@@ -147,19 +251,19 @@ export default function EmailToQuoteClient() {
                 body: JSON.stringify({
                     subject,
                     body,
-                    createDraft,
-                    intakeOverride: createDraft && intake ? intake : undefined,
+                    createDraft: true,
+                    intakeOverride: intake || undefined,
                 }),
             });
 
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Email intake failed");
+            if (!res.ok) throw new Error(data.error || "Draft creation failed");
 
             setIntake(data.intake);
             if (data.project) setDraft(data.project);
             setState("parsed");
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Email intake failed");
+            setError(err instanceof Error ? err.message : "Draft creation failed");
             setState(intake ? "parsed" : "idle");
         }
     };
@@ -171,6 +275,7 @@ export default function EmailToQuoteClient() {
         setDraft(null);
         setError(null);
         setState("idle");
+        setReviewStream({ active: false, status: "Ready", detail: "", markdown: "" });
     };
 
     const loadSample = () => {
@@ -178,6 +283,7 @@ export default function EmailToQuoteClient() {
         setBody(SAMPLE_BODY);
         setDraft(null);
         setError(null);
+        setReviewStream({ active: false, status: "Ready", detail: "", markdown: "" });
     };
 
     const updateDraftField = (field: "title" | "clientName" | "venueName", value: string) => {
@@ -323,15 +429,15 @@ export default function EmailToQuoteClient() {
 
                     <div className="flex flex-wrap items-center gap-2">
                         <button
-                            onClick={() => callIntake(false)}
+                            onClick={reviewEmail}
                             disabled={isWorking || !body.trim()}
                             className="inline-flex items-center gap-2 rounded bg-emerald-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            {state === "parsing" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                            <Sparkles className="h-4 w-4" />
                             AI review email
                         </button>
                         <button
-                            onClick={() => callIntake(true)}
+                            onClick={createDraft}
                             disabled={isWorking || !body.trim()}
                             className="inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                         >
@@ -374,6 +480,10 @@ export default function EmailToQuoteClient() {
                                 <ExternalLink className="h-3.5 w-3.5" />
                             </Link>
                         </div>
+                    )}
+
+                    {(reviewStream.active || reviewStream.markdown || state === "parsing") && (
+                        <LiveReviewPanel stream={reviewStream} />
                     )}
 
                     {intake?.aiReview && (
@@ -459,6 +569,42 @@ function EditableText({ label, value, onChange }: { label: string; value: string
                 className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-xs text-foreground outline-none transition-colors focus:border-primary"
             />
         </label>
+    );
+}
+
+function LiveReviewPanel({ stream }: { stream: ReviewStreamState }) {
+    return (
+        <div className="rounded border border-emerald-500/25 bg-emerald-500/[0.04] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                    <div className="relative mt-0.5 flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600">
+                        <BrainCircuit className="h-4 w-4" />
+                        {stream.active && <span className="absolute inset-0 animate-ping rounded-full border border-emerald-500/30" />}
+                    </div>
+                    <div>
+                        <div className="text-sm font-semibold text-foreground">{stream.status}</div>
+                        {stream.detail && <div className="mt-1 text-xs text-muted-foreground">{stream.detail}</div>}
+                    </div>
+                </div>
+                <div className="rounded bg-background px-2 py-1 text-xs text-muted-foreground">
+                    GLM 5.2 reasoning
+                </div>
+            </div>
+
+            <div className="mt-4 max-h-[360px] overflow-y-auto rounded border border-border bg-background p-4">
+                {stream.markdown ? (
+                    <div className="text-sm leading-relaxed text-foreground/85 [&_p]:my-1.5 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1 [&_strong]:font-semibold [&_h3]:mb-2 [&_h3]:mt-3 [&_h3]:text-sm [&_h3]:font-semibold [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.85em]">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{stream.markdown}</ReactMarkdown>
+                        {stream.active && <span className="ml-1 inline-block h-4 w-2 animate-pulse rounded-sm bg-emerald-500 align-middle" />}
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                        Preparing review notes...
+                    </div>
+                )}
+            </div>
+        </div>
     );
 }
 
