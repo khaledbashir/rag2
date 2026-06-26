@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { log } from "@/lib/logger";
-import { parseEmailToQuoteIntake } from "@/services/intake/emailToQuoteIntake";
+import { parseEmailToQuoteIntake, type EmailQuoteIntake } from "@/services/intake/emailToQuoteIntake";
 import { reviewEmailToQuoteWithAi } from "@/services/intake/emailToQuoteAiReview";
 import { logActivity } from "@/services/proposal/server/activityLogService";
 
@@ -14,6 +14,7 @@ interface EmailToQuoteRequest {
     body?: string;
     createDraft?: boolean;
     useAiReview?: boolean;
+    intakeOverride?: EmailQuoteIntake;
     workspaceId?: string;
 }
 
@@ -24,13 +25,17 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Email body is required" }, { status: 400 });
         }
 
-        const intake = parseEmailToQuoteIntake({
+        const parsedIntake = parseEmailToQuoteIntake({
             subject: body.subject,
             body: body.body,
             source: "email",
         });
 
-        if (body.useAiReview !== false) {
+        const intake = body.createDraft && body.intakeOverride?.estimatorAnswers?.displays
+            ? body.intakeOverride
+            : parsedIntake;
+
+        if (intake === parsedIntake && body.useAiReview !== false) {
             intake.aiReview = await reviewEmailToQuoteWithAi({
                 subject: body.subject,
                 body: body.body,

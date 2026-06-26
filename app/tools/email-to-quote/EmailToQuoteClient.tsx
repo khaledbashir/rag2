@@ -15,7 +15,7 @@ import {
     RotateCcw,
     Sparkles,
 } from "lucide-react";
-import type { EmailQuoteIntake, IntakeProject } from "@/services/intake/emailToQuoteIntake";
+import type { EmailQuoteIntake, IntakeDisplaySpec, IntakeProject } from "@/services/intake/emailToQuoteIntake";
 
 const SAMPLE_SUBJECT = "49ers New LED Signage - Rough Estimate";
 
@@ -78,6 +78,38 @@ function reviewLabel(status?: string) {
     return "Parser output only";
 }
 
+function parseOptionalNumber(value: string) {
+    if (value.trim() === "") return undefined;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function displayRowsForProject(project: IntakeProject, projectIndex: number, baseEstimatorIndex: number) {
+    let estimatorIndex = baseEstimatorIndex;
+    const rows: Array<{
+        display: IntakeDisplaySpec;
+        projectIndex: number;
+        displayIndex: number;
+        optionIndex?: number;
+        optionLabel?: string;
+        estimatorIndex: number;
+    }> = [];
+
+    project.displays.forEach((display, displayIndex) => {
+        rows.push({ display, projectIndex, displayIndex, estimatorIndex });
+        estimatorIndex += 1;
+    });
+
+    project.quoteOptions.forEach((option, optionIndex) => {
+        option.displays.forEach((display, displayIndex) => {
+            rows.push({ display, projectIndex, optionIndex, optionLabel: option.label, displayIndex, estimatorIndex });
+            estimatorIndex += 1;
+        });
+    });
+
+    return rows;
+}
+
 export default function EmailToQuoteClient() {
     const [subject, setSubject] = useState("");
     const [body, setBody] = useState("");
@@ -88,6 +120,15 @@ export default function EmailToQuoteClient() {
 
     const missingAssumptions = useMemo(() => uniqueMissing(intake), [intake]);
     const parsedDisplays = intake?.estimatorAnswers.displays.length || 0;
+    const projectEstimatorOffsets = useMemo(() => {
+        if (!intake) return [];
+        let offset = 0;
+        return intake.projects.map((project) => {
+            const current = offset;
+            offset += displayCount(project);
+            return current;
+        });
+    }, [intake]);
 
     const callIntake = async (createDraft: boolean) => {
         if (!body.trim()) {
@@ -103,7 +144,12 @@ export default function EmailToQuoteClient() {
             const res = await fetch("/api/intake/email-to-quote", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ subject, body, createDraft }),
+                body: JSON.stringify({
+                    subject,
+                    body,
+                    createDraft,
+                    intakeOverride: createDraft && intake ? intake : undefined,
+                }),
             });
 
             const data = await res.json();
@@ -132,6 +178,79 @@ export default function EmailToQuoteClient() {
         setBody(SAMPLE_BODY);
         setDraft(null);
         setError(null);
+    };
+
+    const updateDraftField = (field: "title" | "clientName" | "venueName", value: string) => {
+        setIntake((current) => {
+            if (!current) return current;
+            return {
+                ...current,
+                [field]: value,
+                estimatorAnswers: {
+                    ...current.estimatorAnswers,
+                    projectName: field === "title" ? value : current.estimatorAnswers.projectName,
+                    clientName: field === "clientName" ? value : current.estimatorAnswers.clientName,
+                    location: field === "venueName" ? value : current.estimatorAnswers.location,
+                },
+            };
+        });
+    };
+
+    const updateDisplay = (
+        projectIndex: number,
+        displayIndex: number,
+        estimatorIndex: number,
+        field: "name" | "quantity" | "widthFt" | "heightFt",
+        value: string,
+        optionIndex?: number,
+    ) => {
+        setIntake((current) => {
+            if (!current) return current;
+
+            const projects = current.projects.map((project, idx) => {
+                if (idx !== projectIndex) return project;
+
+                if (typeof optionIndex === "number") {
+                    return {
+                        ...project,
+                        quoteOptions: project.quoteOptions.map((option, optIdx) => {
+                            if (optIdx !== optionIndex) return option;
+                            return {
+                                ...option,
+                                displays: option.displays.map((display, dispIdx) => (
+                                    dispIdx === displayIndex ? updateIntakeDisplay(display, field, value) : display
+                                )),
+                            };
+                        }),
+                    };
+                }
+
+                return {
+                    ...project,
+                    displays: project.displays.map((display, dispIdx) => (
+                        dispIdx === displayIndex ? updateIntakeDisplay(display, field, value) : display
+                    )),
+                };
+            });
+
+            const estimatorDisplays = current.estimatorAnswers.displays.map((display, idx) => {
+                if (idx !== estimatorIndex) return display;
+                const numberValue = field === "name" ? undefined : parseOptionalNumber(value);
+                if (field === "name") return { ...display, displayName: value };
+                if (field === "quantity") return { ...display, quantity: numberValue || 1 };
+                if (field === "widthFt") return { ...display, widthFt: numberValue || 0, rfpWidthFt: numberValue || 0 };
+                return { ...display, heightFt: numberValue || 0, rfpHeightFt: numberValue || 0 };
+            });
+
+            return {
+                ...current,
+                projects,
+                estimatorAnswers: {
+                    ...current.estimatorAnswers,
+                    displays: estimatorDisplays,
+                },
+            };
+        });
     };
 
     const isWorking = state === "parsing" || state === "creating";
@@ -261,6 +380,22 @@ export default function EmailToQuoteClient() {
                         <AiReviewPanel intake={intake} />
                     )}
 
+                    {intake && (
+                        <div className="rounded border border-border bg-card p-4">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                                <div>
+                                    <h2 className="text-sm font-semibold">Draft fields</h2>
+                                    <p className="mt-1 text-xs text-muted-foreground">Edits here carry into the estimate draft.</p>
+                                </div>
+                            </div>
+                            <div className="grid gap-3 md:grid-cols-3">
+                                <EditableText label="Project name" value={intake.title} onChange={(value) => updateDraftField("title", value)} />
+                                <EditableText label="Client" value={intake.clientName} onChange={(value) => updateDraftField("clientName", value)} />
+                                <EditableText label="Venue" value={intake.venueName || ""} onChange={(value) => updateDraftField("venueName", value)} />
+                            </div>
+                        </div>
+                    )}
+
                     <div className="p-1">
                         <div className="flex items-start justify-between gap-3">
                             <div>
@@ -273,8 +408,14 @@ export default function EmailToQuoteClient() {
                         </div>
 
                         <div className="mt-4 space-y-3">
-                            {intake?.projects.map((project) => (
-                                <ProjectReview key={`${project.projectNumber}-${project.name}`} project={project} />
+                            {intake?.projects.map((project, projectIndex) => (
+                                <ProjectReview
+                                    key={`${project.projectNumber}-${project.name}`}
+                                    project={project}
+                                    projectIndex={projectIndex}
+                                    baseEstimatorIndex={projectEstimatorOffsets[projectIndex] || 0}
+                                    onDisplayChange={updateDisplay}
+                                />
                             ))}
                         </div>
                     </div>
@@ -297,6 +438,27 @@ export default function EmailToQuoteClient() {
                 </section>
             </main>
         </div>
+    );
+}
+
+function updateIntakeDisplay(display: IntakeDisplaySpec, field: "name" | "quantity" | "widthFt" | "heightFt", value: string): IntakeDisplaySpec {
+    if (field === "name") return { ...display, name: value };
+    const numberValue = parseOptionalNumber(value);
+    if (field === "quantity") return { ...display, quantity: numberValue || 1 };
+    if (field === "widthFt") return { ...display, widthFt: numberValue };
+    return { ...display, heightFt: numberValue };
+}
+
+function EditableText({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+    return (
+        <label className="block text-xs font-medium text-muted-foreground">
+            {label}
+            <input
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+                className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-xs text-foreground outline-none transition-colors focus:border-primary"
+            />
+        </label>
     );
 }
 
@@ -402,11 +564,25 @@ function AiReviewPanel({ intake }: { intake: EmailQuoteIntake }) {
     );
 }
 
-function ProjectReview({ project }: { project: IntakeProject }) {
-    const displays = [
-        ...project.displays,
-        ...project.quoteOptions.flatMap((option) => option.displays.map((display) => ({ ...display, optionLabel: option.label }))),
-    ];
+function ProjectReview({
+    project,
+    projectIndex,
+    baseEstimatorIndex,
+    onDisplayChange,
+}: {
+    project: IntakeProject;
+    projectIndex: number;
+    baseEstimatorIndex: number;
+    onDisplayChange: (
+        projectIndex: number,
+        displayIndex: number,
+        estimatorIndex: number,
+        field: "name" | "quantity" | "widthFt" | "heightFt",
+        value: string,
+        optionIndex?: number,
+    ) => void;
+}) {
+    const displays = displayRowsForProject(project, projectIndex, baseEstimatorIndex);
 
     return (
         <div className="rounded border border-border bg-background p-3">
@@ -426,19 +602,47 @@ function ProjectReview({ project }: { project: IntakeProject }) {
 
             {displays.length > 0 && (
                 <div className="mt-3 overflow-hidden rounded border border-border">
-                    <div className="grid grid-cols-[1fr_72px_112px] border-b border-border bg-muted/50 px-3 py-2 text-[11px] font-medium text-muted-foreground">
+                    <div className="grid grid-cols-[minmax(160px,1fr)_72px_92px_92px] border-b border-border bg-muted/50 px-3 py-2 text-[11px] font-medium text-muted-foreground">
                         <span>Display</span>
                         <span>Qty</span>
-                        <span>Size</span>
+                        <span>Width</span>
+                        <span>Height</span>
                     </div>
-                    {displays.map((display, index) => (
-                        <div key={`${display.name}-${index}`} className="grid grid-cols-[1fr_72px_112px] px-3 py-2 text-xs">
-                            <span className="min-w-0 truncate text-foreground">
-                                {"optionLabel" in display && display.optionLabel ? `${display.optionLabel}: ` : ""}
-                                {display.name}
-                            </span>
-                            <span className="tabular-nums text-muted-foreground">{display.quantity}</span>
-                            <span className="tabular-nums text-muted-foreground">{formatDimension(display.widthFt, display.heightFt)}</span>
+                    {displays.map((row) => (
+                        <div key={`${row.estimatorIndex}-${row.display.name}`} className="grid grid-cols-[minmax(160px,1fr)_72px_92px_92px] gap-2 px-3 py-2 text-xs">
+                            <div className="min-w-0">
+                                {row.optionLabel && <div className="mb-1 text-[10px] text-muted-foreground">{row.optionLabel}</div>}
+                                <input
+                                    value={row.display.name}
+                                    onChange={(event) => onDisplayChange(row.projectIndex, row.displayIndex, row.estimatorIndex, "name", event.target.value, row.optionIndex)}
+                                    className="w-full rounded border border-border bg-background px-2 py-1 text-xs text-foreground outline-none transition-colors focus:border-primary"
+                                />
+                            </div>
+                            <input
+                                type="number"
+                                min="1"
+                                value={row.display.quantity}
+                                onChange={(event) => onDisplayChange(row.projectIndex, row.displayIndex, row.estimatorIndex, "quantity", event.target.value, row.optionIndex)}
+                                className="h-8 w-full rounded border border-border bg-background px-2 text-xs tabular-nums text-foreground outline-none transition-colors focus:border-primary"
+                            />
+                            <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="Width"
+                                value={row.display.widthFt ?? ""}
+                                onChange={(event) => onDisplayChange(row.projectIndex, row.displayIndex, row.estimatorIndex, "widthFt", event.target.value, row.optionIndex)}
+                                className="h-8 w-full rounded border border-border bg-background px-2 text-xs tabular-nums text-foreground outline-none transition-colors focus:border-primary"
+                            />
+                            <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="Height"
+                                value={row.display.heightFt ?? ""}
+                                onChange={(event) => onDisplayChange(row.projectIndex, row.displayIndex, row.estimatorIndex, "heightFt", event.target.value, row.optionIndex)}
+                                className="h-8 w-full rounded border border-border bg-background px-2 text-xs tabular-nums text-foreground outline-none transition-colors focus:border-primary"
+                            />
                         </div>
                     ))}
                 </div>
