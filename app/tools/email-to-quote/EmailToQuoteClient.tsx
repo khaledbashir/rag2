@@ -46,6 +46,14 @@ interface DraftProject {
     url: string;
 }
 
+interface CrmHandoff {
+    action: "created" | "updated";
+    company: { id: string; name: string; url: string };
+    opportunity: { id: string; name: string; url: string; bidStatus?: string | null; ledSqFt?: number | null };
+    estimatorUrl: string;
+    followUpEmail: string;
+}
+
 type ParseState = "idle" | "parsing" | "parsed" | "creating";
 
 interface ReviewStreamState {
@@ -124,6 +132,7 @@ export default function EmailToQuoteClient() {
     const [body, setBody] = useState("");
     const [intake, setIntake] = useState<EmailQuoteIntake | null>(null);
     const [draft, setDraft] = useState<DraftProject | null>(null);
+    const [crmHandoff, setCrmHandoff] = useState<CrmHandoff | null>(null);
     const [state, setState] = useState<ParseState>("idle");
     const [error, setError] = useState<string | null>(null);
     const [reviewStream, setReviewStream] = useState<ReviewStreamState>({
@@ -154,6 +163,7 @@ export default function EmailToQuoteClient() {
         setState("parsing");
         setError(null);
         setDraft(null);
+        setCrmHandoff(null);
         setReviewStream({
             active: true,
             status: "Starting review",
@@ -243,6 +253,7 @@ export default function EmailToQuoteClient() {
         setState("creating");
         setError(null);
         setDraft(null);
+        setCrmHandoff(null);
 
         try {
             const res = await fetch("/api/intake/email-to-quote", {
@@ -252,6 +263,7 @@ export default function EmailToQuoteClient() {
                     subject,
                     body,
                     createDraft: true,
+                    createCrmHandoff: true,
                     intakeOverride: intake || undefined,
                 }),
             });
@@ -261,6 +273,7 @@ export default function EmailToQuoteClient() {
 
             setIntake(data.intake);
             if (data.project) setDraft(data.project);
+            if (data.crmHandoff) setCrmHandoff(data.crmHandoff);
             setState("parsed");
         } catch (err) {
             setError(err instanceof Error ? err.message : "Draft creation failed");
@@ -273,6 +286,7 @@ export default function EmailToQuoteClient() {
         setBody("");
         setIntake(null);
         setDraft(null);
+        setCrmHandoff(null);
         setError(null);
         setState("idle");
         setReviewStream({ active: false, status: "Ready", detail: "", markdown: "" });
@@ -282,6 +296,7 @@ export default function EmailToQuoteClient() {
         setSubject(SAMPLE_SUBJECT);
         setBody(SAMPLE_BODY);
         setDraft(null);
+        setCrmHandoff(null);
         setError(null);
         setReviewStream({ active: false, status: "Ready", detail: "", markdown: "" });
     };
@@ -442,7 +457,7 @@ export default function EmailToQuoteClient() {
                             className="inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {state === "creating" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-                            Create draft
+                            Create CRM handoff
                         </button>
                     </div>
                 </section>
@@ -463,7 +478,7 @@ export default function EmailToQuoteClient() {
                         </div>
                     </div>
 
-                    {draft && (
+                    {draft && !crmHandoff && (
                         <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-emerald-500/30 bg-emerald-500/10 p-4">
                             <div className="flex items-center gap-3">
                                 <CheckCircle2 className="h-5 w-5 text-emerald-500" />
@@ -480,6 +495,10 @@ export default function EmailToQuoteClient() {
                                 <ExternalLink className="h-3.5 w-3.5" />
                             </Link>
                         </div>
+                    )}
+
+                    {crmHandoff && (
+                        <CrmHandoffPanel handoff={crmHandoff} draft={draft} />
                     )}
 
                     {(reviewStream.active || reviewStream.markdown || state === "parsing") && (
@@ -557,6 +576,79 @@ function updateIntakeDisplay(display: IntakeDisplaySpec, field: "name" | "quanti
     if (field === "quantity") return { ...display, quantity: numberValue || 1 };
     if (field === "widthFt") return { ...display, widthFt: numberValue };
     return { ...display, heightFt: numberValue };
+}
+
+function CrmHandoffPanel({ handoff, draft }: { handoff: CrmHandoff; draft: DraftProject | null }) {
+    const copyFollowUp = async () => {
+        await navigator.clipboard?.writeText(handoff.followUpEmail);
+    };
+
+    return (
+        <div className="rounded border border-emerald-500/30 bg-emerald-500/[0.06] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-500" />
+                    <div>
+                        <div className="text-sm font-semibold">
+                            CRM handoff {handoff.action === "created" ? "created" : "updated"}
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                            Opportunity, timeline note, quote draft, and follow-up email are ready.
+                        </div>
+                    </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                        href={handoff.opportunity.url}
+                        target="_blank"
+                        className="inline-flex items-center gap-1.5 rounded bg-emerald-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-600"
+                    >
+                        Open CRM
+                        <ExternalLink className="h-3.5 w-3.5" />
+                    </Link>
+                    <Link
+                        href={draft?.url || handoff.estimatorUrl}
+                        className="inline-flex items-center gap-1.5 rounded border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                    >
+                        Open quote
+                        <ExternalLink className="h-3.5 w-3.5" />
+                    </Link>
+                </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="rounded border border-border bg-background p-3">
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Company</div>
+                    <div className="mt-1 truncate text-sm font-medium">{handoff.company.name}</div>
+                </div>
+                <div className="rounded border border-border bg-background p-3">
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Opportunity</div>
+                    <div className="mt-1 truncate text-sm font-medium">{handoff.opportunity.name}</div>
+                </div>
+                <div className="rounded border border-border bg-background p-3">
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">LED area</div>
+                    <div className="mt-1 text-sm font-medium tabular-nums">
+                        {handoff.opportunity.ledSqFt ? `${Math.round(handoff.opportunity.ledSqFt).toLocaleString()} sq ft` : "Needs dimensions"}
+                    </div>
+                </div>
+            </div>
+
+            <div className="mt-4 rounded border border-border bg-background p-3">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Client follow-up</div>
+                    <button
+                        type="button"
+                        onClick={copyFollowUp}
+                        className="inline-flex items-center gap-1.5 rounded border border-border px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                    >
+                        <Clipboard className="h-3.5 w-3.5" />
+                        Copy
+                    </button>
+                </div>
+                <pre className="whitespace-pre-wrap text-xs leading-5 text-foreground/85">{handoff.followUpEmail}</pre>
+            </div>
+        </div>
+    );
 }
 
 function EditableText({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {

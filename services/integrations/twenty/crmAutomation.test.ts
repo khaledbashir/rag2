@@ -3,6 +3,7 @@ import {
   buildArtifactNoteMarkdown,
   buildCrmReviewRequiredMessage,
   buildClientChangeRequestNoteMarkdown,
+  buildEmailIntakeNoteMarkdown,
   buildProposalCreatedNoteMarkdown,
   buildProposalStatusNoteMarkdown,
   buildRfpAnalyzedNoteMarkdown,
@@ -97,6 +98,38 @@ describe("Twenty CRM automation note builders", () => {
     expect(note).toContain("download-pdf");
     expect(note).toContain("download-excel");
     expect(note).toContain("Workspace:");
+  });
+
+  it("builds an email intake handoff note with follow-up text", () => {
+    const intake: any = {
+      title: "49ers New LED Signage - Rough Estimate",
+      clientName: "San Francisco 49ers",
+      venueName: "Levi's Stadium",
+      summary: "Inbound email parsed into 3 project areas.",
+      estimatorAnswers: {
+        displays: [
+          { displayName: "Gate F LEDs", quantity: 2, widthFt: 60, heightFt: 10 },
+          { displayName: "Ring of Honor Ribbon", quantity: 1, widthFt: 550, heightFt: 8 },
+        ],
+      },
+      aiReview: {
+        questions: [{ question: "Can you confirm pixel pitch?", why: "Needed for product selection." }],
+        riskFlags: ["Gate F source dimensions need confirmation."],
+      },
+    };
+
+    const note = buildEmailIntakeNoteMarkdown({
+      proposalId: "proposal_123",
+      intake,
+      followUpEmail: "Hi Kevin,\n\nCan you confirm pixel pitch?",
+    });
+
+    expect(note).toContain("Inbound email intake reviewed");
+    expect(note).toContain("San Francisco 49ers");
+    expect(note).toContain("Scope: 2 display/options");
+    expect(note).toContain("Estimated LED area: 5,600 sq ft");
+    expect(note).toContain("Suggested client follow-up");
+    expect(note).toContain("Can you confirm pixel pitch?");
   });
 
   it("holds CRM sync for review when no exact account exists", async () => {

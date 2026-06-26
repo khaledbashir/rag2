@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
+import type { EmailQuoteIntake } from "@/services/intake/emailToQuoteIntake";
+import { logActivity } from "@/services/proposal/server/activityLogService";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
@@ -14,6 +16,7 @@ const TWENTY_ACTIVITY_DASHBOARD_ID =
   "ab58ff29-9eb6-4d83-bfe2-ded28ea030ee";
 const TWENTY_ACTIVITY_OBJECT_ENABLED =
   (process.env.TWENTY_ACTIVITY_OBJECT_ENABLED || "true").toLowerCase() !== "false";
+const CRM_PUBLIC_BASE = "https://crm.ancsports.net";
 
 type GraphqlResponse<T> = {
   data?: T;
@@ -254,6 +257,10 @@ function buildWorkspaceUrl(proposalId?: string | null) {
   return proposalId ? `${getBaseUrl()}/projects/${proposalId}` : null;
 }
 
+function buildEstimatorUrl(proposalId?: string | null) {
+  return proposalId ? `${getBaseUrl()}/estimator/${proposalId}` : null;
+}
+
 async function findExactCompany(companyName: string): Promise<{ id: string; name: string } | null> {
   const normalized = normalizeCrmName(companyName);
   if (!normalized) return null;
@@ -274,6 +281,30 @@ async function findExactCompany(companyName: string): Promise<{ id: string; name
       .map((edge) => edge.node)
       .find((company) => normalizeCrmName(company.name) === normalized) || null
   );
+}
+
+async function createCompanyForHandoff(input: {
+  name: string;
+  venueName?: string | null;
+}): Promise<{ id: string; name: string }> {
+  const result = await twentyGraphql<{ createCompany: { id: string; name: string } }>(
+    `
+      mutation CreateCompany($data: CompanyCreateInput!) {
+        createCompany(data: $data) {
+          id
+          name
+        }
+      }
+    `,
+    {
+      data: cleanObjectPayload({
+        name: truncate(input.name),
+        venueName: input.venueName || undefined,
+      }),
+    },
+  );
+
+  return result.createCompany;
 }
 
 async function findExactOpportunityForCompany(
@@ -325,6 +356,92 @@ async function findExactOpportunityForCompany(
     companyId,
     candidates: Array.from(candidateMap.values()).slice(0, 5),
   };
+}
+
+async function createOpportunityForHandoff(input: {
+  name: string;
+  companyId: string;
+  ledSqFt?: number | null;
+  proposalUrl?: string | null;
+  statusUpdate?: string | null;
+}) {
+  const result = await twentyGraphql<{
+    createOpportunity: {
+      id: string;
+      name: string | null;
+      companyId: string | null;
+      bidStatus: string | null;
+      ledSqFt: number | null;
+      proposalUrl: string | null;
+    };
+  }>(
+    `
+      mutation CreateOpportunity($data: OpportunityCreateInput!) {
+        createOpportunity(data: $data) {
+          id
+          name
+          companyId
+          bidStatus
+          ledSqFt
+          proposalUrl
+        }
+      }
+    `,
+    {
+      data: cleanObjectPayload({
+        name: truncate(input.name),
+        companyId: input.companyId,
+        bidStatus: "SCOPING",
+        ledSqFt: input.ledSqFt || undefined,
+        proposalUrl: input.proposalUrl || undefined,
+        statusUpdate: input.statusUpdate ? truncate(input.statusUpdate, 500) : undefined,
+      }),
+    },
+  );
+
+  return result.createOpportunity;
+}
+
+async function updateOpportunityForHandoff(input: {
+  opportunityId: string;
+  ledSqFt?: number | null;
+  proposalUrl?: string | null;
+  statusUpdate?: string | null;
+}) {
+  const result = await twentyGraphql<{
+    updateOpportunity: {
+      id: string;
+      name: string | null;
+      companyId: string | null;
+      bidStatus: string | null;
+      ledSqFt: number | null;
+      proposalUrl: string | null;
+    };
+  }>(
+    `
+      mutation UpdateOpportunity($id: UUID!, $data: OpportunityUpdateInput!) {
+        updateOpportunity(id: $id, data: $data) {
+          id
+          name
+          companyId
+          bidStatus
+          ledSqFt
+          proposalUrl
+        }
+      }
+    `,
+    {
+      id: input.opportunityId,
+      data: cleanObjectPayload({
+        bidStatus: "SCOPING",
+        ledSqFt: input.ledSqFt || undefined,
+        proposalUrl: input.proposalUrl || undefined,
+        statusUpdate: input.statusUpdate ? truncate(input.statusUpdate, 500) : undefined,
+      }),
+    },
+  );
+
+  return result.updateOpportunity;
 }
 
 export async function resolveExistingOpportunityForCrmSync(
@@ -418,6 +535,211 @@ export function buildProposalCreatedNoteMarkdown(input: {
     `Workspace: ${getBaseUrl()}/projects/${input.proposalId}`,
   ];
   return lines.filter(Boolean).join("\n");
+}
+
+function formatDisplayDimension(display: { widthFt?: number; heightFt?: number }) {
+  if (!display.widthFt || !display.heightFt) return "dimensions needed";
+  const fmt = (value: number) => Number.isInteger(value) ? `${value}'` : `${Number(value.toFixed(2))}'`;
+  return `${fmt(display.heightFt)} x ${fmt(display.widthFt)}`;
+}
+
+function countIntakeDisplays(intake: EmailQuoteIntake) {
+  return intake.estimatorAnswers.displays.length;
+}
+
+function totalIntakeLedSqFt(intake: EmailQuoteIntake) {
+  return intake.estimatorAnswers.displays.reduce((sum, display) => {
+    const width = Number(display.widthFt || display.rfpWidthFt || 0);
+    const height = Number(display.heightFt || display.rfpHeightFt || 0);
+    const quantity = Number(display.quantity || 1);
+    return sum + width * height * quantity;
+  }, 0);
+}
+
+function buildMissingInfoFollowUp(intake: EmailQuoteIntake) {
+  const name = intake.requesterName?.split(/\s+/)[0] || "";
+  const questions = intake.aiReview?.questions?.length
+    ? intake.aiReview.questions.map((item) => item.question)
+    : intake.missingAssumptions.map((item) => {
+        if (/display dimensions/i.test(item)) return "Can you confirm the missing display dimensions?";
+        if (/pixel pitch/i.test(item)) return "Do you have a preferred pixel pitch, or should we assume a standard outdoor option?";
+        if (/vendor/i.test(item)) return "Is there a preferred product or vendor for this rough estimate?";
+        if (/indoor|outdoor/i.test(item)) return "Can you confirm whether each display location is indoor or outdoor?";
+        return `Can you confirm the ${item}?`;
+      });
+
+  const uniqueQuestions = Array.from(new Set(questions)).slice(0, 6);
+  const greeting = name ? `Hi ${name},` : "Hi,";
+  const lines = [
+    greeting,
+    "",
+    "Thanks for sending this over. We can start putting together the rough estimate from the scope below.",
+    "",
+    "To tighten up the estimate, can you confirm the following?",
+    ...uniqueQuestions.map((question) => `- ${question}`),
+    "",
+    "Once we have those details, we can firm up the hardware, installation, and related cost buckets by project.",
+  ];
+
+  return lines.join("\n");
+}
+
+export function buildEmailIntakeNoteMarkdown(input: {
+  proposalId: string;
+  intake: EmailQuoteIntake;
+  followUpEmail: string;
+}) {
+  const intake = input.intake;
+  const displayLines = intake.estimatorAnswers.displays.map((display) => {
+    const qty = Number(display.quantity || 1);
+    return `- ${display.displayName || "Display"}: qty ${qty}, ${formatDisplayDimension(display)}`;
+  });
+  const questions = (intake.aiReview?.questions || []).slice(0, 6);
+  const risks = (intake.aiReview?.riskFlags || []).slice(0, 6);
+
+  const lines = [
+    "Inbound email intake reviewed and converted into a quote draft.",
+    `Project: ${intake.title}`,
+    `Client: ${intake.clientName}`,
+    intake.venueName ? `Venue: ${intake.venueName}` : null,
+    `Scope: ${countIntakeDisplays(intake)} display/option${countIntakeDisplays(intake) === 1 ? "" : "s"}`,
+    totalIntakeLedSqFt(intake) ? `Estimated LED area: ${Math.round(totalIntakeLedSqFt(intake)).toLocaleString()} sq ft` : null,
+    `Workspace: ${buildEstimatorUrl(input.proposalId)}`,
+    "",
+    "Displays/options:",
+    ...displayLines,
+    "",
+    intake.aiReview?.summary ? `Review summary: ${intake.aiReview.summary}` : intake.summary,
+    questions.length ? "" : null,
+    questions.length ? "Questions to resolve:" : null,
+    ...questions.map((item) => `- ${item.question}${item.why ? ` (${item.why})` : ""}`),
+    risks.length ? "" : null,
+    risks.length ? "Risk flags:" : null,
+    ...risks.map((item) => `- ${item}`),
+    "",
+    "Suggested client follow-up:",
+    input.followUpEmail,
+  ];
+
+  return lines.filter((line): line is string => typeof line === "string").join("\n");
+}
+
+export async function createEmailIntakeCrmHandoff(input: {
+  proposalId: string;
+  intake: EmailQuoteIntake;
+  originalEmailBody: string;
+  workspaceMemberEmail?: string | null;
+  actorName?: string | null;
+}) {
+  const companyName = input.intake.clientName?.trim() || "Client";
+  const dealName = input.intake.title?.trim() || `${companyName} - Email Intake`;
+  const company = await findExactCompany(companyName) || await createCompanyForHandoff({
+    name: companyName,
+    venueName: input.intake.venueName,
+  });
+  const ledSqFt = totalIntakeLedSqFt(input.intake);
+  const estimatorUrl = buildEstimatorUrl(input.proposalId);
+  const statusUpdate = `${countIntakeDisplays(input.intake)} display/option intake converted from inbound email.`;
+  const resolution = await findExactOpportunityForCompany(company.id, [
+    dealName,
+    input.intake.venueName ? `${companyName} - ${input.intake.venueName}` : null,
+    input.intake.venueName ? `${companyName} — ${input.intake.venueName}` : null,
+  ].filter(Boolean) as string[]);
+
+  let action: "created" | "updated" = "created";
+  let opportunity: {
+    id: string;
+    name: string | null;
+    companyId: string | null;
+    bidStatus: string | null;
+    ledSqFt: number | null;
+    proposalUrl: string | null;
+  };
+
+  if (resolution.status === "matched") {
+    action = "updated";
+    opportunity = await updateOpportunityForHandoff({
+      opportunityId: resolution.opportunityId,
+      ledSqFt: ledSqFt || undefined,
+      proposalUrl: estimatorUrl,
+      statusUpdate,
+    });
+  } else {
+    opportunity = await createOpportunityForHandoff({
+      name: dealName,
+      companyId: company.id,
+      ledSqFt: ledSqFt || undefined,
+      proposalUrl: estimatorUrl,
+      statusUpdate,
+    });
+  }
+
+  await prisma.proposal.update({
+    where: { id: input.proposalId },
+    data: { twentyOpportunityId: opportunity.id },
+  });
+
+  const followUpEmail = buildMissingInfoFollowUp(input.intake);
+  const markdown = buildEmailIntakeNoteMarkdown({
+    proposalId: input.proposalId,
+    intake: input.intake,
+    followUpEmail,
+  });
+
+  await createOpportunityNote(opportunity.id, "Email intake: quote draft started", markdown);
+  await postProposalEngineActivity({
+    name: `Email intake handoff - ${dealName}`,
+    eventType: "proposalEngine.emailIntakeHandoff",
+    message: `Inbound email converted into CRM opportunity and quote draft for ${dealName}.`,
+    workspaceMemberEmail: input.workspaceMemberEmail,
+    actorName: input.actorName,
+    targetOpportunityId: opportunity.id,
+    proposalId: input.proposalId,
+    workspaceUrl: estimatorUrl,
+    properties: {
+      proposalId: input.proposalId,
+      displayCount: countIntakeDisplays(input.intake),
+      ledSqFt,
+      action,
+      source: "email-to-quote-intake",
+    },
+  }).catch((err) => {
+    console.warn("[email-intake CRM handoff] activity mirror failed:", err?.message || err);
+  });
+
+  await logActivity(
+    input.proposalId,
+    "crm_handoff_created",
+    action === "created"
+      ? "CRM opportunity created from email intake"
+      : "CRM opportunity updated from email intake",
+    input.actorName || input.workspaceMemberEmail || "Proposal Engine",
+    {
+      source: "email-to-quote-intake",
+      opportunityId: opportunity.id,
+      companyId: company.id,
+      action,
+      followUpEmail,
+    },
+  );
+
+  return {
+    action,
+    company: {
+      id: company.id,
+      name: company.name,
+      url: `${CRM_PUBLIC_BASE}/object/company/${company.id}`,
+    },
+    opportunity: {
+      id: opportunity.id,
+      name: opportunity.name || dealName,
+      url: `${CRM_PUBLIC_BASE}/object/opportunity/${opportunity.id}`,
+      bidStatus: opportunity.bidStatus,
+      ledSqFt: opportunity.ledSqFt,
+    },
+    estimatorUrl,
+    followUpEmail,
+  };
 }
 
 export function buildClientChangeRequestNoteMarkdown(input: {

@@ -6,6 +6,7 @@ import { log } from "@/lib/logger";
 import { parseEmailToQuoteIntake, type EmailQuoteIntake } from "@/services/intake/emailToQuoteIntake";
 import { reviewEmailToQuoteWithAi } from "@/services/intake/emailToQuoteAiReview";
 import { logActivity } from "@/services/proposal/server/activityLogService";
+import { createEmailIntakeCrmHandoff } from "@/services/integrations/twenty/crmAutomation";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ interface EmailToQuoteRequest {
     subject?: string;
     body?: string;
     createDraft?: boolean;
+    createCrmHandoff?: boolean;
     useAiReview?: boolean;
     intakeOverride?: EmailQuoteIntake;
     workspaceId?: string;
@@ -114,7 +116,9 @@ export async function POST(request: NextRequest) {
         await logActivity(
             project.id,
             "created",
-            "Email-to-quote intake draft created",
+            body.createCrmHandoff
+                ? "Email-to-quote intake draft created for CRM handoff"
+                : "Email-to-quote intake draft created",
             session.user.name || session.user.email,
             {
                 source: "email-to-quote-intake",
@@ -124,6 +128,16 @@ export async function POST(request: NextRequest) {
             user?.id,
         );
 
+        const crmHandoff = body.createCrmHandoff
+            ? await createEmailIntakeCrmHandoff({
+                proposalId: project.id,
+                intake,
+                originalEmailBody: body.body,
+                workspaceMemberEmail: session.user.email,
+                actorName: session.user.name || session.user.email,
+            })
+            : null;
+
         return NextResponse.json({
             ok: true,
             intake,
@@ -132,6 +146,7 @@ export async function POST(request: NextRequest) {
                 workspaceId: workspace.id,
                 url: `/estimator/${project.id}`,
             },
+            crmHandoff,
         }, { status: 201 });
     } catch (error) {
         log.error("[email-to-quote intake] failed:", error);
