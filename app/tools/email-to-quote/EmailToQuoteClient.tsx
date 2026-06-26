@@ -5,9 +5,11 @@ import Link from "next/link";
 import {
     AlertTriangle,
     ArrowRight,
+    BrainCircuit,
     CheckCircle2,
     Clipboard,
     ExternalLink,
+    FileSearch,
     Loader2,
     MailPlus,
     RotateCcw,
@@ -57,6 +59,23 @@ function displayCount(project: IntakeProject) {
 function uniqueMissing(intake: EmailQuoteIntake | null) {
     if (!intake) return [];
     return Array.from(new Set(intake.missingAssumptions)).slice(0, 8);
+}
+
+function formatConfidence(value?: number) {
+    if (typeof value !== "number") return "Not available";
+    return `${Math.round(value * 100)}%`;
+}
+
+function reviewTone(status?: string) {
+    if (status === "reviewed") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+    if (status === "failed") return "border-destructive/30 bg-destructive/10 text-destructive";
+    return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+}
+
+function reviewLabel(status?: string) {
+    if (status === "reviewed") return "AI reviewed";
+    if (status === "failed") return "AI review failed";
+    return "Parser output only";
 }
 
 export default function EmailToQuoteClient() {
@@ -190,7 +209,7 @@ export default function EmailToQuoteClient() {
                             className="inline-flex items-center gap-2 rounded bg-emerald-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {state === "parsing" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                            Review email
+                            AI review email
                         </button>
                         <button
                             onClick={() => callIntake(true)}
@@ -214,8 +233,8 @@ export default function EmailToQuoteClient() {
                             <div className="mt-1 text-xs text-muted-foreground">Displays/options</div>
                         </div>
                         <div className="rounded border border-border bg-card p-4">
-                            <div className="truncate text-xl font-semibold">{intake?.venueName || "Ready"}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">Venue</div>
+                            <div className="truncate text-xl font-semibold">{intake ? reviewLabel(intake.aiReview?.status) : "Ready"}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">Review layer</div>
                         </div>
                     </div>
 
@@ -238,10 +257,14 @@ export default function EmailToQuoteClient() {
                         </div>
                     )}
 
+                    {intake?.aiReview && (
+                        <AiReviewPanel intake={intake} />
+                    )}
+
                     <div className="p-1">
                         <div className="flex items-start justify-between gap-3">
                             <div>
-                                <h2 className="text-sm font-semibold">{intake?.title || "Review output"}</h2>
+                                <h2 className="text-sm font-semibold">{intake?.title || "Parser output"}</h2>
                                 <p className="mt-1 text-xs text-muted-foreground">{intake?.summary || "Parsed projects and quote assumptions will appear here."}</p>
                             </div>
                             {intake?.requesterName && (
@@ -273,6 +296,108 @@ export default function EmailToQuoteClient() {
                     )}
                 </section>
             </main>
+        </div>
+    );
+}
+
+function AiReviewPanel({ intake }: { intake: EmailQuoteIntake }) {
+    const review = intake.aiReview;
+    if (!review) return null;
+
+    return (
+        <div className={`rounded border p-4 ${reviewTone(review.status)}`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                    <BrainCircuit className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div>
+                        <div className="text-sm font-semibold">{reviewLabel(review.status)}</div>
+                        <div className="mt-1 text-xs opacity-80">
+                            Confidence: {formatConfidence(review.confidence)}
+                            {review.reviewedAt ? ` · ${new Date(review.reviewedAt).toLocaleString()}` : ""}
+                        </div>
+                    </div>
+                </div>
+                <div className="rounded bg-background/70 px-2 py-1 text-xs text-muted-foreground">
+                    {review.status === "reviewed" ? "Review engine" : "AI unavailable"}
+                </div>
+            </div>
+
+            {review.summary && (
+                <p className="mt-3 text-sm text-foreground">{review.summary}</p>
+            )}
+
+            {review.error && (
+                <div className="mt-3 rounded border border-current/20 bg-background/70 px-3 py-2 text-xs text-foreground">
+                    {review.error}
+                </div>
+            )}
+
+            {review.evidence.length > 0 && (
+                <div className="mt-4">
+                    <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-80">
+                        <FileSearch className="h-3.5 w-3.5" />
+                        Evidence from email
+                    </div>
+                    <div className="space-y-2">
+                        {review.evidence.map((item, index) => (
+                            <div key={`${item.claim}-${index}`} className="rounded border border-border bg-background p-3">
+                                <div className="text-xs font-medium text-foreground">{item.claim}</div>
+                                <div className="mt-1 text-xs text-muted-foreground">"{item.sourceText}"</div>
+                                <div className="mt-2 text-[11px] text-muted-foreground">Confidence {formatConfidence(item.confidence)}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {review.displayReview.length > 0 && (
+                <div className="mt-4 overflow-hidden rounded border border-border bg-background">
+                    <div className="grid grid-cols-[1fr_92px] border-b border-border bg-muted/50 px-3 py-2 text-[11px] font-medium text-muted-foreground">
+                        <span>Display check</span>
+                        <span>Status</span>
+                    </div>
+                    {review.displayReview.map((item, index) => (
+                        <div key={`${item.projectName}-${item.displayName}-${index}`} className="grid grid-cols-[1fr_92px] gap-3 px-3 py-2 text-xs">
+                            <div className="min-w-0">
+                                <div className="truncate font-medium text-foreground">{item.projectName}{item.displayName ? ` · ${item.displayName}` : ""}</div>
+                                <div className="mt-1 line-clamp-2 text-muted-foreground">{item.note || item.sourceText}</div>
+                            </div>
+                            <span className="self-start rounded bg-muted px-2 py-1 text-[11px] capitalize text-muted-foreground">
+                                {item.status.replace("_", " ")}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {(review.questions.length > 0 || review.riskFlags.length > 0) && (
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {review.questions.length > 0 && (
+                        <div className="rounded border border-border bg-background p-3">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Questions to resolve</div>
+                            <div className="mt-2 space-y-2">
+                                {review.questions.map((item, index) => (
+                                    <div key={`${item.question}-${index}`} className="text-xs">
+                                        <div className="font-medium text-foreground">{item.question}</div>
+                                        {item.why && <div className="mt-1 text-muted-foreground">{item.why}</div>}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {review.riskFlags.length > 0 && (
+                        <div className="rounded border border-border bg-background p-3">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Risk flags</div>
+                            <div className="mt-2 space-y-1">
+                                {review.riskFlags.map((item) => (
+                                    <div key={item} className="text-xs text-foreground">{item}</div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

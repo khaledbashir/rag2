@@ -44,6 +44,41 @@ export interface EmailQuoteIntake {
     missingAssumptions: string[];
     estimatorAnswers: EstimatorAnswers;
     summary: string;
+    aiReview?: EmailQuoteAiReview;
+}
+
+export interface EmailQuoteAiEvidence {
+    claim: string;
+    sourceText: string;
+    confidence: number;
+}
+
+export interface EmailQuoteAiQuestion {
+    question: string;
+    why: string;
+    priority: "high" | "medium" | "low";
+}
+
+export interface EmailQuoteAiDisplayReview {
+    projectName: string;
+    displayName: string;
+    status: "confirmed" | "needs_review" | "inferred";
+    sourceText: string;
+    note: string;
+}
+
+export interface EmailQuoteAiReview {
+    status: "reviewed" | "unavailable" | "failed";
+    provider?: string;
+    model?: string;
+    reviewedAt: string;
+    confidence?: number;
+    summary?: string;
+    evidence: EmailQuoteAiEvidence[];
+    questions: EmailQuoteAiQuestion[];
+    riskFlags: string[];
+    displayReview: EmailQuoteAiDisplayReview[];
+    error?: string;
 }
 
 const COST_BUCKETS = ["hardware", "installation", "structure", "electrical", "shipping", "project management"];

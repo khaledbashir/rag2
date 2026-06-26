@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { log } from "@/lib/logger";
 import { parseEmailToQuoteIntake } from "@/services/intake/emailToQuoteIntake";
+import { reviewEmailToQuoteWithAi } from "@/services/intake/emailToQuoteAiReview";
 import { logActivity } from "@/services/proposal/server/activityLogService";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ interface EmailToQuoteRequest {
     subject?: string;
     body?: string;
     createDraft?: boolean;
+    useAiReview?: boolean;
     workspaceId?: string;
 }
 
@@ -27,6 +29,14 @@ export async function POST(request: NextRequest) {
             body: body.body,
             source: "email",
         });
+
+        if (body.useAiReview !== false) {
+            intake.aiReview = await reviewEmailToQuoteWithAi({
+                subject: body.subject,
+                body: body.body,
+                intake,
+            });
+        }
 
         if (!body.createDraft) {
             return NextResponse.json({ ok: true, intake });
@@ -73,10 +83,12 @@ export async function POST(request: NextRequest) {
                 estimatorDisplays: intake.estimatorAnswers.displays as any,
                 additionalNotes: [
                     intake.summary,
+                    intake.aiReview?.summary ? `AI review: ${intake.aiReview.summary}` : "",
+                    intake.aiReview?.questions.length ? `AI review questions:\n${intake.aiReview.questions.map((question) => `- ${question.question}`).join("\n")}` : "",
                     "",
                     "Inbound email intake:",
                     body.body.trim(),
-                ].join("\n"),
+                ].filter(Boolean).join("\n"),
                 internalAudit: JSON.stringify({
                     source: "email-to-quote-intake",
                     requester: {
@@ -88,6 +100,7 @@ export async function POST(request: NextRequest) {
                     requestedBreakdown: intake.requestedBreakdown,
                     missingAssumptions: intake.missingAssumptions,
                     projects: intake.projects,
+                    aiReview: intake.aiReview,
                 }),
                 ...(user ? { createdByUserId: user.id } : {}),
             },
