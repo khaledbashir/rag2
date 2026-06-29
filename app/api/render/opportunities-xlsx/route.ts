@@ -105,11 +105,29 @@ export async function GET(req: NextRequest) {
     const opps = await fetchOpps(filter);
     // Stable cursor pagination requires ordering by the unique id; present rows
     // newest-first by opportunity number for the reader.
-    opps.sort((a, b) => {
+    const byNumberDesc = (a: any, b: any) => {
       const na = Number(a.opportunityNumber), nb = Number(b.opportunityNumber);
       if (Number.isFinite(na) && Number.isFinite(nb)) return nb - na;
       return String(b.opportunityNumber || "").localeCompare(String(a.opportunityNumber || ""));
-    });
+    };
+    opps.sort(byNumberDesc);
+
+    // Group opportunities by status; each group gets a subtotal, then one grand
+    // total at the very bottom (Alexis/Natalia request 2026-06-29).
+    const groups = new Map<string, any[]>();
+    for (const o of opps) {
+      const k = o.bidStatus || "NO_OPPORTUNITY_STATUS";
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k)!.push(o);
+    }
+    const STATUS_ORDER = [
+      "WON", "VERBAL_AGREEMENT", "SHORTLISTED", "BID_SUBMITTED", "SCOPING",
+      "RFP_RECEIVED", "PROSPECTING", "NO_BID", "LOST", "NO_OPPORTUNITY_STATUS",
+    ];
+    const orderedKeys = [
+      ...STATUS_ORDER.filter((k) => groups.has(k)),
+      ...[...groups.keys()].filter((k) => !STATUS_ORDER.includes(k)).sort(),
+    ];
 
     const wb = new ExcelJS.Workbook();
     wb.creator = "ANC";
@@ -148,54 +166,87 @@ export async function GET(req: NextRequest) {
     });
     head.height = 26;
 
-    for (const o of opps) {
-      ws.addRow({
-        num: o.opportunityNumber || "",
-        name: o.name || "",
-        company: o.company?.name || "",
-        bu: BU_LABEL[o.businessUnit] || o.businessUnit || "",
-        status: STATUS_LABEL[o.bidStatus] || o.bidStatus || "",
-        award: fmtDate(o.closeDate),
-        complete: fmtDate(o.substantialCompletionDate),
-        rev: dollars(o.totalProjectRevenue),
-        mar: dollars(o.totalProjectMargin),
-        rev26: dollars(o.revenue2026),
-        mar26: dollars(o.margin2026),
-        rev27: dollars(o.revenue2027),
-        mar27: dollars(o.margin2027),
-        owner: ownerName(o),
-        updated: fmtDate(o.updatedAt),
-      });
-    }
-
-    // Currency formatting + zebra striping on data rows
     const moneyCols = cols.map((c, i) => (c.money ? i + 1 : 0)).filter(Boolean);
-    for (let r = 2; r <= opps.length + 1; r++) {
-      const row = ws.getRow(r);
-      if (r % 2 === 0) {
-        for (let c = 1; c <= cols.length; c++) {
-          row.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: ANC_BLUE_SOFT } };
-        }
+    const moneyNumFmt = '$#,##0;[Red]-$#,##0';
+    const letterOf = (c: number) => ws.getColumn(c).letter;
+    const subtotalRowIdxs: number[] = [];
+
+    for (const key of orderedKeys) {
+      const list = groups.get(key)!;
+      list.sort(byNumberDesc);
+
+      // Group band header
+      const gh = ws.addRow({});
+      gh.getCell(1).value = `${STATUS_LABEL[key] || key}`;
+      gh.getCell(cols.length).value = `${list.length} opp${list.length === 1 ? "" : "s"}`;
+      gh.getCell(cols.length).alignment = { horizontal: "right" };
+      for (let c = 1; c <= cols.length; c++) {
+        const cell = gh.getCell(c);
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ANC_BLUE } };
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
       }
-      for (const c of moneyCols) row.getCell(c).numFmt = '$#,##0;[Red]-$#,##0';
+      gh.height = 20;
+
+      const dataStart = ws.lastRow!.number + 1;
+      list.forEach((o, i) => {
+        const row = ws.addRow({
+          num: o.opportunityNumber || "",
+          name: o.name || "",
+          company: o.company?.name || "",
+          bu: BU_LABEL[o.businessUnit] || o.businessUnit || "",
+          status: STATUS_LABEL[o.bidStatus] || o.bidStatus || "",
+          award: fmtDate(o.closeDate),
+          complete: fmtDate(o.substantialCompletionDate),
+          rev: dollars(o.totalProjectRevenue),
+          mar: dollars(o.totalProjectMargin),
+          rev26: dollars(o.revenue2026),
+          mar26: dollars(o.margin2026),
+          rev27: dollars(o.revenue2027),
+          mar27: dollars(o.margin2027),
+          owner: ownerName(o),
+          updated: fmtDate(o.updatedAt),
+        });
+        if (i % 2 === 1) {
+          for (let c = 1; c <= cols.length; c++) {
+            row.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: ANC_BLUE_SOFT } };
+          }
+        }
+        for (const c of moneyCols) row.getCell(c).numFmt = moneyNumFmt;
+      });
+      const dataEnd = ws.lastRow!.number;
+
+      // Per-group subtotal row
+      const st = ws.addRow({});
+      st.getCell(2).value = `Subtotal — ${STATUS_LABEL[key] || key} (${list.length})`;
+      for (const c of moneyCols) {
+        const L = letterOf(c);
+        st.getCell(c).value = { formula: `SUM(${L}${dataStart}:${L}${dataEnd})` } as any;
+        st.getCell(c).numFmt = '$#,##0';
+      }
+      for (let c = 1; c <= cols.length; c++) {
+        const cell = st.getCell(c);
+        cell.font = { bold: true };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ANC_BLUE_SOFT } };
+        cell.border = { top: { style: "thin", color: { argb: "FFB8C4DC" } } };
+      }
+      subtotalRowIdxs.push(st.number);
     }
 
-    // Totals row
-    const totalRowIdx = opps.length + 2;
-    const tr = ws.getRow(totalRowIdx);
-    tr.getCell(2).value = `TOTAL  (${opps.length} opportunities)`;
-    tr.getCell(2).font = { bold: true };
+    // Grand total row — sums the per-group subtotals
+    const gt = ws.addRow({});
+    gt.getCell(2).value = `TOTAL  (${opps.length} opportunities)`;
     for (const c of moneyCols) {
-      const col = ws.getColumn(c).letter;
-      tr.getCell(c).value = { formula: `SUM(${col}2:${col}${opps.length + 1})` } as any;
-      tr.getCell(c).numFmt = '$#,##0';
-      tr.getCell(c).font = { bold: true };
+      const L = letterOf(c);
+      const terms = subtotalRowIdxs.map((r) => `${L}${r}`).join(",");
+      gt.getCell(c).value = { formula: terms ? `SUM(${terms})` : "0" } as any;
+      gt.getCell(c).numFmt = '$#,##0';
     }
-    tr.eachCell((cell) => {
+    for (let c = 1; c <= cols.length; c++) {
+      const cell = gt.getCell(c);
+      cell.font = { bold: true, size: 12 };
       cell.border = { top: { style: "medium", color: { argb: ANC_BLUE } } };
-    });
-
-    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } };
+    }
+    gt.height = 22;
 
     const buf = await wb.xlsx.writeBuffer();
     const stamp = new Date().toISOString().slice(0, 10);
