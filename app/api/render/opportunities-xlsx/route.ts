@@ -58,7 +58,7 @@ async function fetchOpps(filter: Record<string, unknown> | undefined): Promise<a
   while (true) {
     const d: any = await gql(
       `query Q($f: OpportunityFilterInput, $after: String) {
-        opportunities(filter: $f, first: 200, after: $after, orderBy: {createdAt: DescNullsLast}) {
+        opportunities(filter: $f, first: 200, after: $after, orderBy: {id: AscNullsLast}) {
           edges { node {
             opportunityNumber name businessUnit bidStatus closeDate substantialCompletionDate
             updatedAt accountExecutive
@@ -103,6 +103,13 @@ export async function GET(req: NextRequest) {
     const filter = and.length ? { and } : undefined;
 
     const opps = await fetchOpps(filter);
+    // Stable cursor pagination requires ordering by the unique id; present rows
+    // newest-first by opportunity number for the reader.
+    opps.sort((a, b) => {
+      const na = Number(a.opportunityNumber), nb = Number(b.opportunityNumber);
+      if (Number.isFinite(na) && Number.isFinite(nb)) return nb - na;
+      return String(b.opportunityNumber || "").localeCompare(String(a.opportunityNumber || ""));
+    });
 
     const wb = new ExcelJS.Workbook();
     wb.creator = "ANC";
