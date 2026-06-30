@@ -112,12 +112,13 @@ async function fetchView(viewId: string): Promise<any> {
   return d.getView;
 }
 let _fieldMap: Record<string, string> | null = null;
+const OPPORTUNITY_OBJECT_ID = "c779922d-cf25-4a5e-9382-23eb1c02199e";
 async function fieldMap(): Promise<Record<string, string>> {
   if (_fieldMap) return _fieldMap;
-  const d: any = await meta(`query{ objects{ edges{ node{ nameSingular fieldsList{ id name } } } } }`);
-  const obj = d.objects.edges.find((e: any) => e.node.nameSingular === "opportunity");
+  // single-object-by-id: the paginated objects{} list only returns ~10 and omits opportunity
+  const d: any = await meta(`query{ object(id:"${OPPORTUNITY_OBJECT_ID}"){ fieldsList{ id name } } }`);
   const m: Record<string, string> = {};
-  for (const f of obj?.node?.fieldsList || []) m[f.id] = f.name;
+  for (const f of d.object?.fieldsList || []) m[f.id] = f.name;
   _fieldMap = m;
   return m;
 }
