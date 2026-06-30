@@ -129,124 +129,172 @@ export async function GET(req: NextRequest) {
       ...[...groups.keys()].filter((k) => !STATUS_ORDER.includes(k)).sort(),
     ];
 
+    // --- Salesforce-style clean report palette (off-white, calm, no heavy blue) ---
+    const PAPER = "FFFAF9F6";      // off-white canvas
+    const PAPER_ALT = "FFF3F1EC";  // subtle alternating row
+    const BAND = "FFECE9E1";       // group band
+    const INK = "FF3A3D42";        // primary text
+    const INK_SOFT = "FF74777C";   // muted text
+    const LINE = "FFD7D3C9";       // hairlines
+    const TITLE_GREY = "FF56585B"; // SF title grey
+    const FONT = "Calibri";
+    const OFF = 1;                 // narrow left margin column (SF inset)
+
     const wb = new ExcelJS.Workbook();
     wb.creator = "ANC";
-    const ws = wb.addWorksheet("Opportunities", {
-      views: [{ state: "frozen", ySplit: 1 }],
-    });
+    const ws = wb.addWorksheet("Opportunities");
+    ws.properties.defaultRowHeight = 16;
+    ws.views = [{ showGridLines: false }];
 
     const cols = [
-      { header: "Opp #", key: "num", width: 11 },
-      { header: "Opportunity Name", key: "name", width: 46 },
+      { header: "Opp #", key: "num", width: 9 },
+      { header: "Opportunity Name", key: "name", width: 48 },
       { header: "Account", key: "company", width: 30 },
-      { header: "Business Unit", key: "bu", width: 18 },
-      { header: "Status", key: "status", width: 16 },
-      { header: "Award Date", key: "award", width: 13 },
-      { header: "Contract Completion", key: "complete", width: 18 },
-      { header: "Total Project Revenue", key: "rev", width: 20, money: true },
-      { header: "Total Project Margin", key: "mar", width: 19, money: true },
-      { header: "Revenue FY2026", key: "rev26", width: 16, money: true },
-      { header: "Margin FY2026", key: "mar26", width: 16, money: true },
-      { header: "Revenue FY2027", key: "rev27", width: 16, money: true },
-      { header: "Margin FY2027", key: "mar27", width: 16, money: true },
-      { header: "Owner", key: "owner", width: 20 },
-      { header: "Last Updated", key: "updated", width: 14 },
+      { header: "Business Unit", key: "bu", width: 16 },
+      { header: "Status", key: "status", width: 15 },
+      { header: "Award Date", key: "award", width: 12 },
+      { header: "Contract Completion", key: "complete", width: 16 },
+      { header: "Total Project Revenue", key: "rev", width: 18, money: true },
+      { header: "Total Project Margin", key: "mar", width: 17, money: true },
+      { header: "Revenue FY2026", key: "rev26", width: 15, money: true },
+      { header: "Margin FY2026", key: "mar26", width: 14, money: true },
+      { header: "Revenue FY2027", key: "rev27", width: 15, money: true },
+      { header: "Margin FY2027", key: "mar27", width: 14, money: true },
+      { header: "Owner", key: "owner", width: 18 },
+      { header: "Last Updated", key: "updated", width: 13 },
     ];
-    ws.columns = cols.map((c) => ({ key: c.key, width: c.width }));
+    const NC = cols.length;
+    const COL1 = 1 + OFF;                  // first data column index (B)
+    const COLN = NC + OFF;                 // last data column index
+    const col = (i: number) => i + 1 + OFF; // data col index for cols[i]
+    ws.getColumn(1).width = 2.6;           // left margin
+    cols.forEach((c, i) => { ws.getColumn(col(i)).width = c.width; });
+
+    const moneyCols = cols.map((c, i) => (c.money ? col(i) : 0)).filter(Boolean);
+    const moneyNumFmt = '#,##0;[Red](#,##0)';
+    const letterOf = (c: number) => ws.getColumn(c).letter;
+
+    // Title block
+    const reportTitle =
+      (sp.get("bu") ? (BU_LABEL[sp.get("bu")!] || sp.get("bu")) : "ANC") +
+      " Opportunities" +
+      (sp.get("status") ? ` — ${STATUS_LABEL[sp.get("status")!] || sp.get("status")}` : "");
+    const asOf = new Date().toLocaleString("en-US", {
+      year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+    });
+    const tTitle = ws.getRow(2); tTitle.getCell(COL1).value = reportTitle;
+    tTitle.getCell(COL1).font = { name: FONT, size: 18, color: { argb: TITLE_GREY } };
+    tTitle.height = 24;
+    const tSub = ws.getRow(3); tSub.getCell(COL1).value = `As of ${asOf}`;
+    tSub.getCell(COL1).font = { name: FONT, size: 10, color: { argb: INK_SOFT } };
 
     // Header row
-    const head = ws.getRow(1);
+    const HEAD_ROW = 5;
+    const head = ws.getRow(HEAD_ROW);
     cols.forEach((c, i) => {
-      const cell = head.getCell(i + 1);
+      const cell = head.getCell(col(i));
       cell.value = c.header;
-      cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ANC_BLUE } };
+      cell.font = { name: FONT, bold: true, size: 10, color: { argb: INK } };
       cell.alignment = { vertical: "middle", horizontal: c.money ? "right" : "left", wrapText: true };
-      cell.border = { bottom: { style: "thin", color: { argb: "FFB8C4DC" } } };
+      cell.border = { bottom: { style: "medium", color: { argb: "FFB7B2A6" } } };
     });
-    head.height = 26;
+    head.height = 28;
+    ws.views = [{ state: "frozen", ySplit: HEAD_ROW, showGridLines: false }];
 
-    const moneyCols = cols.map((c, i) => (c.money ? i + 1 : 0)).filter(Boolean);
-    const moneyNumFmt = '$#,##0;[Red]-$#,##0';
-    const letterOf = (c: number) => ws.getColumn(c).letter;
     const subtotalRowIdxs: number[] = [];
 
     for (const key of orderedKeys) {
       const list = groups.get(key)!;
       list.sort(byNumberDesc);
 
-      // Group band header
+      // Calm group band — grey label, not a loud colour block
       const gh = ws.addRow({});
-      gh.getCell(1).value = `${STATUS_LABEL[key] || key}`;
-      gh.getCell(cols.length).value = `${list.length} opp${list.length === 1 ? "" : "s"}`;
-      gh.getCell(cols.length).alignment = { horizontal: "right" };
-      for (let c = 1; c <= cols.length; c++) {
+      gh.getCell(COL1).value = `${STATUS_LABEL[key] || key}`;
+      gh.getCell(COLN).value = `${list.length} opp${list.length === 1 ? "" : "s"}`;
+      gh.getCell(COLN).alignment = { horizontal: "right" };
+      gh.getCell(COLN).font = { name: FONT, size: 9, color: { argb: INK_SOFT } };
+      for (let c = COL1; c <= COLN; c++) {
         const cell = gh.getCell(c);
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ANC_BLUE } };
-        cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BAND } };
+        if (c === COL1) cell.font = { name: FONT, bold: true, size: 11, color: { argb: INK } };
+        cell.border = { bottom: { style: "thin", color: { argb: LINE } } };
       }
       gh.height = 20;
 
       const dataStart = ws.lastRow!.number + 1;
       list.forEach((o, i) => {
-        const row = ws.addRow({
-          num: o.opportunityNumber || "",
-          name: o.name || "",
-          company: o.company?.name || "",
-          bu: BU_LABEL[o.businessUnit] || o.businessUnit || "",
-          status: STATUS_LABEL[o.bidStatus] || o.bidStatus || "",
-          award: fmtDate(o.closeDate),
-          complete: fmtDate(o.substantialCompletionDate),
-          rev: dollars(o.totalProjectRevenue),
-          mar: dollars(o.totalProjectMargin),
-          rev26: dollars(o.revenue2026),
-          mar26: dollars(o.margin2026),
-          rev27: dollars(o.revenue2027),
-          mar27: dollars(o.margin2027),
-          owner: ownerName(o),
-          updated: fmtDate(o.updatedAt),
+        const row = ws.addRow({});
+        const vals = [
+          o.opportunityNumber || "", o.name || "", o.company?.name || "",
+          BU_LABEL[o.businessUnit] || o.businessUnit || "",
+          STATUS_LABEL[o.bidStatus] || o.bidStatus || "",
+          fmtDate(o.closeDate), fmtDate(o.substantialCompletionDate),
+          dollars(o.totalProjectRevenue), dollars(o.totalProjectMargin),
+          dollars(o.revenue2026), dollars(o.margin2026),
+          dollars(o.revenue2027), dollars(o.margin2027),
+          ownerName(o), fmtDate(o.updatedAt),
+        ];
+        cols.forEach((c, ci) => {
+          const cell = row.getCell(col(ci));
+          cell.value = vals[ci] as any;
+          cell.font = { name: FONT, size: 10, color: { argb: INK } };
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: i % 2 ? PAPER_ALT : PAPER } };
+          if (c.money) { cell.numFmt = moneyNumFmt; cell.alignment = { horizontal: "right" }; }
+          else cell.alignment = { vertical: "middle", wrapText: false };
         });
-        if (i % 2 === 1) {
-          for (let c = 1; c <= cols.length; c++) {
-            row.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: ANC_BLUE_SOFT } };
-          }
-        }
-        for (const c of moneyCols) row.getCell(c).numFmt = moneyNumFmt;
       });
       const dataEnd = ws.lastRow!.number;
 
-      // Per-group subtotal row
+      // Per-group subtotal — light, hairline top rule
       const st = ws.addRow({});
-      st.getCell(2).value = `Subtotal — ${STATUS_LABEL[key] || key} (${list.length})`;
+      st.getCell(col(1)).value = `Subtotal — ${STATUS_LABEL[key] || key} (${list.length})`;
       for (const c of moneyCols) {
         const L = letterOf(c);
         st.getCell(c).value = { formula: `SUM(${L}${dataStart}:${L}${dataEnd})` } as any;
-        st.getCell(c).numFmt = '$#,##0';
+        st.getCell(c).numFmt = moneyNumFmt;
       }
-      for (let c = 1; c <= cols.length; c++) {
+      for (let c = COL1; c <= COLN; c++) {
         const cell = st.getCell(c);
-        cell.font = { bold: true };
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ANC_BLUE_SOFT } };
-        cell.border = { top: { style: "thin", color: { argb: "FFB8C4DC" } } };
+        cell.font = { name: FONT, bold: true, size: 10, color: { argb: INK } };
+        cell.border = { top: { style: "thin", color: { argb: LINE } } };
+        if (moneyCols.includes(c)) cell.alignment = { horizontal: "right" };
       }
       subtotalRowIdxs.push(st.number);
+      ws.addRow({}); // breathing space between groups
     }
 
-    // Grand total row — sums the per-group subtotals
+    // Grand total — bold, single dark rule above (no blue)
     const gt = ws.addRow({});
-    gt.getCell(2).value = `TOTAL  (${opps.length} opportunities)`;
+    gt.getCell(col(1)).value = `Total — ${opps.length} opportunities`;
+    gt.getCell(col(1)).font = { name: FONT, bold: true, size: 11, color: { argb: INK } };
     for (const c of moneyCols) {
       const L = letterOf(c);
       const terms = subtotalRowIdxs.map((r) => `${L}${r}`).join(",");
       gt.getCell(c).value = { formula: terms ? `SUM(${terms})` : "0" } as any;
-      gt.getCell(c).numFmt = '$#,##0';
+      gt.getCell(c).numFmt = moneyNumFmt;
+      gt.getCell(c).font = { name: FONT, bold: true, size: 11, color: { argb: INK } };
+      gt.getCell(c).alignment = { horizontal: "right" };
     }
-    for (let c = 1; c <= cols.length; c++) {
-      const cell = gt.getCell(c);
-      cell.font = { bold: true, size: 12 };
-      cell.border = { top: { style: "medium", color: { argb: ANC_BLUE } } };
+    for (let c = COL1; c <= COLN; c++) {
+      gt.getCell(c).border = { top: { style: "medium", color: { argb: "FF8A857A" } } };
     }
     gt.height = 22;
+
+    // Paint the whole used range off-white so it reads as one clean canvas
+    const lastRow = ws.lastRow!.number;
+    for (let r = 1; r <= lastRow; r++) {
+      const row = ws.getRow(r);
+      for (let c = 1; c <= COLN; c++) {
+        const cell = row.getCell(c);
+        if (!cell.fill || (cell.fill as any).pattern === undefined) {
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: PAPER } };
+        }
+      }
+    }
+    ws.autoFilter = {
+      from: { row: HEAD_ROW, column: COL1 },
+      to: { row: HEAD_ROW, column: COLN },
+    };
 
     const buf = await wb.xlsx.writeBuffer();
     const stamp = new Date().toISOString().slice(0, 10);
