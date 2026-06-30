@@ -107,29 +107,40 @@ async function meta<T = any>(query: string): Promise<T> {
 }
 async function fetchView(viewId: string): Promise<any> {
   const d: any = await meta(
-    `query{ getView(id:"${viewId}"){ id name viewFilters{ fieldMetadataId operand value } } }`,
+    `query{ getView(id:"${viewId}"){ id name
+       viewFilters{ fieldMetadataId operand value viewFilterGroupId }
+       viewFilterGroups{ id logicalOperator parentViewFilterGroupId } } }`,
   );
   return d.getView;
 }
-let _fieldMap: Record<string, string> | null = null;
 const OPPORTUNITY_OBJECT_ID = "c779922d-cf25-4a5e-9382-23eb1c02199e";
-async function fieldMap(): Promise<Record<string, string>> {
-  if (_fieldMap) return _fieldMap;
+type Field = { name: string; type: string };
+let _fields: Record<string, Field> | null = null;
+async function fieldMap(): Promise<Record<string, Field>> {
+  if (_fields) return _fields;
   // single-object-by-id: the paginated objects{} list only returns ~10 and omits opportunity
-  const d: any = await meta(`query{ object(id:"${OPPORTUNITY_OBJECT_ID}"){ fieldsList{ id name } } }`);
-  const m: Record<string, string> = {};
-  for (const f of d.object?.fieldsList || []) m[f.id] = f.name;
-  _fieldMap = m;
+  const d: any = await meta(`query{ object(id:"${OPPORTUNITY_OBJECT_ID}"){ fieldsList{ id name type } } }`);
+  const m: Record<string, Field> = {};
+  for (const f of d.object?.fieldsList || []) m[f.id] = { name: f.name, type: f.type };
+  _fields = m;
   return m;
 }
-// Translate one Twenty viewFilter into an Opportunity filter clause.
-function vfClause(name: string, operand: string, raw: string): any | null {
+// Translate one viewFilter into an Opportunity filter clause — type + operand aware.
+function vfClause(f: Field, operand: string, raw: string): any | null {
+  const { name, type } = f;
+  if (type === "RELATION" || type === "UUID" || type === "ACTOR") return null;
   let val: any = raw;
-  try { val = JSON.parse(raw); } catch { /* not JSON — keep raw */ }
+  try { val = JSON.parse(raw); } catch { /* keep raw */ }
   const arr = Array.isArray(val) ? val : null;
+  const first = arr ? arr[0] : val;
+  const isSelect = type === "SELECT" || type === "MULTI_SELECT" || type === "RATING";
   switch (operand) {
-    case "IS": return arr ? { [name]: { in: arr } } : { [name]: { eq: val } };
-    case "IS_NOT": return arr ? { not: { [name]: { in: arr } } } : { not: { [name]: { eq: val } } };
+    case "IS":
+      if (type === "BOOLEAN") return { [name]: { eq: !!first } };
+      return isSelect ? { [name]: { in: arr || [first] } } : { [name]: { eq: first } };
+    case "IS_NOT":
+      if (type === "BOOLEAN") return { not: { [name]: { eq: !!first } } };
+      return isSelect ? { not: { [name]: { in: arr || [first] } } } : { not: { [name]: { eq: first } } };
     case "IS_AFTER": return { [name]: { gt: raw } };
     case "IS_BEFORE": return { [name]: { lt: raw } };
     case "GREATER_THAN_OR_EQUAL": return { [name]: { gte: raw } };
@@ -138,8 +149,47 @@ function vfClause(name: string, operand: string, raw: string): any | null {
     case "DOES_NOT_CONTAIN": return { not: { [name]: { ilike: `%${raw}%` } } };
     case "IS_EMPTY": return { [name]: { is: "NULL" } };
     case "IS_NOT_EMPTY": return { [name]: { is: "NOT_NULL" } };
-    default: return null; // unknown operand → ignore (export a superset, never crash)
+    case "IS_RELATIVE": {
+      try {
+        const o = JSON.parse(raw);
+        const ms: Record<string, number> = { DAY: 864e5, WEEK: 6048e5, MONTH: 2592e6, YEAR: 31536e6 };
+        const span = (ms[o.unit] || 864e5) * (o.amount || 0);
+        const past = o.direction === "PAST";
+        const d = new Date(Date.now() - (past ? 1 : -1) * span).toISOString().replace(/\.\d{3}Z$/, "Z");
+        return past ? { [name]: { gte: d } } : { [name]: { lte: d } };
+      } catch { return null; }
+    }
+    default: return null;
   }
+}
+// Reconstruct a view's full AND/OR filter-group tree into one Opportunity filter.
+function buildViewFilter(viewFilters: any[], groups: any[], fm: Record<string, Field>): any | undefined {
+  const byGroup: Record<string, any[]> = {};
+  const ungrouped: any[] = [];
+  for (const vf of viewFilters) {
+    const f = fm[vf.fieldMetadataId];
+    if (!f) continue;
+    const c = vfClause(f, vf.operand, vf.value);
+    if (!c) continue;
+    if (vf.viewFilterGroupId) (byGroup[vf.viewFilterGroupId] ||= []).push(c);
+    else ungrouped.push(c);
+  }
+  if (!groups || !groups.length) {
+    const all = [...ungrouped, ...Object.values(byGroup).flat()];
+    return all.length ? { and: all } : undefined;
+  }
+  const build = (g: any): any | null => {
+    const own = byGroup[g.id] || [];
+    const kids = groups.filter((x) => x.parentViewFilterGroupId === g.id).map(build).filter(Boolean);
+    const parts = [...own, ...kids];
+    if (!parts.length) return null;
+    if (parts.length === 1) return parts[0];
+    return g.logicalOperator === "OR" ? { or: parts } : { and: parts };
+  };
+  const roots = groups.filter((g) => !g.parentViewFilterGroupId).map(build).filter(Boolean);
+  const all = [...ungrouped, ...roots];
+  if (!all.length) return undefined;
+  return all.length === 1 ? all[0] : { and: all };
 }
 
 export async function GET(req: NextRequest) {
@@ -153,12 +203,8 @@ export async function GET(req: NextRequest) {
         const view = await fetchView(viewId);
         viewName = view?.name || "";
         const fm = await fieldMap();
-        for (const vf of view?.viewFilters || []) {
-          const nm = fm[vf.fieldMetadataId];
-          if (!nm) continue;
-          const clause = vfClause(nm, vf.operand, vf.value);
-          if (clause) and.push(clause);
-        }
+        const vfilter = buildViewFilter(view?.viewFilters || [], view?.viewFilterGroups || [], fm);
+        if (vfilter) and.push(vfilter);
       } catch { /* if the view can't be read, fall through to params/all */ }
     }
     if (sp.get("status")) and.push({ bidStatus: { eq: sp.get("status") } });
