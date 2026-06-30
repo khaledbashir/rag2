@@ -94,10 +94,72 @@ const ownerName = (o: any): string => {
   return full || o.accountExecutive || "";
 };
 
+// --- View-filter replication: export exactly what a given saved view shows ---
+async function meta<T = any>(query: string): Promise<T> {
+  const r = await fetch(`${TWENTY_BASE}/metadata`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${TWENTY_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+  });
+  const b = await r.json();
+  if (b.errors?.length) throw new Error(b.errors.map((e: any) => e.message).join("; "));
+  return b.data;
+}
+async function fetchView(viewId: string): Promise<any> {
+  const d: any = await meta(
+    `query{ getView(id:"${viewId}"){ id name viewFilters{ fieldMetadataId operand value } } }`,
+  );
+  return d.getView;
+}
+let _fieldMap: Record<string, string> | null = null;
+async function fieldMap(): Promise<Record<string, string>> {
+  if (_fieldMap) return _fieldMap;
+  const d: any = await meta(`query{ objects{ edges{ node{ nameSingular fieldsList{ id name } } } } }`);
+  const obj = d.objects.edges.find((e: any) => e.node.nameSingular === "opportunity");
+  const m: Record<string, string> = {};
+  for (const f of obj?.node?.fieldsList || []) m[f.id] = f.name;
+  _fieldMap = m;
+  return m;
+}
+// Translate one Twenty viewFilter into an Opportunity filter clause.
+function vfClause(name: string, operand: string, raw: string): any | null {
+  let val: any = raw;
+  try { val = JSON.parse(raw); } catch { /* not JSON — keep raw */ }
+  const arr = Array.isArray(val) ? val : null;
+  switch (operand) {
+    case "IS": return arr ? { [name]: { in: arr } } : { [name]: { eq: val } };
+    case "IS_NOT": return arr ? { not: { [name]: { in: arr } } } : { not: { [name]: { eq: val } } };
+    case "IS_AFTER": return { [name]: { gt: raw } };
+    case "IS_BEFORE": return { [name]: { lt: raw } };
+    case "GREATER_THAN_OR_EQUAL": return { [name]: { gte: raw } };
+    case "LESS_THAN_OR_EQUAL": return { [name]: { lte: raw } };
+    case "CONTAINS": return { [name]: { ilike: `%${raw}%` } };
+    case "DOES_NOT_CONTAIN": return { not: { [name]: { ilike: `%${raw}%` } } };
+    case "IS_EMPTY": return { [name]: { is: "NULL" } };
+    case "IS_NOT_EMPTY": return { [name]: { is: "NOT_NULL" } };
+    default: return null; // unknown operand → ignore (export a superset, never crash)
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
     const and: any[] = [];
+    let viewName = "";
+    const viewId = sp.get("viewId");
+    if (viewId) {
+      try {
+        const view = await fetchView(viewId);
+        viewName = view?.name || "";
+        const fm = await fieldMap();
+        for (const vf of view?.viewFilters || []) {
+          const nm = fm[vf.fieldMetadataId];
+          if (!nm) continue;
+          const clause = vfClause(nm, vf.operand, vf.value);
+          if (clause) and.push(clause);
+        }
+      } catch { /* if the view can't be read, fall through to params/all */ }
+    }
     if (sp.get("status")) and.push({ bidStatus: { eq: sp.get("status") } });
     if (sp.get("bu")) and.push({ businessUnit: { eq: sp.get("bu") } });
     const filter = and.length ? { and } : undefined;
@@ -176,9 +238,10 @@ export async function GET(req: NextRequest) {
 
     // Title block
     const reportTitle =
-      (sp.get("bu") ? (BU_LABEL[sp.get("bu")!] || sp.get("bu")) : "ANC") +
+      viewName ||
+      ((sp.get("bu") ? (BU_LABEL[sp.get("bu")!] || sp.get("bu")) : "ANC") +
       " Opportunities" +
-      (sp.get("status") ? ` — ${STATUS_LABEL[sp.get("status")!] || sp.get("status")}` : "");
+      (sp.get("status") ? ` — ${STATUS_LABEL[sp.get("status")!] || sp.get("status")}` : ""));
     const asOf = new Date().toLocaleString("en-US", {
       year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
     });
