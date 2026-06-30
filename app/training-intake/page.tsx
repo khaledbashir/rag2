@@ -18,6 +18,52 @@ type Match = { name: string; team?: string; sid?: string };
 const PROFILE_MARKER = "---PROFILE---";
 const FINALIZE_AFTER_TURNS = 6; // mirror the server cap so progress reads true
 
+const DOCS = "https://docs.ancsports.net/docs/training";
+type Step = { t: string; h: string };
+const PATHS: Record<string, { label: string; steps: Step[] }> = {
+    report_focused: {
+        label: "Reporting & Dashboards",
+        steps: [
+            { t: "Get oriented in the CRM", h: `${DOCS}/core/orientation` },
+            { t: "Meet the Assistant", h: `${DOCS}/core/meet-the-ai` },
+            { t: "Asking the CRM for Numbers", h: `${DOCS}/core/asking-for-numbers` },
+            { t: "Leadership · Dashboards", h: `${DOCS}/leadership/dashboards` },
+            { t: "Leadership · Forecasting & Pipeline", h: `${DOCS}/leadership/forecasting-and-pipeline` },
+        ],
+    },
+    basics: {
+        label: "The Essentials",
+        steps: [
+            { t: "Get oriented in the CRM", h: `${DOCS}/core/orientation` },
+            { t: "The Daily Basics", h: `${DOCS}/core/daily-basics` },
+            { t: "Meet the Assistant", h: `${DOCS}/core/meet-the-ai` },
+            { t: "Finding Anything Fast", h: `${DOCS}/core/finding-anything` },
+        ],
+    },
+    ai_ready: {
+        label: "Working with the AI",
+        steps: [
+            { t: "Meet the Assistant", h: `${DOCS}/core/meet-the-ai` },
+            { t: "What's Possible — and What Takes a Build", h: `${DOCS}/core/whats-possible` },
+            { t: "Finding Anything Fast", h: `${DOCS}/core/finding-anything` },
+            { t: "Asking the CRM for Numbers", h: `${DOCS}/core/asking-for-numbers` },
+        ],
+    },
+    power_user: {
+        label: "Power User",
+        steps: [
+            { t: "Get oriented in the CRM", h: `${DOCS}/core/orientation` },
+            { t: "Meet the Assistant", h: `${DOCS}/core/meet-the-ai` },
+            { t: "What's Possible — and What Takes a Build", h: `${DOCS}/core/whats-possible` },
+            { t: "Asking the CRM for Numbers", h: `${DOCS}/core/asking-for-numbers` },
+            { t: "Cleaning Up Accounts", h: `${DOCS}/core/account-cleanup` },
+        ],
+    },
+};
+function pickPath(track: string) {
+    return PATHS[track] || PATHS.basics;
+}
+
 export default function TrainingIntakePage() {
     const [sessionId, setSessionId] = useState<string>("");
     const [person, setPerson] = useState<Person>({});
@@ -25,6 +71,7 @@ export default function TrainingIntakePage() {
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [done, setDone] = useState(false);
+    const [track, setTrack] = useState<string>("");
     const [started, setStarted] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -130,6 +177,16 @@ export default function TrainingIntakePage() {
 
             if (hasProfile) {
                 setDone(true);
+                try {
+                    const rawProfile = reply.split(PROFILE_MARKER)[1]?.trim() || "";
+                    const jsonMatch = rawProfile.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        const prof = JSON.parse(jsonMatch[0]);
+                        if (prof && typeof prof.recommendedTrack === "string") setTrack(prof.recommendedTrack);
+                    }
+                } catch {
+                    /* profile parse is best-effort; falls back to the default path */
+                }
                 const full: Msg[] = [...next, { role: "assistant", content: reply }];
                 fetch("/api/training-intake", {
                     method: "POST",
@@ -290,11 +347,42 @@ export default function TrainingIntakePage() {
                                 </div>
                             )}
 
-                            {done && (
-                                <div className="text-center text-sm text-slate-500 pt-2">
-                                    All set — thanks. Your training will be tailored to what you shared. You can close this tab.
-                                </div>
-                            )}
+                            {done && (() => {
+                                const path = pickPath(track);
+                                return (
+                                    <div className="pt-3">
+                                        <div className="rounded-2xl border border-blue-100 bg-white shadow-sm overflow-hidden">
+                                            <div className="bg-gradient-to-r from-blue-600 to-blue-500 px-5 py-4 text-white">
+                                                <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-100">Your learning path</div>
+                                                <div className="text-lg font-semibold leading-tight">{path.label}</div>
+                                                <div className="text-[13px] text-blue-100 mt-0.5">Built from what you just shared — start at the top and work down.</div>
+                                            </div>
+                                            <ol className="divide-y divide-slate-100">
+                                                {path.steps.map((s, i) => (
+                                                    <li key={s.h}>
+                                                        <a href={s.h} target="_blank" rel="noopener noreferrer"
+                                                           className="flex items-center gap-3 px-5 py-3 hover:bg-blue-50/60 transition group">
+                                                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[13px] font-semibold text-blue-700">{i + 1}</span>
+                                                            <span className="flex-1 text-[15px] text-slate-800 group-hover:text-blue-700">{s.t}</span>
+                                                            <span className="text-slate-300 group-hover:text-blue-500">→</span>
+                                                        </a>
+                                                    </li>
+                                                ))}
+                                            </ol>
+                                            <div className="px-5 py-4 border-t border-slate-100">
+                                                <a href={path.steps[0].h} target="_blank" rel="noopener noreferrer"
+                                                   className="block w-full rounded-xl bg-blue-600 px-4 py-3 text-center text-[15px] font-semibold text-white hover:bg-blue-700 transition">
+                                                    Start your first lesson →
+                                                </a>
+                                                <a href="https://docs.ancsports.net/docs/training" target="_blank" rel="noopener noreferrer"
+                                                   className="mt-2 block text-center text-[13px] font-medium text-slate-500 hover:text-blue-600">
+                                                    Or browse the full training library
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </main>
 
