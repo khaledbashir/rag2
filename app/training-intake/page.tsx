@@ -49,6 +49,8 @@ export default function TrainingIntakePage() {
     const [messages, setMessages] = useState<Msg[]>([]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
+    const [streamThink, setStreamThink] = useState("");
+    const [streamAnswer, setStreamAnswer] = useState("");
     const [done, setDone] = useState(false);
     const [track, setTrack] = useState<string>("");
     const [persona, setPersona] = useState<Persona | null>(null);
@@ -136,19 +138,53 @@ export default function TrainingIntakePage() {
         const next: Msg[] = [...messages, { role: "user", content: trimmed }];
         setMessages(next);
         setLoading(true);
+        setStreamThink("");
+        setStreamAnswer("");
         try {
             const res = await fetch("/api/training-intake", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ action: "chat", messages: next, sessionId, person }),
             });
-            const data = await res.json();
-            const reply: string = data.reply || data.error || "Sorry, I didn't catch that — could you try again?";
-            const thinking: string = data.thinking || "";
-            const suggestions: string[] = Array.isArray(data.suggestions) ? data.suggestions : [];
+            // Stream: read newline-delimited JSON events (think / answer / end).
+            let liveThink = "";
+            let liveAnswer = "";
+            let endReply = "";
+            let endSuggestions: string[] = [];
+            if (res.body && (res.headers.get("content-type") || "").includes("ndjson")) {
+                const reader = res.body.getReader();
+                const dec = new TextDecoder();
+                let buf = "";
+                for (;;) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buf += dec.decode(value, { stream: true });
+                    let nl: number;
+                    while ((nl = buf.indexOf("\n")) >= 0) {
+                        const line = buf.slice(0, nl).trim();
+                        buf = buf.slice(nl + 1);
+                        if (!line) continue;
+                        let ev: any;
+                        try { ev = JSON.parse(line); } catch { continue; }
+                        if (ev.t === "think") { liveThink += ev.d; setStreamThink(liveThink); }
+                        else if (ev.t === "answer") { liveAnswer += ev.d; setStreamAnswer(liveAnswer); }
+                        else if (ev.t === "end") { endReply = ev.reply || ""; endSuggestions = Array.isArray(ev.suggestions) ? ev.suggestions : []; }
+                    }
+                }
+            } else {
+                // fallback: non-streaming JSON (error case or older server)
+                const data = await res.json().catch(() => ({}));
+                endReply = data.reply || data.error || "";
+                liveThink = data.thinking || "";
+                liveAnswer = endReply;
+                endSuggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+            }
+            const reply: string = endReply || liveAnswer || "Sorry, I didn't catch that — could you try again?";
+            const thinking: string = liveThink;
+            const suggestions: string[] = endSuggestions;
 
             const hasProfile = reply.includes(PROFILE_MARKER);
-            const visible = hasProfile ? reply.split(PROFILE_MARKER)[0].trim() : reply;
+            const visible = hasProfile ? reply.split(PROFILE_MARKER)[0].trim() : (liveAnswer || reply);
 
             const shown: Msg[] = [
                 ...next,
@@ -194,6 +230,8 @@ export default function TrainingIntakePage() {
             setMessages((m) => [...m, { role: "assistant", content: "Something hiccuped on my end — mind sending that again?" }]);
         } finally {
             setLoading(false);
+            setStreamThink("");
+            setStreamAnswer("");
         }
     }
 
@@ -328,11 +366,20 @@ export default function TrainingIntakePage() {
                             ))}
 
                             {loading && (
-                                <Bubble role="assistant">
-                                    <span className="inline-flex gap-1">
-                                        <Dot /> <Dot /> <Dot />
-                                    </span>
-                                </Bubble>
+                                <div className="space-y-1">
+                                    {streamThink ? <ThinkingLive text={streamThink} /> : null}
+                                    <Bubble role="assistant">
+                                        {streamAnswer ? (
+                                            <Markdown>{streamAnswer}</Markdown>
+                                        ) : streamThink ? (
+                                            <span className="text-slate-400 text-[13px]">Thinking it through…</span>
+                                        ) : (
+                                            <span className="inline-flex gap-1">
+                                                <Dot /> <Dot /> <Dot />
+                                            </span>
+                                        )}
+                                    </Bubble>
+                                </div>
                             )}
 
                             {liveSuggestions.length > 0 && (
@@ -430,6 +477,40 @@ function Thinking({ text }: { text: string }) {
                 {open && (
                     <div className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 whitespace-pre-wrap font-mono leading-relaxed">
                         {text}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+/** Live streaming "Thinking" accordion — open by default, acts as the loader while the model reasons. */
+function ThinkingLive({ text }: { text: string }) {
+    const [open, setOpen] = useState(true);
+    const boxRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (open && boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
+    }, [text, open]);
+    return (
+        <div className="flex justify-start">
+            <div className="max-w-[85%] w-full">
+                <button
+                    onClick={() => setOpen((o) => !o)}
+                    className="flex items-center gap-1.5 text-xs font-medium text-blue-500 hover:text-blue-600 transition"
+                >
+                    <span className={`inline-block transition-transform ${open ? "rotate-90" : ""}`}>▸</span>
+                    <span className="relative flex items-center gap-1.5">
+                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                        Thinking<span className="text-slate-400">…</span>
+                    </span>
+                </button>
+                {open && (
+                    <div
+                        ref={boxRef}
+                        className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-[11.5px] text-slate-500 whitespace-pre-wrap font-mono leading-relaxed"
+                    >
+                        {text}
+                        <span className="inline-block w-1.5 h-3 ml-0.5 bg-blue-400 align-middle animate-pulse" />
                     </div>
                 )}
             </div>

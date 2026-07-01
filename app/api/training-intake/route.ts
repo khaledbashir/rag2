@@ -303,7 +303,7 @@ function personLine(person: Person): string {
     return `\n\nYou are speaking with ${person.name}${tail ? ` — ${tail}` : ""}. Greet them by their first name. Skip asking for details you already know — confirm rather than re-ask.`;
 }
 
-async function handleChat(messages: Msg[], person: Person): Promise<NextResponse> {
+async function handleChat(messages: Msg[], person: Person): Promise<Response> {
     if (!GLM_KEY) {
         return NextResponse.json({ error: "LLM not configured (Z_AI_API_KEY missing)." }, { status: 500 });
     }
@@ -336,21 +336,75 @@ async function handleChat(messages: Msg[], person: Person): Promise<NextResponse
     const upstream = await fetch(`${GLM_BASE}/chat/completions`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${GLM_KEY}` },
-        body: JSON.stringify({ model: GLM_MODEL, messages: clean, stream: false, temperature: 0.5, max_tokens: 2048 }),
+        body: JSON.stringify({ model: GLM_MODEL, messages: clean, stream: true, temperature: 0.5, max_tokens: 2048 }),
     });
 
-    if (!upstream.ok) {
+    if (!upstream.ok || !upstream.body) {
         const body = await upstream.text().catch(() => "");
         log.error(`[TrainingIntake] LLM ${upstream.status}: ${body.slice(0, 200)}`);
         return NextResponse.json({ error: "The assistant is busy right now. Please try again in a moment." }, { status: 502 });
     }
 
-    const data = await upstream.json().catch(() => null);
-    const raw = String(data?.choices?.[0]?.message?.content || "");
-    const { reply: noThink, thinking } = splitThink(raw);
-    // Leave ---PROFILE--- intact (the page splits it); strip only ---SUGGESTIONS---.
-    const { reply, suggestions } = extractSuggestions(noThink);
-    return NextResponse.json({ reply, thinking, suggestions });
+    // Stream reasoning + answer as newline-delimited JSON events so the client can
+    // show the model's live thinking (as the loader) and stream the answer.
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+            const reader = upstream.body!.getReader();
+            const dec = new TextDecoder();
+            let buf = "";
+            let full = "";        // the full raw content (for final parse)
+            let inThink = false;  // inside a <think> block in content
+            let answerAcc = "";   // accumulated non-think content
+            let emitted = 0;      // how many clean-answer chars already sent
+            const emit = (o: unknown) => controller.enqueue(encoder.encode(JSON.stringify(o) + "\n"));
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buf += dec.decode(value, { stream: true });
+                    let nl: number;
+                    while ((nl = buf.indexOf("\n")) >= 0) {
+                        const line = buf.slice(0, nl).trim();
+                        buf = buf.slice(nl + 1);
+                        if (!line.startsWith("data:")) continue;
+                        const payload = line.slice(5).trim();
+                        if (payload === "[DONE]") continue;
+                        let j: any;
+                        try { j = JSON.parse(payload); } catch { continue; }
+                        const delta = j?.choices?.[0]?.delta || {};
+                        if (delta.reasoning_content) emit({ t: "think", d: String(delta.reasoning_content) });
+                        const c = delta.content;
+                        if (typeof c === "string" && c) {
+                            full += c;
+                            let txt = c;
+                            while (txt.length) {
+                                if (!inThink) {
+                                    const o = txt.indexOf("<think>");
+                                    if (o < 0) { answerAcc += txt; txt = ""; }
+                                    else { answerAcc += txt.slice(0, o); inThink = true; txt = txt.slice(o + 7); }
+                                } else {
+                                    const cl = txt.indexOf("</think>");
+                                    if (cl < 0) { emit({ t: "think", d: txt }); txt = ""; }
+                                    else { emit({ t: "think", d: txt.slice(0, cl) }); inThink = false; txt = txt.slice(cl + 8); }
+                                }
+                            }
+                            // Only stream the clean visible answer (cut before markers).
+                            const cleanVisible = answerAcc.split(/---SUGGESTIONS---|---PROFILE---/)[0];
+                            if (cleanVisible.length > emitted) { emit({ t: "answer", d: cleanVisible.slice(emitted) }); emitted = cleanVisible.length; }
+                        }
+                    }
+                }
+            } catch (e: any) {
+                log.error(`[TrainingIntake] stream: ${e?.message || e}`);
+            }
+            const { reply: noThink } = splitThink(full);
+            const { reply, suggestions } = extractSuggestions(noThink);
+            emit({ t: "end", reply, suggestions });
+            controller.close();
+        },
+    });
+    return new Response(stream, { headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-cache, no-transform" } });
 }
 
 function parseProfile(messages: Msg[]): { profile: Record<string, unknown> | null; raw: string | null } {
