@@ -18,50 +18,29 @@ type Match = { name: string; team?: string; sid?: string };
 const PROFILE_MARKER = "---PROFILE---";
 const FINALIZE_AFTER_TURNS = 6; // mirror the server cap so progress reads true
 
-const DOCS = "https://docs.ancsports.net/docs/training";
-type Step = { t: string; h: string };
-const PATHS: Record<string, { label: string; steps: Step[] }> = {
-    report_focused: {
-        label: "Reporting & Dashboards",
-        steps: [
-            { t: "Get oriented in the CRM", h: `${DOCS}/core/orientation` },
-            { t: "Meet the Assistant", h: `${DOCS}/core/meet-the-ai` },
-            { t: "Asking the CRM for Numbers", h: `${DOCS}/core/asking-for-numbers` },
-            { t: "Leadership · Dashboards", h: `${DOCS}/leadership/dashboards` },
-            { t: "Leadership · Forecasting & Pipeline", h: `${DOCS}/leadership/forecasting-and-pipeline` },
-        ],
-    },
-    basics: {
-        label: "The Essentials",
-        steps: [
-            { t: "Get oriented in the CRM", h: `${DOCS}/core/orientation` },
-            { t: "The Daily Basics", h: `${DOCS}/core/daily-basics` },
-            { t: "Meet the Assistant", h: `${DOCS}/core/meet-the-ai` },
-            { t: "Finding Anything Fast", h: `${DOCS}/core/finding-anything` },
-        ],
-    },
-    ai_ready: {
-        label: "Working with the AI",
-        steps: [
-            { t: "Meet the Assistant", h: `${DOCS}/core/meet-the-ai` },
-            { t: "What's Possible — and What Takes a Build", h: `${DOCS}/core/whats-possible` },
-            { t: "Finding Anything Fast", h: `${DOCS}/core/finding-anything` },
-            { t: "Asking the CRM for Numbers", h: `${DOCS}/core/asking-for-numbers` },
-        ],
-    },
-    power_user: {
-        label: "Power User",
-        steps: [
-            { t: "Get oriented in the CRM", h: `${DOCS}/core/orientation` },
-            { t: "Meet the Assistant", h: `${DOCS}/core/meet-the-ai` },
-            { t: "What's Possible — and What Takes a Build", h: `${DOCS}/core/whats-possible` },
-            { t: "Asking the CRM for Numbers", h: `${DOCS}/core/asking-for-numbers` },
-            { t: "Cleaning Up Accounts", h: `${DOCS}/core/account-cleanup` },
-        ],
-    },
+type PathStep = { slug: string; title: string; href: string; blurb: string; why: string };
+type Persona = {
+    archetypeKey: string;
+    archetype: string;
+    tagline: string;
+    traits: string[];
+    superpower: string;
+    path: PathStep[];
 };
-function pickPath(track: string) {
-    return PATHS[track] || PATHS.basics;
+
+// archetypeKey → hero art + accent gradient. Art is pre-generated (Higgsfield);
+// the gradient is the graceful fallback so the card always looks premium.
+const ARCH_VISUALS: Record<string, { img: string; from: string; to: string; icon: string }> = {
+    reports: { img: "/personas/reports.jpg", from: "#0a52ef", to: "#061d63", icon: "📊" },
+    closer: { img: "/personas/closer.jpg", from: "#1d63ff", to: "#0a2a7a", icon: "🎯" },
+    account: { img: "/personas/account.jpg", from: "#3b75f2", to: "#0b2560", icon: "🧭" },
+    pipeline: { img: "/personas/pipeline.jpg", from: "#0a52ef", to: "#08205a", icon: "⚡" },
+    sponsorship: { img: "/personas/sponsorship.jpg", from: "#2b6bff", to: "#0a1f5c", icon: "🏟️" },
+    command: { img: "/personas/command.jpg", from: "#0b3fd0", to: "#050f3a", icon: "🛰️" },
+    explorer: { img: "/personas/explorer.jpg", from: "#3b75f2", to: "#0a2470", icon: "🚀" },
+};
+function archVisual(key: string) {
+    return ARCH_VISUALS[key] || ARCH_VISUALS.explorer;
 }
 
 export default function TrainingIntakePage() {
@@ -72,6 +51,8 @@ export default function TrainingIntakePage() {
     const [loading, setLoading] = useState(false);
     const [done, setDone] = useState(false);
     const [track, setTrack] = useState<string>("");
+    const [persona, setPersona] = useState<Persona | null>(null);
+    const [personaLoading, setPersonaLoading] = useState(false);
     const [started, setStarted] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -177,12 +158,17 @@ export default function TrainingIntakePage() {
 
             if (hasProfile) {
                 setDone(true);
+                setPersonaLoading(true);
+                let trackHint = "";
                 try {
                     const rawProfile = reply.split(PROFILE_MARKER)[1]?.trim() || "";
                     const jsonMatch = rawProfile.match(/\{[\s\S]*\}/);
                     if (jsonMatch) {
                         const prof = JSON.parse(jsonMatch[0]);
-                        if (prof && typeof prof.recommendedTrack === "string") setTrack(prof.recommendedTrack);
+                        if (prof && typeof prof.recommendedTrack === "string") {
+                            trackHint = prof.recommendedTrack;
+                            setTrack(prof.recommendedTrack);
+                        }
                     }
                 } catch {
                     /* profile parse is best-effort; falls back to the default path */
@@ -193,6 +179,16 @@ export default function TrainingIntakePage() {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ action: "save", sessionId, messages: full, person }),
                 }).catch(() => {});
+                // AI-analyze the whole conversation → flattering persona + personalized path.
+                fetch("/api/training-intake", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "persona", messages: full, person, track: trackHint }),
+                })
+                    .then((r) => r.json())
+                    .then((d) => { if (d && d.persona) setPersona(d.persona); })
+                    .catch(() => {})
+                    .finally(() => setPersonaLoading(false));
             }
         } catch {
             setMessages((m) => [...m, { role: "assistant", content: "Something hiccuped on my end — mind sending that again?" }]);
@@ -347,42 +343,8 @@ export default function TrainingIntakePage() {
                                 </div>
                             )}
 
-                            {done && (() => {
-                                const path = pickPath(track);
-                                return (
-                                    <div className="pt-3">
-                                        <div className="rounded-2xl border border-blue-100 bg-white shadow-sm overflow-hidden">
-                                            <div className="bg-gradient-to-r from-blue-600 to-blue-500 px-5 py-4 text-white">
-                                                <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-100">Your learning path</div>
-                                                <div className="text-lg font-semibold leading-tight">{path.label}</div>
-                                                <div className="text-[13px] text-blue-100 mt-0.5">Built from what you just shared — start at the top and work down.</div>
-                                            </div>
-                                            <ol className="divide-y divide-slate-100">
-                                                {path.steps.map((s, i) => (
-                                                    <li key={s.h}>
-                                                        <a href={s.h} target="_blank" rel="noopener noreferrer"
-                                                           className="flex items-center gap-3 px-5 py-3 hover:bg-blue-50/60 transition group">
-                                                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[13px] font-semibold text-blue-700">{i + 1}</span>
-                                                            <span className="flex-1 text-[15px] text-slate-800 group-hover:text-blue-700">{s.t}</span>
-                                                            <span className="text-slate-300 group-hover:text-blue-500">→</span>
-                                                        </a>
-                                                    </li>
-                                                ))}
-                                            </ol>
-                                            <div className="px-5 py-4 border-t border-slate-100">
-                                                <a href={path.steps[0].h} target="_blank" rel="noopener noreferrer"
-                                                   className="block w-full rounded-xl bg-blue-600 px-4 py-3 text-center text-[15px] font-semibold text-white hover:bg-blue-700 transition">
-                                                    Start your first lesson →
-                                                </a>
-                                                <a href="https://docs.ancsports.net/docs/training" target="_blank" rel="noopener noreferrer"
-                                                   className="mt-2 block text-center text-[13px] font-medium text-slate-500 hover:text-blue-600">
-                                                    Or browse the full training library
-                                                </a>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })()}
+                            {done && personaLoading && !persona && <PersonaAnalyzing name={firstName} />}
+                            {done && persona && <PersonaReveal persona={persona} />}
                         </div>
                     </main>
 
@@ -488,4 +450,113 @@ function StarterButton({ onClick, children }: { onClick: () => void; children: R
 
 function Dot() {
     return <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce inline-block" />;
+}
+
+/** Shown while the AI analyzes the conversation into a persona + path. */
+function PersonaAnalyzing({ name }: { name: string }) {
+    return (
+        <div className="pt-3">
+            <div className="rounded-2xl border border-blue-100 bg-white shadow-sm overflow-hidden">
+                <div className="relative h-40 bg-gradient-to-br from-blue-600 to-blue-900 flex items-center justify-center overflow-hidden">
+                    <div className="absolute inset-0 opacity-40" style={{ background: "radial-gradient(120px 120px at 30% 40%, rgba(255,255,255,.35), transparent), radial-gradient(160px 160px at 75% 70%, rgba(59,117,242,.5), transparent)" }} />
+                    <div className="relative text-center text-white px-6">
+                        <div className="text-sm font-semibold tracking-wide">
+                            Reading your answers{name ? `, ${name}` : ""}
+                            <span className="inline-flex gap-0.5 ml-1 align-middle"><Dot /><Dot /><Dot /></span>
+                        </div>
+                        <div className="text-[12px] text-blue-100 mt-1">Building your CRM persona and a path made just for you.</div>
+                    </div>
+                </div>
+                <div className="p-5 space-y-3">
+                    <div className="h-3.5 w-2/3 rounded bg-slate-100 animate-pulse" />
+                    <div className="h-3 w-full rounded bg-slate-100 animate-pulse" />
+                    <div className="h-3 w-5/6 rounded bg-slate-100 animate-pulse" />
+                    <div className="flex gap-2 pt-1">
+                        <div className="h-6 w-20 rounded-full bg-slate-100 animate-pulse" />
+                        <div className="h-6 w-24 rounded-full bg-slate-100 animate-pulse" />
+                        <div className="h-6 w-16 rounded-full bg-slate-100 animate-pulse" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/** The flattering persona archetype + AI-personalized learning path reveal. */
+function PersonaReveal({ persona }: { persona: Persona }) {
+    const v = archVisual(persona.archetypeKey);
+    const heroStyle: React.CSSProperties = {
+        backgroundColor: v.from,
+        backgroundImage: `linear-gradient(180deg, rgba(3,8,30,.15) 0%, rgba(3,8,30,.55) 60%, rgba(3,8,30,.88) 100%), linear-gradient(135deg, ${v.from} 0%, ${v.to} 100%), url("${v.img}")`,
+        backgroundSize: "cover, cover, cover",
+        backgroundPosition: "center",
+    };
+    return (
+        <div className="pt-3 anc-reveal">
+            <style>{`@keyframes ancRise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}.anc-reveal{animation:ancRise .5s cubic-bezier(.16,1,.3,1) both}.anc-step{animation:ancRise .5s cubic-bezier(.16,1,.3,1) both}`}</style>
+            <div className="rounded-2xl border border-blue-100 bg-white shadow-md overflow-hidden">
+                {/* Hero */}
+                <div className="relative h-52 sm:h-56 flex flex-col justify-end p-5 text-white" style={heroStyle}>
+                    <div className="absolute top-4 left-5 flex items-center gap-2">
+                        <span className="text-lg leading-none">{v.icon}</span>
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-white/80">Your CRM persona</span>
+                    </div>
+                    <div>
+                        <div className="text-2xl sm:text-[26px] font-extrabold leading-tight drop-shadow">{persona.archetype}</div>
+                        {persona.tagline && <div className="mt-1 text-[13px] sm:text-sm text-white/90 leading-snug max-w-md drop-shadow">{persona.tagline}</div>}
+                    </div>
+                </div>
+
+                {/* Traits + superpower */}
+                <div className="px-5 pt-4">
+                    {persona.traits.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                            {persona.traits.map((t, i) => (
+                                <span key={i} className="rounded-full bg-blue-50 border border-blue-100 px-3 py-1 text-[12px] font-semibold text-blue-700">{t}</span>
+                            ))}
+                        </div>
+                    )}
+                    {persona.superpower && (
+                        <div className="mt-3 rounded-xl bg-gradient-to-r from-blue-50 to-white border border-blue-100 px-4 py-3">
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-500">⚡ Your CRM superpower</div>
+                            <div className="text-[14px] text-slate-800 leading-snug mt-0.5">{persona.superpower}</div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Path */}
+                <div className="px-5 pt-5 pb-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Your personalized path</div>
+                    <div className="text-[15px] font-semibold text-slate-800 leading-tight">{persona.path.length} lessons, picked for you</div>
+                    <div className="text-[12px] text-slate-500 mt-0.5">In order — start at the top and work down.</div>
+                </div>
+                <ol className="px-2">
+                    {persona.path.map((s, i) => (
+                        <li key={s.slug} className="anc-step" style={{ animationDelay: `${0.12 * i + 0.15}s` }}>
+                            <a href={s.href} target="_blank" rel="noopener noreferrer"
+                               className="flex items-start gap-3 rounded-xl px-3 py-3 hover:bg-blue-50/70 transition group">
+                                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[13px] font-bold text-white">{i + 1}</span>
+                                <span className="min-w-0 flex-1">
+                                    <span className="block text-[15px] font-semibold text-slate-800 group-hover:text-blue-700">{s.title}</span>
+                                    <span className="block text-[12.5px] text-slate-500 leading-snug mt-0.5">{s.why}</span>
+                                </span>
+                                <span className="mt-1 text-slate-300 group-hover:text-blue-500">→</span>
+                            </a>
+                        </li>
+                    ))}
+                </ol>
+
+                <div className="px-5 py-4 border-t border-slate-100 mt-2">
+                    <a href={persona.path[0]?.href || "https://docs.ancsports.net/docs/training"} target="_blank" rel="noopener noreferrer"
+                       className="block w-full rounded-xl bg-blue-600 px-4 py-3 text-center text-[15px] font-semibold text-white hover:bg-blue-700 transition">
+                        Start your first lesson →
+                    </a>
+                    <a href="https://docs.ancsports.net/docs/training" target="_blank" rel="noopener noreferrer"
+                       className="mt-2 block text-center text-[13px] font-medium text-slate-500 hover:text-blue-600">
+                        Or browse the full training library
+                    </a>
+                </div>
+            </div>
+        </div>
+    );
 }

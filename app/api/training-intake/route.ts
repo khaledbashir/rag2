@@ -47,6 +47,208 @@ SUGGESTED REPLIES: After EVERY message EXCEPT your final one, append a line cont
 
 When the conversation naturally ends, append a section titled exactly "---PROFILE---" then a compact one-line JSON object with keys: name, role, team, usageLevel (none|viewer|operator|power), techComfort (1-5), aiExposure (none|tried_once|regular), learningStyle (walkthrough|cheatsheet|explore), painPoints (array of strings), interests (array of strings), recommendedTrack (basics|ai_ready|power_user|report_focused), preferredTime (string). This block is for the ANC team — keep it short. On this final message do NOT include a ---SUGGESTIONS--- block. Do not mention the profile block to the user.`;
 
+// ── Persona reveal ────────────────────────────────────────────────────────
+// After the intake wraps, we run ONE more model call that analyzes the whole
+// conversation and returns a flattering CRM "archetype" + an AI-picked learning
+// path (real lessons, ordered, each with a one-line "why this, for you").
+//
+// IMPORTANT: this is the FLATTERING, user-facing layer only. The blunt operator
+// read lives in a separate private surface — never mix the two here.
+
+const DOCS_BASE = "https://docs.ancsports.net/docs/training";
+
+// Real lessons only (verified against content/docs/training on disk). The model
+// may ONLY pick from these slugs; anything else is dropped so links never 404.
+const LESSON_CATALOG: { slug: string; title: string; blurb: string }[] = [
+    { slug: "core/orientation", title: "Get Oriented", blurb: "Find your way around the CRM — the map of everything." },
+    { slug: "core/daily-basics", title: "The Daily Basics", blurb: "The handful of everyday tasks you'll actually do." },
+    { slug: "core/meet-the-ai", title: "Meet the Assistant", blurb: "Get things done by just asking, in plain English." },
+    { slug: "core/whats-possible", title: "What's Possible", blurb: "What you can ask for vs what takes a build." },
+    { slug: "core/finding-anything", title: "Finding Anything Fast", blurb: "Search vs ask — never lose a record again." },
+    { slug: "core/account-cleanup", title: "Cleaning Up Accounts", blurb: "Spot and merge duplicate accounts cleanly." },
+    { slug: "core/account-info-for-bids", title: "Account Info for Bids", blurb: "Pull references, contacts and past values for a proposal." },
+    { slug: "core/asking-for-numbers", title: "Asking for Numbers", blurb: "Largest contract, revenue, win rate — just ask." },
+    { slug: "core/whats-new-june-2026", title: "What's New", blurb: "The latest additions to the CRM." },
+    { slug: "technology/pipeline", title: "The Proposal Pipeline", blurb: "Move opportunities from design to won." },
+    { slug: "technology/managing-your-deals", title: "Managing Your Deals", blurb: "Keep every opportunity current and moving." },
+    { slug: "technology/estimation-and-proposals", title: "Estimation & Proposals", blurb: "What's due this week — the proposal team's daily." },
+    { slug: "technology/proposals-and-due-dates", title: "Proposals & Due Dates", blurb: "Never miss a proposal deadline." },
+    { slug: "technology/your-dashboard", title: "Your Dashboard", blurb: "The technology view of your book of business." },
+    { slug: "venue-services/your-day-to-day", title: "Your Day to Day", blurb: "The service team's core workflow." },
+    { slug: "venue-services/service-tickets", title: "Service Tickets", blurb: "Track and resolve venue tickets." },
+    { slug: "venue-services/the-account-view", title: "The Account View", blurb: "Everything about an account in one place." },
+    { slug: "venue-services/venue-activity", title: "Venue Activity", blurb: "Events and activity across every venue." },
+    { slug: "media-sponsorship/placements", title: "Sponsor Placements", blurb: "Game-level sponsor placement tracking." },
+    { slug: "media-sponsorship/sponsor-contracts", title: "Sponsor Contracts", blurb: "Contracted games and inventory per sponsor." },
+    { slug: "media-sponsorship/nielsen-verification", title: "Nielsen Verification", blurb: "Monthly verification per sponsor and league." },
+    { slug: "media-sponsorship/dashboards", title: "Sponsorship Dashboards", blurb: "The media & sponsorship performance view." },
+    { slug: "leadership/dashboards", title: "Leadership Dashboards", blurb: "Company performance by department, at a glance." },
+    { slug: "leadership/forecasting-and-pipeline", title: "Forecasting & Pipeline", blurb: "Forecast revenue and margin by account." },
+    { slug: "leadership/win-loss", title: "Win / Loss", blurb: "RFP win rate by league and year." },
+    { slug: "leadership/exporting-and-asking-the-assistant", title: "Exporting & Asking", blurb: "Get any report out of the CRM, fast." },
+];
+const CATALOG_BY_SLUG = new Map(LESSON_CATALOG.map((l) => [l.slug, l]));
+
+// Fixed archetype keys → hero art + accent. The model picks the KEY (deterministic
+// art) plus a flattering display name/tagline it writes fresh for the person.
+const ARCHETYPE_KEYS = new Set([
+    "reports",
+    "closer",
+    "account",
+    "pipeline",
+    "sponsorship",
+    "command",
+    "explorer",
+]);
+// Sensible default persona per recommended track, used when the model call fails.
+const FALLBACK_ARCHETYPE: Record<string, string> = {
+    report_focused: "reports",
+    power_user: "command",
+    ai_ready: "explorer",
+    basics: "explorer",
+};
+
+const PERSONA_SYSTEM = `You are an expert CRM onboarding analyst for ANC. You are given a short intake conversation with one team member. Analyze how they work and produce a FLATTERING, motivating "CRM persona" plus a personalized learning path. This is shown to the person — make them feel seen, capable, and excited. Never condescending, never generic, never negative.
+
+Pick ONE archetypeKey that best fits them from this exact list:
+- "reports"      → lives in numbers, dashboards, reporting, forecasting
+- "closer"       → drives opportunities/deals to won, proposals, pricing
+- "account"      → relationship- and account-focused, sees the whole account
+- "pipeline"     → keeps work moving day-to-day, nothing slips, operations
+- "sponsorship"  → media, sponsors, placements, verification
+- "command"      → leadership / oversight / the whole-org view
+- "explorer"     → newer to the CRM or to AI tools, eager to learn (use this for beginners)
+
+Then write:
+- archetype: a punchy, flattering title, 2-4 words, e.g. "The Reports Strategist", "The Deal Closer", "The Account Architect". Make it specific to them, not a label copied from above.
+- tagline: one vivid sentence about how they operate. Second person ("You...").
+- traits: exactly 3 short strengths (2-4 words each).
+- superpower: one sentence naming the single thing the CRM will make them dramatically better at.
+
+Then build a personalized PATH: pick 4 to 6 lessons FROM THE CATALOG BELOW, in the order they should take them, tailored to this person. For each, give the exact slug and a one-line "why" written directly to them ("Because you said you...", "This is your fast win for..."). Start with an easy confidence-builder, end with their highest-value lesson. Only use slugs from the catalog.
+
+CATALOG (slug — what it teaches):
+${LESSON_CATALOG.map((l) => `- ${l.slug} — ${l.title}: ${l.blurb}`).join("\n")}
+
+Respond with ONLY a compact JSON object, no markdown, no prose, exactly this shape:
+{"archetypeKey":"reports","archetype":"The Reports Strategist","tagline":"You...","traits":["...","...","..."],"superpower":"...","path":[{"slug":"core/orientation","why":"..."},{"slug":"core/asking-for-numbers","why":"..."}]}`;
+
+type PersonaOut = {
+    archetypeKey: string;
+    archetype: string;
+    tagline: string;
+    traits: string[];
+    superpower: string;
+    path: { slug: string; title: string; href: string; blurb: string; why: string }[];
+};
+
+function fallbackPersona(track: string | null): PersonaOut {
+    const key = (track && FALLBACK_ARCHETYPE[track]) || "explorer";
+    const seed: Record<string, { archetype: string; tagline: string; traits: string[]; superpower: string; slugs: string[] }> = {
+        reports: {
+            archetype: "The Reports Strategist",
+            tagline: "You turn a pile of raw pipeline into the one number that decides the room.",
+            traits: ["Data-driven", "Sharp instincts", "Big-picture"],
+            superpower: "Pulling any report you need in seconds — just by asking.",
+            slugs: ["core/orientation", "core/meet-the-ai", "core/asking-for-numbers", "leadership/dashboards", "leadership/forecasting-and-pipeline"],
+        },
+        command: {
+            archetype: "The Command Center",
+            tagline: "You keep the whole operation in view and move fast on what matters.",
+            traits: ["Decisive", "Oversight", "Momentum"],
+            superpower: "Seeing every deal, account, and number across the org in one place.",
+            slugs: ["core/orientation", "core/meet-the-ai", "core/whats-possible", "leadership/dashboards", "core/asking-for-numbers"],
+        },
+        explorer: {
+            archetype: "The Fast Learner",
+            tagline: "You're ready to make this CRM work for you — and it will, quickly.",
+            traits: ["Curious", "Adaptable", "Eager"],
+            superpower: "Getting real work done by simply asking the assistant in plain English.",
+            slugs: ["core/orientation", "core/daily-basics", "core/meet-the-ai", "core/finding-anything"],
+        },
+    };
+    const s = seed[key] || seed.explorer;
+    return {
+        archetypeKey: key,
+        archetype: s.archetype,
+        tagline: s.tagline,
+        traits: s.traits,
+        superpower: s.superpower,
+        path: s.slugs
+            .map((slug) => CATALOG_BY_SLUG.get(slug))
+            .filter(Boolean)
+            .map((l) => ({ slug: l!.slug, title: l!.title, href: `${DOCS_BASE}/${l!.slug}`, blurb: l!.blurb, why: l!.blurb })),
+    };
+}
+
+async function handlePersona(messages: Msg[], person: Person, track: string | null): Promise<NextResponse> {
+    if (!GLM_KEY) return NextResponse.json({ persona: fallbackPersona(track) });
+
+    // Feed the model the transcript as plain narration + the intake profile if present.
+    const transcript = (Array.isArray(messages) ? messages : [])
+        .slice(-MAX_HISTORY)
+        .filter((m) => m && typeof m.content === "string")
+        .map((m) => `${m.role === "assistant" ? "Guide" : "Person"}: ${m.content.slice(0, MAX_MSG_LEN)}`)
+        .join("\n");
+    const who = person?.name ? `The person is ${person.name}${person.role ? `, ${person.role}` : ""}${person.team ? ` on the ${person.team} team` : ""}.\n` : "";
+
+    try {
+        const upstream = await fetch(`${GLM_BASE}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${GLM_KEY}` },
+            body: JSON.stringify({
+                model: GLM_MODEL,
+                messages: [
+                    { role: "system", content: PERSONA_SYSTEM },
+                    { role: "user", content: `${who}Intake conversation:\n${transcript}\n\nReturn the JSON now.` },
+                ],
+                stream: false,
+                temperature: 0.7,
+                max_tokens: 1400,
+            }),
+        });
+        if (!upstream.ok) throw new Error(`persona LLM ${upstream.status}`);
+        const data = await upstream.json().catch(() => null);
+        const raw = splitThink(String(data?.choices?.[0]?.message?.content || "")).reply;
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (!match) throw new Error("no json");
+        const parsed = JSON.parse(match[0]);
+
+        const key = ARCHETYPE_KEYS.has(String(parsed.archetypeKey)) ? String(parsed.archetypeKey) : "explorer";
+        const path = (Array.isArray(parsed.path) ? parsed.path : [])
+            .map((p: any) => {
+                const lesson = CATALOG_BY_SLUG.get(String(p?.slug));
+                if (!lesson) return null;
+                return {
+                    slug: lesson.slug,
+                    title: lesson.title,
+                    href: `${DOCS_BASE}/${lesson.slug}`,
+                    blurb: lesson.blurb,
+                    why: (typeof p?.why === "string" && p.why.trim()) || lesson.blurb,
+                };
+            })
+            .filter(Boolean)
+            // de-dup slugs, keep order, cap at 6
+            .filter((p: any, i: number, arr: any[]) => arr.findIndex((q) => q.slug === p.slug) === i)
+            .slice(0, 6);
+
+        if (path.length < 3) throw new Error("too few valid lessons");
+
+        const persona: PersonaOut = {
+            archetypeKey: key,
+            archetype: (typeof parsed.archetype === "string" && parsed.archetype.trim()) || fallbackPersona(track).archetype,
+            tagline: (typeof parsed.tagline === "string" && parsed.tagline.trim()) || "",
+            traits: asStringArray(parsed.traits).slice(0, 3),
+            superpower: (typeof parsed.superpower === "string" && parsed.superpower.trim()) || "",
+            path,
+        };
+        return NextResponse.json({ persona });
+    } catch (err: any) {
+        log.error(`[TrainingIntake] persona: ${err?.message || err}`);
+        return NextResponse.json({ persona: fallbackPersona(track) });
+    }
+}
+
 const MAX_HISTORY = 50;
 const MAX_MSG_LEN = 8000;
 // Hard cap: once the person has answered this many times, force the bot to wrap up
@@ -230,6 +432,10 @@ export async function POST(req: NextRequest) {
         }
         if (action === "chat") {
             return await handleChat(body.messages || [], person);
+        }
+        if (action === "persona") {
+            const track = typeof body.track === "string" ? body.track : null;
+            return await handlePersona(body.messages || [], person, track);
         }
         if (action === "save") {
             if (!body?.sessionId) {
