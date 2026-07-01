@@ -16,8 +16,8 @@ type Msg = {
 type Person = { name?: string; email?: string; role?: string; team?: string };
 type Match = { name: string; team?: string; sid?: string };
 
-const PROFILE_MARKER = "---PROFILE---";
-const FINALIZE_AFTER_TURNS = 6; // mirror the server cap so progress reads true
+const PROFILE_RE = /---PROFILE-*/i; // tolerate a missing trailing "---"
+const FINALIZE_AFTER_TURNS = 5; // mirror the server cap so progress reads true
 
 type PathStep = { slug: string; title: string; href: string; blurb: string; why: string };
 
@@ -161,8 +161,8 @@ export default function TrainingIntakePage() {
             const thinking: string = liveThink;
             const suggestions: string[] = endSuggestions;
 
-            const hasProfile = reply.includes(PROFILE_MARKER);
-            const visible = hasProfile ? reply.split(PROFILE_MARKER)[0].trim() : (liveAnswer || reply);
+            const hasProfile = PROFILE_RE.test(reply);
+            const visible = hasProfile ? reply.split(PROFILE_RE)[0].trim() : (liveAnswer || reply);
 
             const shown: Msg[] = [
                 ...next,
@@ -175,7 +175,7 @@ export default function TrainingIntakePage() {
                 setPersonaLoading(true);
                 let trackHint = "";
                 try {
-                    const rawProfile = reply.split(PROFILE_MARKER)[1]?.trim() || "";
+                    const rawProfile = reply.split(PROFILE_RE)[1]?.trim() || "";
                     const jsonMatch = rawProfile.match(/\{[\s\S]*\}/);
                     if (jsonMatch) {
                         const prof = JSON.parse(jsonMatch[0]);
@@ -223,9 +223,9 @@ export default function TrainingIntakePage() {
     const progressLabel = done ? "All done" : answered === 0 ? "Just a couple minutes" : left <= 1 ? "Almost done!" : `About ${left} questions left`;
 
     return (
-        <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex flex-col" style={{ colorScheme: "light" }}>
-            {/* Header */}
-            <header className="border-b border-blue-100 bg-white/80 backdrop-blur">
+        <div className="h-[100dvh] overflow-hidden bg-gradient-to-b from-blue-50 to-white flex flex-col" style={{ colorScheme: "light" }}>
+            {/* Header (sticky) */}
+            <header className="shrink-0 border-b border-blue-100 bg-white/80 backdrop-blur">
                 <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
                     <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold">A</div>
                     <div className="flex-1">
@@ -380,7 +380,7 @@ export default function TrainingIntakePage() {
 
                     {/* Input */}
                     {!done && (
-                        <footer className="border-t border-blue-100 bg-white">
+                        <footer className="shrink-0 border-t border-blue-100 bg-white">
                             <div className="max-w-2xl mx-auto px-4 py-3 flex items-end gap-2">
                                 <textarea
                                     value={input}
@@ -444,6 +444,16 @@ function Markdown({ children }: { children: string }) {
     );
 }
 
+/** Compact markdown for the model's reasoning (bold, numbered/bulleted lists) —
+ *  streams cleanly and never shows raw ** or list markers. */
+function ThinkMarkdown({ children }: { children: string }) {
+    return (
+        <div className="[&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0.5 [&_strong]:font-semibold [&_strong]:text-slate-600 [&_code]:rounded [&_code]:bg-slate-200/70 [&_code]:px-1 [&_code]:text-[0.9em]">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+        </div>
+    );
+}
+
 /** Collapsed "Thinking" accordion. */
 function Thinking({ text }: { text: string }) {
     const [open, setOpen] = useState(false);
@@ -458,8 +468,8 @@ function Thinking({ text }: { text: string }) {
                     💭 Thinking
                 </button>
                 {open && (
-                    <div className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 whitespace-pre-wrap font-mono leading-relaxed">
-                        {text}
+                    <div className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 leading-relaxed">
+                        <ThinkMarkdown>{text}</ThinkMarkdown>
                     </div>
                 )}
             </div>
@@ -490,9 +500,9 @@ function ThinkingLive({ text }: { text: string }) {
                 {open && (
                     <div
                         ref={boxRef}
-                        className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-[11.5px] text-slate-500 whitespace-pre-wrap font-mono leading-relaxed"
+                        className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-[11.5px] text-slate-500 leading-relaxed"
                     >
-                        {text}
+                        <ThinkMarkdown>{text}</ThinkMarkdown>
                         <span className="inline-block w-1.5 h-3 ml-0.5 bg-blue-400 align-middle animate-pulse" />
                     </div>
                 )}

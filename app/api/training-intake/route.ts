@@ -16,12 +16,13 @@ import { matchRoster } from "./roster";
  * and per-turn quick-reply suggestions are parsed from a ---SUGGESTIONS--- block.
  */
 
-// Training intake runs on a FAST model so it never freezes on the first question.
-// The global Z_AI_MODEL_NAME (glm-4.7) is a heavy reasoning model — ~19s to first
-// reply, which reads as a freeze. glm-4.7-flash is ~1.7s AND still streams
-// reasoning_content (so the live "thinking" loader stays populated). We DELIBERATELY
-// do not inherit Z_AI_MODEL_NAME here — this route pins its own fast model.
-// If OLLAMA_API_KEY is ever set, we prefer kimi via Ollama (also fast).
+// Training intake wants FAST + RELIABLE. Speed matters (glm-4.7 alone is a heavy
+// reasoning model, ~19s to first reply = reads as a freeze), but the Z.AI *-flash
+// tiers are unreliable here: they burn the token budget on reasoning and return an
+// EMPTY answer ("Sorry, I didn't catch that"). So:
+//   - PRIMARY: kimi via Ollama (~2s AND reliably returns content) when OLLAMA_API_KEY is set.
+//   - FALLBACK: glm-4.7 — slower but always returns a real answer (never empty).
+// Set OLLAMA_API_KEY on the service to get the fast path.
 const USE_OLLAMA = !!process.env.OLLAMA_API_KEY;
 const GLM_BASE = USE_OLLAMA
     ? (process.env.OLLAMA_BASE_URL || "https://ollama.com/v1")
@@ -29,7 +30,7 @@ const GLM_BASE = USE_OLLAMA
 const GLM_KEY = process.env.OLLAMA_API_KEY || process.env.Z_AI_API_KEY || process.env.GLM_API_KEY || "";
 const GLM_MODEL = USE_OLLAMA
     ? (process.env.OLLAMA_MODEL || "kimi-k2.5")
-    : (process.env.TRAINING_INTAKE_MODEL || "glm-4.7-flash");
+    : (process.env.TRAINING_INTAKE_MODEL || "glm-4.7");
 
 const SYSTEM_PROMPT = `You are Alex, the ANC CRM onboarding guide — a friendly AI assistant. Your only job is a short, warm, upbeat conversation (about 2 minutes) to learn how this person works, so we can tailor their CRM training to them personally. You are NOT tech support and you do not answer CRM how-to questions — if asked, say warmly that the training will cover it.
 
@@ -43,7 +44,7 @@ Rules:
 - No jargon. Never name any underlying software, tool, or vendor — just "the CRM" and "the assistant."
 - Adapt: if they sound confident, move faster and lighter; if unsure, slow down and reassure.
 - Move BRISKLY: exactly ONE short question per turn (keep every message to 1-3 sentences), and NEVER repeat or re-ask anything they've already answered. Don't pad or over-explain.
-- HARD LIMIT — do not drag this out: wrap up by your 6th or 7th reply at the very latest. As soon as you have a rough read on them (or you hit that limit), thank them warmly in one or two sentences and emit the ---PROFILE--- block. It is much better to end a little early than to keep the conversation going. Once you've wrapped up, you are completely done — do not continue.
+- HARD LIMIT — do not drag this out: wrap up by your 5th reply at the very latest. As soon as you have a rough read on them (or you hit that limit), thank them warmly in one or two sentences and emit the ---PROFILE--- block. It is much better to end a little early than to keep the conversation going. Once you've wrapped up, you are completely done — do not continue.
 
 Cover, conversationally (weave it in, never interrogate):
 1. Name, role, and team.
@@ -284,7 +285,7 @@ const MAX_HISTORY = 50;
 const MAX_MSG_LEN = 8000;
 // Hard cap: once the person has answered this many times, force the bot to wrap up
 // and emit the profile. Stops the conversation dragging on / drifting on later turns.
-const FINALIZE_AFTER_TURNS = 6;
+const FINALIZE_AFTER_TURNS = 5;
 
 type Msg = { role: string; content: string };
 type Person = { name?: string; email?: string; role?: string; team?: string } | undefined;
@@ -306,13 +307,28 @@ function splitThink(text: string): { reply: string; thinking: string } {
     return { reply: reply.trim(), thinking: thinks.filter(Boolean).join("\n\n").trim() };
 }
 
+/** Text that's safe to stream to the user right now: everything before the
+ *  suggestions/profile marker line, with any trailing partial marker held back so
+ *  "\n\n---SUG…" never flashes in the bubble before the final clean reply. */
+function visibleSoFar(acc: string): string {
+    const cut = acc.search(/\n+-{2,}\s*(?:SUGGESTIONS|PROFILE)/i);
+    let vis = cut >= 0 ? acc.slice(0, cut) : acc;
+    // Marker lines always start on their own line ("\n\n---…"); hold back a trailing
+    // newline+dash(+letters) run that could be a marker mid-arrival. Requiring the
+    // leading newline avoids false-positives on inline hyphenated words.
+    const partial = vis.match(/\n+-{1,}[A-Za-z]*$/i);
+    if (partial) vis = vis.slice(0, vis.length - partial[0].length);
+    return vis;
+}
+
 /** Pull the ---SUGGESTIONS--- JSON array out, returning the cleaned reply + the chips. */
 function extractSuggestions(text: string): { reply: string; suggestions: string[] } {
-    const marker = "---SUGGESTIONS---";
-    const idx = text.indexOf(marker);
-    if (idx === -1) return { reply: text, suggestions: [] };
+    // Tolerate a missing trailing "---" (kimi sometimes writes just "---SUGGESTIONS").
+    const sm = text.match(/---SUGGESTIONS-*/i);
+    if (!sm || sm.index === undefined) return { reply: text, suggestions: [] };
+    const idx = sm.index;
     const before = text.slice(0, idx).trim();
-    const after = text.slice(idx + marker.length);
+    const after = text.slice(idx + sm[0].length);
     const m = after.match(/\[[\s\S]*?\]/);
     let suggestions: string[] = [];
     if (m) {
@@ -423,8 +439,10 @@ async function handleChat(messages: Msg[], person: Person): Promise<Response> {
                                     else { emit({ t: "think", d: txt.slice(0, cl) }); inThink = false; txt = txt.slice(cl + 8); }
                                 }
                             }
-                            // Only stream the clean visible answer (cut before markers).
-                            const cleanVisible = answerAcc.split(/---SUGGESTIONS---|---PROFILE---/)[0];
+                            // Only stream the clean visible answer. Cut at the marker
+                            // LINE (even a partial one still streaming in), and hold back a
+                            // trailing partial marker so "---SUG…" never flashes in the UI.
+                            const cleanVisible = visibleSoFar(answerAcc);
                             if (cleanVisible.length > emitted) { emit({ t: "answer", d: cleanVisible.slice(emitted) }); emitted = cleanVisible.length; }
                         }
                     }
@@ -444,9 +462,9 @@ async function handleChat(messages: Msg[], person: Person): Promise<Response> {
 function parseProfile(messages: Msg[]): { profile: Record<string, unknown> | null; raw: string | null } {
     const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
     if (!lastAssistant) return { profile: null, raw: null };
-    const idx = lastAssistant.content.indexOf("---PROFILE---");
-    if (idx === -1) return { profile: null, raw: null };
-    const raw = lastAssistant.content.slice(idx + "---PROFILE---".length).trim();
+    const m = lastAssistant.content.match(/---PROFILE-*/i);
+    if (!m || m.index === undefined) return { profile: null, raw: null };
+    const raw = lastAssistant.content.slice(m.index + m[0].length).trim();
     // Pull the first {...} JSON object out of the block.
     const match = raw.match(/\{[\s\S]*\}/);
     if (!match) return { profile: null, raw };
