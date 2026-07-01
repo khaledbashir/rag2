@@ -485,11 +485,15 @@ function PersonaAnalyzing({ name }: { name: string }) {
 /** The flattering persona archetype + AI-personalized learning path reveal. */
 function PersonaReveal({ persona }: { persona: Persona }) {
     const v = archVisual(persona.archetypeKey);
+    // Image on the bottom layer (visible), a legibility scrim on top. backgroundColor
+    // is the graceful fallback if the art ever fails to load — never an opaque layer
+    // OVER the image (that hides it).
     const heroStyle: React.CSSProperties = {
-        backgroundColor: v.from,
-        backgroundImage: `linear-gradient(180deg, rgba(3,8,30,.15) 0%, rgba(3,8,30,.55) 60%, rgba(3,8,30,.88) 100%), linear-gradient(135deg, ${v.from} 0%, ${v.to} 100%), url("${v.img}")`,
-        backgroundSize: "cover, cover, cover",
-        backgroundPosition: "center",
+        backgroundColor: v.to,
+        backgroundImage: `linear-gradient(180deg, rgba(4,10,35,.05) 0%, rgba(4,10,35,.35) 45%, rgba(4,10,35,.82) 100%), url("${v.img}")`,
+        backgroundSize: "cover, cover",
+        backgroundPosition: "center, center",
+        backgroundRepeat: "no-repeat, no-repeat",
     };
     return (
         <div className="pt-3 anc-reveal">
