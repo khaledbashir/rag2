@@ -16,9 +16,20 @@ import { matchRoster } from "./roster";
  * and per-turn quick-reply suggestions are parsed from a ---SUGGESTIONS--- block.
  */
 
-const GLM_BASE = process.env.Z_AI_BASE_URL || process.env.GLM_API_BASE || "https://api.z.ai/api/coding/paas/v4";
-const GLM_KEY = process.env.Z_AI_API_KEY || process.env.GLM_API_KEY || "";
-const GLM_MODEL = process.env.Z_AI_MODEL_NAME || process.env.GLM_MODEL || "glm-5";
+// Training intake runs on a FAST model so it never freezes on the first question.
+// The global Z_AI_MODEL_NAME (glm-4.7) is a heavy reasoning model — ~19s to first
+// reply, which reads as a freeze. glm-4.7-flash is ~1.7s AND still streams
+// reasoning_content (so the live "thinking" loader stays populated). We DELIBERATELY
+// do not inherit Z_AI_MODEL_NAME here — this route pins its own fast model.
+// If OLLAMA_API_KEY is ever set, we prefer kimi via Ollama (also fast).
+const USE_OLLAMA = !!process.env.OLLAMA_API_KEY;
+const GLM_BASE = USE_OLLAMA
+    ? (process.env.OLLAMA_BASE_URL || "https://ollama.com/v1")
+    : (process.env.Z_AI_BASE_URL || process.env.GLM_API_BASE || "https://api.z.ai/api/coding/paas/v4");
+const GLM_KEY = process.env.OLLAMA_API_KEY || process.env.Z_AI_API_KEY || process.env.GLM_API_KEY || "";
+const GLM_MODEL = USE_OLLAMA
+    ? (process.env.OLLAMA_MODEL || "kimi-k2.5")
+    : (process.env.TRAINING_INTAKE_MODEL || "glm-4.7-flash");
 
 const SYSTEM_PROMPT = `You are Alex, the ANC CRM onboarding guide — a friendly AI assistant. Your only job is a short, warm, upbeat conversation (about 2 minutes) to learn how this person works, so we can tailor their CRM training to them personally. You are NOT tech support and you do not answer CRM how-to questions — if asked, say warmly that the training will cover it.
 
@@ -181,8 +192,25 @@ function fallbackPersona(track: string | null): PersonaOut {
     };
 }
 
-async function handlePersona(messages: Msg[], person: Person, track: string | null): Promise<NextResponse> {
-    if (!GLM_KEY) return NextResponse.json({ persona: fallbackPersona(track) });
+async function persistPersona(sessionId: string | undefined, persona: PersonaOut): Promise<void> {
+    if (!sessionId) return;
+    try {
+        await prisma.trainingProfile.upsert({
+            where: { sessionId },
+            create: { sessionId, persona: persona as unknown as object },
+            update: { persona: persona as unknown as object },
+        });
+    } catch (e: any) {
+        log.error(`[TrainingIntake] persist persona: ${e?.message || e}`);
+    }
+}
+
+async function handlePersona(messages: Msg[], person: Person, track: string | null, sessionId?: string): Promise<NextResponse> {
+    if (!GLM_KEY) {
+        const fb = fallbackPersona(track);
+        await persistPersona(sessionId, fb);
+        return NextResponse.json({ persona: fb });
+    }
 
     // Feed the model the transcript as plain narration + the intake profile if present.
     const transcript = (Array.isArray(messages) ? messages : [])
@@ -242,10 +270,13 @@ async function handlePersona(messages: Msg[], person: Person, track: string | nu
             superpower: (typeof parsed.superpower === "string" && parsed.superpower.trim()) || "",
             path,
         };
+        await persistPersona(sessionId, persona);
         return NextResponse.json({ persona });
     } catch (err: any) {
         log.error(`[TrainingIntake] persona: ${err?.message || err}`);
-        return NextResponse.json({ persona: fallbackPersona(track) });
+        const fb = fallbackPersona(track);
+        await persistPersona(sessionId, fb);
+        return NextResponse.json({ persona: fb });
     }
 }
 
@@ -373,7 +404,10 @@ async function handleChat(messages: Msg[], person: Person): Promise<Response> {
                         let j: any;
                         try { j = JSON.parse(payload); } catch { continue; }
                         const delta = j?.choices?.[0]?.delta || {};
-                        if (delta.reasoning_content) emit({ t: "think", d: String(delta.reasoning_content) });
+                        // Different providers name the live reasoning field differently:
+                        // Z.AI/OpenAI-style = reasoning_content; Ollama (kimi) = reasoning.
+                        const reason = delta.reasoning_content ?? delta.reasoning;
+                        if (reason) emit({ t: "think", d: String(reason) });
                         const c = delta.content;
                         if (typeof c === "string" && c) {
                             full += c;
@@ -489,7 +523,8 @@ export async function POST(req: NextRequest) {
         }
         if (action === "persona") {
             const track = typeof body.track === "string" ? body.track : null;
-            return await handlePersona(body.messages || [], person, track);
+            const sessionId = typeof body.sessionId === "string" ? body.sessionId : undefined;
+            return await handlePersona(body.messages || [], person, track, sessionId);
         }
         if (action === "save") {
             if (!body?.sessionId) {

@@ -1269,6 +1269,7 @@ model TrainingProfile {
   interests        String[]
   transcript       Json?
   rawProfile       String?  @db.Text
+  persona          Json?
   completed        Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
