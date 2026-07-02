@@ -793,6 +793,60 @@ export function buildArtifactNoteMarkdown(input: {
   return lines.join("\n");
 }
 
+export function buildRecallMeetingNoteMarkdown(input: {
+  status: "scheduled" | "done" | "failed" | "review_required";
+  botId?: string | null;
+  meetingUrl?: string | null;
+  meetingTitle?: string | null;
+  joinAt?: string | null;
+  scheduledBy?: string | null;
+  transcriptUrl?: string | null;
+  videoUrl?: string | null;
+  audioUrl?: string | null;
+  participantEventsUrl?: string | null;
+  meetingMetadataUrl?: string | null;
+  recordingId?: string | null;
+  failureCode?: string | null;
+  failureMessage?: string | null;
+  proposalId?: string | null;
+}) {
+  const statusLabel =
+    input.status === "scheduled"
+      ? "Meeting recorder scheduled."
+      : input.status === "done"
+        ? "Meeting recording completed."
+        : input.status === "failed"
+          ? "Meeting recorder failed."
+          : "Meeting recording needs review.";
+
+  const lines = [
+    statusLabel,
+    input.meetingTitle ? `Meeting: ${input.meetingTitle}` : null,
+    input.botId ? `Recorder ID: ${input.botId}` : null,
+    input.recordingId ? `Recording ID: ${input.recordingId}` : null,
+    input.joinAt ? `Scheduled join: ${formatTimestamp(input.joinAt)}` : null,
+    input.scheduledBy ? `Scheduled by: ${input.scheduledBy}` : null,
+    input.meetingUrl ? `Meeting URL: ${input.meetingUrl}` : null,
+    input.proposalId ? `Workspace: ${buildWorkspaceUrl(input.proposalId)}` : null,
+    input.failureCode ? `Failure code: ${input.failureCode}` : null,
+    input.failureMessage ? `Failure detail: ${input.failureMessage}` : null,
+  ];
+
+  const artifacts = [
+    input.transcriptUrl ? `- Transcript: ${input.transcriptUrl}` : null,
+    input.videoUrl ? `- Video recording: ${input.videoUrl}` : null,
+    input.audioUrl ? `- Audio recording: ${input.audioUrl}` : null,
+    input.participantEventsUrl ? `- Participant events: ${input.participantEventsUrl}` : null,
+    input.meetingMetadataUrl ? `- Meeting metadata: ${input.meetingMetadataUrl}` : null,
+  ].filter(Boolean);
+
+  if (artifacts.length) {
+    lines.push("", "Artifacts:", ...artifacts);
+  }
+
+  return lines.filter(Boolean).join("\n");
+}
+
 async function postProposalEngineActivity(input: {
   name: string;
   eventType: string;
@@ -1145,6 +1199,86 @@ export async function postArtifactNote(input: {
       artifacts: input.artifacts,
     },
   });
+}
+
+export async function postRecallMeetingNote(input: {
+  opportunityId?: string | null;
+  proposalId?: string | null;
+  title?: string | null;
+  status: "scheduled" | "done" | "failed" | "review_required";
+  botId?: string | null;
+  meetingUrl?: string | null;
+  meetingTitle?: string | null;
+  joinAt?: string | null;
+  scheduledBy?: string | null;
+  transcriptUrl?: string | null;
+  videoUrl?: string | null;
+  audioUrl?: string | null;
+  participantEventsUrl?: string | null;
+  meetingMetadataUrl?: string | null;
+  recordingId?: string | null;
+  failureCode?: string | null;
+  failureMessage?: string | null;
+}) {
+  let opportunityId = input.opportunityId || null;
+  if (!opportunityId && input.proposalId) {
+    opportunityId = await resolveOpportunityIdForProposal(input.proposalId);
+  }
+
+  if (!opportunityId) {
+    if (input.proposalId) {
+      await logCrmReviewRequiredForProposal(input.proposalId, {
+        actionType: "meeting_recording",
+        reason: "No linked CRM opportunity for meeting recording.",
+        botId: input.botId,
+      });
+    }
+    return { reviewRequired: true, reason: "No linked CRM opportunity." };
+  }
+
+  const noteTitle =
+    input.title ||
+    (input.status === "scheduled"
+      ? "Meeting recorder scheduled"
+      : input.status === "done"
+        ? "Meeting recording completed"
+        : input.status === "failed"
+          ? "Meeting recorder failed"
+          : "Meeting recording needs review");
+
+  await createOpportunityNote(
+    opportunityId,
+    noteTitle,
+    buildRecallMeetingNoteMarkdown(input),
+  );
+
+  await postProposalEngineActivity({
+    name: `${noteTitle}${input.meetingTitle ? ` - ${input.meetingTitle}` : ""}`,
+    eventType: `proposalEngine.meetingRecording.${input.status}`,
+    message:
+      input.status === "scheduled"
+        ? "Meeting recorder scheduled from the CRM workflow."
+        : input.status === "done"
+          ? "Meeting transcript and recording are ready on the CRM opportunity."
+          : input.status === "failed"
+            ? "Meeting recorder failed and needs review."
+            : "Meeting recording needs CRM review.",
+    workspaceMemberEmail: input.scheduledBy,
+    targetOpportunityId: opportunityId,
+    proposalId: input.proposalId || undefined,
+    workspaceUrl: input.proposalId ? buildWorkspaceUrl(input.proposalId) : null,
+    properties: {
+      source: "recall-ai",
+      botId: input.botId,
+      recordingId: input.recordingId,
+      status: input.status,
+      hasTranscript: Boolean(input.transcriptUrl),
+      hasVideo: Boolean(input.videoUrl),
+      hasAudio: Boolean(input.audioUrl),
+    },
+  });
+
+  return { opportunityId };
 }
 /**
  * markPricingCompleteOnMirrorFinalize — flips pricingComplete=YES and stamps

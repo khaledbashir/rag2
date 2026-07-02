@@ -6,6 +6,7 @@ import {
   buildEmailIntakeNoteMarkdown,
   buildProposalCreatedNoteMarkdown,
   buildProposalStatusNoteMarkdown,
+  buildRecallMeetingNoteMarkdown,
   buildRfpAnalyzedNoteMarkdown,
   resolveExistingOpportunityForCrmSync,
 } from "./crmAutomation";
@@ -98,6 +99,54 @@ describe("Twenty CRM automation note builders", () => {
     expect(note).toContain("download-pdf");
     expect(note).toContain("download-excel");
     expect(note).toContain("Workspace:");
+  });
+
+  it("builds a scheduled Recall meeting note", () => {
+    const note = buildRecallMeetingNoteMarkdown({
+      status: "scheduled",
+      botId: "bot_123",
+      meetingTitle: "MetLife Live Sync review",
+      meetingUrl: "https://meet.google.com/abc-defg-hij",
+      joinAt: "2026-07-02T20:30:00Z",
+      scheduledBy: "ahmad@example.com",
+      proposalId: "proposal_123",
+    });
+
+    expect(note).toContain("Meeting recorder scheduled");
+    expect(note).toContain("MetLife Live Sync review");
+    expect(note).toContain("Recorder ID: bot_123");
+    expect(note).toContain("Workspace:");
+  });
+
+  it("builds a completed Recall meeting note with transcript and recording links", () => {
+    const note = buildRecallMeetingNoteMarkdown({
+      status: "done",
+      botId: "bot_123",
+      recordingId: "recording_123",
+      transcriptUrl: "https://example.com/transcript.json",
+      videoUrl: "https://example.com/video.mp4",
+      participantEventsUrl: "https://example.com/events.json",
+      meetingMetadataUrl: "https://example.com/metadata.json",
+    });
+
+    expect(note).toContain("Meeting recording completed");
+    expect(note).toContain("Recording ID: recording_123");
+    expect(note).toContain("Transcript: https://example.com/transcript.json");
+    expect(note).toContain("Video recording: https://example.com/video.mp4");
+    expect(note).toContain("Participant events: https://example.com/events.json");
+  });
+
+  it("builds a failed Recall meeting note with review details", () => {
+    const note = buildRecallMeetingNoteMarkdown({
+      status: "failed",
+      botId: "bot_123",
+      failureCode: "meeting_not_started",
+      failureMessage: "The bot waited but the meeting never started.",
+    });
+
+    expect(note).toContain("Meeting recorder failed");
+    expect(note).toContain("Failure code: meeting_not_started");
+    expect(note).toContain("The bot waited but the meeting never started.");
   });
 
   it("builds an email intake handoff note with follow-up text", () => {
