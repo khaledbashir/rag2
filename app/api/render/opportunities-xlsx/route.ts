@@ -143,8 +143,16 @@ function vfClause(f: Field, operand: string, raw: string): any | null {
       return isSelect ? { not: { [name]: { in: arr || [first] } } } : { not: { [name]: { eq: first } } };
     case "IS_AFTER": return { [name]: { gt: raw } };
     case "IS_BEFORE": return { [name]: { lt: raw } };
-    case "GREATER_THAN_OR_EQUAL": return { [name]: { gte: raw } };
-    case "LESS_THAN_OR_EQUAL": return { [name]: { lte: raw } };
+    // CURRENCY is a composite type — comparisons must target the amountMicros
+    // sub-field, and view-filter values are stored in dollars.
+    case "GREATER_THAN_OR_EQUAL":
+      return type === "CURRENCY"
+        ? { [name]: { amountMicros: { gte: Math.round(Number(first) * 1_000_000) } } }
+        : { [name]: { gte: raw } };
+    case "LESS_THAN_OR_EQUAL":
+      return type === "CURRENCY"
+        ? { [name]: { amountMicros: { lte: Math.round(Number(first) * 1_000_000) } } }
+        : { [name]: { lte: raw } };
     case "CONTAINS": return { [name]: { ilike: `%${raw}%` } };
     case "DOES_NOT_CONTAIN": return { not: { [name]: { ilike: `%${raw}%` } } };
     case "IS_EMPTY": return { [name]: { is: "NULL" } };
