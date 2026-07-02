@@ -141,20 +141,24 @@ function vfClause(f: Field, operand: string, raw: string): any | null {
     case "IS_NOT":
       if (type === "BOOLEAN") return { not: { [name]: { eq: !!first } } };
       return isSelect ? { not: { [name]: { in: arr || [first] } } } : { not: { [name]: { eq: first } } };
-    case "IS_AFTER": return { [name]: { gt: raw } };
-    case "IS_BEFORE": return { [name]: { lt: raw } };
+    // Comparison operands must use the PARSED scalar (`first`), not `raw`.
+    // Twenty stores these values JSON-array-wrapped (e.g. date filters as
+    // ["2026-08-02T18:13:38Z"]); passing the array-string straight into gt/lt
+    // 500s the query. `first` unwraps the array (or is the plain value).
+    case "IS_AFTER": return { [name]: { gt: first } };
+    case "IS_BEFORE": return { [name]: { lt: first } };
     // CURRENCY is a composite type — comparisons must target the amountMicros
     // sub-field, and view-filter values are stored in dollars.
     case "GREATER_THAN_OR_EQUAL":
       return type === "CURRENCY"
         ? { [name]: { amountMicros: { gte: Math.round(Number(first) * 1_000_000) } } }
-        : { [name]: { gte: raw } };
+        : { [name]: { gte: first } };
     case "LESS_THAN_OR_EQUAL":
       return type === "CURRENCY"
         ? { [name]: { amountMicros: { lte: Math.round(Number(first) * 1_000_000) } } }
-        : { [name]: { lte: raw } };
-    case "CONTAINS": return { [name]: { ilike: `%${raw}%` } };
-    case "DOES_NOT_CONTAIN": return { not: { [name]: { ilike: `%${raw}%` } } };
+        : { [name]: { lte: first } };
+    case "CONTAINS": return { [name]: { ilike: `%${first}%` } };
+    case "DOES_NOT_CONTAIN": return { not: { [name]: { ilike: `%${first}%` } } };
     case "IS_EMPTY": return { [name]: { is: "NULL" } };
     case "IS_NOT_EMPTY": return { [name]: { is: "NOT_NULL" } };
     case "IS_RELATIVE": {
