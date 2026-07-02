@@ -30,6 +30,40 @@ Supported regions in code:
 
 Ahmad shared the Japan dashboard URL, so `ap-northeast-1` is the expected production region unless the Recall workspace changes.
 
+Production status as of 2026-07-02:
+
+- `RECALL_API_KEY` is set on `abc_ancapp`.
+- `RECALL_REGION=ap-northeast-1` is set on `abc_ancapp`.
+- `RECALL_WORKSPACE_VERIFICATION_SECRET` is still needed from the Recall dashboard for signed webhook verification.
+- The env was applied through `docker service update`; persist it in the service settings before the next dashboard-driven deploy so it cannot be overwritten.
+
+## Recall MCP Operator Layer
+
+Recall provides a managed read-only MCP server for agent access to workspace data, bots, recordings, bot logs, calendars, webhooks, usage, service status, and Recall documentation.
+
+Japan workspace MCP URL:
+
+```text
+https://ap-northeast-1.recall.ai/mcp
+```
+
+Codex global MCP config was added:
+
+```bash
+codex mcp add recall-ai --url https://ap-northeast-1.recall.ai/mcp --bearer-token-env-var RECALL_API_KEY
+```
+
+This means future Codex sessions can use the `recall-ai` MCP server when `RECALL_API_KEY` is present in the shell environment.
+
+High-value MCP use cases:
+
+- Debug failed bots by reading bot state and bot logs.
+- Confirm webhook endpoints and test webhook delivery.
+- List recordings and transcript artifacts for backfills.
+- Check workspace/API rate limits before bulk sync.
+- Pull Recall docs/API reference directly into coding sessions.
+- Inspect calendars and calendar events if automatic meeting scheduling is added later.
+
 ## CRM Use Cases Covered
 
 ### 1. Schedule a meeting bot from CRM/proposal context
@@ -183,13 +217,18 @@ Result:
 18 passed
 ```
 
-## Production Setup Still Needed
+## Remaining Production Setup
 
-Add environment variables in the production service:
+Persist the live environment variables in the production service settings:
 
 ```bash
 RECALL_API_KEY=...
 RECALL_REGION=ap-northeast-1
+```
+
+Add the webhook verification secret from the Recall dashboard:
+
+```bash
 RECALL_WORKSPACE_VERIFICATION_SECRET=whsec_...
 ```
 
@@ -209,4 +248,3 @@ After deploy, run one controlled test meeting:
    - completed note
    - transcript link
    - recording link if video was enabled
-
