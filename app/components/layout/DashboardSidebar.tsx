@@ -32,6 +32,7 @@ import {
     PanelLeftClose,
     PanelLeftOpen,
     Radio,
+    Server,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRbac } from "@/hooks/useRbac";
@@ -78,6 +79,7 @@ const toolsMenuItems: NavItem[] = [
     { icon: FileSpreadsheet, label: "Spec Sheets", description: "Generate per-display product spec sheets and submittal forms.", href: "/tools/spec-generator", allowedRoles: null },
     { icon: MailPlus, label: "Email Intake", description: "Turn inbound estimate emails into reviewed estimator drafts.", href: "/tools/email-to-quote", allowedRoles: null },
     { icon: Bot, label: "Meeting Capture", description: "Schedule meeting recorders and sync recordings back to CRM.", href: "/meeting-capture", allowedRoles: ["ADMIN", "ESTIMATOR", "PROPOSAL_LEAD"] as UserRole[] },
+    { icon: Server, label: "Control System", description: "Build the Control System BOM from screen sizes with automatic server, matrix, and rack selection.", href: "/admin/livesync-calculator", allowedRoles: ["ADMIN", "PRODUCT_EXPERT"] as UserRole[] },
     { icon: Calculator, label: "Estimator", description: "Build budgets, swap products, and export scoping workbooks.", href: "/estimator", allowedRoles: null, children: [
         { label: "New Estimate", href: "/estimator/new", icon: Calculator },
         { label: "History", href: "/estimator", icon: History },
