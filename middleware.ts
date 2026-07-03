@@ -15,6 +15,7 @@ const ROUTE_RULES: Array<{
 }> = [
     // Performance — accessible to more roles
     { pattern: /^\/admin\/performance/, roles: ["ADMIN", "ESTIMATOR", "PROPOSAL_LEAD"] },
+    { pattern: /^\/admin\/meeting-capture/, roles: ["ADMIN", "ESTIMATOR", "PROPOSAL_LEAD"] },
     // Admin-only routes
     { pattern: /^\/admin/, roles: ["ADMIN"] },
     { pattern: /^\/api\/admin\//, roles: ["ADMIN"] },

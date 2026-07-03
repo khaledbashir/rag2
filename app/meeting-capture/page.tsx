@@ -1,8 +1,8 @@
 import { auth } from "@/auth";
 import Unauthorized from "@/app/components/reusables/Unauthorized";
-import type { UserRole } from "@/lib/rbac";
+import MeetingCaptureClient from "@/app/admin/meeting-capture/MeetingCaptureClient";
 import { isPlatformOwner } from "@/lib/platformOwner";
-import MeetingCaptureClient from "./MeetingCaptureClient";
+import type { UserRole } from "@/lib/rbac";
 
 export default async function MeetingCapturePage() {
   const session = await auth();

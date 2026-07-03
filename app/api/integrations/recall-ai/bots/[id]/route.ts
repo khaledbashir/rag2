@@ -8,11 +8,12 @@ import { postRecallMeetingNote } from "@/services/integrations/twenty/crmAutomat
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const syncToCrm = req.nextUrl.searchParams.get("sync") === "true";
-    const bot = await retrieveRecallBot(params.id);
+    const { id } = await params;
+    const bot = await retrieveRecallBot(id);
     const media = extractRecallMedia(bot);
     const status = latestRecallStatus(bot);
     const metadata = (bot.metadata || {}) as Record<string, unknown>;
