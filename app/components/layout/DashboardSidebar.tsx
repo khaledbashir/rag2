@@ -31,6 +31,7 @@ import {
     PanelLeftClose,
     PanelLeftOpen,
     Radio,
+    Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRbac } from "@/hooks/useRbac";
@@ -96,6 +97,7 @@ const dataPricingMenuItems: NavItem[] = [
 
 const adminMenuItems: NavItem[] = [
     { icon: BarChart3, label: "Performance", href: "/admin/performance", demoPhase: "3", allowedRoles: ["ADMIN", "ESTIMATOR", "PROPOSAL_LEAD"] as UserRole[] },
+    { icon: Bot, label: "Meeting Capture", href: "/admin/meeting-capture", allowedRoles: ["ADMIN", "PROPOSAL_LEAD"] as UserRole[] },
 ];
 
 // ─── Component ──────────────────────────────────────────────────────────────

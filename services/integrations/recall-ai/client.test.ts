@@ -1,10 +1,12 @@
 import crypto from "crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildRecallRecordingConfig,
   extractRecallMedia,
+  getRecallRuntimeStatus,
   getRecallRegion,
   latestRecallStatus,
+  listRecallBots,
   verifyRecallWebhookSignature,
 } from "./client";
 
@@ -94,6 +96,62 @@ describe("Recall.ai client helpers", () => {
       message: null,
       createdAt: "2026-07-02T19:00:00Z",
     });
+  });
+
+  it("lists bots through the regional Recall endpoint", async () => {
+    const previousKey = process.env.RECALL_API_KEY;
+    const previousRegion = process.env.RECALL_REGION;
+    process.env.RECALL_API_KEY = "test_key";
+    process.env.RECALL_REGION = "ap-northeast-1";
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          count: 1,
+          next: null,
+          previous: null,
+          results: [{ id: "bot_1", bot_name: "ANC Meeting Recorder" }],
+        }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const bots = await listRecallBots({ page: 2, pageSize: 10, status: "done" });
+
+    expect(bots.results).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://ap-northeast-1.recall.ai/api/v1/bot/?page=2&page_size=10&status=done",
+      expect.objectContaining({ method: "GET" }),
+    );
+
+    vi.unstubAllGlobals();
+    if (previousKey === undefined) delete process.env.RECALL_API_KEY;
+    else process.env.RECALL_API_KEY = previousKey;
+    if (previousRegion === undefined) delete process.env.RECALL_REGION;
+    else process.env.RECALL_REGION = previousRegion;
+  });
+
+  it("reports Recall runtime status without exposing secrets", () => {
+    const previousKey = process.env.RECALL_API_KEY;
+    const previousRegion = process.env.RECALL_REGION;
+    const previousSecret = process.env.RECALL_WORKSPACE_VERIFICATION_SECRET;
+    process.env.RECALL_API_KEY = "test_key";
+    process.env.RECALL_REGION = "ap-northeast-1";
+    delete process.env.RECALL_WORKSPACE_VERIFICATION_SECRET;
+
+    expect(getRecallRuntimeStatus()).toEqual({
+      region: "ap-northeast-1",
+      apiKeyConfigured: true,
+      webhookSecretConfigured: false,
+      mcpUrl: "https://ap-northeast-1.recall.ai/mcp",
+    });
+
+    if (previousKey === undefined) delete process.env.RECALL_API_KEY;
+    else process.env.RECALL_API_KEY = previousKey;
+    if (previousRegion === undefined) delete process.env.RECALL_REGION;
+    else process.env.RECALL_REGION = previousRegion;
+    if (previousSecret === undefined) delete process.env.RECALL_WORKSPACE_VERIFICATION_SECRET;
+    else process.env.RECALL_WORKSPACE_VERIFICATION_SECRET = previousSecret;
   });
 
   it("verifies Recall webhook signatures", () => {

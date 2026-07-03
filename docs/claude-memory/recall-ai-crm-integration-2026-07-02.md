@@ -6,6 +6,39 @@ Wire Recall.ai meeting capture into the ANC CRM workflow so meeting transcripts,
 
 This is not a replacement CRM UI. Recall.ai is the capture layer. The CRM remains the operator-facing surface for opportunity history.
 
+## Placement Decision
+
+Keep the first production surface inside the existing proposal app as `/admin/meeting-capture`.
+
+Why:
+
+- The proposal app already owns auth, CRM handoff, production deployment, and proposal context.
+- The CRM should remain the system of record for completed meeting notes and artifacts.
+- Recall is a capture provider and debug surface, not a separate ANC business app.
+- A separate service would add deployment/auth/env overhead before there is a packaged desktop app or calendar automation product.
+
+Do not create a standalone microservice unless one of these becomes true:
+
+- ANC needs a packaged Desktop Recording SDK app with its own release channel.
+- Calendar automation needs a persistent scheduler/worker beyond API calls from the proposal app.
+- Recording ingest volume requires queueing/retry infrastructure outside the current app.
+- Stakeholders need a public/non-admin capture portal.
+
+Current operator surface:
+
+```text
+https://proposals.anc.com/admin/meeting-capture
+```
+
+The page handles:
+
+- readiness checks for region/API/webhook/MCP
+- manual bot scheduling
+- recent bot listing
+- manual CRM sync/backfill
+- Desktop Recording SDK artifact intake
+- visible blockers and build plan
+
 ## Environment
 
 Required:
@@ -128,6 +161,19 @@ Use this if:
 - The webhook was not configured yet.
 - The webhook failed.
 - A user wants to manually backfill a recording.
+
+Recent bots can be listed for the operator page:
+
+```http
+GET /api/integrations/recall-ai/bots?page=1&pageSize=25
+```
+
+Result:
+
+- runtime readiness status
+- recent bot records
+- latest bot status
+- available media shortcut links
 
 ### 3. Auto-sync completed bot recordings through Recall webhooks
 

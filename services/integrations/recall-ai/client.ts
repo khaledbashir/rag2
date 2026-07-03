@@ -69,8 +69,30 @@ export type RecallWebhookPayload = {
   bot?: Partial<RecallBot>;
 };
 
+export type ListRecallBotsInput = {
+  page?: number;
+  pageSize?: number;
+  status?: string | null;
+};
+
+export type ListRecallBotsResult = {
+  count?: number;
+  next?: string | null;
+  previous?: string | null;
+  results: RecallBot[];
+};
+
 function getRecallApiKey() {
   return process.env.RECALLAI_API_KEY || process.env.RECALL_API_KEY;
+}
+
+export function getRecallRuntimeStatus() {
+  return {
+    region: getRecallRegion(),
+    apiKeyConfigured: Boolean(getRecallApiKey()),
+    webhookSecretConfigured: Boolean(process.env.RECALL_WORKSPACE_VERIFICATION_SECRET),
+    mcpUrl: `https://${getRecallRegion()}.recall.ai/mcp`,
+  };
 }
 
 export function getRecallRegion(): RecallRegion {
@@ -178,6 +200,34 @@ export async function retrieveRecallBot(botId: string): Promise<RecallBot> {
   return recallFetch<RecallBot>(`/api/v1/bot/${encodeURIComponent(botId)}/`, {
     method: "GET",
   });
+}
+
+export async function listRecallBots(input: ListRecallBotsInput = {}): Promise<ListRecallBotsResult> {
+  const params = new URLSearchParams();
+  params.set("page", String(input.page && input.page > 0 ? input.page : 1));
+  if (input.pageSize && input.pageSize > 0) params.set("page_size", String(Math.min(input.pageSize, 100)));
+  if (input.status) params.set("status", input.status);
+
+  const response = await recallFetch<ListRecallBotsResult | RecallBot[]>(
+    `/api/v1/bot/?${params.toString()}`,
+    { method: "GET" },
+  );
+
+  if (Array.isArray(response)) {
+    return {
+      count: response.length,
+      next: null,
+      previous: null,
+      results: response,
+    };
+  }
+
+  return {
+    count: response.count,
+    next: response.next ?? null,
+    previous: response.previous ?? null,
+    results: Array.isArray(response.results) ? response.results : [],
+  };
 }
 
 export function extractRecallBotFromWebhook(payload: RecallWebhookPayload): Partial<RecallBot> | null {

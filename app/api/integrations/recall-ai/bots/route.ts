@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createRecallBot } from "@/services/integrations/recall-ai/client";
+import {
+  createRecallBot,
+  extractRecallMedia,
+  getRecallRuntimeStatus,
+  latestRecallStatus,
+  listRecallBots,
+} from "@/services/integrations/recall-ai/client";
 import { postRecallMeetingNote } from "@/services/integrations/twenty/crmAutomation";
 
 const createBotSchema = z.object({
@@ -18,6 +24,33 @@ const createBotSchema = z.object({
   transcriptionProvider: z.enum(["meeting_captions", "recallai_streaming"]).optional(),
   realtimeEndpointUrl: z.string().url().optional().nullable(),
 });
+
+export async function GET(req: NextRequest) {
+  try {
+    const page = Number(req.nextUrl.searchParams.get("page") || "1");
+    const pageSize = Number(req.nextUrl.searchParams.get("pageSize") || "25");
+    const status = req.nextUrl.searchParams.get("status");
+    const bots = await listRecallBots({ page, pageSize, status });
+
+    return NextResponse.json({
+      ok: true,
+      runtime: getRecallRuntimeStatus(),
+      count: bots.count,
+      next: bots.next,
+      previous: bots.previous,
+      bots: bots.results.map((bot) => ({
+        bot,
+        status: latestRecallStatus(bot),
+        media: extractRecallMedia(bot),
+      })),
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { ok: false, runtime: getRecallRuntimeStatus(), error: err?.message || "Failed to list Recall bots" },
+      { status: 400 },
+    );
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
