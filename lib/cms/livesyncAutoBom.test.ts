@@ -1,0 +1,259 @@
+import { describe, expect, it } from "vitest";
+import {
+  buildLivesyncAutoBom,
+  outputsForScreen,
+  type CatalogEntry,
+} from "./livesyncAutoBom";
+
+// Minimal catalog mirroring prisma/seed-cms-catalog.ts prices
+const CATALOG: CatalogEntry[] = [
+  ["ANC-1U-4TB-4ADA-V1", "SERVER_EQUIPMENT", 8990],
+  ["ANC-1U-6TB-4ADA-V1", "SERVER_EQUIPMENT", 10150],
+  ["ANC-1U-8TB-4ADA-V1", "SERVER_EQUIPMENT", 11250],
+  ["ANC-1U-4TB-2x4ADA-V1", "SERVER_EQUIPMENT", 11550],
+  ["ANC-1U-6TB-2x4ADA-V1", "SERVER_EQUIPMENT", 12350],
+  ["ANC-1U-8TB-2x4ADA-V1", "SERVER_EQUIPMENT", 13690],
+  ["ANC-1U-4TB-4ADA-CC", "SERVER_EQUIPMENT", 14890],
+  ["ANC-1U-6TB-4ADA-CC", "SERVER_EQUIPMENT", 16980],
+  ["ANC-1U-8TB-4ADA-CC", "SERVER_EQUIPMENT", 17990],
+  ["CMS-ADDON-DANTE", "SERVER_ADDON", 500],
+  ["CMS-ADDON-RS232IP", "SERVER_ADDON", 290],
+  ["CMS-WS-PWR", "USER_STATION", 1150],
+  ["CMS-NET-SWITCH", "INTERCONNECT", 5600],
+  ["CMS-GPI-TRIGGER", "TRIGGER_HARDWARE", 2270],
+  ["ADDER-TX", "KVM", 2150],
+  ["ADDER-RX", "KVM", 2150],
+  ["ADDER-MGT", "KVM", 2980],
+  ["ANC-MTRX-4x4-5YR", "ROUTER", 6200],
+  ["ANC-MTRX-8x8-5YR", "ROUTER", 8550],
+  ["ANC-MTRX-16x16-5YR", "ROUTER", 23850],
+  ["ANC-MTRX-24x24-5YR", "ROUTER", 31550],
+  ["ANC-MTRX-32x32-5YR", "ROUTER", 47500],
+  ["ANC-MTRX-48x48-5YR", "ROUTER", 63400],
+  ["CMS-ROUTER-CABLE", "ROUTER", 120],
+  ["CMS-RACK-WS", "RACK", 3000],
+  ["CMS-RACK-ACC", "RACK", 1260],
+  ["CMS-RACK-UPS", "RACK", 3440],
+  ["CMS-RACK-ACOUT", "RACK", 10000],
+  ["CMS-RACK-CABINET", "RACK", 3397.55],
+  ["CMS-INTEG-WEEK", "INTEGRATION", 19500],
+  ["LIVESYNC-LICENSE", "LICENSE", 10000],
+].map(([sku, category, unitCost]) => ({
+  sku: sku as string,
+  displayName: sku as string,
+  category: category as string,
+  unitCost: unitCost as number,
+  unitPrice: null,
+  isActive: true,
+}));
+
+const qty = (result: ReturnType<typeof buildLivesyncAutoBom>, sku: string) =>
+  result.lines.find((l) => l.sku === sku)?.quantity ?? 0;
+
+describe("outputsForScreen — 3840×2160 per output", () => {
+  it("matches Jackson's 7680×1000 example: 2 outputs", () => {
+    expect(outputsForScreen(7680, 1000)).toBe(2);
+  });
+  it("sub-4K screen needs 1 output", () => {
+    expect(outputsForScreen(3000, 1000)).toBe(1);
+  });
+  it("7680×4320 needs 4 outputs (2 wide × 2 tall)", () => {
+    expect(outputsForScreen(7680, 4320)).toBe(4);
+  });
+});
+
+describe("Jackson's canonical 7680×1000 deployment", () => {
+  const result = buildLivesyncAutoBom(
+    { screens: [{ name: "Main Board", pixelWidth: 7680, pixelHeight: 1000 }] },
+    CATALOG
+  );
+
+  it("produces 4 servers total: 2 UI (8TB) + 2 render (4TB, primary+backup)", () => {
+    expect(result.counts.uiServers).toBe(2);
+    expect(result.counts.renderServers).toBe(2);
+    expect(result.counts.totalServers).toBe(4);
+    expect(qty(result, "ANC-1U-4TB-4ADA-V1")).toBe(2); // render pair
+    expect(qty(result, "ANC-1U-8TB-4ADA-V1")).toBe(2); // UI pair
+  });
+
+  it("adds 1 audio element per server (4 servers → 4 audio)", () => {
+    expect(qty(result, "CMS-ADDON-DANTE")).toBe(4);
+  });
+
+  it("4 servers × 2 outputs = 8 matrix inputs → 16×16 (next size up, never exact)", () => {
+    expect(result.counts.matrixInputsNeeded).toBe(8);
+    expect(result.counts.matrixSize).toBe(16);
+    expect(qty(result, "ANC-MTRX-16x16-5YR")).toBe(1);
+  });
+
+  it("1 rack → 1 week of install labor, 3 switches minimum, 1 GPI trigger", () => {
+    expect(result.counts.racks).toBe(1);
+    expect(qty(result, "CMS-INTEG-WEEK")).toBe(1);
+    expect(qty(result, "CMS-NET-SWITCH")).toBe(3);
+    expect(qty(result, "CMS-GPI-TRIGGER")).toBe(1);
+  });
+
+  it("sports venue default → RS-232 scoring intake included", () => {
+    expect(qty(result, "CMS-ADDON-RS232IP")).toBeGreaterThan(0);
+  });
+
+  it("KVM: TX per UI server, RX per workstation, 1 management", () => {
+    expect(qty(result, "ADDER-TX")).toBe(2);
+    expect(qty(result, "ADDER-RX")).toBe(1);
+    expect(qty(result, "ADDER-MGT")).toBe(1);
+  });
+
+  it("license excluded by default but flagged for review", () => {
+    expect(qty(result, "LIVESYNC-LICENSE")).toBe(0);
+    expect(result.reviewFlags.some((f) => f.toLowerCase().includes("licens"))).toBe(true);
+  });
+});
+
+describe("matrix sizing — never select exactly what you need", () => {
+  it("16 inputs needed steps up to 24×24 (Jackson's 4-pairs example)", () => {
+    // 3 screens of 2 outputs each → 3 render pairs (6) + 2 UI = 8 servers → 16 inputs
+    const result = buildLivesyncAutoBom(
+      {
+        screens: [
+          { name: "A", pixelWidth: 7680, pixelHeight: 1000 },
+          { name: "B", pixelWidth: 7680, pixelHeight: 1000 },
+          { name: "C", pixelWidth: 7680, pixelHeight: 1000 },
+        ],
+      },
+      CATALOG
+    );
+    expect(result.counts.totalServers).toBe(8);
+    expect(result.counts.matrixInputsNeeded).toBe(16);
+    expect(result.counts.matrixSize).toBe(24);
+  });
+});
+
+describe("live video screens", () => {
+  it("selects the CC capture variant for a center-hung with live video", () => {
+    const result = buildLivesyncAutoBom(
+      {
+        screens: [
+          { name: "Center Hung", pixelWidth: 5000, pixelHeight: 2000, liveVideo: true },
+        ],
+      },
+      CATALOG
+    );
+    // 5000×2000 = 10M px → 6TB tier, CC capture variant, primary + backup
+    expect(qty(result, "ANC-1U-6TB-4ADA-CC")).toBe(2);
+  });
+});
+
+describe("dual video card rule — screen wider than 7680 stays on one box", () => {
+  it("selects a dual-GPU server for an 8000×2000 board", () => {
+    const result = buildLivesyncAutoBom(
+      { screens: [{ name: "End Zone", pixelWidth: 8000, pixelHeight: 2000 }] },
+      CATALOG
+    );
+    const dual = result.lines.find((l) => l.sku.includes("2x4ADA"));
+    expect(dual).toBeDefined();
+    expect(dual!.quantity).toBe(2); // primary + backup
+  });
+});
+
+describe("small screens pack 2-per-server", () => {
+  it("3 sub-4K screens → 2 primaries + 2 backups", () => {
+    const result = buildLivesyncAutoBom(
+      {
+        screens: [
+          { name: "Ribbon A", pixelWidth: 3000, pixelHeight: 500 },
+          { name: "Ribbon B", pixelWidth: 3000, pixelHeight: 500 },
+          { name: "Concourse", pixelWidth: 1920, pixelHeight: 1080 },
+        ],
+      },
+      CATALOG
+    );
+    expect(qty(result, "ANC-1U-4TB-4ADA-V1")).toBe(4); // ceil(3/2)=2 primaries ×2
+  });
+});
+
+describe("workstations scale with screen count", () => {
+  it("7 screens → 2 workstations (1 per 5 screens, min 1)", () => {
+    const screens = Array.from({ length: 7 }, (_, i) => ({
+      name: `S${i}`,
+      pixelWidth: 3000,
+      pixelHeight: 600,
+    }));
+    const result = buildLivesyncAutoBom({ screens }, CATALOG);
+    expect(result.counts.workstations).toBe(2);
+    expect(qty(result, "CMS-WS-PWR")).toBe(2);
+    expect(qty(result, "ADDER-RX")).toBe(2);
+  });
+});
+
+describe("outdoor screens", () => {
+  it("250 ft wide outdoor board → 2 outdoor A/C racks (every 150 ft)", () => {
+    const result = buildLivesyncAutoBom(
+      {
+        screens: [
+          {
+            name: "Outdoor Main",
+            pixelWidth: 7000,
+            pixelHeight: 1500,
+            outdoor: true,
+            physicalWidthFt: 250,
+          },
+        ],
+      },
+      CATALOG
+    );
+    expect(qty(result, "CMS-RACK-ACOUT")).toBe(2);
+  });
+});
+
+describe("processor advisory — 650k pixels per port", () => {
+  it("computes ports, processor class, closets, fiber pairs", () => {
+    const result = buildLivesyncAutoBom(
+      {
+        screens: [
+          {
+            name: "Main",
+            pixelWidth: 7680,
+            pixelHeight: 1000,
+            physicalWidthFt: 300,
+          },
+        ],
+      },
+      CATALOG
+    );
+    const adv = result.processorAdvisories[0];
+    expect(adv.portsNeeded).toBe(Math.ceil((7680 * 1000) / 650000)); // 12
+    expect(adv.recommendedClass).toContain("4K");
+    expect(adv.closets).toBe(2); // 300 ft / 150 ft rule
+    expect(adv.fiberConverterPairs).toBe(2); // 6 ports per closet → 1 pair each
+  });
+});
+
+describe("flag-don't-guess behavior", () => {
+  it("missing catalog SKU produces a review flag instead of throwing", () => {
+    const tiny = CATALOG.filter((c) => c.category === "SERVER_EQUIPMENT");
+    const result = buildLivesyncAutoBom(
+      { screens: [{ name: "X", pixelWidth: 7680, pixelHeight: 1000 }] },
+      tiny
+    );
+    expect(result.reviewFlags.some((f) => f.includes("missing SKU"))).toBe(true);
+  });
+
+  it("always warns about the 15-day price fluctuation", () => {
+    const result = buildLivesyncAutoBom(
+      { screens: [{ name: "X", pixelWidth: 3000, pixelHeight: 600 }] },
+      CATALOG
+    );
+    expect(result.reviewFlags.some((f) => f.includes("15 days"))).toBe(true);
+  });
+
+  it("includeLicense adds the LiveSync license line", () => {
+    const result = buildLivesyncAutoBom(
+      {
+        screens: [{ name: "X", pixelWidth: 3000, pixelHeight: 600 }],
+        includeLicense: true,
+      },
+      CATALOG
+    );
+    expect(qty(result, "LIVESYNC-LICENSE")).toBe(1);
+  });
+});

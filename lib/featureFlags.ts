@@ -36,6 +36,14 @@ export const FEATURES = {
    */
   CMS_PRICING: false,
   /**
+   * LiveSync auto-BOM calculator (Jackson Hart call 2026-07-02).
+   * Screens in → full priced Control System BOM out, using Jackson's
+   * selection rules. Admin-only page at /admin/livesync-calculator +
+   * /api/cms/livesync-auto-bom. Independent of CMS_PRICING so it can be
+   * reviewed while the estimator-facing CMS module stays hidden.
+   */
+  LIVESYNC_AUTO_BOM: true,
+  /**
    * CMS Pricing — Option 3 "strategic" extras on top of the base picker.
    * When OFF, the picker shows only the equipment list, quantities, line
    * totals, subtotal → LED line (matches Natalia's actual ask).
