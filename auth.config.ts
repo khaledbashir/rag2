@@ -26,6 +26,7 @@ export const authConfig = {
         nextUrl.pathname.startsWith("/api/crm-reports/") ||
         nextUrl.pathname.startsWith("/api/intake/") ||
         nextUrl.pathname.startsWith("/api/integrations/meeting-capture/intake") ||
+        nextUrl.pathname === "/api/integrations/recall-ai/webhook" ||
         nextUrl.pathname.startsWith("/api/render/") ||
         nextUrl.pathname.startsWith("/api/catalog") ||
         nextUrl.pathname.startsWith("/catalog/") ||
