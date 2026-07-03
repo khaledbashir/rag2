@@ -72,6 +72,11 @@ export type ScreenPlan = {
   flags: string[];
 };
 
+export type ReasoningStep = {
+  phase: string;
+  text: string;
+};
+
 export type ProcessorAdvisory = {
   name: string;
   totalPixels: number;
@@ -104,6 +109,8 @@ export type AutoBomResult = {
   };
   reviewFlags: string[];
   assumptions: string[];
+  /** Ordered decision trail — every rule applied, with the actual numbers */
+  reasoning: ReasoningStep[];
 };
 
 // ─────────────────────────── Rule constants (from Jackson) ───────────────────────────
@@ -204,7 +211,14 @@ export function buildLivesyncAutoBom(
   const lines: BomLine[] = [];
   const reviewFlags: string[] = [];
   const assumptions: string[] = [];
+  const reasoning: ReasoningStep[] = [];
+  const think = (phase: string, text: string) => reasoning.push({ phase, text });
   const sportsVenue = job.sportsVenue !== false;
+
+  think(
+    "Read the job",
+    `${job.screens.length} screen(s) on this job. Sports venue: ${sportsVenue ? "yes" : "no"}. License requested: ${job.includeLicense ? "yes" : "no"}.`
+  );
 
   const priceOf = (entry: CatalogEntry) =>
     entry.unitPrice != null && entry.unitPrice > 0 ? entry.unitPrice : entry.unitCost;
@@ -256,6 +270,15 @@ export function buildLivesyncAutoBom(
       screen.pixelWidth > DUAL_CARD_W ||
       (screen.pixelWidth > DUAL_CARD_W && screen.pixelHeight > DUAL_CARD_H) ||
       outputs > OUTPUTS_PER_SERVER;
+
+    think(
+      "Size each screen",
+      `${screen.name} is ${screen.pixelWidth}×${screen.pixelHeight}. Each server output carries up to ${OUTPUT_MAX_W}×${OUTPUT_MAX_H}, so ` +
+        `⌈${screen.pixelWidth}/${OUTPUT_MAX_W}⌉ × ⌈${screen.pixelHeight}/${OUTPUT_MAX_H}⌉ = ${outputs} output(s). ` +
+        `Pixel area ${area.toLocaleString()} → ${tier} storage tier (bigger screen, more storage).` +
+        (liveVideo ? " Live video is specified → capture-card server class." : "") +
+        (needsDualCard && !liveVideo ? ` Wider than ${DUAL_CARD_W}px on one piece of hardware → dual-video-card server.` : "")
+    );
 
     if (tier !== "4TB") {
       flags.push(
@@ -313,6 +336,16 @@ export function buildLivesyncAutoBom(
     }
 
     const total = primaries * 2; // 1:1 dedicated backup, always (Jackson)
+    think(
+      "Select render servers",
+      `${screen.name}: ${outputs} output(s), and we never exceed ${OUTPUTS_PER_SERVER} outputs per server when we can help it → ${primaries} render primary(ies). ` +
+        `Every primary always gets a dedicated one-for-one backup — no exceptions → ${total} render server(s) total. ` +
+        (liveVideo
+          ? `Live video (center-hung / end zone class) → CC capture variant at the ${tier} tier.`
+          : needsDualCard
+            ? `Kept on one box with a second video card (${tier} dual-GPU) — costs climb quickly here, so it's flagged.`
+            : `Standard single-GPU render at the ${tier} tier.`)
+    );
     addLine(
       sku,
       total,
@@ -348,6 +381,11 @@ export function buildLivesyncAutoBom(
     );
     const sku = { "4TB": SKU.RENDER_4TB, "6TB": SKU.RENDER_6TB, "8TB": SKU.RENDER_8TB }[tier];
     const names = shareableScreens.map((s) => s.name).join(", ");
+    think(
+      "Select render servers",
+      `${names}: each of these is under one 4K output, so they share render hardware — up to ${OUTPUTS_PER_SERVER} outputs per box → ` +
+        `${primaries} shared primary(ies), each with its dedicated backup → ${primaries * 2} server(s) at the ${tier} tier (storage follows the largest screen in the group; it never hurts to stay on the larger side).`
+    );
     const packFlags =
       shareableScreens.length > 1
         ? [
@@ -381,6 +419,11 @@ export function buildLivesyncAutoBom(
       "Large system — Jackson sometimes steps UI servers up to higher storage on jobs with many screens. Confirm whether 8 TB is enough."
     );
   }
+  think(
+    "Add UI servers",
+    `Every deployment gets user-interface servers — always at least two, one primary and one backup, on the 8 TB tier because UI boxes carry the content library. ` +
+      (uiFlags.length ? "This is a larger system, so the UI storage tier is flagged for review." : "")
+  );
   addLine(
     SKU.UI_8TB,
     uiServers,
@@ -391,6 +434,13 @@ export function buildLivesyncAutoBom(
   const totalServers = renderServers + uiServers;
 
   // ── 3. Per-server accessories ──
+  think(
+    "Attach per-server pieces",
+    `${renderServers} render + ${uiServers} UI = ${totalServers} servers on the job. Audio goes hand in hand with servers — one per server, every time → ${totalServers} audio elements.` +
+      (sportsVenue
+        ? " Sports venue → scoring data is always coming in, so RS-232-over-IP intake goes on the job."
+        : "")
+  );
   addLine(
     SKU.AUDIO,
     totalServers,
@@ -415,6 +465,11 @@ export function buildLivesyncAutoBom(
     1,
     Math.ceil(job.screens.length / SCREENS_PER_WORKSTATION)
   );
+  think(
+    "Place workstations & KVM",
+    `Workstations run one minimum, and roughly one more per ${SCREENS_PER_WORKSTATION} screens as control breaks out on site → ${workstations} workstation(s) with power conditioning. ` +
+      `KVM follows the control chain: one transmitter per UI server (${uiServers}), one receiver per workstation (${workstations}), one management appliance.`
+  );
   addLine(
     SKU.WORKSTATION,
     workstations,
@@ -432,6 +487,13 @@ export function buildLivesyncAutoBom(
   // ── 6. Matrix / router — never exactly what you need, next size up ──
   const matrixInputsNeeded = totalServers * OUTPUTS_PER_SERVER;
   const matrixSize = pickMatrixSize(matrixInputsNeeded);
+  think(
+    "Size the matrix",
+    `Every server puts two outputs toward the router: ${totalServers} servers × 2 = ${matrixInputsNeeded} sources into the matrix. ` +
+      (matrixSize
+        ? `You never select exactly what you need — always the next size up, so ${matrixInputsNeeded} inputs lands on a ${matrixSize}×${matrixSize}.`
+        : `That's beyond the largest matrix on the rate card (48×48) — this one goes to design review instead of a guess.`)
+  );
   if (matrixSize) {
     addLine(
       SKU.MATRIX(matrixSize),
@@ -452,6 +514,10 @@ export function buildLivesyncAutoBom(
 
   // ── 7. Racks — ~1 per 12 servers; cabinet + accessories + UPS + rack WS each ──
   const racks = Math.max(1, Math.ceil(totalServers / SERVERS_PER_RACK));
+  think(
+    "Build the racks",
+    `Roughly one rack per ${SERVERS_PER_RACK} servers → ${racks} rack(s). Each rack carries its cabinet, accessories, UPS power conditioning, and a rack-mount workstation.`
+  );
   const rackRationale = `${totalServers} servers → ${racks} rack(s) at ~${SERVERS_PER_RACK} servers per rack.`;
   addLine(SKU.RACK_CABINET, racks, `Rack cabinetry: 1 per rack. ${rackRationale}`);
   addLine(SKU.RACK_WS, racks, `Rack-mount workstation: 1 per rack. ${rackRationale}`);
@@ -472,6 +538,10 @@ export function buildLivesyncAutoBom(
     }
   }
   if (outdoorRacks > 0) {
+    think(
+      "Build the racks",
+      `Outdoor screens get climate-controlled racks on the ${CLOSET_PLANNING_FT}-ft rule — one waterproof A/C rack per ${CLOSET_PLANNING_FT} ft of screen width → ${outdoorRacks} outdoor rack(s).`
+    );
     addLine(
       SKU.RACK_OUTDOOR,
       outdoorRacks,
@@ -481,6 +551,11 @@ export function buildLivesyncAutoBom(
 
   // ── 8. Network switches — 1 per rack, always 3-4 in a deployment ──
   const switches = Math.max(3, racks + outdoorRacks);
+  think(
+    "Network & triggers",
+    `Switches are a floating number: one per rack, never fewer than three in a deployment → ${switches}. ` +
+      `Plus a GPI trigger — every job takes fire-alarm control in, minimum one.`
+  );
   addLine(
     SKU.SWITCH,
     switches,
@@ -492,6 +567,10 @@ export function buildLivesyncAutoBom(
   addLine(SKU.GPI, 1, "GPI trigger: minimum 1 per job for fire-alarm system intake.");
 
   // ── 10. Install labor — 1 week per rack ──
+  think(
+    "Price the labor",
+    `Install labor compounds off the racks: about a week of work per rack → ${racks + outdoorRacks} week(s) of integration.`
+  );
   addLine(
     SKU.INTEGRATION_WEEK,
     racks + outdoorRacks,
@@ -499,6 +578,11 @@ export function buildLivesyncAutoBom(
   );
 
   // ── 11. Licensing — flagged, not defaulted ──
+  think(
+    "Licensing & review",
+    `Most RFP jobs are quoted non-license and trued up after the fact, so the license is ${job.includeLicense ? "included because it was requested" : "left off by default"} and flagged either way. ` +
+      `Scalers are skipped — not purchased since the platform's hardware advancements. Anything the rules can't decide with confidence is flagged for a human, never guessed.`
+  );
   if (job.includeLicense) {
     addLine(SKU.LICENSE, 1, "LiveSync license explicitly included by the estimator.");
   }
@@ -509,6 +593,12 @@ export function buildLivesyncAutoBom(
   );
 
   // ── 12. Processor advisory (informational — processor SKUs live on the LED side) ──
+  think(
+    "Check the processing side",
+    `Separately from the control system, each screen's total pixel count divided by ${PIXELS_PER_PORT.toLocaleString()} pixels per output card gives the data lines. ` +
+      `Under 6 ports fits a 660 Pro, up to 16 a 4K, beyond that the 8-series — and one processor carrying all the ports always beats splitting across two. ` +
+      `Fiber conversion rides along: a pair per ${DATA_LINES_PER_FIBER_PAIR} data lines, with closets/IDFs and outdoor racks breaking on the ${CLOSET_PLANNING_FT}-ft rule.`
+  );
   const processorAdvisories: ProcessorAdvisory[] = job.screens.map((screen) => {
     const flags: string[] = [];
     const totalPixels = screen.pixelWidth * screen.pixelHeight;
@@ -599,5 +689,6 @@ export function buildLivesyncAutoBom(
     },
     reviewFlags,
     assumptions,
+    reasoning,
   };
 }

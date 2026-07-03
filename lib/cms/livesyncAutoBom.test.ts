@@ -246,6 +246,32 @@ describe("flag-don't-guess behavior", () => {
     expect(result.reviewFlags.some((f) => f.includes("15 days"))).toBe(true);
   });
 
+  it("emits an ordered reasoning trail covering every decision phase", () => {
+    const result = buildLivesyncAutoBom(
+      { screens: [{ name: "Main", pixelWidth: 7680, pixelHeight: 1000 }] },
+      CATALOG
+    );
+    const phases = result.reasoning.map((s) => s.phase);
+    for (const expected of [
+      "Read the job",
+      "Size each screen",
+      "Select render servers",
+      "Add UI servers",
+      "Attach per-server pieces",
+      "Place workstations & KVM",
+      "Size the matrix",
+      "Build the racks",
+      "Network & triggers",
+      "Price the labor",
+      "Licensing & review",
+      "Check the processing side",
+    ]) {
+      expect(phases).toContain(expected);
+    }
+    // the trail carries real numbers, not placeholders
+    expect(result.reasoning.some((s) => s.text.includes("16×16"))).toBe(true);
+  });
+
   it("includeLicense adds the LiveSync license line", () => {
     const result = buildLivesyncAutoBom(
       {

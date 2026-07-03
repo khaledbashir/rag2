@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { Plus, Trash2, Calculator, AlertTriangle, Info, Loader2 } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { Plus, Trash2, Calculator, AlertTriangle, Info, Loader2, BrainCircuit, FileSpreadsheet } from "lucide-react";
 
 type ScreenRow = {
   name: string;
@@ -48,8 +48,11 @@ type ScreenPlan = {
   sharedServer: boolean;
 };
 
+type ReasoningStep = { phase: string; text: string };
+
 type AutoBomResponse = {
   lines: BomLine[];
+  reasoning: ReasoningStep[];
   screenPlans: ScreenPlan[];
   processorAdvisories: ProcessorAdvisory[];
   totals: { hardware: number; softCost: number; license: number; grand: number };
@@ -85,6 +88,61 @@ const CATEGORY_ORDER = Object.keys(CATEGORY_LABEL);
 const money = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 
+/**
+ * Animated decision-trail panel — reveals the engine's reasoning step by step
+ * like a live train of thought, one phase at a time.
+ */
+function ReasoningPanel({ steps }: { steps: ReasoningStep[] }) {
+  const [visibleCount, setVisibleCount] = useState(0);
+
+  useEffect(() => {
+    setVisibleCount(0);
+    if (steps.length === 0) return;
+    let i = 0;
+    const timer = setInterval(() => {
+      i += 1;
+      setVisibleCount(i);
+      if (i >= steps.length) clearInterval(timer);
+    }, 420);
+    return () => clearInterval(timer);
+  }, [steps]);
+
+  const thinking = visibleCount < steps.length;
+
+  return (
+    <section className="border border-border rounded-lg bg-muted/30 overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+        <BrainCircuit className={`w-4 h-4 ${thinking ? "animate-pulse text-primary" : "text-primary"}`} />
+        <h2 className="text-lg font-semibold">How it thought through this job</h2>
+        <span className="ml-auto text-xs text-muted-foreground">
+          {thinking ? `reasoning… ${visibleCount}/${steps.length}` : `${steps.length} decisions`}
+        </span>
+      </div>
+      <ol className="p-4 space-y-3">
+        {steps.slice(0, visibleCount).map((step, i) => (
+          <li
+            key={`${step.phase}-${i}`}
+            className="flex gap-3 items-start animate-in fade-in slide-in-from-bottom-1 duration-500"
+          >
+            <span className="mt-0.5 shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center">
+              {i + 1}
+            </span>
+            <div>
+              <span className="text-xs font-semibold uppercase tracking-wide text-primary">{step.phase}</span>
+              <p className="text-sm text-foreground/90 leading-relaxed">{step.text}</p>
+            </div>
+          </li>
+        ))}
+        {thinking && (
+          <li className="flex gap-3 items-center text-sm text-muted-foreground pl-9">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> working through the next rule…
+          </li>
+        )}
+      </ol>
+    </section>
+  );
+}
+
 const emptyScreen = (): ScreenRow => ({
   name: "",
   pixelWidth: "",
@@ -101,8 +159,51 @@ export default function LivesyncCalculatorClient() {
   const [sportsVenue, setSportsVenue] = useState(true);
   const [includeLicense, setIncludeLicense] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AutoBomResponse | null>(null);
+
+  const buildPayload = () => ({
+    sportsVenue,
+    includeLicense,
+    screens: screens
+      .filter((s) => s.pixelWidth && s.pixelHeight)
+      .map((s, i) => ({
+        name: s.name || `Screen ${i + 1}`,
+        pixelWidth: Number(s.pixelWidth),
+        pixelHeight: Number(s.pixelHeight),
+        liveVideo: s.liveVideo,
+        outdoor: s.outdoor,
+        physicalWidthFt: s.physicalWidthFt ? Number(s.physicalWidthFt) : null,
+      })),
+  });
+
+  const exportExcel = async () => {
+    setExporting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/cms/livesync-auto-bom/export.xlsx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...buildPayload(), jobName: screens[0]?.name ? `Control System — ${screens[0].name}` : "Control System Estimate" }),
+      });
+      if (!res.ok) {
+        setError("Failed to generate the Excel export.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = res.headers.get("Content-Disposition")?.match(/filename="(.+)"/)?.[1] ?? "Control_System_BOM.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("Failed to generate the Excel export.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const updateScreen = (index: number, patch: Partial<ScreenRow>) => {
     setScreens((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)));
@@ -112,20 +213,7 @@ export default function LivesyncCalculatorClient() {
     setLoading(true);
     setError(null);
     try {
-      const payload = {
-        sportsVenue,
-        includeLicense,
-        screens: screens
-          .filter((s) => s.pixelWidth && s.pixelHeight)
-          .map((s, i) => ({
-            name: s.name || `Screen ${i + 1}`,
-            pixelWidth: Number(s.pixelWidth),
-            pixelHeight: Number(s.pixelHeight),
-            liveVideo: s.liveVideo,
-            outdoor: s.outdoor,
-            physicalWidthFt: s.physicalWidthFt ? Number(s.physicalWidthFt) : null,
-          })),
-      };
+      const payload = buildPayload();
       if (payload.screens.length === 0) {
         setError("Add at least one screen with pixel width and height.");
         return;
@@ -290,6 +378,9 @@ export default function LivesyncCalculatorClient() {
 
       {result && (
         <>
+          {/* ── Reasoning trail ── */}
+          {result.reasoning?.length > 0 && <ReasoningPanel steps={result.reasoning} />}
+
           {/* ── Summary ── */}
           <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
@@ -351,7 +442,17 @@ export default function LivesyncCalculatorClient() {
 
           {/* ── BOM ── */}
           <section className="space-y-2">
-            <h2 className="text-lg font-semibold">Bill of materials</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-semibold">Bill of materials</h2>
+              <button
+                className="ml-auto px-3 py-1.5 rounded border border-border text-sm flex items-center gap-2 hover:bg-muted"
+                onClick={exportExcel}
+                disabled={exporting}
+              >
+                {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+                Export Excel
+              </button>
+            </div>
             <div className="overflow-x-auto border border-border rounded-lg">
               <table className="w-full text-sm">
                 <thead>
