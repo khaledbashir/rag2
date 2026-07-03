@@ -96,6 +96,8 @@ export default auth((req) => {
     pathname.startsWith("/api/intake") ||
     // Meeting capture intake accepts Read.ai/Otter/Zapier/webhook handoffs.
     pathname.startsWith("/api/integrations/meeting-capture/intake") ||
+    // Recall status callbacks must be reachable by Recall's servers.
+    pathname === "/api/integrations/recall-ai/webhook" ||
     // CRM-side renderers — Twenty logic functions POST pre-aggregated rows
     // here and the endpoint returns a saved xlsx. No rag2 session, no
     // business logic, no Twenty queries; just file rendering.

@@ -2,11 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   extractRecallBotFromWebhook,
   extractRecallMedia,
+  getRecallRuntimeStatus,
   latestRecallStatus,
   verifyRecallWebhookSignature,
   type RecallWebhookPayload,
 } from "@/services/integrations/recall-ai/client";
 import { postRecallMeetingNote } from "@/services/integrations/twenty/crmAutomation";
+
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    endpoint: "Recall meeting capture webhook",
+    accepts: ["POST"],
+    dashboardUrl: "https://ap-northeast-1.recall.ai/dashboard/webhooks",
+    webhookUrl: "https://proposals.anc.com/api/integrations/recall-ai/webhook",
+    runtime: getRecallRuntimeStatus(),
+    note: "Use this URL in the Recall dashboard webhook settings. Browser GET is only a health/readiness check.",
+  });
+}
 
 export async function POST(req: NextRequest) {
   try {
