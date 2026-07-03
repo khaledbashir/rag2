@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Plus, Trash2, Calculator, AlertTriangle, Info, Loader2, BrainCircuit, FileSpreadsheet } from "lucide-react";
+import { Plus, Trash2, Calculator, AlertTriangle, Info, Loader2, BrainCircuit, FileSpreadsheet, Sparkles } from "lucide-react";
 
 type ScreenRow = {
   name: string;
@@ -139,6 +139,111 @@ function ReasoningPanel({ steps }: { steps: ReasoningStep[] }) {
           </li>
         )}
       </ol>
+    </section>
+  );
+}
+
+/**
+ * Live LLM expert review — streams the model's actual reasoning tokens
+ * (visible thinking) followed by its verdict over the generated BOM.
+ */
+function AiReviewPanel({ getPayload }: { getPayload: () => Record<string, unknown> }) {
+  const [running, setRunning] = useState(false);
+  const [thinking, setThinking] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [model, setModel] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async () => {
+    setRunning(true);
+    setThinking("");
+    setAnswer("");
+    setError(null);
+    try {
+      const res = await fetch("/api/cms/livesync-auto-bom/ai-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(getPayload()),
+      });
+      if (!res.ok || !res.body) {
+        setError("AI review is unavailable right now.");
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
+        for (const evt of events) {
+          const line = evt.trim();
+          if (!line.startsWith("data:")) continue;
+          try {
+            const { type, text } = JSON.parse(line.slice(5).trim());
+            if (type === "meta") setModel(text);
+            else if (type === "thinking") setThinking((prev) => prev + text);
+            else if (type === "answer") setAnswer((prev) => prev + text);
+            else if (type === "error") setError(text);
+          } catch {
+            // ignore malformed frame
+          }
+        }
+      }
+    } catch {
+      setError("AI review is unavailable right now.");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <section className="border border-border rounded-lg bg-muted/30 overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+        <Sparkles className={`w-4 h-4 text-primary ${running ? "animate-pulse" : ""}`} />
+        <h2 className="text-lg font-semibold">AI expert review</h2>
+        {model && <span className="text-xs text-muted-foreground">model: {model}</span>}
+        <button
+          className="ml-auto px-3 py-1.5 rounded bg-primary text-primary-foreground text-sm flex items-center gap-2 disabled:opacity-60"
+          onClick={run}
+          disabled={running}
+        >
+          {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+          {answer || thinking ? "Review again" : "Run AI review"}
+        </button>
+      </div>
+      {(thinking || answer || running || error) && (
+        <div className="p-4 space-y-4">
+          {error && (
+            <p className="text-sm text-red-500 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" /> {error}
+            </p>
+          )}
+          {thinking && (
+            <div className="border-l-2 border-primary/40 pl-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary mb-1 flex items-center gap-2">
+                <BrainCircuit className="w-3.5 h-3.5" /> model reasoning {running && !answer ? "· live" : ""}
+              </p>
+              <p className="text-xs text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">
+                {thinking}
+              </p>
+            </div>
+          )}
+          {answer && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary mb-1">expert verdict</p>
+              <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">{answer}</p>
+            </div>
+          )}
+          {running && !thinking && !answer && (
+            <p className="text-sm text-muted-foreground flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> reading the package…
+            </p>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -380,6 +485,9 @@ export default function LivesyncCalculatorClient() {
         <>
           {/* ── Reasoning trail ── */}
           {result.reasoning?.length > 0 && <ReasoningPanel steps={result.reasoning} />}
+
+          {/* ── Live model review ── */}
+          <AiReviewPanel getPayload={buildPayload} />
 
           {/* ── Summary ── */}
           <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
