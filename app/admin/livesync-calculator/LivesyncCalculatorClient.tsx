@@ -149,14 +149,16 @@ function ReasoningPanel({ steps }: { steps: ReasoningStep[] }) {
  */
 function AiReviewPanel({ getPayload }: { getPayload: () => Record<string, unknown> }) {
   const [running, setRunning] = useState(false);
-  const [thinking, setThinking] = useState("");
+  // Reasoning tokens are consumed but never rendered — they only advance a
+  // progress indicator (Ahmad 2026-07-03: raw model reasoning reads as noise).
+  const [thoughtChars, setThoughtChars] = useState(0);
   const [answer, setAnswer] = useState("");
   const [model, setModel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const run = async () => {
     setRunning(true);
-    setThinking("");
+    setThoughtChars(0);
     setAnswer("");
     setError(null);
     try {
@@ -184,7 +186,7 @@ function AiReviewPanel({ getPayload }: { getPayload: () => Record<string, unknow
           try {
             const { type, text } = JSON.parse(line.slice(5).trim());
             if (type === "meta") setModel(text);
-            else if (type === "thinking") setThinking((prev) => prev + text);
+            else if (type === "thinking") setThoughtChars((prev) => prev + text.length);
             else if (type === "answer") setAnswer((prev) => prev + text);
             else if (type === "error") setError(text);
           } catch {
@@ -211,36 +213,29 @@ function AiReviewPanel({ getPayload }: { getPayload: () => Record<string, unknow
           disabled={running}
         >
           {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-          {answer || thinking ? "Review again" : "Run AI review"}
+          {answer || thoughtChars ? "Review again" : "Run AI review"}
         </button>
       </div>
-      {(thinking || answer || running || error) && (
+      {(running || answer || error) && (
         <div className="p-4 space-y-4">
           {error && (
             <p className="text-sm text-red-500 flex items-center gap-2">
               <AlertTriangle className="w-4 h-4" /> {error}
             </p>
           )}
-          {thinking && (
-            <div className="border-l-2 border-primary/40 pl-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-primary mb-1 flex items-center gap-2">
-                <BrainCircuit className="w-3.5 h-3.5" /> model reasoning {running && !answer ? "· live" : ""}
-              </p>
-              <p className="text-xs text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">
-                {thinking}
-              </p>
-            </div>
+          {running && !answer && (
+            <p className="text-sm text-muted-foreground flex items-center gap-2">
+              <BrainCircuit className="w-4 h-4 animate-pulse text-primary" />
+              {thoughtChars
+                ? `Reviewing the package — checking quantities, redundancy, gaps… (${Math.round(thoughtChars / 5).toLocaleString()} checks)`
+                : "Reading the package…"}
+            </p>
           )}
           {answer && (
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-primary mb-1">expert verdict</p>
               <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">{answer}</p>
             </div>
-          )}
-          {running && !thinking && !answer && (
-            <p className="text-sm text-muted-foreground flex items-center gap-2">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> reading the package…
-            </p>
           )}
         </div>
       )}
