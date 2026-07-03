@@ -18,6 +18,25 @@ const TWENTY_ACTIVITY_OBJECT_ENABLED =
   (process.env.TWENTY_ACTIVITY_OBJECT_ENABLED || "true").toLowerCase() !== "false";
 const CRM_PUBLIC_BASE = "https://crm.ancsports.net";
 
+type MeetingCaptureSource = "recall-ai" | "read-ai" | "otter-ai" | "desktop-sdk" | "manual-upload";
+
+function formatMeetingCaptureSource(source?: MeetingCaptureSource | string | null) {
+  if (source === "read-ai") return "Read.ai";
+  if (source === "otter-ai") return "Otter.ai";
+  if (source === "desktop-sdk") return "Desktop Recording SDK";
+  if (source === "manual-upload") return "Manual meeting upload";
+  return "Recall.ai";
+}
+
+function getMeetingCaptureSlackWebhookUrl() {
+  return (
+    process.env.MEETING_CAPTURE_SLACK_WEBHOOK_URL ||
+    process.env.SLACK_MEETING_CAPTURE_WEBHOOK_URL ||
+    process.env.ANC_MEETING_CAPTURE_SLACK_WEBHOOK_URL ||
+    ""
+  ).trim();
+}
+
 type GraphqlResponse<T> = {
   data?: T;
   errors?: Array<{ message?: string }>;
@@ -795,6 +814,8 @@ export function buildArtifactNoteMarkdown(input: {
 
 export function buildRecallMeetingNoteMarkdown(input: {
   status: "scheduled" | "done" | "failed" | "review_required";
+  source?: MeetingCaptureSource | string | null;
+  sourceUrl?: string | null;
   botId?: string | null;
   meetingUrl?: string | null;
   meetingTitle?: string | null;
@@ -809,24 +830,36 @@ export function buildRecallMeetingNoteMarkdown(input: {
   failureCode?: string | null;
   failureMessage?: string | null;
   proposalId?: string | null;
+  notes?: string | null;
 }) {
-  const statusLabel =
-    input.status === "scheduled"
+  const sourceLabel = formatMeetingCaptureSource(input.source);
+  const isRecall = !input.source || input.source === "recall-ai";
+  const statusLabel = isRecall
+    ? input.status === "scheduled"
       ? "Meeting recorder scheduled."
       : input.status === "done"
         ? "Meeting recording completed."
         : input.status === "failed"
           ? "Meeting recorder failed."
-          : "Meeting recording needs review.";
+          : "Meeting recording needs review."
+    : input.status === "scheduled"
+      ? `${sourceLabel} meeting capture scheduled.`
+      : input.status === "done"
+        ? `${sourceLabel} meeting capture completed.`
+        : input.status === "failed"
+          ? `${sourceLabel} meeting capture failed.`
+          : `${sourceLabel} meeting capture needs review.`;
 
   const lines = [
     statusLabel,
     input.meetingTitle ? `Meeting: ${input.meetingTitle}` : null,
+    `Source: ${sourceLabel}`,
     input.botId ? `Recorder ID: ${input.botId}` : null,
     input.recordingId ? `Recording ID: ${input.recordingId}` : null,
     input.joinAt ? `Scheduled join: ${formatTimestamp(input.joinAt)}` : null,
-    input.scheduledBy ? `Scheduled by: ${input.scheduledBy}` : null,
+    input.scheduledBy ? `Submitted by: ${input.scheduledBy}` : null,
     input.meetingUrl ? `Meeting URL: ${input.meetingUrl}` : null,
+    input.sourceUrl ? `Source URL: ${input.sourceUrl}` : null,
     input.proposalId ? `Workspace: ${buildWorkspaceUrl(input.proposalId)}` : null,
     input.failureCode ? `Failure code: ${input.failureCode}` : null,
     input.failureMessage ? `Failure detail: ${input.failureMessage}` : null,
@@ -842,6 +875,10 @@ export function buildRecallMeetingNoteMarkdown(input: {
 
   if (artifacts.length) {
     lines.push("", "Artifacts:", ...artifacts);
+  }
+
+  if (input.notes?.trim()) {
+    lines.push("", "Notes:", input.notes.trim());
   }
 
   return lines.filter(Boolean).join("\n");
@@ -1206,6 +1243,8 @@ export async function postRecallMeetingNote(input: {
   proposalId?: string | null;
   title?: string | null;
   status: "scheduled" | "done" | "failed" | "review_required";
+  source?: MeetingCaptureSource | string | null;
+  sourceUrl?: string | null;
   botId?: string | null;
   meetingUrl?: string | null;
   meetingTitle?: string | null;
@@ -1219,6 +1258,8 @@ export async function postRecallMeetingNote(input: {
   recordingId?: string | null;
   failureCode?: string | null;
   failureMessage?: string | null;
+  notes?: string | null;
+  notifySlack?: boolean | null;
 }) {
   let opportunityId = input.opportunityId || null;
   if (!opportunityId && input.proposalId) {
@@ -1236,21 +1277,29 @@ export async function postRecallMeetingNote(input: {
     return { reviewRequired: true, reason: "No linked CRM opportunity." };
   }
 
+  const sourceLabel = formatMeetingCaptureSource(input.source);
   const noteTitle =
     input.title ||
     (input.status === "scheduled"
-      ? "Meeting recorder scheduled"
+      ? `${sourceLabel} meeting capture scheduled`
       : input.status === "done"
-        ? "Meeting recording completed"
+        ? `${sourceLabel} meeting capture completed`
         : input.status === "failed"
-          ? "Meeting recorder failed"
-          : "Meeting recording needs review");
+          ? `${sourceLabel} meeting capture failed`
+          : `${sourceLabel} meeting capture needs review`);
 
-  await createOpportunityNote(
-    opportunityId,
-    noteTitle,
-    buildRecallMeetingNoteMarkdown(input),
-  );
+  const noteBody = buildRecallMeetingNoteMarkdown(input);
+  await createOpportunityNote(opportunityId, noteTitle, noteBody);
+
+  const slackSync = input.notifySlack === false
+    ? { skipped: true, reason: "Slack notification disabled for this intake." }
+    : await postMeetingCaptureSlackNotification({
+        ...input,
+        opportunityId,
+        noteTitle,
+        noteBody,
+        sourceLabel,
+      });
 
   await postProposalEngineActivity({
     name: `${noteTitle}${input.meetingTitle ? ` - ${input.meetingTitle}` : ""}`,
@@ -1268,18 +1317,70 @@ export async function postRecallMeetingNote(input: {
     proposalId: input.proposalId || undefined,
     workspaceUrl: input.proposalId ? buildWorkspaceUrl(input.proposalId) : null,
     properties: {
-      source: "recall-ai",
+      source: input.source || "recall-ai",
+      sourceUrl: input.sourceUrl,
       botId: input.botId,
       recordingId: input.recordingId,
       status: input.status,
       hasTranscript: Boolean(input.transcriptUrl),
       hasVideo: Boolean(input.videoUrl),
       hasAudio: Boolean(input.audioUrl),
+      slackNotified: Boolean((slackSync as any)?.ok),
     },
   });
 
-  return { opportunityId };
+  return { opportunityId, slackSync };
 }
+async function postMeetingCaptureSlackNotification(input: {
+  opportunityId: string;
+  proposalId?: string | null;
+  noteTitle: string;
+  noteBody: string;
+  sourceLabel: string;
+  status: "scheduled" | "done" | "failed" | "review_required";
+  meetingTitle?: string | null;
+  scheduledBy?: string | null;
+  transcriptUrl?: string | null;
+  videoUrl?: string | null;
+  audioUrl?: string | null;
+  sourceUrl?: string | null;
+}) {
+  const webhookUrl = getMeetingCaptureSlackWebhookUrl();
+  if (!webhookUrl) {
+    return { skipped: true, reason: "Slack webhook is not configured." };
+  }
+
+  const statusEmoji = input.status === "done" ? ":white_check_mark:" : input.status === "failed" ? ":warning:" : ":spiral_calendar_pad:";
+  const crmUrl = `${CRM_PUBLIC_BASE}/object/opportunity/${input.opportunityId}`;
+  const links = [
+    `<${crmUrl}|Open CRM opportunity>`,
+    input.proposalId ? `<${buildWorkspaceUrl(input.proposalId)}|Open proposal workspace>` : null,
+    input.sourceUrl ? `<${input.sourceUrl}|Open ${input.sourceLabel}>` : null,
+    input.transcriptUrl ? `<${input.transcriptUrl}|Transcript>` : null,
+    input.videoUrl ? `<${input.videoUrl}|Video>` : null,
+    input.audioUrl ? `<${input.audioUrl}|Audio>` : null,
+  ].filter(Boolean);
+
+  const text = [
+    `${statusEmoji} ${input.noteTitle}`,
+    input.meetingTitle ? `Meeting: ${input.meetingTitle}` : null,
+    `Source: ${input.sourceLabel}`,
+    input.scheduledBy ? `Submitted by: ${input.scheduledBy}` : null,
+    links.length ? `Links: ${links.join(" | ")}` : null,
+  ].filter(Boolean).join("\n");
+
+  const res = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+
+  if (!res.ok) {
+    return { ok: false, error: `Slack webhook ${res.status}` };
+  }
+  return { ok: true };
+}
+
 /**
  * markPricingCompleteOnMirrorFinalize — flips pricingComplete=YES and stamps
  * pricingCompleteDate on the matching Twenty opportunity when a proposal is

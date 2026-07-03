@@ -136,6 +136,22 @@ describe("Twenty CRM automation note builders", () => {
     expect(note).toContain("Participant events: https://example.com/events.json");
   });
 
+
+  it("builds a Read.ai meeting note with notes and source link", () => {
+    const note = buildRecallMeetingNoteMarkdown({
+      status: "done",
+      source: "read-ai",
+      sourceUrl: "https://app.read.ai/analytics/meetings/abc",
+      meetingTitle: "Yankees renewal sync",
+      notes: "Decision: keep finance involved before final pricing.",
+    });
+
+    expect(note).toContain("Read.ai meeting capture completed");
+    expect(note).toContain("Source: Read.ai");
+    expect(note).toContain("Source URL: https://app.read.ai/analytics/meetings/abc");
+    expect(note).toContain("Decision: keep finance involved");
+  });
+
   it("builds a failed Recall meeting note with review details", () => {
     const note = buildRecallMeetingNoteMarkdown({
       status: "failed",

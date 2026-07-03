@@ -175,12 +175,15 @@ export default function MeetingCaptureClient({ userEmail }: { userEmail: string 
   const [desktopForm, setDesktopForm] = useState({
     opportunityId: "",
     proposalId: "",
+    source: "read-ai",
+    sourceUrl: "",
     meetingTitle: "",
     recordingId: "",
     transcriptUrl: "",
     videoUrl: "",
     audioUrl: "",
     notes: "",
+    notifySlack: true,
   });
 
   const completedCount = useMemo(() => bots.filter((row) => row.status.code === "done").length, [bots]);
@@ -271,11 +274,15 @@ export default function MeetingCaptureClient({ userEmail }: { userEmail: string 
       const payload = {
         opportunityId: desktopForm.opportunityId.trim() || undefined,
         proposalId: desktopForm.proposalId.trim() || undefined,
+        source: desktopForm.source,
+        sourceUrl: desktopForm.sourceUrl.trim() || undefined,
         meetingTitle: desktopForm.meetingTitle.trim() || undefined,
         recordingId: desktopForm.recordingId.trim() || undefined,
         transcriptUrl: desktopForm.transcriptUrl.trim() || undefined,
         videoUrl: desktopForm.videoUrl.trim() || undefined,
         audioUrl: desktopForm.audioUrl.trim() || undefined,
+        notes: desktopForm.notes.trim() || undefined,
+        notifySlack: desktopForm.notifySlack,
         scheduledBy: userEmail,
       };
       const res = await fetch("/api/integrations/recall-ai/desktop-recordings", {
@@ -285,16 +292,20 @@ export default function MeetingCaptureClient({ userEmail }: { userEmail: string 
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Desktop recording save failed");
-      setNotice({ tone: "success", text: "Desktop recording attached to CRM." });
+      const slackText = data.crmSync?.slackSync?.ok ? " Slack notified." : data.crmSync?.slackSync?.skipped ? " Slack skipped." : "";
+      setNotice({ tone: "success", text: `Meeting capture attached to CRM.${slackText}` });
       setDesktopForm({
         opportunityId: "",
         proposalId: "",
+        source: "read-ai",
+        sourceUrl: "",
         meetingTitle: "",
         recordingId: "",
         transcriptUrl: "",
         videoUrl: "",
         audioUrl: "",
         notes: "",
+        notifySlack: true,
       });
     } catch (error: any) {
       setNotice({ tone: "error", text: error?.message || "Desktop recording save failed" });
@@ -508,7 +519,7 @@ export default function MeetingCaptureClient({ userEmail }: { userEmail: string 
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Laptop className="h-5 w-5" />
-                  Desktop Recording Intake
+                  Otter / Read / Desktop Intake
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -523,6 +534,23 @@ export default function MeetingCaptureClient({ userEmail }: { userEmail: string 
                     <Field label="Meeting title">
                       <Input value={desktopForm.meetingTitle} onChange={(e) => setDesktopForm((prev) => ({ ...prev, meetingTitle: e.target.value }))} />
                     </Field>
+                    <Field label="Source">
+                      <Select value={desktopForm.source} onValueChange={(value) => setDesktopForm((prev) => ({ ...prev, source: value }))}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="read-ai">Read.ai</SelectItem>
+                          <SelectItem value="otter-ai">Otter.ai</SelectItem>
+                          <SelectItem value="recall-ai">Recall.ai</SelectItem>
+                          <SelectItem value="desktop-sdk">Desktop SDK</SelectItem>
+                          <SelectItem value="manual-upload">Manual notes</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field label="Source URL">
+                      <Input value={desktopForm.sourceUrl} onChange={(e) => setDesktopForm((prev) => ({ ...prev, sourceUrl: e.target.value }))} placeholder="Read.ai or Otter share link" />
+                    </Field>
                     <Field label="Recording ID">
                       <Input value={desktopForm.recordingId} onChange={(e) => setDesktopForm((prev) => ({ ...prev, recordingId: e.target.value }))} />
                     </Field>
@@ -533,12 +561,16 @@ export default function MeetingCaptureClient({ userEmail }: { userEmail: string 
                       <Input value={desktopForm.videoUrl} onChange={(e) => setDesktopForm((prev) => ({ ...prev, videoUrl: e.target.value }))} />
                     </Field>
                   </div>
-                  <Field label="Notes">
-                    <Textarea value={desktopForm.notes} onChange={(e) => setDesktopForm((prev) => ({ ...prev, notes: e.target.value }))} rows={3} />
+                  <Field label="Notes or transcript">
+                    <Textarea value={desktopForm.notes} onChange={(e) => setDesktopForm((prev) => ({ ...prev, notes: e.target.value }))} rows={5} />
                   </Field>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={desktopForm.notifySlack} onCheckedChange={(checked) => setDesktopForm((prev) => ({ ...prev, notifySlack: checked === true }))} />
+                    Notify Slack
+                  </label>
                   <Button type="submit" disabled={desktopSaving}>
                     {desktopSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-                    Attach recording
+                    Attach meeting capture
                   </Button>
                 </form>
               </CardContent>

@@ -94,6 +94,8 @@ export default auth((req) => {
     // Email-to-quote intake can parse inbound request text without side
     // effects. Draft creation is still protected inside the route.
     pathname.startsWith("/api/intake") ||
+    // Meeting capture intake accepts Read.ai/Otter/Zapier/webhook handoffs.
+    pathname.startsWith("/api/integrations/meeting-capture/intake") ||
     // CRM-side renderers — Twenty logic functions POST pre-aggregated rows
     // here and the endpoint returns a saved xlsx. No rag2 session, no
     // business logic, no Twenty queries; just file rendering.
