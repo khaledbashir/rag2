@@ -32,6 +32,7 @@ DO NOT TOUCH. Behavior must remain IDENTICAL. No "quick fixes" or "improvements"
 - ANC CRM Account LTV v0.2.2 live: Account page widget now has direct branded Excel export; Scout `account-ltv-report` routes "export this LTV view to Excel" to the real workbook tool using current Company id (2026-05-22)
 - ANC CRM legacy LTV revenue backfill: 1,644 exact-matched WON opportunities recovered from `/root/rag2/docs/salesforce-export/opportunities.json`; Dodgers opp `100924` now shows `$7.84M` revenue / `$424.6K` margin and Dodgers LTV export shows `$27.8M` (2026-05-22)
 - ANC CRM Account Cockpit v0.1.9 live: first main Company tab after native Home, with account KPIs, workspace jumps, business-unit bars, recent deal motion, quick actions, and real Ask AI brief; M&S shifted to position 12 so Home fields rail stays intact (2026-05-26)
+- LiveSync Control System auto-BOM calculator live at `/admin/livesync-calculator` behind `FEATURES.LIVESYNC_AUTO_BOM` (independent of CMS_PRICING): screens in → full priced BOM out per Jackson Hart's 2026-07-02 rules (engine `lib/cms/livesyncAutoBom.ts`, 20 tests, flag-don't-guess review panel, processor advisory). Also fixed rag2 auto-deploy: push hook now pokes EasyPanel ancapp webhook per-repo — old poke was dead code after sys.exit (2026-07-03)
 
 ## 🎯 ANC Twenty CRM — #1 priority (decision Mon-Tue 2026-04-21/22)
 - Live at `https://crm.ancsports.net` — replaces Salesforce
