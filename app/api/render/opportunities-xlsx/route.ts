@@ -310,8 +310,29 @@ export async function GET(req: NextRequest) {
     const tSub = ws.getRow(3); tSub.getCell(COL1).value = `As of ${asOf}`;
     tSub.getCell(COL1).font = { name: FONT, size: 10, color: { argb: INK_SOFT } };
 
+    // --- Precompute the whole vertical layout so the top summary block can
+    // reference each group's subtotal row by formula (Alexis 2026-07-03:
+    // totals must be visible on open, not buried after a 300-row group). ---
+    const SUMMARY_TITLE_ROW = 5;
+    const SUMMARY_FIRST = SUMMARY_TITLE_ROW + 1;                 // one row per status
+    const SUMMARY_GRAND = SUMMARY_FIRST + orderedKeys.length;    // grand line in summary
+    const HEAD_ROW = SUMMARY_GRAND + 2;                          // blank row, then table header
+    // group layout: band, rows, subtotal, blank — per status, starting under HEAD_ROW
+    const layout = new Map<string, { dataStart: number; dataEnd: number; subtotal: number }>();
+    {
+      let cursor = HEAD_ROW;
+      for (const key of orderedKeys) {
+        const n = groups.get(key)!.length;
+        const band = cursor + 1;
+        const dataStart = band + 1;
+        const dataEnd = dataStart + n - 1;
+        const subtotal = dataEnd + 1;
+        layout.set(key, { dataStart, dataEnd, subtotal });
+        cursor = subtotal + 1; // trailing blank row
+      }
+    }
+
     // Header row
-    const HEAD_ROW = 5;
     const head = ws.getRow(HEAD_ROW);
     cols.forEach((c, i) => {
       const cell = head.getCell(col(i));
@@ -322,6 +343,51 @@ export async function GET(req: NextRequest) {
     });
     head.height = 28;
     ws.views = [{ state: "frozen", ySplit: HEAD_ROW, showGridLines: false }];
+
+    // --- Totals by Status — the roll-up, visible on open ---
+    {
+      const t = ws.getRow(SUMMARY_TITLE_ROW);
+      t.getCell(COL1).value = "Totals by Status";
+      t.getCell(COLN).value = "full breakdown below";
+      t.getCell(COLN).alignment = { horizontal: "right" };
+      t.getCell(COLN).font = { name: FONT, size: 9, color: { argb: INK_SOFT } };
+      for (let c = COL1; c <= COLN; c++) {
+        const cell = t.getCell(c);
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BAND } };
+        if (c === COL1) cell.font = { name: FONT, bold: true, size: 11, color: { argb: INK } };
+        cell.border = { bottom: { style: "thin", color: { argb: LINE } } };
+      }
+      t.height = 20;
+      orderedKeys.forEach((key, i) => {
+        const r = ws.getRow(SUMMARY_FIRST + i);
+        const { subtotal } = layout.get(key)!;
+        r.getCell(COL1).value = STATUS_LABEL[key] || key;
+        r.getCell(COL1).font = { name: FONT, size: 10, color: { argb: INK } };
+        r.getCell(COL1 + 1).value = `${groups.get(key)!.length} opps`;
+        r.getCell(COL1 + 1).font = { name: FONT, size: 9, color: { argb: INK_SOFT } };
+        for (const c of moneyCols) {
+          const L = letterOf(c);
+          r.getCell(c).value = { formula: `${L}${subtotal}` } as any;
+          r.getCell(c).numFmt = moneyNumFmt;
+          r.getCell(c).font = { name: FONT, size: 10, color: { argb: INK } };
+          r.getCell(c).alignment = { horizontal: "right" };
+        }
+      });
+      const g = ws.getRow(SUMMARY_GRAND);
+      g.getCell(COL1).value = `Total — ${opps.length} opportunities`;
+      g.getCell(COL1).font = { name: FONT, bold: true, size: 10, color: { argb: INK } };
+      for (const c of moneyCols) {
+        const L = letterOf(c);
+        const terms = orderedKeys.map((k) => `${L}${layout.get(k)!.subtotal}`).join(",");
+        g.getCell(c).value = { formula: terms ? `SUM(${terms})` : "0" } as any;
+        g.getCell(c).numFmt = moneyNumFmt;
+        g.getCell(c).font = { name: FONT, bold: true, size: 10, color: { argb: INK } };
+        g.getCell(c).alignment = { horizontal: "right" };
+      }
+      for (let c = COL1; c <= COLN; c++) {
+        g.getCell(c).border = { top: { style: "thin", color: { argb: LINE } } };
+      }
+    }
 
     const subtotalRowIdxs: number[] = [];
 
