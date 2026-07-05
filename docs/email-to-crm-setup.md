@@ -35,17 +35,18 @@ New-ApplicationAccessPolicy -AppId <client-id> -PolicyScopeGroupId deals@anc.com
   -AccessRight RestrictAccess -Description "Email intake app: deals@ only"
 ```
 
-## 3. Find the sales drive
+## 3. Point at the sales folder
 
-To file attachments, the poller needs the drive that holds the sales folder.
-With the token from the app above:
+Easiest path: open the sales folder in the browser (SharePoint or OneDrive),
+copy the URL from the address bar, and set it as `EMAIL_CRM_FOLDER_URL`. The
+poller resolves the drive via the Graph shares API — no drive id needed.
+
+Alternative (drive id mode):
 
 ```
-GET https://graph.microsoft.com/v1.0/sites?search=<sales site name>
-GET https://graph.microsoft.com/v1.0/sites/{siteId}/drives      → note the drive id
+GET https://graph.microsoft.com/v1.0/sites?search=<sales site name>   (needs Sites.Read.All)
+GET https://graph.microsoft.com/v1.0/sites/{siteId}/drives            → note the drive id
 ```
-
-(For a personal OneDrive instead: `GET /users/<owner>@anc.com/drive`.)
 
 ## 4. Env vars (EasyPanel → ancapp service)
 
@@ -56,8 +57,10 @@ MSGRAPH_TENANT_ID=<tenant id>
 MSGRAPH_CLIENT_ID=<client id>
 MSGRAPH_CLIENT_SECRET=<secret value>
 EMAIL_CRM_MAILBOX=deals@anc.com
-EMAIL_CRM_DRIVE_ID=<drive id>              # optional — skip to disable filing
-EMAIL_CRM_ONEDRIVE_FOLDER=Sales/Inbound    # optional — folder path inside the drive
+EMAIL_CRM_FOLDER_URL=<paste the sales folder URL>   # preferred filing config
+# — or drive-id mode instead of FOLDER_URL:
+# EMAIL_CRM_DRIVE_ID=<drive id>
+# EMAIL_CRM_ONEDRIVE_FOLDER=Sales/Inbound
 ```
 
 ## 5. Cron the poller

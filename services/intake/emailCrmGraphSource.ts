@@ -9,8 +9,10 @@
  * (Mail.ReadWrite + Files.ReadWrite.All, admin-consented) and these env vars:
  *   MSGRAPH_TENANT_ID / MSGRAPH_CLIENT_ID / MSGRAPH_CLIENT_SECRET
  *   EMAIL_CRM_MAILBOX          e.g. deals@anc.com
- *   EMAIL_CRM_DRIVE_ID         (optional) drive holding the sales folder
- *   EMAIL_CRM_ONEDRIVE_FOLDER  (optional) e.g. Sales/Inbound Proposals
+ *   EMAIL_CRM_FOLDER_URL       (preferred) paste the SharePoint/OneDrive URL of
+ *                              the sales folder — the drive is resolved via the
+ *                              Graph shares API, no drive id hunting
+ *   EMAIL_CRM_DRIVE_ID + EMAIL_CRM_ONEDRIVE_FOLDER  (alternative to FOLDER_URL)
  * Setup walkthrough: docs/email-to-crm-setup.md
  */
 
@@ -102,31 +104,77 @@ interface GraphAttachment {
   "@odata.type"?: string;
 }
 
+interface SalesFolderTarget {
+  driveId: string;
+  /** Upload base: item-relative when resolved from a URL, root-relative otherwise. */
+  uploadPrefix: string; // e.g. `items/<folderId>:` or `root:/<Base/Folder>`
+}
+
+let cachedFolderTarget: SalesFolderTarget | null | undefined;
+
+/** Resolves the sales folder from EMAIL_CRM_FOLDER_URL (via the Graph shares
+ *  API) or from EMAIL_CRM_DRIVE_ID + EMAIL_CRM_ONEDRIVE_FOLDER. Cached. */
+async function resolveSalesFolder(token: string): Promise<SalesFolderTarget | null> {
+  if (cachedFolderTarget !== undefined) return cachedFolderTarget;
+
+  const folderUrl = process.env.EMAIL_CRM_FOLDER_URL;
+  if (folderUrl) {
+    const encoded = Buffer.from(folderUrl).toString("base64url");
+    try {
+      const item = await graphFetch<{
+        id: string;
+        parentReference?: { driveId?: string };
+      }>(token, `/shares/u!${encoded}/driveItem?$select=id,parentReference`);
+      const driveId = item.parentReference?.driveId;
+      if (driveId && item.id) {
+        cachedFolderTarget = { driveId, uploadPrefix: `items/${item.id}:` };
+        return cachedFolderTarget;
+      }
+    } catch (error) {
+      log.error("[email-to-crm] could not resolve EMAIL_CRM_FOLDER_URL", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    cachedFolderTarget = null;
+    return null;
+  }
+
+  const driveId = process.env.EMAIL_CRM_DRIVE_ID;
+  const baseFolder = process.env.EMAIL_CRM_ONEDRIVE_FOLDER;
+  if (driveId && baseFolder) {
+    const encodedBase = baseFolder.split("/").map((seg) => encodeURIComponent(seg)).join("/");
+    cachedFolderTarget = { driveId, uploadPrefix: `root:/${encodedBase}` };
+  } else {
+    cachedFolderTarget = null;
+  }
+  return cachedFolderTarget;
+}
+
 async function fileAttachmentToOneDrive(
   token: string,
   attachment: GraphAttachment,
   venueFolder: string,
 ): Promise<string | null> {
-  const driveId = process.env.EMAIL_CRM_DRIVE_ID;
-  const baseFolder = process.env.EMAIL_CRM_ONEDRIVE_FOLDER;
-  if (!driveId || !baseFolder || !attachment.contentBytes) return null;
+  if (!attachment.contentBytes) return null;
+  const target = await resolveSalesFolder(token);
+  if (!target) return null;
 
   const safeName = attachment.name.replace(/[\\/:*?"<>|]/g, "_");
   const safeFolder = venueFolder.replace(/[\\/:*?"<>|]/g, "_").slice(0, 100) || "Unsorted";
-  const path = `${baseFolder}/${safeFolder}/${safeName}`
-    .split("/")
-    .map((seg) => encodeURIComponent(seg))
-    .join("/");
+  const subPath = `${encodeURIComponent(safeFolder)}/${encodeURIComponent(safeName)}`;
 
   const bytes = Buffer.from(attachment.contentBytes, "base64");
-  const res = await fetch(`${GRAPH}/drives/${driveId}/root:/${path}:/content`, {
-    method: "PUT",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/octet-stream",
+  const res = await fetch(
+    `${GRAPH}/drives/${target.driveId}/${target.uploadPrefix}/${subPath}:/content`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/octet-stream",
+      },
+      body: bytes,
     },
-    body: bytes,
-  });
+  );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     log.error("[email-to-crm] OneDrive upload failed", {
