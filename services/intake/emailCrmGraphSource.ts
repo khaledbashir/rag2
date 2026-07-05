@@ -161,7 +161,12 @@ async function fileAttachmentToOneDrive(
 
   const safeName = attachment.name.replace(/[\\/:*?"<>|]/g, "_");
   const safeFolder = venueFolder.replace(/[\\/:*?"<>|]/g, "_").slice(0, 100) || "Unsorted";
-  const subPath = `${encodeURIComponent(safeFolder)}/${encodeURIComponent(safeName)}`;
+  // EMAIL_CRM_ALPHA_SPLIT=true files under A–Z letter folders, matching the
+  // sales team's existing ANC-Sales layout (…/C/Camping World Stadium/…).
+  const alphaSplit = (process.env.EMAIL_CRM_ALPHA_SPLIT || "").toLowerCase() === "true";
+  const letter = safeFolder[0]?.toUpperCase();
+  const letterPrefix = alphaSplit && letter && /[A-Z]/.test(letter) ? `${letter}/` : "";
+  const subPath = `${letterPrefix}${encodeURIComponent(safeFolder)}/${encodeURIComponent(safeName)}`;
 
   const bytes = Buffer.from(attachment.contentBytes, "base64");
   const res = await fetch(
