@@ -1253,6 +1253,34 @@ model CatalogComment {
 
 // Training intake assessor bot — profiles each CRM user so training can be
 // tailored. Public shareable page /training-intake, results at /admin/training-intake.
+// Email → CRM intake (Jireh ask 2026-07-04): inbound proposal emails parsed
+// into due dates + key facts, matched to a CRM opportunity, then applied as
+// field updates + a timeline note. Review queue at /admin/email-to-crm.
+model EmailCrmIntake {
+  id                     String    @id @default(cuid())
+  source                 String    @default("manual") // manual | graph-mailbox
+  fromEmail              String?
+  fromName               String?
+  subject                String?
+  receivedAt             DateTime?
+  rawBody                String    @db.Text
+  attachments            Json?     // [{name, sizeBytes}]
+  extraction             Json?     // verified AI extraction
+  candidates             Json?     // ranked opportunity candidates
+  matchedOpportunityId   String?
+  matchedOpportunityName String?
+  matchReason            String?   @db.Text
+  status                 String    @default("pending_review") // pending_review | applied | dismissed | failed
+  appliedChanges         Json?
+  appliedAt              DateTime?
+  appliedBy              String?
+  error                  String?   @db.Text
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([status, createdAt])
+}
+
 model TrainingProfile {
   id               String   @id @default(cuid())
   sessionId        String   @unique

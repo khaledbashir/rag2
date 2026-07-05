@@ -59,4 +59,12 @@ export const FEATURES = {
    * Distribution goes through Natalia. Flip false to hide the public page.
    */
   TRAINING_INTAKE: true,
+  /**
+   * Email → CRM intake (Jireh ask 2026-07-04). Inbound proposal emails parsed
+   * into due dates + key info, matched to an opportunity, applied as field
+   * updates + timeline note. Admin review queue at /admin/email-to-crm;
+   * mailbox polling activates once Microsoft 365 app credentials are set
+   * (MSGRAPH_* env — see docs/email-to-crm-setup.md).
+   */
+  EMAIL_TO_CRM: true,
 } as const;

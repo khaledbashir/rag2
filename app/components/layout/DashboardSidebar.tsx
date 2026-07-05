@@ -33,6 +33,7 @@ import {
     PanelLeftOpen,
     Radio,
     Server,
+    MailCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRbac } from "@/hooks/useRbac";
@@ -80,6 +81,7 @@ const toolsMenuItems: NavItem[] = [
     { icon: MailPlus, label: "Email Intake", description: "Turn inbound estimate emails into reviewed estimator drafts.", href: "/tools/email-to-quote", allowedRoles: null },
     { icon: Bot, label: "Meeting Capture", description: "Schedule meeting recorders and sync recordings back to CRM.", href: "/meeting-capture", allowedRoles: ["ADMIN", "ESTIMATOR", "PROPOSAL_LEAD"] as UserRole[] },
     { icon: Server, label: "Control System", description: "Build the Control System BOM from screen sizes with automatic server, matrix, and rack selection.", href: "/admin/livesync-calculator", allowedRoles: ["ADMIN", "PRODUCT_EXPERT"] as UserRole[] },
+    { icon: MailCheck, label: "Email to CRM", description: "Read proposal emails for due dates and key info, then update the matching opportunity automatically.", href: "/admin/email-to-crm", allowedRoles: ["ADMIN", "PRODUCT_EXPERT"] as UserRole[] },
     { icon: Calculator, label: "Estimator", description: "Build budgets, swap products, and export scoping workbooks.", href: "/estimator", allowedRoles: null, children: [
         { label: "New Estimate", href: "/estimator/new", icon: Calculator },
         { label: "History", href: "/estimator", icon: History },

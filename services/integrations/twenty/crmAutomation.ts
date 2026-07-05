@@ -79,7 +79,24 @@ function getBaseUrl() {
   return "https://proposals.anc.com";
 }
 
-async function twentyGraphql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
+/** Authenticated GET/PATCH against the Twenty REST API. Path starts with /rest/. */
+export async function twentyRestFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${TWENTY_BASE}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${TWENTY_API_KEY}`,
+      "Content-Type": "application/json",
+      ...(init?.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`Twenty REST ${res.status} on ${path}: ${errText.slice(0, 200)}`);
+  }
+  return (await res.json()) as T;
+}
+
+export async function twentyGraphql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
   const res = await fetch(`${TWENTY_BASE}/graphql`, {
     method: "POST",
     headers: {
@@ -100,7 +117,7 @@ async function twentyGraphql<T>(query: string, variables?: Record<string, unknow
   return body.data;
 }
 
-async function createOpportunityNote(opportunityId: string, title: string, markdown: string) {
+export async function createOpportunityNote(opportunityId: string, title: string, markdown: string) {
   const note = await twentyGraphql<{ createNote: { id: string } }>(
     `
       mutation CreateNote($data: NoteCreateInput!) {
