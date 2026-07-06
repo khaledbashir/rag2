@@ -100,8 +100,18 @@ interface GraphAttachment {
   id: string;
   name: string;
   size?: number;
+  isInline?: boolean;
   contentBytes?: string; // base64, present for fileAttachment
   "@odata.type"?: string;
+}
+
+/** Filters out signature images and other inline noise — only real documents
+ *  get filed and listed on the opportunity. */
+export function isRealDocument(att: { name: string; size?: number; isInline?: boolean }): boolean {
+  if (att.isInline) return false;
+  const imageExt = /\.(png|jpe?g|gif|bmp|svg)$/i.test(att.name);
+  if (imageExt && (att.size ?? 0) < 50_000) return false; // signature/logo images
+  return true;
 }
 
 interface SalesFolderTarget {
@@ -229,7 +239,7 @@ export async function pollIntakeMailbox(limit = 10): Promise<PollResult> {
           `/users/${encodeURIComponent(mailbox)}/messages/${message.id}/attachments`,
         );
         attachments = (attData.value || []).filter(
-          (a) => a["@odata.type"] === "#microsoft.graph.fileAttachment",
+          (a) => a["@odata.type"] === "#microsoft.graph.fileAttachment" && isRealDocument(a),
         );
       }
 
