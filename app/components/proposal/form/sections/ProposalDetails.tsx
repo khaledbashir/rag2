@@ -105,7 +105,7 @@ const ProposalDetails = () => {
     const mode = rawMode || resolveDocumentMode(details);
 
     const handleModeChange = (newMode: DocumentMode) => {
-        setValue("details.documentMode", newMode, { shouldDirty: true });
+        setValue("details.documentMode", newMode as any, { shouldDirty: true });
         const currentDetails = getValues("details") as any;
         const updated = forceDocumentModeDefaults(newMode, currentDetails);
         const desiredDocumentType = (newMode === "LOI" || newMode === "CONTRACT") ? "LOI" : "First Round";
@@ -134,7 +134,7 @@ const ProposalDetails = () => {
         const desiredPricingType = (nextMode === "PROPOSAL" || nextMode === "CONTRACT") ? "Hard Quoted" : "Budget";
 
         if (currentDetails?.documentMode !== nextMode) {
-            setValue("details.documentMode", nextMode, setOpts);
+            setValue("details.documentMode", nextMode as any, setOpts);
         }
         if (currentDetails?.documentType !== desiredDocumentType) {
             setValue("details.documentType", desiredDocumentType as any, setOpts);
