@@ -69,7 +69,16 @@ describe("generateScopingWorkbook", () => {
     expect(cellFormula(14)).toBe("IFERROR(VLOOKUP(F4,'_Products'!$A$1:$K$23,5,FALSE),0)");
     expect(cellFormula(16)).toBe("IFERROR(VLOOKUP(F4,'_Products'!$A$1:$K$23,4,FALSE),0)");
     expect(cellFormula(17)).toBe("P4*M4");
-    expect(cellFormula(20)).toBe("Q4+R4+S4");
+    // Sponsorship column (R) = Display Cost × $R$2 (added 2026-07-06, Natalia/Jireh).
+    expect(cellFormula(18)).toBe("Q4*$R$2");
+    // Processor→S, Shipping→T after the insert; Total Cost (U) = Display + Sponsorship + Processor + Shipping.
+    expect(cellFormula(20)).toBe("MAX(M4*10,500)");
+    expect(cellFormula(21)).toBe("Q4+R4+S4+T4");
+    // Margin % (V) references the master override at W2; Selling Price (W) = Total Cost / (1 - Margin%).
+    expect(cellFormula(22)).toBe("W$2");
+    expect(cellFormula(23)).toBe("IFERROR(U4/(1-V4),0)");
+    // ANC Margin (X) = Selling − Total Cost.
+    expect(cellFormula(24)).toBe("W4-U4");
   });
 
   it("uses the grand total cost row for Margin Analysis margin dollars", async () => {
@@ -199,10 +208,12 @@ describe("generateScopingWorkbook", () => {
       expect(cell.value).toBeLessThan(1);
     }
 
-    // 2. LED Cost Sheet V2 formula-links to Project Overview C16
+    // 2. LED Cost Sheet W2 (LED Margin Override, moved from V2 after the Sponsorship insert) formula-links to Project Overview C16
     const led = wb.getWorksheet("LED Cost Sheet")!;
-    const v2 = led.getCell(2, 22).value as { formula?: string };
-    expect(v2.formula).toBe("'Project Overview'!$C$16");
+    const w2 = led.getCell(2, 23).value as { formula?: string };
+    expect(w2.formula).toBe("'Project Overview'!$C$16");
+    // Sponsorship % input lives at R2 (orange), default 0.
+    expect(led.getCell(2, 18).value).toBe(0);
 
     // 3. Every install sheet's Linked Margin Assignment formula-links to Project Overview
     let installSheetsChecked = 0;

@@ -1090,8 +1090,8 @@ function buildBudgetSummary(
       label: "LED Hardware (all displays)",
       marginPct: hwMargin,
       marginFormulaRef: PO_LED,
-      costFormula: `SUM('LED Cost Sheet'!T4:T${ledDataEnd})`,
-      sellFormulaRef: `SUM('LED Cost Sheet'!V4:V${ledDataEnd})`,
+      costFormula: `SUM('LED Cost Sheet'!U4:U${ledDataEnd})`,
+      sellFormulaRef: `SUM('LED Cost Sheet'!W4:W${ledDataEnd})`,
       result: displays.reduce((s, d) => s + d.ledHardwareCost + d.sparePartsCost + d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost + d.shippingCost, 0),
       showPricePerSqFt: true,
     },
@@ -1386,9 +1386,9 @@ function buildMarginAnalysis(
     const ledSellResult = hwMargin < 1 ? round2(ledCostResult / (1 - hwMargin)) : ledCostResult;
     const ledRow = row;
     // LED Hardware: hard values — previous formula refs were wrong (Q=LED+spares only, S=shipping)
-    // Correct source is T (Total Cost) and V (Selling Price), but hard values prevent any drift
-    writeCategory("LED Hardware", ledCostResult, hwMargin, `'LED Cost Sheet'!T${ledSheetRow}`);
-    ws.getCell(ledRow, 4).value = { formula: `'LED Cost Sheet'!V${ledSheetRow}`, result: ledSellResult };
+    // Correct source is U (Total Cost) and W (Selling Price), but hard values prevent any drift
+    writeCategory("LED Hardware", ledCostResult, hwMargin, `'LED Cost Sheet'!U${ledSheetRow}`);
+    ws.getCell(ledRow, 4).value = { formula: `'LED Cost Sheet'!W${ledSheetRow}`, result: ledSellResult };
     ws.getCell(ledRow, 4).numFmt = FMT_USD; ws.getCell(ledRow, 4).font = subFont;
     ws.getCell(ledRow, 5).value = { formula: marginDollarFormula(ledRow), result: round2(ledSellResult - ledCostResult) };
     ws.getCell(ledRow, 5).numFmt = FMT_USD; ws.getCell(ledRow, 5).font = subFont;
@@ -1692,8 +1692,8 @@ function buildLedCostSheet(
   });
 
   // Full format matching the online version — includes electrical, pricing, margins
-  const COLS = 26;
-  const colWidths = [36, 8, 8, 8, 18, 14, 10, 10, 10, 10, 10, 8, 12, 10, 10, 12, 12, 14, 14, 14, 14, 12, 16, 12, 14, 12];
+  const COLS = 27;
+  const colWidths = [36, 8, 8, 8, 18, 14, 10, 10, 10, 10, 10, 8, 12, 10, 10, 12, 12, 14, 14, 14, 14, 14, 12, 16, 12, 14, 12];
   colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
   setTitle(ws, "W", `${projectName} — LED Cost Sheet`);
@@ -1827,17 +1827,37 @@ function buildLedCostSheet(
     return `IFERROR(CEILING(${rfpCol}${rowNum}*304.8/${snapUnit},1)*${snapUnit}/304.8,${rfpCol}${rowNum})`;
   };
 
-  // Master LED Margin Override (yellow cell) — keep the label in a single cell
-  // so both the web preview and exported Excel avoid duplicated merged-cell text.
+  // Sponsorship % (orange, R2) + Master LED Margin Override (yellow, W2), both on row 2.
+  // Sponsorship column (R) per row = Display Cost × $R$2; Margin % column references W$2.
   const masterMarginRow = 2;
   ws.getRow(masterMarginRow).height = 22;
+
+  // Sponsorship % → applied to Display Cost per row. Type a % here (default 0%).
+  const sponsorshipLabel = ws.getCell(masterMarginRow, 17); // Q
+  sponsorshipLabel.value = "Sponsorship →";
+  sponsorshipLabel.font = { bold: true, name: "Calibri", size: 11 };
+  sponsorshipLabel.alignment = { horizontal: "right", vertical: "middle" };
+  const sponsorshipCell = ws.getCell(masterMarginRow, 18); // column R
+  sponsorshipCell.value = 0;
+  sponsorshipCell.numFmt = FMT_PCT;
+  sponsorshipCell.font = { bold: true, name: "Calibri", size: 12 };
+  sponsorshipCell.alignment = { horizontal: "center", vertical: "middle" };
+  sponsorshipCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFED7D31" } };
+  sponsorshipCell.border = {
+    top: { style: "thin", color: { argb: "FFD9D9D9" } },
+    bottom: { style: "thin", color: { argb: "FFD9D9D9" } },
+    left: { style: "thin", color: { argb: "FFD9D9D9" } },
+    right: { style: "thin", color: { argb: "FFD9D9D9" } },
+  };
+
   ws.getCell(masterMarginRow, 19).value = null; // S
   ws.getCell(masterMarginRow, 20).value = null; // T
-  const masterMarginLabel = ws.getCell(masterMarginRow, 21); // U
+  ws.getCell(masterMarginRow, 21).value = null; // U
+  const masterMarginLabel = ws.getCell(masterMarginRow, 22); // V
   masterMarginLabel.value = "LED Margin Override →";
   masterMarginLabel.font = { bold: true, name: "Calibri", size: 11 };
   masterMarginLabel.alignment = { horizontal: "right", vertical: "middle" };
-  const masterMarginCell = ws.getCell(masterMarginRow, 22); // column V
+  const masterMarginCell = ws.getCell(masterMarginRow, 23); // column W
   // Linked to Project Overview master (C16). Type a number here to override for this sheet only.
   masterMarginCell.value = {
     formula: `'Project Overview'!$C$16`,
@@ -1863,7 +1883,7 @@ function buildLedCostSheet(
     "H (ft)", "W (ft)", "H (px)", "W (px)",
     "Qty", "Total SqFt",
     "Product NITs", "Service",
-    "$/SqFt", "Display Cost", "Processor", "Shipping", "Total Cost",
+    "$/SqFt", "Display Cost", "Sponsorship", "Processor", "Shipping", "Total Cost",
     "Margin %", "Selling Price", "ANC Margin",
     "Weight (lbs)", "Total Power (W)", "BTU/hr",
   ];
@@ -1885,6 +1905,7 @@ function buildLedCostSheet(
   let accQtyTotal = 0;
   let accSqFtTotal = 0;
   let accDisplayCostTotal = 0;
+  let accSponsorshipTotal = 0;
   let accProcessorTotal = 0;
   let accShippingTotal = 0;
   let accTotalCostTotal = 0;
@@ -2034,35 +2055,39 @@ function buildLedCostSheet(
     const displayCostResult = d.isTV ? round2(ledWithSpares) : round2(costPerSqFtResult * snappedSqFt);
     dr.getCell(17).value = { formula: `P${row}*M${row}`, result: displayCostResult };
     dr.getCell(17).numFmt = FMT_USD;
+    // R: Sponsorship = Display Cost × Sponsorship% (R2). Default 0%; live Excel recomputes.
+    const sponsorshipResult = 0;
+    dr.getCell(18).value = { formula: `Q${row}*$R$${masterMarginRow}`, result: sponsorshipResult };
+    dr.getCell(18).numFmt = FMT_USD;
     const bundleSubtotalRow = bundleSubtotalRows[idx];
-    // R: Processor — cross-sheet formula to Bundle Equipment
+    // S: Processor — cross-sheet formula to Bundle Equipment
     const bundleEquipmentCost = d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost;
-    dr.getCell(18).value = bundleSubtotalRow
+    dr.getCell(19).value = bundleSubtotalRow
       ? { formula: `SUM('Bundle Equipment'!E${bundleSubtotalRow}:E${bundleSubtotalRow})`, result: bundleEquipmentCost || 0 }
       : (bundleEquipmentCost || 0);
-    dr.getCell(18).numFmt = FMT_USD;
-    // S: Shipping — formula: $10/sqft, $500 minimum
-    dr.getCell(19).value = { formula: `MAX(M${row}*10,500)`, result: d.shippingCost };
     dr.getCell(19).numFmt = FMT_USD;
-    // T: Total Cost = Display Cost + Processor + Shipping
-    const totalLedCost = round2(displayCostResult + bundleEquipmentCost + d.shippingCost);
-    dr.getCell(20).value = { formula: `Q${row}+R${row}+S${row}`, result: totalLedCost };
+    // T: Shipping — formula: $10/sqft, $500 minimum
+    dr.getCell(20).value = { formula: `MAX(M${row}*10,500)`, result: d.shippingCost };
     dr.getCell(20).numFmt = FMT_USD;
-    dr.getCell(20).font = { bold: true, name: "Calibri" };
-    // U: Margin % — references master override cell V2
+    // U: Total Cost = Display Cost + Sponsorship + Processor + Shipping
+    const totalLedCost = round2(displayCostResult + sponsorshipResult + bundleEquipmentCost + d.shippingCost);
+    dr.getCell(21).value = { formula: `Q${row}+R${row}+S${row}+T${row}`, result: totalLedCost };
+    dr.getCell(21).numFmt = FMT_USD;
+    dr.getCell(21).font = { bold: true, name: "Calibri" };
+    // V: Margin % — references master override cell W2
     const ledMarginPct = Number(ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware);
-    dr.getCell(21).value = { formula: `V$${masterMarginRow}`, result: ledMarginPct }; dr.getCell(21).numFmt = FMT_PCT;
-    // V: Selling Price = Cost / (1 - Margin%)
+    dr.getCell(22).value = { formula: `W$${masterMarginRow}`, result: ledMarginPct }; dr.getCell(22).numFmt = FMT_PCT;
+    // W: Selling Price = Total Cost / (1 - Margin%)
     const rowNum = dr.number;
     const ledOnlySellingPrice = ledMarginPct < 1 ? round2(totalLedCost / (1 - ledMarginPct)) : totalLedCost;
-    dr.getCell(22).value = { formula: `IFERROR(T${rowNum}/(1-U${rowNum}),0)`, result: ledOnlySellingPrice };
-    dr.getCell(22).numFmt = FMT_USD;
-    dr.getCell(22).font = { bold: true, name: "Calibri" };
-    // W: ANC Margin = Selling - Cost
-    dr.getCell(23).value = { formula: `V${rowNum}-T${rowNum}`, result: round2(ledOnlySellingPrice - totalLedCost) };
+    dr.getCell(23).value = { formula: `IFERROR(U${rowNum}/(1-V${rowNum}),0)`, result: ledOnlySellingPrice };
     dr.getCell(23).numFmt = FMT_USD;
+    dr.getCell(23).font = { bold: true, name: "Calibri" };
+    // X: ANC Margin = Selling - Total Cost
+    dr.getCell(24).value = { formula: `W${rowNum}-U${rowNum}`, result: round2(ledOnlySellingPrice - totalLedCost) };
+    dr.getCell(24).numFmt = FMT_USD;
 
-    // X: Weight — formula: area(m²) × weight density from _Products col 6
+    // Y: Weight — formula: area(m²) × weight density from _Products col 6
     const areaM2 = d.areaSqFt * 0.092903;
     const catalogMatch = catalogProduct ?? selectedProduct
       ?? (effectivePitch ? getAllProducts().find((p) => Math.abs(p.pitchMm - effectivePitch) < 0.5) : null);
@@ -2072,19 +2097,20 @@ function buildLedCostSheet(
     const powerResult = catalogMatch
       ? Math.round(areaM2 * catalogMatch.powerDensityWm2)
       : 0;
-    dr.getCell(24).value = { formula: `IFERROR(ROUND(M${row}*0.092903*VLOOKUP(F${row},${prodRange},6,FALSE),0),0)`, result: weightResult };
-    dr.getCell(24).numFmt = "#,##0";
-    // Y: Power — formula: area(m²) × power density from _Products col 7
-    dr.getCell(25).value = { formula: `IFERROR(ROUND(M${row}*0.092903*VLOOKUP(F${row},${prodRange},7,FALSE),0),0)`, result: powerResult };
+    dr.getCell(25).value = { formula: `IFERROR(ROUND(M${row}*0.092903*VLOOKUP(F${row},${prodRange},6,FALSE),0),0)`, result: weightResult };
     dr.getCell(25).numFmt = "#,##0";
-    // Z: BTU = Power × 3.412
-    dr.getCell(26).value = { formula: `Y${row}*3.412`, result: Math.round(powerResult * 3.412) };
+    // Z: Power — formula: area(m²) × power density from _Products col 7
+    dr.getCell(26).value = { formula: `IFERROR(ROUND(M${row}*0.092903*VLOOKUP(F${row},${prodRange},7,FALSE),0),0)`, result: powerResult };
     dr.getCell(26).numFmt = "#,##0";
+    // AA: BTU = Power × 3.412
+    dr.getCell(27).value = { formula: `Z${row}*3.412`, result: Math.round(powerResult * 3.412) };
+    dr.getCell(27).numFmt = "#,##0";
 
     // Accumulate the exact rendered row values for TOTAL row consistency.
     accQtyTotal += qty;
     accSqFtTotal += snappedSqFt;
     accDisplayCostTotal += round2(ledWithSpares);
+    accSponsorshipTotal += sponsorshipResult;
     accProcessorTotal += bundleEquipmentCost || 0;
     accShippingTotal += d.shippingCost;
     accTotalCostTotal += totalLedCost;
@@ -2129,39 +2155,42 @@ function buildLedCostSheet(
   // Q: Display Cost
   gtR.getCell(17).value = { formula: baseSumFormula("Q"), result: round2(accDisplayCostTotal) };
   gtR.getCell(17).numFmt = FMT_USD;
-  // R: Processor
-  gtR.getCell(18).value = { formula: baseSumFormula("R"), result: round2(accProcessorTotal) };
+  // R: Sponsorship
+  gtR.getCell(18).value = { formula: baseSumFormula("R"), result: round2(accSponsorshipTotal) };
   gtR.getCell(18).numFmt = FMT_USD;
-  // S: Shipping
-  gtR.getCell(19).value = { formula: baseSumFormula("S"), result: round2(accShippingTotal) };
+  // S: Processor
+  gtR.getCell(19).value = { formula: baseSumFormula("S"), result: round2(accProcessorTotal) };
   gtR.getCell(19).numFmt = FMT_USD;
-  // T: Total Cost
-  gtR.getCell(20).value = { formula: baseSumFormula("T"), result: round2(accTotalCostTotal) };
+  // T: Shipping
+  gtR.getCell(20).value = { formula: baseSumFormula("T"), result: round2(accShippingTotal) };
   gtR.getCell(20).numFmt = FMT_USD;
-  // U: Blended Margin %
+  // U: Total Cost
+  gtR.getCell(21).value = { formula: baseSumFormula("U"), result: round2(accTotalCostTotal) };
+  gtR.getCell(21).numFmt = FMT_USD;
+  // V: Blended Margin %
   const totalCostResult = round2(accTotalCostTotal);
   const totalSellingResult = round2(accSellingTotal);
   const blendedMarginResult = totalSellingResult > 0 ? round2(1 - totalCostResult / totalSellingResult) : 0;
-  gtR.getCell(21).value = { formula: `IFERROR(1-T${row}/V${row},0)`, result: blendedMarginResult };
-  gtR.getCell(21).numFmt = FMT_PCT;
-  // V: Total Selling Price
-  gtR.getCell(22).value = { formula: baseSumFormula("V"), result: round2(accSellingTotal) };
-  gtR.getCell(22).numFmt = FMT_USD;
-  // W: ANC Margin
-  gtR.getCell(23).value = { formula: baseSumFormula("W"), result: round2(accMarginTotal) };
+  gtR.getCell(22).value = { formula: `IFERROR(1-U${row}/W${row},0)`, result: blendedMarginResult };
+  gtR.getCell(22).numFmt = FMT_PCT;
+  // W: Total Selling Price
+  gtR.getCell(23).value = { formula: baseSumFormula("W"), result: round2(accSellingTotal) };
   gtR.getCell(23).numFmt = FMT_USD;
-  // X-Z: Weight, Power, BTU — use accumulated per-row values so the TOTAL
+  // X: ANC Margin
+  gtR.getCell(24).value = { formula: baseSumFormula("X"), result: round2(accMarginTotal) };
+  gtR.getCell(24).numFmt = FMT_USD;
+  // Y-AA: Weight, Power, BTU — use accumulated per-row values so the TOTAL
   // result matches the sum of individual row results (area × density formula),
   // not the old module-count-based formula that produced different numbers.
   const baseWeightTotal = accWeightTotal;
   const basePowerTotal = accPowerTotal;
   const baseBtuTotal = accBtuTotal;
-  gtR.getCell(24).value = { formula: baseSumFormula("X"), result: baseWeightTotal };
-  gtR.getCell(24).numFmt = "#,##0";
-  gtR.getCell(25).value = { formula: baseSumFormula("Y"), result: basePowerTotal };
+  gtR.getCell(25).value = { formula: baseSumFormula("Y"), result: baseWeightTotal };
   gtR.getCell(25).numFmt = "#,##0";
-  gtR.getCell(26).value = { formula: baseSumFormula("Z"), result: baseBtuTotal };
+  gtR.getCell(26).value = { formula: baseSumFormula("Z"), result: basePowerTotal };
   gtR.getCell(26).numFmt = "#,##0";
+  gtR.getCell(27).value = { formula: baseSumFormula("AA"), result: baseBtuTotal };
+  gtR.getCell(27).numFmt = "#,##0";
   totalStyle(gtR, COLS, C.GREEN_BG);
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -2280,42 +2309,46 @@ function buildLedCostSheet(
       const altDisplayCostResult = round2(altCostPerSqFtResult * altSnappedSqFt);
       dr.getCell(17).value = { formula: `P${rowNum}*M${rowNum}`, result: altDisplayCostResult };
       dr.getCell(17).numFmt = FMT_USD;
-      // R: Processor — cross-sheet formula to Bundle Equipment (same config as base display)
+      // R: Sponsorship = Display Cost × Sponsorship% (R2). Default 0%; live Excel recomputes.
+      const altSponsorshipResult = 0;
+      dr.getCell(18).value = { formula: `Q${rowNum}*$R$${masterMarginRow}`, result: altSponsorshipResult };
+      dr.getCell(18).numFmt = FMT_USD;
+      // S: Processor — cross-sheet formula to Bundle Equipment (same config as base display)
       const altEquipCost = d.sendingCardCost + d.signalCableCost + d.upsCost + d.backupProcessorCost + d.weatherproofCost;
-      dr.getCell(18).value = baseBundleRow
+      dr.getCell(19).value = baseBundleRow
         ? { formula: `SUM('Bundle Equipment'!E${baseBundleRow}:E${baseBundleRow})`, result: altEquipCost || 0 }
         : (altEquipCost || 0);
-      dr.getCell(18).numFmt = FMT_USD;
-      // S: Shipping — formula: $10/sqft, $500 minimum
-      dr.getCell(19).value = { formula: `MAX(M${rowNum}*10,500)`, result: d.shippingCost };
       dr.getCell(19).numFmt = FMT_USD;
-      // T: Total Cost = Q + R + S (formula)
-      const altLedTotal = round2(altDisplayCostResult + altEquipCost + d.shippingCost);
-      dr.getCell(20).value = { formula: `Q${rowNum}+R${rowNum}+S${rowNum}`, result: altLedTotal };
+      // T: Shipping — formula: $10/sqft, $500 minimum
+      dr.getCell(20).value = { formula: `MAX(M${rowNum}*10,500)`, result: d.shippingCost };
       dr.getCell(20).numFmt = FMT_USD;
-      dr.getCell(20).font = { bold: true, name: "Calibri" };
-      // U: Margin % — references master override (same as base displays)
+      // U: Total Cost = Q + R + S + T (formula)
+      const altLedTotal = round2(altDisplayCostResult + altSponsorshipResult + altEquipCost + d.shippingCost);
+      dr.getCell(21).value = { formula: `Q${rowNum}+R${rowNum}+S${rowNum}+T${rowNum}`, result: altLedTotal };
+      dr.getCell(21).numFmt = FMT_USD;
+      dr.getCell(21).font = { bold: true, name: "Calibri" };
+      // V: Margin % — references master override W2 (same as base displays)
       const altLedMargin = Number(ov?.ledMarginPct ?? DEFAULT_MARGINS.ledHardware);
-      dr.getCell(21).value = { formula: `V$${masterMarginRow}`, result: altLedMargin };
-      dr.getCell(21).numFmt = FMT_PCT;
-      // V: Selling Price = Cost / (1 - Margin%) (formula)
+      dr.getCell(22).value = { formula: `W$${masterMarginRow}`, result: altLedMargin };
+      dr.getCell(22).numFmt = FMT_PCT;
+      // W: Selling Price = Total Cost / (1 - Margin%) (formula)
       const altLedSell = altLedMargin < 1 ? round2(altLedTotal / (1 - altLedMargin)) : altLedTotal;
-      dr.getCell(22).value = { formula: `IFERROR(T${rowNum}/(1-U${rowNum}),0)`, result: altLedSell };
-      dr.getCell(22).numFmt = FMT_USD;
-      dr.getCell(22).font = { bold: true, name: "Calibri" };
-      // W: ANC Margin = Selling - Cost (formula)
-      dr.getCell(23).value = { formula: `V${rowNum}-T${rowNum}`, result: round2(altLedSell - altLedTotal) };
+      dr.getCell(23).value = { formula: `IFERROR(U${rowNum}/(1-V${rowNum}),0)`, result: altLedSell };
       dr.getCell(23).numFmt = FMT_USD;
-      // X-Z: Weight, Power, BTU — VLOOKUP from _Products
+      dr.getCell(23).font = { bold: true, name: "Calibri" };
+      // X: ANC Margin = Selling - Total Cost (formula)
+      dr.getCell(24).value = { formula: `W${rowNum}-U${rowNum}`, result: round2(altLedSell - altLedTotal) };
+      dr.getCell(24).numFmt = FMT_USD;
+      // Y-AA: Weight, Power, BTU — VLOOKUP from _Products
       const altAreaM2 = d.areaSqFt * 0.092903;
       const altWeightResult = altCatalogProduct ? Math.round(altAreaM2 * altCatalogProduct.weightDensityLbm2) : Math.round(d.areaSqFt * 5);
       const altPowerResult = altCatalogProduct ? Math.round(altAreaM2 * altCatalogProduct.powerDensityWm2) : 0;
-      dr.getCell(24).value = { formula: `IFERROR(ROUND(M${rowNum}*0.092903*VLOOKUP(F${rowNum},${prodRange},6,FALSE),0),0)`, result: altWeightResult };
-      dr.getCell(24).numFmt = "#,##0";
-      dr.getCell(25).value = { formula: `IFERROR(ROUND(M${rowNum}*0.092903*VLOOKUP(F${rowNum},${prodRange},7,FALSE),0),0)`, result: altPowerResult };
+      dr.getCell(25).value = { formula: `IFERROR(ROUND(M${rowNum}*0.092903*VLOOKUP(F${rowNum},${prodRange},6,FALSE),0),0)`, result: altWeightResult };
       dr.getCell(25).numFmt = "#,##0";
-      dr.getCell(26).value = { formula: `Y${rowNum}*3.412`, result: Math.round(altPowerResult * 3.412) };
+      dr.getCell(26).value = { formula: `IFERROR(ROUND(M${rowNum}*0.092903*VLOOKUP(F${rowNum},${prodRange},7,FALSE),0),0)`, result: altPowerResult };
       dr.getCell(26).numFmt = "#,##0";
+      dr.getCell(27).value = { formula: `Z${rowNum}*3.412`, result: Math.round(altPowerResult * 3.412) };
+      dr.getCell(27).numFmt = "#,##0";
       // Amber tint for alternate rows
       for (let c = 1; c <= COLS; c++) {
         dr.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF8E1" } };
@@ -3805,15 +3838,15 @@ function buildTechSpecsSheet(
     const tsPower = catalogMatch ? Math.round(areaM2 * catalogMatch.powerDensityWm2) : 0;
     const tsBtu = tsPower > 0 ? Math.round(tsPower * 3.412) : 0;
 
-    r.getCell(12).value = { formula: `'LED Cost Sheet'!X${ledRow}`, result: tsWeight || 0 };
+    r.getCell(12).value = { formula: `'LED Cost Sheet'!Y${ledRow}`, result: tsWeight || 0 };
     r.getCell(12).numFmt = "#,##0";
-    r.getCell(13).value = { formula: `'LED Cost Sheet'!Y${ledRow}`, result: tsPower || 0 };
+    r.getCell(13).value = { formula: `'LED Cost Sheet'!Z${ledRow}`, result: tsPower || 0 };
     r.getCell(13).numFmt = "#,##0";
     // Fiber Strands = total pixels / 400,000 (one strand per 400K pixels)
     const tsFiber = (hPx * wPx * qty) > 0 ? round2((hPx * wPx * qty) / 400000) : 0;
     r.getCell(14).value = { formula: `IFERROR((F${row}*G${row}*B${row})/400000,0)`, result: tsFiber };
     r.getCell(14).numFmt = "0.0";
-    r.getCell(15).value = { formula: `'LED Cost Sheet'!Z${ledRow}`, result: tsBtu || 0 };
+    r.getCell(15).value = { formula: `'LED Cost Sheet'!AA${ledRow}`, result: tsBtu || 0 };
     r.getCell(15).numFmt = "#,##0";
 
     stripe(r, 15, idx % 2 === 0);
