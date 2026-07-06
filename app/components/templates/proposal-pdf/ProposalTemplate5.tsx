@@ -25,6 +25,7 @@ import PdfSpecsTable from "./sections/PdfSpecsTable";
 import PdfResponsibilityMatrix from "./sections/PdfResponsibilityMatrix";
 import PdfSignatureBlock from "./sections/PdfSignatureBlock";
 import PdfTermsAndConditions from "./sections/PdfTermsAndConditions";
+import PdfServiceAgreement, { type ServiceAgreementConfig } from "./sections/PdfServiceAgreement";
 import { MasterTableSummary, LOISummaryTable } from "./sections/PdfProjectSummary";
 import type { PdfColors, PdfTemplateSpacing } from "./sections/shared";
 
@@ -61,6 +62,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const isLOI = documentMode === "LOI" || documentMode === "CONTRACT";
     const isContract = documentMode === "CONTRACT";
     const isCO = documentMode === "CHANGE_ORDER";
+    const isServiceAgreement = documentMode === "SERVICE_AGREEMENT";
     const shortFormDocumentName = isContract ? "Short Form Contract" : "Short Form Agreement";
 
     // Change Order metadata
@@ -700,6 +702,34 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         .pdf-font-scaled .text-\\[16px\\] { font-size: ${16 + fontOffset}px !important; }
         .pdf-font-scaled .text-\\[11px\\] { font-size: ${11 + fontOffset}px !important; }
     ` : "";
+
+    // SERVICE AGREEMENT — standalone legal document. Renders only the verbatim agreement
+    // (header shell reused); bypasses the entire estimate/proposal body. Isolated from all
+    // other document modes.
+    if (isServiceAgreement) {
+        const saConfig: Partial<ServiceAgreementConfig> = {
+            ...(purchaserLegalName ? { purchaserName: purchaserLegalName } : {}),
+            ...(purchaserAddress ? { purchaserAddress } : {}),
+            ...(venueLabel ? { venueName: venueLabel } : {}),
+        };
+        return (
+            <ProposalLayout data={data} disableFixedFooter>
+                {fontSizeOverrideCss && <style dangerouslySetInnerHTML={{ __html: fontSizeOverrideCss }} />}
+                <div className={fontOffset !== 0 ? "pdf-font-scaled" : ""}>
+                    <PdfHeader
+                        colors={colors}
+                        contentPaddingX={contentPaddingX}
+                        headerToIntroGap={headerToIntroGap}
+                        docLabel={docLabel}
+                        proposalName={details?.proposalName || ""}
+                        clientName={receiver?.name || "Client Name"}
+                        date={headerDate}
+                    />
+                    <PdfServiceAgreement colors={colors} config={saConfig} />
+                </div>
+            </ProposalLayout>
+        );
+    }
 
     return (
         <ProposalLayout data={data} disableFixedFooter>

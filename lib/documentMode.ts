@@ -1,7 +1,7 @@
 import { DOCUMENT_MODES } from "@/services/rfp/productCatalog";
 import type { DocumentMode as CatalogDocumentMode } from "@/services/rfp/productCatalog";
 
-export type DocumentMode = "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT" | "CHANGE_ORDER";
+export type DocumentMode = "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT" | "CHANGE_ORDER" | "SERVICE_AGREEMENT";
 
 // Change Order config lives here (not in the RFP-protected productCatalog) so the shared module stays frozen.
 const CHANGE_ORDER_CONFIG = {
@@ -13,8 +13,21 @@ const CHANGE_ORDER_CONFIG = {
   includeResponsibilityMatrix: false,
 };
 
+// Service Contract Agreement — standalone legal document (not built from an estimate).
+// The agreement body is rendered verbatim by PdfServiceAgreement; suppress the
+// proposal/estimate chrome (no pricing tables, no exhibits, no responsibility matrix).
+const SERVICE_AGREEMENT_CONFIG = {
+  headerText: "SERVICE AGREEMENT",
+  includeSignatures: true,
+  includePaymentTerms: false,
+  includeLegalIntro: false,
+  includeProjectSummaryFirst: false,
+  includeResponsibilityMatrix: false,
+};
+
 export function getModeConfig(mode: DocumentMode) {
   if (mode === "CHANGE_ORDER") return CHANGE_ORDER_CONFIG;
+  if (mode === "SERVICE_AGREEMENT") return SERVICE_AGREEMENT_CONFIG;
   return DOCUMENT_MODES[mode.toLowerCase() as CatalogDocumentMode] || DOCUMENT_MODES.proposal;
 }
 
@@ -25,13 +38,15 @@ export function resolveDocumentMode(details: any): DocumentMode {
     explicit === "PROPOSAL" ||
     explicit === "LOI" ||
     explicit === "CONTRACT" ||
-    explicit === "CHANGE_ORDER"
+    explicit === "CHANGE_ORDER" ||
+    explicit === "SERVICE_AGREEMENT"
   ) return explicit;
 
   const documentType = details?.documentType;
   if (documentType === "LOI") return "LOI";
   if (documentType === "CONTRACT") return "CONTRACT";
   if (documentType === "CHANGE_ORDER" || documentType === "Change Order") return "CHANGE_ORDER";
+  if (documentType === "SERVICE_AGREEMENT" || documentType === "Service Agreement") return "SERVICE_AGREEMENT";
 
   const pricingType = details?.pricingType;
   if (pricingType === "Hard Quoted") return "PROPOSAL";

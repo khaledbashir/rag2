@@ -222,6 +222,7 @@ const ProposalDetails = () => {
                                 <SelectItem value="LOI" className="focus:bg-accent focus:text-accent-foreground">Short Form Agreement</SelectItem>
                                 <SelectItem value="CONTRACT" className="focus:bg-accent focus:text-accent-foreground">Short Form Contract</SelectItem>
                                 <SelectItem value="CHANGE_ORDER" className="focus:bg-accent focus:text-accent-foreground">Change Order</SelectItem>
+                                <SelectItem value="SERVICE_AGREEMENT" className="focus:bg-accent focus:text-accent-foreground">Service Agreement</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
