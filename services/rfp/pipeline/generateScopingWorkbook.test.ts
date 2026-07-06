@@ -212,8 +212,8 @@ describe("generateScopingWorkbook", () => {
     const led = wb.getWorksheet("LED Cost Sheet")!;
     const w2 = led.getCell(2, 23).value as { formula?: string };
     expect(w2.formula).toBe("'Project Overview'!$C$16");
-    // Sponsorship % input lives at R2 (orange), default 0.
-    expect(led.getCell(2, 18).value).toBe(0);
+    // Sponsorship % input at R2 (orange) formula-links to Project Overview Sponsorship Margin (C21).
+    expect((led.getCell(2, 18).value as { formula?: string })?.formula).toBe("'Project Overview'!$C$21");
 
     // 3. Every install sheet's Linked Margin Assignment formula-links to Project Overview
     let installSheetsChecked = 0;
