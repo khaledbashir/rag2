@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { hkdfSync, createDecipheriv } from "crypto";
 
 const TWENTY_BASE = "https://abc-twenty.izcgmb.easypanel.host";
 const DASHBOARD_URL =
@@ -26,6 +27,7 @@ type ConnectedEmailAccount = {
   authFailedAt: string | null;
   accessToken: string | null;
   refreshToken: string | null;
+  workspaceId: string | null;
 };
 
 let twentyDbPool: Pool | null = null;
@@ -137,12 +139,38 @@ function getReportEmailAccountPool() {
   return reportEmailAccountPool;
 }
 
+// Twenty v2.5+ stores connectedAccount tokens encrypted at rest (enc:v2 envelope:
+// AES-256-GCM, HKDF-SHA256 key derived from the instance key + workspace context —
+// mirrors twenty-server's secret-encryption module). This lets the report read the
+// mailbox refresh token. Legacy/plaintext values (no enc: prefix) pass through.
+function decryptConnectedAccountSecret(value: string | null, workspaceId: string | null): string | null {
+  if (!value || !value.startsWith("enc:v2:")) return value;
+  const rawKey =
+    process.env.TWENTY_TOKEN_ENCRYPTION_KEY?.trim() ||
+    process.env.ENCRYPTION_KEY?.trim() ||
+    process.env.APP_SECRET?.trim();
+  if (!rawKey) throw new Error("TWENTY_TOKEN_ENCRYPTION_KEY (or APP_SECRET) is not configured for token decryption");
+  const rest = value.slice("enc:v2:".length);
+  const separatorIndex = rest.indexOf(":");
+  if (separatorIndex <= 0) throw new Error("Malformed enc:v2 token envelope");
+  const payload = rest.slice(separatorIndex + 1);
+  const info = `twenty:enc:v2:${workspaceId ?? "instance"}`;
+  const key = Buffer.from(hkdfSync("sha256", Buffer.from(rawKey), Buffer.alloc(32), Buffer.from(info), 32));
+  const buffer = Buffer.from(payload, "base64");
+  const iv = buffer.subarray(0, 12);
+  const authTag = buffer.subarray(buffer.length - 16);
+  const ciphertext = buffer.subarray(12, buffer.length - 16);
+  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(authTag);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+}
+
 async function getReportEmailAccount() {
   const handle = process.env.CRM_REPORT_MICROSOFT_HANDLE?.trim() || "support@anc.com";
   const accountId = process.env.CRM_REPORT_MICROSOFT_CONNECTED_ACCOUNT_ID?.trim();
   const result = await getReportEmailAccountPool().query<ConnectedEmailAccount>(
     `
-      select id, handle, provider, "authFailedAt", "accessToken", "refreshToken"
+      select id, handle, provider, "authFailedAt", "accessToken", "refreshToken", "workspaceId"
       from core."connectedAccount"
       where ${accountId ? `id = $1` : `lower(handle) = lower($1) and provider = 'microsoft'`}
         and "accessToken" is not null
@@ -157,6 +185,8 @@ async function getReportEmailAccount() {
   if (!account) throw new Error(`No connected Microsoft report mailbox found for ${handle}`);
   if (account.authFailedAt) throw new Error(`CRM email account ${account.handle} has an auth failure`);
   if (!account.accessToken || !account.refreshToken) throw new Error(`CRM email account ${account.handle} is missing Microsoft tokens`);
+  account.accessToken = decryptConnectedAccountSecret(account.accessToken, account.workspaceId);
+  account.refreshToken = decryptConnectedAccountSecret(account.refreshToken, account.workspaceId);
   return account;
 }
 
@@ -192,18 +222,10 @@ async function refreshMicrosoftAccountToken(account: ConnectedEmailAccount) {
 
   const accessToken = String(token.access_token);
   const refreshToken = token.refresh_token ? String(token.refresh_token) : account.refreshToken;
-  await getReportEmailAccountPool().query(
-    `
-      update core."connectedAccount"
-      set "accessToken" = $1,
-          "refreshToken" = $2,
-          "lastCredentialsRefreshedAt" = now(),
-          "updatedAt" = now()
-      where id = $3
-    `,
-    [accessToken, refreshToken, account.id],
-  );
-
+  // Do NOT persist tokens back to core."connectedAccount": Twenty stores them
+  // encrypted (enc:v2) and manages its own rotation. Writing plaintext here would
+  // corrupt Twenty's own mail sync for this mailbox. Keep the refreshed token in
+  // memory for this send only.
   return { ...account, accessToken, refreshToken };
 }
 
