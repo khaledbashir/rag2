@@ -7,16 +7,19 @@
 
 import { prisma } from "@/lib/prisma";
 import { log } from "@/lib/logger";
+import { FEATURES } from "@/lib/featureFlags";
 import {
   applyEmailCrmToOpportunity,
   buildProposedChanges,
   decideMatch,
   extractEmailCrmFacts,
   findOpportunityCandidates,
+  looksLikeNewRfp,
   type EmailCrmExtraction,
   type EmailCrmInput,
   type OpportunityCandidate,
 } from "@/services/intake/emailToCrmSync";
+import { createDraftOpportunityForRfpIntake } from "@/services/integrations/twenty/crmAutomation";
 import type { Prisma } from "@prisma/client";
 
 export interface ProcessOptions {
@@ -53,6 +56,51 @@ export async function processEmailCrmIntake(input: EmailCrmInput, options?: Proc
 
     const shouldAutoApply = options?.autoApply !== false && decision.autoApply && decision.top;
     if (!shouldAutoApply) {
+      // Draft-opportunity creation for new RFPs that match NO existing deal.
+      // Flag-gated (default OFF → production stays review-only). Only fires
+      // when there is no top match (never duplicates an existing opp) AND the
+      // email looks like a genuine new RFP. Failures fall through to
+      // pending_review — the email is never lost.
+      if (
+        FEATURES.EMAIL_TO_CRM_DRAFT_OPP &&
+        decision.top == null &&
+        looksLikeNewRfp(extraction, input)
+      ) {
+        try {
+          const draft = await createDraftOpportunityForRfpIntake({
+            extraction,
+            emailInput: {
+              subject: input.subject,
+              fromEmail: input.fromEmail,
+              fromName: input.fromName,
+              receivedAt: input.receivedAt,
+              attachments: input.attachments,
+            },
+          });
+          const updated = await prisma.emailCrmIntake.update({
+            where: { id: intake.id },
+            data: {
+              ...baseUpdate,
+              status: "draft_created",
+              matchedOpportunityId: draft.opportunityId,
+            },
+          });
+          return {
+            intake: updated,
+            extraction,
+            candidates,
+            decision,
+            applied: null,
+            draftOpportunityId: draft.opportunityId,
+          };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          log.error("[email-to-crm] draft opp creation failed; falling back to review", {
+            intakeId: intake.id,
+            error: message,
+          });
+        }
+      }
       const updated = await prisma.emailCrmIntake.update({
         where: { id: intake.id },
         data: { ...baseUpdate, status: "pending_review" },

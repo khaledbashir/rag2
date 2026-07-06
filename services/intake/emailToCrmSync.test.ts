@@ -3,6 +3,7 @@ import {
   buildProposedChanges,
   decideMatch,
   isSourceTextInBody,
+  looksLikeNewRfp,
   scoreOpportunities,
   significantTokens,
   verifyExtraction,
@@ -198,5 +199,75 @@ describe("buildProposedChanges", () => {
     expect(changes.noteMarkdown).toContain("Attachment_B_-_CWS_Cameras_&_LED_Upgrades_Bid_Form.xlsx");
     expect(changes.noteMarkdown).toContain("Jeremy Riley");
     expect(changes.noteTitle).toContain("Camping World Stadium - CMS / Broadcast Pricing");
+  });
+});
+
+// ---- looksLikeNewRfp ----
+describe("looksLikeNewRfp", () => {
+  // A no-match new-RFP email: real venue + project + a verified proposal-due date
+  // + RFP intent in the subject → should classify as a new RFP (→ draft opp).
+  it("flags a real new-RFP email with venue, project, due date, and intent", () => {
+    const ext: EmailCrmExtraction = {
+      clientOrVenue: "Camping World Stadium",
+      projectName: "LED Display Upgrade RFP",
+      summary: "New RFP for LED displays at Camping World Stadium, due in three weeks.",
+      dueDates: [
+        {
+          label: "Proposal due to client",
+          dateIso: "2026-08-01",
+          kind: "proposal_due",
+          sourceText: "Proposals are due August 1",
+          verified: true,
+        },
+      ],
+      keyFacts: [],
+      people: [],
+      confidence: 0.9,
+    };
+    expect(looksLikeNewRfp(ext, { subject: "Camping World Stadium — LED RFP" })).toBe(true);
+  });
+
+  it("does NOT flag when there is no verified due date (casual email)", () => {
+    const ext: EmailCrmExtraction = {
+      clientOrVenue: "Camping World Stadium",
+      projectName: "LED Display Upgrade RFP",
+      summary: "",
+      dueDates: [],
+      keyFacts: [],
+      people: [],
+      confidence: 0.5,
+    };
+    expect(looksLikeNewRfp(ext, { subject: "Camping World LED RFP" })).toBe(false);
+  });
+
+  it("does NOT flag when there is no venue (no client/venue tokens)", () => {
+    const ext: EmailCrmExtraction = {
+      clientOrVenue: "",
+      projectName: "Something",
+      summary: "",
+      dueDates: [
+        { label: "x", dateIso: "2026-08-01", kind: "proposal_due", sourceText: "due August 1", verified: true },
+      ],
+      keyFacts: [],
+      people: [],
+      confidence: 0.5,
+    };
+    expect(looksLikeNewRfp(ext, { subject: "RFP" })).toBe(false);
+  });
+
+  it("does NOT flag a short / non-RFP subject when only an internal deadline exists", () => {
+    const ext: EmailCrmExtraction = {
+      clientOrVenue: "Camping World Stadium",
+      projectName: "LED Display Upgrade RFP",
+      summary: "",
+      dueDates: [
+        { label: "Internal", dateIso: "2026-07-30", kind: "internal_deadline", sourceText: "internal by July 30", verified: true },
+      ],
+      keyFacts: [],
+      people: [],
+      confidence: 0.5,
+    };
+    // internal_deadline only, no proposal_due, and subject lacks intent keywords
+    expect(looksLikeNewRfp(ext, { subject: "following up" })).toBe(false);
   });
 });

@@ -67,4 +67,13 @@ export const FEATURES = {
    * (MSGRAPH_* env — see docs/email-to-crm-setup.md).
    */
   EMAIL_TO_CRM: true,
+  /**
+   * Email → CRM draft-opportunity creation for unmatched RFP emails (2026-07-06).
+   * When on, an inbound email that looks like a new RFP AND matches no existing
+   * opportunity auto-creates a DRAFT opportunity (bidStatus=RFP_RECEIVED,
+   * proposalStage=RFP, owner=Unassigned) for Monday-meeting review — surfaced in
+   * the digest "Unassigned" section. Default OFF: production stays in review-only
+   * mode (unmatched → pending_review) until this is explicitly enabled.
+   */
+  EMAIL_TO_CRM_DRAFT_OPP: false,
 } as const;

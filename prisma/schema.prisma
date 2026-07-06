@@ -1270,7 +1270,7 @@ model EmailCrmIntake {
   matchedOpportunityId   String?
   matchedOpportunityName String?
   matchReason            String?   @db.Text
-  status                 String    @default("pending_review") // pending_review | applied | dismissed | failed
+  status                 String    @default("pending_review") // pending_review | applied | draft_created | dismissed | failed
   appliedChanges         Json?
   appliedAt              DateTime?
   appliedBy              String?

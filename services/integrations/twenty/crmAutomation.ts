@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import type { EmailQuoteIntake } from "@/services/intake/emailToQuoteIntake";
+import type { EmailCrmExtraction, EmailCrmInput } from "@/services/intake/emailToCrmSync";
 import { logActivity } from "@/services/proposal/server/activityLogService";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
@@ -436,6 +437,79 @@ async function createOpportunityForHandoff(input: {
   );
 
   return result.createOpportunity;
+}
+
+/**
+ * Draft-opportunity creation for an inbound RFP email that matched NO existing
+ * opportunity. Lightweight vs createEmailIntakeCrmHandoff (no quote/proposal yet
+ * — this is a raw RFP). Reuses the proven OpportunityCreateInput field set
+ * (name, companyId, bidStatus, proposalDueDate, statusUpdate) — no guessed
+ * fields. bidStatus=RFP_RECEIVED is the "Unassigned RFP" signal the Monday
+ * digest filters on. Flag-gated by FEATURES.EMAIL_TO_CRM_DRAFT_OPP at the
+ * orchestrator; this function itself is unconditional so it can be unit-tested.
+ */
+export async function createDraftOpportunityForRfpIntake(input: {
+  extraction: EmailCrmExtraction;
+  emailInput: Pick<EmailCrmInput, "subject" | "fromEmail" | "fromName" | "receivedAt" | "attachments">;
+}): Promise<{ opportunityId: string; companyId: string }> {
+  const companyName = input.extraction.clientOrVenue.trim() || "Client";
+  const dealName = `${companyName} - ${input.extraction.projectName}`.slice(0, 120);
+
+  const company =
+    (await findExactCompany(companyName)) ||
+    (await createCompanyForHandoff({ name: companyName, venueName: input.extraction.clientOrVenue }));
+
+  const proposalDue = input.extraction.dueDates.find(
+    (d) =>
+      d.kind === "proposal_due" &&
+      d.verified !== false &&
+      /^\d{4}-\d{2}-\d{2}$/.test(d.dateIso),
+  );
+
+  const result = await twentyGraphql<{ createOpportunity: { id: string; name: string | null } }>(
+    `
+      mutation CreateOpportunity($data: OpportunityCreateInput!) {
+        createOpportunity(data: $data) { id name }
+      }
+    `,
+    {
+      data: cleanObjectPayload({
+        name: truncate(dealName),
+        companyId: company.id,
+        bidStatus: "RFP_RECEIVED",
+        proposalDueDate: proposalDue ? `${proposalDue.dateIso}T21:00:00.000Z` : undefined,
+        statusUpdate: truncate(
+          "Draft created from an inbound RFP email — awaiting Monday review.",
+          500,
+        ),
+      }),
+    },
+  );
+
+  const noteLines = [
+    "Draft opportunity auto-created from an inbound RFP email (no existing deal matched).",
+    `Client/venue: ${input.extraction.clientOrVenue}`,
+    `Project: ${input.extraction.projectName}`,
+    input.emailInput.subject ? `Subject: ${input.emailInput.subject}` : null,
+    input.emailInput.fromName
+      ? `From: ${input.emailInput.fromName}${input.emailInput.fromEmail ? ` <${input.emailInput.fromEmail}>` : ""}`
+      : null,
+    input.emailInput.receivedAt ? `Received: ${input.emailInput.receivedAt}` : null,
+    proposalDue ? `Proposal due: ${proposalDue.dateIso}` : null,
+    input.extraction.summary ? `Summary: ${input.extraction.summary}` : null,
+    input.emailInput.attachments?.length
+      ? `Attachments: ${input.emailInput.attachments.map((a) => a.name).join(", ")}`
+      : null,
+    "",
+    "Review at the Monday meeting: assign an owner + decide next step.",
+  ];
+  await createOpportunityNote(
+    result.createOpportunity.id,
+    "RFP intake — draft created",
+    noteLines.filter((l): l is string => typeof l === "string").join("\n"),
+  );
+
+  return { opportunityId: result.createOpportunity.id, companyId: company.id };
 }
 
 async function updateOpportunityForHandoff(input: {

@@ -216,6 +216,41 @@ export function decideMatch(candidates: OpportunityCandidate[]): EmailCrmMatchDe
   return { autoApply: true, reason: `Decisive match: "${top.name}" (${top.score}).`, top };
 }
 
+/**
+ * Classifier: does this inbound email look like a NEW RFP (no existing deal)?
+ * Called only on the no-match branch, so addenda on known deals never reach here.
+ * Strict by design — we only auto-create a draft opportunity when there is a
+ * real client/venue, a project name, and at least one verified due date, so a
+ * casual "hey Jackson" email never spawns a deal. Pure + unit-tested.
+ */
+export function looksLikeNewRfp(
+  extraction: EmailCrmExtraction,
+  input?: Pick<EmailCrmInput, "subject">,
+): boolean {
+  const venue = significantTokens(extraction.clientOrVenue);
+  if (venue.length === 0) return false;
+  if (!extraction.projectName || extraction.projectName.trim().length < 3) return false;
+
+  // At least one verified proposal-due or internal-deadline date. RFPs have due
+  // dates; an inbound note without one isn't worth a draft opp.
+  const hasDue = extraction.dueDates.some(
+    (d) =>
+      (d.kind === "proposal_due" || d.kind === "internal_deadline") &&
+      (d.verified !== false) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(d.dateIso),
+  );
+  if (!hasDue) return false;
+
+  // Intent signal in subject or body — avoid creating opps for purely
+  // conversational threads. The body already drove extraction; the subject
+  // adds a cheap positive signal.
+  const subj = (input?.subject || "").toLowerCase();
+  const intent = /rfp|bid|proposal|quote|pricing|scope of work|sow|spec/i.test(subj);
+  // If no subject intent, still allow when the extraction itself flagged a
+  // proposal-due date (the strongest RFP signal) — but require it explicitly.
+  return intent || extraction.dueDates.some((d) => d.kind === "proposal_due");
+}
+
 // ---------------------------------------------------------------------------
 // Proposed changes + CRM note
 // ---------------------------------------------------------------------------
