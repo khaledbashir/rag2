@@ -19,6 +19,9 @@ type Stats = {
   firstAt: string | null;
   latestAt: string | null;
   yearsActive: number | null;
+  localProposalCount: number;
+  serviceEventCount: number;
+  serviceTicketCount: number;
 };
 
 type Milestone = {
@@ -29,6 +32,7 @@ type Milestone = {
   amount: string | null;
   link: string | null;
   badge: string | null;
+  source?: "proposal_db" | "crm" | "services";
 };
 
 type Account360 = {
@@ -36,6 +40,11 @@ type Account360 = {
   stats: Stats;
   milestones: Milestone[];
   narrative: string;
+  sources?: {
+    crm?: { ok: boolean; opportunityCount: number; activityCount: number };
+    proposalDatabase?: { ok: boolean; skipped: boolean; proposalCount: number };
+    services?: { ok: boolean; skipped: boolean; eventCount: number; ticketCount: number };
+  };
   generatedAt: string;
 };
 
@@ -60,10 +69,18 @@ function badgeColor(badge: string | null) {
   if (b === "WON") return "bg-emerald-50 text-emerald-700";
   if (b === "LOST" || b === "NO_BID") return "bg-rose-50 text-rose-700";
   if (b === "PROPOSAL" || b === "PRICING") return "bg-amber-50 text-amber-700";
+  if (b === "APP DB") return "bg-indigo-50 text-indigo-700";
+  if (b === "TICKET") return "bg-rose-50 text-rose-700";
   if (b === "DELIVERY" || b === "ACCOUNT") return "bg-sky-50 text-sky-700";
   if (b === "TASK") return "bg-violet-50 text-violet-700";
   if (b === "NOTE") return "bg-neutral-100 text-neutral-700";
   return "bg-neutral-100 text-neutral-600";
+}
+
+function sourceLabel(source: Milestone["source"]) {
+  if (source === "proposal_db") return "App DB";
+  if (source === "services") return "Services";
+  return "CRM";
 }
 
 export default async function AccountPage({ params }: { params: Promise<{ id: string }> }) {
@@ -72,6 +89,9 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
   if (!data) notFound();
 
   const { company, stats, milestones, narrative } = data;
+  const servicesSkipped = data.sources?.services?.skipped;
+  const proposalDbSkipped = data.sources?.proposalDatabase?.skipped;
+  const connectedSourceCount = 1 + (proposalDbSkipped ? 0 : 1) + (servicesSkipped ? 0 : 1);
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -117,6 +137,14 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
             sub={`${stats.lostCount} lost / no-bid`}
           />
           <Stat label="Open" value={stats.openValue} sub={`${stats.openCount} active`} tone="amber" />
+          <Stat label="App DB" value={String(stats.localProposalCount)} sub="proposal records" />
+          <Stat label="Events" value={String(stats.serviceEventCount)} sub="service schedule" />
+          <Stat label="Tickets" value={String(stats.serviceTicketCount)} sub="service history" tone="rose" />
+          <Stat
+            label="Sources"
+            value={`${connectedSourceCount}/3`}
+            sub={connectedSourceCount === 3 ? "CRM + DB + Services" : "Some data unavailable"}
+          />
         </section>
 
         <section>
@@ -137,6 +165,9 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
                         </span>
                       )}
                       <span className="text-xs text-neutral-500">{m.at?.slice(0, 10) || "—"}</span>
+                      <span className="rounded-full bg-neutral-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-neutral-400">
+                        {sourceLabel(m.source)}
+                      </span>
                     </div>
                     {m.amount && <span className="text-xs font-medium text-neutral-700">{m.amount}</span>}
                   </div>
@@ -160,12 +191,14 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
   );
 }
 
-function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "emerald" | "amber" }) {
+function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "emerald" | "amber" | "rose" }) {
   const accent =
     tone === "emerald"
       ? "text-emerald-700"
       : tone === "amber"
       ? "text-amber-700"
+      : tone === "rose"
+      ? "text-rose-700"
       : "text-neutral-900";
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
