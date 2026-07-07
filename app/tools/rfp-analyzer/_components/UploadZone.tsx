@@ -161,7 +161,7 @@ function AIThinkingPanel({ events, isComplete }: { events: PipelineEvent[]; isCo
 
 interface UploadZoneProps {
   onUpload: (files: File[], bidFormFile?: File, customKeywords?: string) => void;
-  onExcelUpload?: (file: File) => void;
+  onExcelUpload?: (file: File, bidFormFile?: File) => void;
   isLoading: boolean;
   events: PipelineEvent[];
 }
@@ -252,25 +252,53 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
   const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); if (!isLoading) setIsDragging(true); }, [isLoading]);
   const handleDragLeave = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); }, []);
 
+  const isExcelFile = (file: File) => /\.(xlsx|xls)$/i.test(file.name);
+  const isPdfFile = (file: File) => file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+  const looksLikeBidForm = (file: File) => {
+    const name = file.name.toLowerCase();
+    return (
+      name.includes("bid form") ||
+      name.includes("bid_form") ||
+      name.includes("product data") ||
+      name.includes("product_data") ||
+      name.includes("ajp") ||
+      name.includes("wjhw")
+    );
+  };
+
+  const splitExcelPackage = (excelFiles: File[]) => {
+    const bidFormCandidate = excelFiles.find(looksLikeBidForm);
+    const sourceCandidate = excelFiles.find((file) => file !== bidFormCandidate) || excelFiles[0];
+    const attachedBidForm =
+      bidFormCandidate && bidFormCandidate !== sourceCandidate
+        ? bidFormCandidate
+        : bidFormFile || undefined;
+
+    return { sourceFile: sourceCandidate, attachedBidForm };
+  };
+
   const validateAndUpload = (files: File[]) => {
     setError(null);
-    const pdfFiles = files.filter((f) => f.type === "application/pdf" || f.name.endsWith(".pdf"));
-    const excelFiles = files.filter((f) => f.name.endsWith(".xlsx") || f.name.endsWith(".xls"));
+    const pdfFiles = files.filter(isPdfFile);
+    const excelFiles = files.filter(isExcelFile);
 
     if (pdfFiles.length === 0 && excelFiles.length > 0) {
+      const { sourceFile, attachedBidForm } = splitExcelPackage(excelFiles);
+      if (attachedBidForm) setBidFormFile(attachedBidForm);
       if (onExcelUpload) {
-        setFileName(excelFiles[0].name);
-        onExcelUpload(excelFiles[0]);
+        setFileName(attachedBidForm ? `${sourceFile.name} + bid form` : sourceFile.name);
+        onExcelUpload(sourceFile, attachedBidForm);
       } else {
-        setBidFormFile(excelFiles[0]);
+        setBidFormFile(attachedBidForm || sourceFile);
       }
       return;
     }
 
-    if (pdfFiles.length === 0) { setError("Drop a PDF file (RFP) to get started."); return; }
+    if (pdfFiles.length === 0) { setError("Drop a PDF, Excel source workbook, or RFP package to get started."); return; }
     if (pdfFiles.some((f) => f.size > 2000 * 1024 * 1024)) { setError("Files must be under 2GB."); return; }
-    setFileName(pdfFiles.length === 1 ? pdfFiles[0].name : `${pdfFiles.length} files`);
-    const attachedBidForm = excelFiles[0] || bidFormFile || undefined;
+    const attachedBidForm = excelFiles.find(looksLikeBidForm) || excelFiles[0] || bidFormFile || undefined;
+    if (attachedBidForm) setBidFormFile(attachedBidForm);
+    setFileName(attachedBidForm ? `${pdfFiles.length === 1 ? pdfFiles[0].name : `${pdfFiles.length} PDFs`} + bid form` : (pdfFiles.length === 1 ? pdfFiles[0].name : `${pdfFiles.length} files`));
     onUpload(pdfFiles, attachedBidForm, customKeywords.trim() || undefined);
   };
 
@@ -335,9 +363,9 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
               </div>
 
               <div className="text-center space-y-2">
-                <h3 className="text-xl font-semibold text-gray-900">Drop your RFP here</h3>
+                <h3 className="text-xl font-semibold text-gray-900">Drop your RFP package here</h3>
                 <p className="text-sm text-gray-500 max-w-sm leading-relaxed">
-                  Project manuals, spec books, bid documents — drop any PDF and we&apos;ll extract every LED display spec automatically.
+                  Drop PDFs, ANC Excel workbooks, and bid forms together. We&apos;ll detect the source file and attach the bid form automatically.
                 </p>
               </div>
 
@@ -397,7 +425,7 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
               className="flex items-center gap-2 px-4 py-2 text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-50 border border-dashed border-gray-200 rounded-lg transition-colors"
             >
               <FileSpreadsheet className="w-4 h-4" />
-              Have a bid form? Attach it here
+              Optional: attach bid form separately
             </button>
           )}
           <input

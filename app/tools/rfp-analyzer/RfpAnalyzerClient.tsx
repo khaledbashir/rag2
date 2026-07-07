@@ -1146,7 +1146,8 @@ export default function RfpAnalyzerClient() {
     lastUploadedFiles.current = files;
 
     // Store bid form for auto-fill after pricing
-    if (attachedBidForm) setBidFormFile(attachedBidForm);
+    const effectiveBidForm = attachedBidForm || bidFormFile || undefined;
+    if (effectiveBidForm) setBidFormFile(effectiveBidForm);
 
     setPhase("processing");
     setError(null);
@@ -1290,10 +1291,10 @@ export default function RfpAnalyzerClient() {
               setResult(event.result);
               setPhase("results");
               // Save bid form to server before redirecting (so history page can use it)
-              if (event.result.id && bidFormFile) {
+              if (event.result.id && effectiveBidForm) {
                 const fd = new FormData();
                 fd.append("analysisId", event.result.id);
-                fd.append("bidForm", bidFormFile);
+                fd.append("bidForm", effectiveBidForm);
                 fetch("/api/rfp/bid-form", { method: "POST", body: fd }).catch(() => {});
               }
               // Persist analysis ID in URL for reload survival
@@ -1327,8 +1328,10 @@ export default function RfpAnalyzerClient() {
   // Excel upload — direct parse, no SSE (Jireh's Excel-as-starting-point)
   // ========================================================================
 
-  const handleExcelUpload = useCallback(async (file: File) => {
+  const handleExcelUpload = useCallback(async (file: File, attachedBidForm?: File) => {
     lastExcelFileRef.current = file;
+    const effectiveBidForm = attachedBidForm || bidFormFile || undefined;
+    if (effectiveBidForm) setBidFormFile(effectiveBidForm);
     setPhase("processing");
     setError(null);
     setEvents([
@@ -1370,10 +1373,10 @@ export default function RfpAnalyzerClient() {
       setResult(analysisResult);
       setPhase("results");
       // Save bid form to server before redirecting
-      if (analysisResult.id && bidFormFile) {
+      if (analysisResult.id && effectiveBidForm) {
         const fd = new FormData();
         fd.append("analysisId", analysisResult.id);
-        fd.append("bidForm", bidFormFile);
+        fd.append("bidForm", effectiveBidForm);
         fetch("/api/rfp/bid-form", { method: "POST", body: fd }).catch(() => {});
       }
       // Persist analysis ID in URL for reload survival
