@@ -66,6 +66,15 @@ interface DisplayCalc {
   } | null;
 }
 
+const PROJECT_OVERVIEW_EDITABLE_CELLS = new Set([
+  "20:2", // C21: Sponsorship Margin
+]);
+
+const LED_COST_SHEET_EDITABLE_CELLS = new Set([
+  "1:17", // R2: Sponsorship %
+  "1:22", // W2: LED Margin Override
+]);
+
 export interface EstimatorWorkbookOptions {
   /** Available products for dropdown */
   products: ProductOption[];
@@ -310,9 +319,13 @@ export function buildEstimatorWorkbook(
       columns,
       rows,
     };
-    // LED Cost Sheet: Display=0, H(ft)=7, W(ft)=8, Qty=11, Margin Override=21
+    if (sheet.name === "Project Overview") {
+      tab.editableCells = PROJECT_OVERVIEW_EDITABLE_CELLS;
+    }
+    // LED Cost Sheet: Display=0, H(ft)=7, W(ft)=8, Qty=11, Sponsorship=R2, Margin Override=W2
     if (isLedCostSheet) {
-      tab.editableColumns = [0, 7, 8, 11, 21];
+      tab.editableColumns = [0, 7, 8, 11];
+      tab.editableCells = LED_COST_SHEET_EDITABLE_CELLS;
     }
     sheets.push(tab);
   }

@@ -143,6 +143,7 @@ export default function WorkbookShell({
                   colCount={activeSheet.columns.length}
                   editable={editable}
                   editableColumns={activeSheet.editableColumns}
+                  editableCells={activeSheet.editableCells}
                   editingCell={editingCell}
                   sheetIndex={activeTab}
                   onCellClick={(col) => {
@@ -231,6 +232,7 @@ interface RowViewProps {
   colCount: number;
   editable?: boolean;
   editableColumns?: number[];
+  editableCells?: Set<string>;
   editingCell: { row: number; col: number } | null;
   sheetIndex: number;
   onCellClick: (col: number) => void;
@@ -238,7 +240,7 @@ interface RowViewProps {
   onCellBlur: () => void;
 }
 
-function RowView({ row, rowNum, colCount, editable, editableColumns, editingCell, onCellClick, onCellChange, onCellBlur }: RowViewProps) {
+function RowView({ row, rowNum, colCount, editable, editableColumns, editableCells, editingCell, onCellClick, onCellChange, onCellBlur }: RowViewProps) {
   if (row.isSeparator) {
     return (
       <tr className="h-5">
@@ -291,10 +293,11 @@ function RowView({ row, rowNum, colCount, editable, editableColumns, editingCell
       {Array.from({ length: colCount }).map((_, i) => {
         const cell = row.cells[i];
         const isEditingThisCell = isEditingThisRow && editingCell?.col === i;
+        const isExplicitEditableCell = editableCells?.has(`${sourceRow}:${i}`) ?? false;
         const canEdit = editable
           && !row.isTotal
           && (!row.isHeader || !!cell?.highlight)
-          && (!editableColumns || editableColumns.includes(i));
+          && (isExplicitEditableCell || !editableColumns || editableColumns.includes(i));
 
         if (!cell) {
           return (

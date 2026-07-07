@@ -47,6 +47,8 @@ export interface SheetTab {
   placeholderMessage?: string;
   /** Column index that is editable (-1 = none, undefined = all if editable) */
   editableColumns?: number[];
+  /** Specific source-row:column cells that are editable even when the column is not */
+  editableCells?: Set<string>;
   /** Small badge count shown on tab (e.g., number of edited fields) */
   badge?: number;
 }
