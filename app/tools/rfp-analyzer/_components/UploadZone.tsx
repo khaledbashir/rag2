@@ -235,6 +235,7 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
   const bidFormInputRef = useRef<HTMLInputElement>(null);
   const [customKeywords, setCustomKeywords] = useState("");
   const [showKeywords, setShowKeywords] = useState(false);
+  const [showManualBidForm, setShowManualBidForm] = useState(false);
 
   useEffect(() => {
     if (isLoading) {
@@ -409,24 +410,34 @@ export default function UploadZone({ onUpload, onExcelUpload, isLoading, events 
           </div>
         </div>
 
-        {/* Bid form attachment */}
-        <div className="flex items-center justify-center">
-          {bidFormFile ? (
-            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg">
-              <FileSpreadsheet className="w-4 h-4 text-amber-600" />
-              <span className="text-sm text-amber-800">{bidFormFile.name}</span>
-              <button onClick={() => setBidFormFile(null)} className="ml-1 p-0.5 hover:bg-amber-200/50 rounded">
-                <X className="w-3 h-3 text-amber-600" />
+        {/* Advanced manual bid form fallback */}
+        <div className="flex flex-col items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowManualBidForm((prev) => !prev)}
+            className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            {showManualBidForm ? "Hide advanced upload" : "Advanced: attach bid form manually"}
+          </button>
+
+          {showManualBidForm && (
+            bidFormFile ? (
+              <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                <FileSpreadsheet className="w-4 h-4 text-amber-600" />
+                <span className="text-sm text-amber-800">{bidFormFile.name}</span>
+                <button onClick={() => setBidFormFile(null)} className="ml-1 p-0.5 hover:bg-amber-200/50 rounded">
+                  <X className="w-3 h-3 text-amber-600" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => bidFormInputRef.current?.click()}
+                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-50 border border-dashed border-gray-200 rounded-lg transition-colors"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                Attach bid form separately
               </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => bidFormInputRef.current?.click()}
-              className="flex items-center gap-2 px-4 py-2 text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-50 border border-dashed border-gray-200 rounded-lg transition-colors"
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              Optional: attach bid form separately
-            </button>
+            )
           )}
           <input
             ref={bidFormInputRef}

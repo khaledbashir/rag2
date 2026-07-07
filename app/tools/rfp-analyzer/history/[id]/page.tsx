@@ -124,6 +124,15 @@ export default function AnalysisDetailPage() {
   const [pdfAvailable, setPdfAvailable] = useState<boolean | null>(null);
   const [filledBidFormBlob, setFilledBidFormBlob] = useState<Blob | null>(null);
   const [filledBidFormName, setFilledBidFormName] = useState<string>("");
+  const [bidFormStatus, setBidFormStatus] = useState<"checking" | "attached" | "missing" | "generating" | "ready" | "error">("checking");
+  const [bidFormFileName, setBidFormFileName] = useState<string | null>(null);
+  const [bidFormError, setBidFormError] = useState<string | null>(null);
+  const [bidFormSummary, setBidFormSummary] = useState<{
+    matches: number;
+    totalBlocks: number;
+    unmatchedBlocks: number;
+    unmatchedScreens: number;
+  } | null>(null);
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -171,6 +180,25 @@ export default function AnalysisDetailPage() {
       }
     })();
   }, [id]);
+
+  useEffect(() => {
+    if (!analysis?.id) return;
+    let cancelled = false;
+    setBidFormStatus("checking");
+    fetch(`/api/rfp/bid-form?analysisId=${analysis.id}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        setBidFormFileName(data?.filename || null);
+        setBidFormStatus(data?.exists ? "attached" : "missing");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setBidFormStatus("error");
+        setBidFormError("Could not check bid form attachment.");
+      });
+    return () => { cancelled = true; };
+  }, [analysis?.id]);
 
   // Check if PDF is available
   useEffect(() => {
@@ -549,6 +577,9 @@ export default function AnalysisDetailPage() {
   const handleBidFormUpload = useCallback(async (file: File) => {
     if (!analysis?.id) return;
     setDownloading("bidform");
+    setBidFormStatus("generating");
+    setBidFormError(null);
+    setBidFormSummary(null);
     setFilledBidFormBlob(null);
     try {
       const formData = new FormData();
@@ -591,8 +622,17 @@ export default function AnalysisDetailPage() {
       setFilledBidFormBlob(blob);
       const name = res.headers.get("Content-Disposition")?.split("filename=")[1]?.replace(/"/g, "") || "BidForm_Filled.xlsx";
       setFilledBidFormName(name);
+      setBidFormSummary({
+        matches: JSON.parse(res.headers.get("X-Bid-Form-Matches") || "[]").length,
+        totalBlocks: Number(res.headers.get("X-Bid-Form-Total-Blocks") || 0),
+        unmatchedBlocks: JSON.parse(res.headers.get("X-Bid-Form-Unmatched-Blocks") || "[]").length,
+        unmatchedScreens: JSON.parse(res.headers.get("X-Bid-Form-Unmatched-Screens") || "[]").length,
+      });
+      setBidFormStatus("ready");
     } catch (err: any) {
       console.error("Bid form fill failed:", err);
+      setBidFormError(err.message || "Bid form fill failed.");
+      setBidFormStatus("error");
     } finally {
       setDownloading(null);
     }
@@ -602,22 +642,21 @@ export default function AnalysisDetailPage() {
   const bidFormAutoFilled = useRef(false);
   useEffect(() => {
     if (!analysis?.id || !pricingPreview || bidFormAutoFilled.current || filledBidFormBlob) return;
+    if (bidFormStatus !== "attached") return;
     bidFormAutoFilled.current = true;
     (async () => {
       try {
-        const check = await fetch(`/api/rfp/bid-form?analysisId=${analysis.id}`);
-        const { exists } = await check.json();
-        if (!exists) return;
-        // Fetch the saved bid form file and fill it
-        setDownloading("bidform");
         const fileRes = await fetch(`/api/rfp/bid-form/file?analysisId=${analysis.id}`);
         if (!fileRes.ok) return;
         const fileBlob = await fileRes.blob();
-        const file = new File([fileBlob], "bid-form.xlsx", { type: fileBlob.type });
+        const file = new File([fileBlob], bidFormFileName || "bid-form.xlsx", { type: fileBlob.type });
         await handleBidFormUpload(file);
-      } catch { /* ignore */ }
+      } catch (err: any) {
+        setBidFormStatus("error");
+        setBidFormError(err.message || "Could not generate the filled bid form.");
+      }
     })();
-  }, [analysis?.id, pricingPreview, filledBidFormBlob, handleBidFormUpload]);
+  }, [analysis?.id, pricingPreview, bidFormStatus, bidFormFileName, filledBidFormBlob, handleBidFormUpload]);
 
   const handleRateCard = async () => {
     if (!analysis) return;
@@ -1028,7 +1067,112 @@ export default function AnalysisDetailPage() {
         {/* ═══ Stage 4: Actions ═══ */}
         {activeStage === 4 && (
           <div className="animate-in fade-in duration-300">
+            <div className="max-w-3xl mx-auto mb-4 rounded-xl border border-border bg-card p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">Bid form status</h3>
+                  <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                    <p><span className="font-medium text-foreground">Source:</span> {a.filename}</p>
+                    <p>
+                      <span className="font-medium text-foreground">Bid form:</span>{" "}
+                      {bidFormStatus === "checking" && "Checking attachment..."}
+                      {bidFormStatus === "missing" && "No bid form attached"}
+                      {["attached", "generating", "ready"].includes(bidFormStatus) && (bidFormFileName || "Attached")}
+                      {bidFormStatus === "error" && (bidFormError || "Needs attention")}
+                    </p>
+                    <p><span className="font-medium text-foreground">Displays detected:</span> {a.screens?.length || 0}</p>
+                    {bidFormSummary && (
+                      <p>
+                        <span className="font-medium text-foreground">Fill result:</span>{" "}
+                        {bidFormSummary.matches}/{bidFormSummary.totalBlocks} sections filled
+                        {bidFormSummary.unmatchedBlocks || bidFormSummary.unmatchedScreens
+                          ? `, ${bidFormSummary.unmatchedBlocks} unmatched sections, ${bidFormSummary.unmatchedScreens} unmatched displays`
+                          : ", no unmatched items"}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${
+                  bidFormStatus === "ready"
+                    ? "bg-emerald-50 text-emerald-700"
+                    : bidFormStatus === "attached" || bidFormStatus === "generating"
+                      ? "bg-blue-50 text-blue-700"
+                      : bidFormStatus === "missing"
+                        ? "bg-amber-50 text-amber-700"
+                        : "bg-red-50 text-red-700"
+                }`}>
+                  {bidFormStatus === "generating" || bidFormStatus === "checking" ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : bidFormStatus === "missing" || bidFormStatus === "error" ? (
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                  ) : (
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                  )}
+                  {bidFormStatus === "ready" && "Ready"}
+                  {bidFormStatus === "attached" && "Attached"}
+                  {bidFormStatus === "generating" && "Generating"}
+                  {bidFormStatus === "checking" && "Checking"}
+                  {bidFormStatus === "missing" && "Missing"}
+                  {bidFormStatus === "error" && "Error"}
+                </div>
+              </div>
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2 max-w-3xl mx-auto">
+              {bidFormStatus === "ready" && filledBidFormBlob ? (
+                <ActionCard
+                  icon={Download}
+                  title="Download Filled Bid Form"
+                  description={bidFormSummary ? `${bidFormSummary.matches}/${bidFormSummary.totalBlocks} sections filled. Open the Excel to review the populated specs.` : "Bid form generated from the attached template and LED specs"}
+                  onClick={() => {
+                    const url = URL.createObjectURL(filledBidFormBlob);
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = filledBidFormName;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  accent="#059669"
+                  primary
+                />
+              ) : bidFormStatus === "attached" || bidFormStatus === "generating" ? (
+                <ActionCard
+                  icon={FileSpreadsheet}
+                  title={bidFormStatus === "generating" ? "Generating Filled Bid Form" : "Generate Filled Bid Form"}
+                  description="Uses the attached bid form and current LED specs. No extra upload needed."
+                  onClick={async () => {
+                    if (!analysis?.id) return;
+                    const fileRes = await fetch(`/api/rfp/bid-form/file?analysisId=${analysis.id}`);
+                    if (!fileRes.ok) {
+                      setBidFormStatus("error");
+                      setBidFormError("Attached bid form could not be loaded.");
+                      return;
+                    }
+                    const fileBlob = await fileRes.blob();
+                    await handleBidFormUpload(new File([fileBlob], bidFormFileName || "bid-form.xlsx", { type: fileBlob.type }));
+                  }}
+                  loading={downloading === "bidform" || bidFormStatus === "generating"}
+                  accent="#2563eb"
+                  primary
+                />
+              ) : (
+                <ActionCard
+                  icon={Upload}
+                  title="Attach Bid Form"
+                  description="No bid form is attached to this analysis. Use this fallback only if it was not uploaded with the source workbook."
+                  onClick={() => {
+                    const input = document.createElement("input");
+                    input.type = "file";
+                    input.accept = ".xlsx,.xls";
+                    input.onchange = (e) => {
+                      const file = (e.target as HTMLInputElement).files?.[0];
+                      if (file) handleBidFormUpload(file);
+                    };
+                    input.click();
+                  }}
+                  loading={downloading === "bidform"}
+                />
+              )}
               <ActionCard
                 icon={FileSpreadsheet}
                 title="Scoping Workbook"
@@ -1051,39 +1195,6 @@ export default function AnalysisDetailPage() {
                 onClick={handleExport}
                 loading={downloading === "extraction"}
               />
-              {filledBidFormBlob ? (
-                <ActionCard
-                  icon={CheckCircle2}
-                  title="Download Filled Bid Form"
-                  description="Bid form auto-filled with your current product selections, quantities, and specs"
-                  onClick={() => {
-                    const url = URL.createObjectURL(filledBidFormBlob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = filledBidFormName;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  }}
-                  accent="#059669"
-                />
-              ) : (
-                <ActionCard
-                  icon={Upload}
-                  title="Fill Bid Form"
-                  description="Upload client bid form Excel — auto-fills vendor, product, and specs from your LED Cost Sheet"
-                  onClick={() => {
-                    const input = document.createElement("input");
-                    input.type = "file";
-                    input.accept = ".xlsx,.xls";
-                    input.onchange = (e) => {
-                      const file = (e.target as HTMLInputElement).files?.[0];
-                      if (file) handleBidFormUpload(file);
-                    };
-                    input.click();
-                  }}
-                  loading={downloading === "bidform"}
-                />
-              )}
               <ActionCard
                 icon={Plus}
                 title="Create Proposal"

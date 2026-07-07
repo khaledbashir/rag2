@@ -16,17 +16,26 @@ export async function GET(request: NextRequest) {
     }
 
     const filePath = path.join(BID_FORM_DIR, `${analysisId}.xlsx`);
+    const metaPath = path.join(BID_FORM_DIR, `${analysisId}.json`);
     try {
       await stat(filePath);
     } catch {
       return NextResponse.json({ error: "Bid form not found" }, { status: 404 });
     }
 
+    let filename = "bid-form.xlsx";
+    try {
+      const meta = JSON.parse(await readFile(metaPath, "utf8"));
+      if (typeof meta.filename === "string" && meta.filename.trim()) {
+        filename = meta.filename.replace(/"/g, "");
+      }
+    } catch {}
+
     const buffer = await readFile(filePath);
     return new NextResponse(buffer, {
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="bid-form.xlsx"`,
+        "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
   } catch (err: any) {

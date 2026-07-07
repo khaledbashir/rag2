@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, stat } from "fs/promises";
+import { writeFile, stat, readFile } from "fs/promises";
 import path from "path";
 
 const BID_FORM_DIR = "/rfp-data/bid-forms";
@@ -27,10 +27,16 @@ export async function POST(request: NextRequest) {
     await mkdir(BID_FORM_DIR, { recursive: true });
 
     const filePath = path.join(BID_FORM_DIR, `${analysisId}.xlsx`);
+    const metaPath = path.join(BID_FORM_DIR, `${analysisId}.json`);
     const buffer = Buffer.from(await file.arrayBuffer());
     await writeFile(filePath, buffer);
+    await writeFile(metaPath, JSON.stringify({
+      filename: file.name,
+      size: file.size,
+      savedAt: new Date().toISOString(),
+    }));
 
-    return NextResponse.json({ saved: true, path: filePath });
+    return NextResponse.json({ saved: true, filename: file.name });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
@@ -44,9 +50,15 @@ export async function GET(request: NextRequest) {
     }
 
     const filePath = path.join(BID_FORM_DIR, `${analysisId}.xlsx`);
+    const metaPath = path.join(BID_FORM_DIR, `${analysisId}.json`);
     try {
       await stat(filePath);
-      return NextResponse.json({ exists: true });
+      let filename: string | null = null;
+      try {
+        const meta = JSON.parse(await readFile(metaPath, "utf8"));
+        filename = typeof meta.filename === "string" ? meta.filename : null;
+      } catch {}
+      return NextResponse.json({ exists: true, filename });
     } catch {
       return NextResponse.json({ exists: false });
     }
