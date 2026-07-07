@@ -198,6 +198,7 @@ export function mapEstimatorToScoping(answers: EstimatorAnswers): ScopingWorkboo
     servicesMarginPct: answers.servicesMargin != null ? answers.servicesMargin / 100 : undefined,
     taxRate: answers.salesTaxRate != null ? answers.salesTaxRate / 100 : undefined,
     bondRate: answers.bondRate != null ? answers.bondRate / 100 : undefined,
+    sponsorshipPct: answers.sponsorshipMargin != null ? answers.sponsorshipMargin / 100 : undefined,
     costPerSqFtOverride: (answers.costPerSqFtOverride ?? 0) > 0 ? answers.costPerSqFtOverride : undefined,
     pmComplexity: (answers.pmComplexity as FinancialOverrides["pmComplexity"]) || undefined,
     cmsAllocation: answers.includeCms ? (answers.cmsAllocation || 0) : undefined,

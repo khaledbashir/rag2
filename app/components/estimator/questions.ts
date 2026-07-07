@@ -555,6 +555,20 @@ export const FINANCIAL_QUESTIONS: Question[] = [
         quickActions: [{ label: "Not Included", value: 0 }],
     },
     {
+        id: "sponsorshipMargin",
+        phase: "financial",
+        type: "number",
+        label: "Sponsorship Margin",
+        subtitle: "Sponsorship uplift applied to each display's cost. Leave at 0 if none. Flows to the LED Cost Sheet Sponsorship column and the totals.",
+        defaultValue: 0,
+        unit: "%",
+        min: 0,
+        max: 100,
+        step: 0.5,
+        affectsSheet: "LED Cost Sheet",
+        quickActions: [{ label: "Not Included", value: 0 }],
+    },
+    {
         id: "costPerSqFtOverride",
         phase: "financial",
         type: "number",
@@ -788,6 +802,7 @@ export interface EstimatorAnswers {
     defaultMargin?: number;  // Legacy — no longer asked, kept for backward compat
     bondRate: number;
     salesTaxRate: number;
+    sponsorshipMargin: number;  // Sponsorship uplift % applied to Display Cost per display (0 = none)
     costPerSqFtOverride: number;
     pmComplexity: string;    // "standard" | "complex" | "major"
     targetPrice: number;     // Profit Shield — 0 = not set, >0 = reverse-calc margin
@@ -878,6 +893,7 @@ export function getDefaultAnswers(): EstimatorAnswers {
         defaultMargin: 15,
         bondRate: 1.5,
         salesTaxRate: 9.5,
+        sponsorshipMargin: 0,
         costPerSqFtOverride: 0,
         pmComplexity: "standard",
         targetPrice: 0,

@@ -950,7 +950,7 @@ function buildProjectOverview(wb: ExcelJS.Workbook, data: ProjectOverviewData): 
     ["Engineering Margin", DEFAULT_MARGINS.engineering],
     ["Equipment Margin", DEFAULT_MARGINS.equipment],
     ["CMS Margin", DEFAULT_MARGINS.cms],
-    ["Sponsorship Margin", (data.ov as any)?.sponsorshipPct ?? 0],
+    ["Sponsorship Margin", data.ov?.sponsorshipPct ?? 0],
     ["Bond Rate", data.bondRequired ? rc("bond_tax.bond_rate", BOND_RATE) : "N/A"],
     ["Tax Rate", data.ov?.taxRate ?? 0],
     ["Tariff Rate", 0],
@@ -1840,7 +1840,7 @@ function buildLedCostSheet(
   sponsorshipLabel.alignment = { horizontal: "right", vertical: "middle" };
   const sponsorshipCell = ws.getCell(masterMarginRow, 18); // column R
   // Linked to Project Overview master Sponsorship Margin (C21). Type a number here to override for this sheet only.
-  sponsorshipCell.value = { formula: `'Project Overview'!$C$21`, result: Number((ov as any)?.sponsorshipPct ?? 0) };
+  sponsorshipCell.value = { formula: `'Project Overview'!$C$21`, result: Number(ov?.sponsorshipPct ?? 0) };
   sponsorshipCell.numFmt = FMT_PCT;
   sponsorshipCell.font = { bold: true, name: "Calibri", size: 12 };
   sponsorshipCell.alignment = { horizontal: "center", vertical: "middle" };
@@ -2058,7 +2058,7 @@ function buildLedCostSheet(
     dr.getCell(17).value = { formula: `P${row}*M${row}`, result: displayCostResult };
     dr.getCell(17).numFmt = FMT_USD;
     // R: Sponsorship = Display Cost × Sponsorship% (R2, linked to Project Overview C21).
-    const sponsorshipResult = round2(displayCostResult * Number((ov as any)?.sponsorshipPct ?? 0));
+    const sponsorshipResult = round2(displayCostResult * Number(ov?.sponsorshipPct ?? 0));
     dr.getCell(18).value = { formula: `Q${row}*$R$${masterMarginRow}`, result: sponsorshipResult };
     dr.getCell(18).numFmt = FMT_USD;
     const bundleSubtotalRow = bundleSubtotalRows[idx];
@@ -2312,7 +2312,7 @@ function buildLedCostSheet(
       dr.getCell(17).value = { formula: `P${rowNum}*M${rowNum}`, result: altDisplayCostResult };
       dr.getCell(17).numFmt = FMT_USD;
       // R: Sponsorship = Display Cost × Sponsorship% (R2, linked to Project Overview C21).
-      const altSponsorshipResult = round2(altDisplayCostResult * Number((ov as any)?.sponsorshipPct ?? 0));
+      const altSponsorshipResult = round2(altDisplayCostResult * Number(ov?.sponsorshipPct ?? 0));
       dr.getCell(18).value = { formula: `Q${rowNum}*$R$${masterMarginRow}`, result: altSponsorshipResult };
       dr.getCell(18).numFmt = FMT_USD;
       // S: Processor — cross-sheet formula to Bundle Equipment (same config as base display)
