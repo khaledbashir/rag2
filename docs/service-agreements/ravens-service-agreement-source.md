@@ -35,14 +35,6 @@ WHEREAS, Purchaser operates the sports and entertainment facility currently know
 ## Term
 The term or this agreement ("Term") shall begin on July 15, 2026, and end on December 31, 2030
 
-| ITEM | 26-27 | 27-28 | 28-29 | 29-30 |
-|---|---|---|---|---|
-| Ravens Gameday Support - ANC Displays | $120,000 | $120,000 | $120,000 | $120,000 |
-| Ravens Gameday Support - Existing Displays | INCLUDED | INCLUDED | INCLUDED | INCLUDED |
-| Maintenance - ANC Displays | INCLUDED | $38,636 | $84,091 | $86,364 |
-| Maintenance - Existing Displays | $150,000 | $150,000 | $150,000 | $150,000 |
-| **YEARLY TOTAL** | **$270,000** | **$308,636** | **$354,091** | **$356,364** |
-
 ## Compensation
 As compensation for the services described in Section 1, the Company shall pay ANC an annual service fee as follows:
 
@@ -120,28 +112,11 @@ In addition to any rights either party may have under Section 8 relating to Even
 - **Headings.** The headings of the sections and subsections of the Agreement have been inserted for convenience and shall not modify, define, limit or expand the express provisions of the Agreement.
 - **Governing Law.** The Agreement shall be governed by and construed in accordance with the laws of the State of New York.
 
-## Exhibit A — SERVICE OVERVIEW
-
-**PROPOSAL**
-- 1 Full Time Regional Field Operations Manager
-- Team of Part Time Field Technicans
-- 24 Hour Response w/ Tech Support
-- Parts and preventative maintenance included
-- (10) Baltimore Ravens Gameday Support w/ (3) Technicians
-- Technical support via phone, email, remote access or direct slack channel.
-- All services will be tracked through the online system that will be available to the Ravens.
-- ANC will maintain and service all LED signage including testing and repairs.
-- Onsite service including walk-throughs for human monitoring of the screens to be completed by experienced LED technicians.
-
-**Notes:**
-- (1) Season of Gameday Support is included within the project.
-- ANC has added additional gameday support if existing displays are added to this agreement.
-- (2) Years of Part & Labor are included (25/26 & 26/27) within the project.
-- 2027-2028 Parts and Labor Extended Warranty starts
-- Gameday / Event Support is $12,000 per event for full coverage
+## Exhibit A
+_(blank in source PDF)_
 
 ## EXHIBIT B
-_(Display List — populated per project)_
+_(blank in source PDF)_
 
 ## EXHIBIT C — PARTS REPLACEMENT PROCEDURES
 ANC has three reporting procedures for our clients operating the company's signage systems which ensure ANC's equipment is operating to its fullest potential at all venues. These procedures ensure that ANC is immediately informed of any issues related to the company's systems and will enable timely technical support, onsite service, and repair or replacement of components.

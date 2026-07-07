@@ -10,6 +10,8 @@
  * Styled to match the other proposal-pdf legal sections (blue-bar headers, plain text).
  */
 
+import React from "react";
+
 import type { PdfColors } from "./shared";
 
 export interface ServiceAgreementFeeRow {
@@ -17,13 +19,6 @@ export interface ServiceAgreementFeeRow {
     contractYear: string;
     /** Monthly service fee, e.g. "$45,000.00" */
     monthlyFee: string;
-}
-
-export interface ServiceAgreementItemRow {
-    /** Line item label, e.g. "Ravens Gameday Support - ANC Displays" */
-    item: string;
-    /** Per-year values (aligns to yearHeaders), e.g. ["$120,000", "$120,000", ...] */
-    values: string[];
 }
 
 export interface ServiceAgreementConfig {
@@ -47,16 +42,8 @@ export interface ServiceAgreementConfig {
     taxJurisdiction: string;
     /** Governing-law state, e.g. "New York" */
     governingLawState: string;
-    /** Yearly ITEM pricing table — column headers (e.g. ["26-27","27-28","28-29","29-30"]) */
-    itemYearHeaders: string[];
-    itemRows: ServiceAgreementItemRow[];
-    itemYearlyTotals: string[];
     /** Compensation fee schedule rows */
     feeRows: ServiceAgreementFeeRow[];
-    /** Exhibit A — Service Overview proposal bullets */
-    exhibitAProposal: string[];
-    /** Exhibit A — Notes bullets */
-    exhibitANotes: string[];
 }
 
 /** Default config = the Baltimore Ravens M&T Bank Stadium source values. */
@@ -71,37 +58,11 @@ export const RAVENS_SERVICE_AGREEMENT_DEFAULTS: ServiceAgreementConfig = {
     finalInstallmentDue: "January 1, 2030",
     taxJurisdiction: "Maryland",
     governingLawState: "New York",
-    itemYearHeaders: ["26-27", "27-28", "28-29", "29-30"],
-    itemRows: [
-        { item: "Ravens Gameday Support - ANC Displays", values: ["$120,000", "$120,000", "$120,000", "$120,000"] },
-        { item: "Ravens Gameday Support - Existing Displays", values: ["INCLUDED", "INCLUDED", "INCLUDED", "INCLUDED"] },
-        { item: "Maintenance - ANC Displays", values: ["INCLUDED", "$38,636", "$84,091", "$86,364"] },
-        { item: "Maintenance - Existing Displays", values: ["$150,000", "$150,000", "$150,000", "$150,000"] },
-    ],
-    itemYearlyTotals: ["$270,000", "$308,636", "$354,091", "$356,364"],
     feeRows: [
         { contractYear: "2026–2027", monthlyFee: "$45,000.00" },
         { contractYear: "2027–2028", monthlyFee: "$51,439.33" },
         { contractYear: "2028–2029", monthlyFee: "$59,015.17" },
         { contractYear: "2029–2030", monthlyFee: "$59,394.00" },
-    ],
-    exhibitAProposal: [
-        "1 Full Time Regional Field Operations Manager",
-        "Team of Part Time Field Technicans",
-        "24 Hour Response w/ Tech Support",
-        "Parts and preventative maintenance included",
-        "(10) Baltimore Ravens Gameday Support w/ (3) Technicians",
-        "Technical support via phone, email, remote access or direct slack channel.",
-        "All services will be tracked through the online system that will be available to the Ravens.",
-        "ANC will maintain and service all LED signage including testing and repairs.",
-        "Onsite service including walk-throughs for human monitoring of the screens to be completed by experienced LED technicians.",
-    ],
-    exhibitANotes: [
-        "(1) Season of Gameday Support is included within the project.",
-        "ANC has added additional gameday support if existing displays are added to this agreement.",
-        "(2) Years of Part & Labor are included (25/26 & 26/27) within the project.",
-        "2027-2028 Parts and Labor Extended Warranty starts",
-        "Gameday / Event Support is $12,000 per event for full coverage",
     ],
 };
 
@@ -170,33 +131,6 @@ export default function PdfServiceAgreement({ colors, config }: PdfServiceAgreem
 
             <Header>Term</Header>
             <p className="mb-3">The term or this agreement (&ldquo;Term&rdquo;) shall begin on {c.termStart}, and end on {c.termEnd}</p>
-
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px", margin: "6px 0 14px" }}>
-                <thead>
-                    <tr style={{ background: colors.primary, color: "#fff" }}>
-                        <th style={{ textAlign: "left", padding: "4px 6px", border: "1px solid #d1d5db" }}>ITEM</th>
-                        {c.itemYearHeaders.map((h) => (
-                            <th key={h} style={{ textAlign: "right", padding: "4px 6px", border: "1px solid #d1d5db" }}>{h}</th>
-                        ))}
-                    </tr>
-                </thead>
-                <tbody>
-                    {c.itemRows.map((r) => (
-                        <tr key={r.item}>
-                            <td style={{ padding: "4px 6px", border: "1px solid #d1d5db" }}>{r.item}</td>
-                            {r.values.map((v, i) => (
-                                <td key={i} style={{ textAlign: "right", padding: "4px 6px", border: "1px solid #d1d5db" }}>{v}</td>
-                            ))}
-                        </tr>
-                    ))}
-                    <tr style={{ fontWeight: 700 }}>
-                        <td style={{ textAlign: "right", padding: "4px 6px", border: "1px solid #d1d5db" }}>YEARLY TOTAL:</td>
-                        {c.itemYearlyTotals.map((v, i) => (
-                            <td key={i} style={{ textAlign: "right", padding: "4px 6px", border: "1px solid #d1d5db" }}>{v}</td>
-                        ))}
-                    </tr>
-                </tbody>
-            </table>
 
             <Header>Compensation</Header>
             <p className="mb-2">
@@ -302,15 +236,49 @@ export default function PdfServiceAgreement({ colors, config }: PdfServiceAgreem
                 </li>
             </ol>
 
-            <Header>Exhibit A &mdash; Service Overview</Header>
-            <div className="font-bold mb-1">PROPOSAL</div>
-            <ul className="list-disc pl-5 space-y-1 mb-3">
-                {c.exhibitAProposal.map((line, i) => <li key={i}>{line}</li>)}
-            </ul>
-            <div className="font-bold mb-1">Notes:</div>
-            <ul className="list-disc pl-5 space-y-1">
-                {c.exhibitANotes.map((line, i) => <li key={i}>{line}</li>)}
-            </ul>
+            <div style={{ breakBefore: "page", pageBreakBefore: "always", minHeight: "580px" }}>
+                <Header>Exhibit A</Header>
+            </div>
+
+            <div style={{ breakBefore: "page", pageBreakBefore: "always", minHeight: "580px" }}>
+                <Header>Exhibit B</Header>
+            </div>
+
+            <div style={{ breakBefore: "page", pageBreakBefore: "always" }}>
+                <Header>Exhibit C</Header>
+                <div className="font-bold uppercase mb-3">Parts Replacement Procedures</div>
+                <p className="mb-3">
+                    ANC has three reporting procedures for our clients operating the company&rsquo;s signage systems which
+                    ensure ANC&rsquo;s equipment is operating to its fullest potential at all venues. These procedures ensure that
+                    ANC is immediately informed of any issues related to the company&rsquo;s systems and will enable timely
+                    technical support, onsite service, and repair or replacement of components.
+                </p>
+                <div className="font-bold mb-1">Toll-Free Hotline</div>
+                <p className="mb-3">
+                    Clients with service requests, in-game issues or other concerns should please call the toll free TechOps
+                    Support Hotline at (888) 875-2125. The hotline is staffed around-the-clock by senior technical support
+                    specialists with over 50 years of combined experience, demonstrating our commitment to provide all the
+                    resources necessary to feature premier in-game signage content during all events.
+                </p>
+                <div className="font-bold mb-1">Parts Repair/Replacement</div>
+                <p className="mb-3">
+                    ANC has a company-wide parts repair/replacement policy in place for all LED, DLP&reg;, Rotational and
+                    Hardware Server parts. If your venue is experiencing a part malfunction, send an email to parts@anc.com.
+                </p>
+                <p className="mb-2">The e-mail should include the following:</p>
+                <ul className="list-disc pl-5 space-y-1 mb-3">
+                    <li>Part make (Mitsubishi, LSI SACO, Lighthouse, etc.)</li>
+                    <li>Each part model/name</li>
+                    <li>Each part number and/or serial number</li>
+                    <li>Where the bad part came from (i.e. 360 fascia, center-hung, dasher, courtside, home plate, base line, Master Server, etc.)</li>
+                    <li>Description of the problem with the part</li>
+                </ul>
+                <p>
+                    Once ANC receives this information, we will provide you with documentation and step-by-step shipping
+                    instructions regarding where to send the bad part(s) for repair/replacement or to set up an onsite visit. If
+                    you have any questions concerning if the part is actually faulty, please call ANC&rsquo;s Toll-Free Hotline
+                </p>
+            </div>
         </div>
     );
 }
