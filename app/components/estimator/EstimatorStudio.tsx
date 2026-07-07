@@ -41,6 +41,7 @@ import type { ExtractedLEDSpec } from "@/services/rfp/unified/types";
 const EstimatorVenuePanel = dynamic(() => import("./EstimatorVenuePanel"), { ssr: false });
 const UniverPreview = dynamic(() => import("./UniverPreview"), { ssr: false });
 const EstimatorActivityPanel = dynamic(() => import("./EstimatorActivityPanel"), { ssr: false });
+const SPONSORSHIP_QUESTION_STEP = 2;
 
 // Sheet colors no longer needed — Univer renders tab colors from the workbook data.
 
@@ -887,7 +888,7 @@ export default function EstimatorStudio({
                                     setEditingAnswers(true);
                                     setQuestionResumeTarget({
                                         phase: answers.displays.length > 0 ? "financial" : "project",
-                                        step: 0,
+                                        step: answers.displays.length > 0 ? SPONSORSHIP_QUESTION_STEP : 0,
                                         displayIndex: Math.max(answers.displays.length - 1, 0),
                                     });
                                 }}
@@ -1297,6 +1298,20 @@ export default function EstimatorStudio({
                                         </button>
                                     ) : undefined}
                                     onCellEdit={(_sheetIndex: number, rowIndex: number, colIndex: number, newValue: string) => {
+                                        // LED Cost Sheet Sponsorship input: workbook row 1 (Excel row 2), col 17 (R).
+                                        // Keep the in-preview edit wired to the same answer used by export.
+                                        if (rowIndex === 1 && colIndex === 17) {
+                                            const raw = parseFloat(String(newValue).replace(/[%,$\s]/g, ""));
+                                            if (isNaN(raw)) return;
+                                            const pctValue = raw <= 1 ? raw * 100 : raw;
+                                            const normalized = Math.max(0, Math.min(100, pctValue));
+                                            setAnswers((prev) => ({
+                                                ...prev,
+                                                sponsorshipMargin: normalized,
+                                            }));
+                                            noteWorkbookSync(`Workbook edit synced: Sponsorship Margin -> ${normalized}%`);
+                                            return;
+                                        }
                                         // LED Cost Sheet master margin override: workbook row 1 (Excel row 2), col 21 (V)
                                         if (rowIndex === 1 && colIndex === 21) {
                                             const raw = parseFloat(String(newValue).replace(/[%,$\s]/g, ""));
