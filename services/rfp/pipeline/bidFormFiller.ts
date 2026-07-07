@@ -59,6 +59,20 @@ interface SpecBlock {
   };
   /** Column B pitch value (for single-sheet matching) */
   colBPitch: number | null;
+  labelCol: number;
+  specCol: number;
+  fillCol: number;
+}
+
+interface ProductDataField {
+  row: number;
+  col: number;
+}
+
+interface ProductDataBlock {
+  sheetName: string;
+  displayName: string;
+  fields: Record<string, ProductDataField>;
 }
 
 /** Header/summary fields detected above the spec blocks */
@@ -163,6 +177,15 @@ export async function fillBidForm(
   // Step 1: Detect all spec blocks across all sheets
   const blocks = detectSpecBlocks(workbook);
 
+  if (blocks.length === 0) {
+    const productDataBlocks = detectProductDataBlocks(workbook);
+    if (productDataBlocks.length > 0) {
+      const result = fillProductDataFormWorkbook(workbook, productDataBlocks, screens, pricing);
+      const outputBuffer = Buffer.from(await workbook.xlsx.writeBuffer());
+      return { ...result, buffer: outputBuffer };
+    }
+  }
+
   // Detect single-sheet mode for matching strategy
   const uniqueSheets = new Set(blocks.map((b) => b.sheetName));
   const isSingleSheet = uniqueSheets.size === 1;
@@ -233,14 +256,18 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
     // Skip summary/overview sheets
     if (/summary|overview|cover|instructions/i.test(sheetName)) return;
 
-    // Scan for "PIXEL PITCH" labels in Column A — that's the anchor
+    // Scan for "PIXEL PITCH" labels — that's the anchor.
+    // Most AJP forms use A/B/C, but some shift to B/C/D.
     sheet.eachRow((row, rowNumber) => {
-      const cellA = getCellText(row.getCell(1));
+      for (const labelCol of [1, 2]) {
+      const cellA = getCellText(row.getCell(labelCol));
 
       if (/pixel\s*pitch/i.test(cellA)) {
+        const specCol = labelCol + 1;
+        const fillCol = labelCol + 2;
         // Found a spec block. The header is the row above.
         const headerRow = rowNumber - 1;
-        const headerA = getCellText(sheet.getRow(headerRow).getCell(1));
+        const headerA = getCellText(sheet.getRow(headerRow).getCell(labelCol));
 
         // Walk down from PIXEL PITCH to find all spec fields
         const cells = {
@@ -276,7 +303,7 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
         };
 
         // Read Column B pitch value for matching
-        const colBPitchRaw = getCellText(sheet.getRow(rowNumber).getCell(2));
+        const colBPitchRaw = getCellText(sheet.getRow(rowNumber).getCell(specCol));
         const pitchMatch = colBPitchRaw.match(/([\d.]+)\s*(?:mm)?/);
         const colBPitch = pitchMatch ? parseFloat(pitchMatch[1]) : null;
 
@@ -285,7 +312,7 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
         for (let r = rowNumber + 1; r <= rowNumber + 50; r++) {
           const rowObj = sheet.getRow(r);
           if (!rowObj) break;
-          const label = getCellText(rowObj.getCell(1));
+          const label = getCellText(rowObj.getCell(labelCol));
 
           // Stop at next block boundary to prevent cross-contamination
           if (/pixel\s*pitch/i.test(label)) break;
@@ -363,13 +390,306 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
             headerRow,
             cells,
             colBPitch,
+            labelCol,
+            specCol,
+            fillCol,
           });
         }
+      }
       }
     });
   });
 
   return blocks;
+}
+
+// ============================================================================
+// PRODUCT DATA FORM DETECTION
+// ============================================================================
+
+function detectProductDataBlocks(workbook: ExcelJS.Workbook): ProductDataBlock[] {
+  const blocks: ProductDataBlock[] = [];
+
+  workbook.eachSheet((sheet) => {
+    const sheetText: string[] = [];
+    sheet.eachRow((row) => {
+      for (let c = 1; c <= Math.min(12, row.cellCount || 12); c++) {
+        const text = getCellText(row.getCell(c));
+        if (text) sheetText.push(text);
+      }
+    });
+
+    const joined = sheetText.join(" \n ");
+    const looksLikeProductDataForm =
+      /respondent'?s?\s*name/i.test(joined) &&
+      /display\s*name/i.test(joined) &&
+      /physical\s*pixel\s*spacing|pixel\s*pitch/i.test(joined) &&
+      /overall\s*active\s*display\s*size|active\s*display\s*size/i.test(joined);
+
+    if (!looksLikeProductDataForm) return;
+
+    const fields = detectProductDataFields(sheet);
+    if (Object.keys(fields).length < 4) return;
+
+    blocks.push({
+      sheetName: sheet.name,
+      displayName: inferProductDataDisplayName(sheet) || sheet.name,
+      fields,
+    });
+  });
+
+  return blocks;
+}
+
+function detectProductDataFields(sheet: ExcelJS.Worksheet): Record<string, ProductDataField> {
+  const fields: Record<string, ProductDataField> = {};
+  let group: "activeSize" | "physicalSize" | "pixelSpacing" | "viewingAngle" | "colorSpace" | "power" | null = null;
+
+  sheet.eachRow((row, rowNumber) => {
+    const rowTexts: Record<number, string> = {};
+    for (let c = 1; c <= 12; c++) {
+      rowTexts[c] = normalizeFormText(getCellText(row.getCell(c)));
+    }
+
+    const cellA = rowTexts[1] || "";
+    if (/overall active display size|active display size/.test(cellA)) group = "activeSize";
+    else if (/physical display size|including borders|shrouding/.test(cellA)) group = "physicalSize";
+    else if (/physical pixel spacing|pixel pitch/.test(cellA)) group = "pixelSpacing";
+    else if (/viewing angle/.test(cellA)) group = "viewingAngle";
+    else if (/color space|rec 709|cie 1931/.test(cellA)) group = "colorSpace";
+    else if (/power consumption|heat load/.test(cellA)) group = "power";
+    else if (/^[a-z\s&/()-]+$/.test(cellA) && /manufacturing|physical characteristics|display and electrical/.test(cellA)) group = null;
+
+    for (let c = 1; c <= 10; c++) {
+      const text = rowTexts[c];
+      if (!text) continue;
+
+      const key = productDataFieldKey(text, group);
+      if (!key || fields[key]) continue;
+
+      const targetCol = findProductDataValueColumn(sheet, rowNumber, c);
+      if (targetCol) fields[key] = { row: rowNumber, col: targetCol };
+    }
+  });
+
+  return fields;
+}
+
+function productDataFieldKey(text: string, group: ProductDataBlockContext): string | null {
+  if (/respondent/.test(text)) return "respondent";
+  if (/base proposal|alternate number|bid type/.test(text)) return "bidType";
+  if (/spec\.?\s*led type|led type/.test(text)) return "ledType";
+  if (/^model/.test(text)) return "model";
+  if (/display name/.test(text)) return "displayName";
+  if (/display location|location/.test(text)) return "displayLocation";
+  if (/oem led module manufacturer|led module manufacturer/.test(text)) return "oemLedModuleMfr";
+  if (/oem processor manufacturer|processor manufacturer/.test(text)) return "oemProcessorMfr";
+  if (/factory producing|country of origin|place of manufacture/.test(text)) return "factory";
+  if (/led lamp type|die\/package|die package/.test(text)) return "ledLampType";
+  if (/virtual|claimed/.test(text)) return "virtualPixelPitch";
+  if (/pixel density/.test(text)) return "pixelDensity";
+  if (/pixel fill factor/.test(text)) return "pixelFillFactor";
+  if (/open area|transparent/.test(text)) return "openArea";
+  if (/post-calibration|uniform brightness|brightness level$/.test(text)) return "postCalibrationBrightness";
+  if (/brightness level adjustment/.test(text)) return "brightnessAdjustment";
+  if (/native color temperature/.test(text)) return "nativeColorTemperature";
+  if (/color temperature adjustability/.test(text)) return "colorTempAdjustability";
+  if (/power requirements|voltage|phase/.test(text)) return "powerRequirements";
+  if (/total display assembly weight|total weight|weight in lbs/.test(text)) return "totalWeight";
+
+  if (group === "activeSize" && /vertical/.test(text)) return "activeHeightFt";
+  if (group === "activeSize" && /horizontal/.test(text)) return "activeWidthFt";
+  if (group === "physicalSize" && /vertical/.test(text)) return "physicalHeightFt";
+  if (group === "physicalSize" && /horizontal/.test(text)) return "physicalWidthFt";
+  if (group === "pixelSpacing" && /vertical/.test(text)) return "pixelPitchV";
+  if (group === "pixelSpacing" && /horizontal/.test(text)) return "pixelPitchH";
+  if (group === "viewingAngle" && /horizontal/.test(text)) return "viewingAngleH";
+  if (group === "viewingAngle" && /vertical.*up/.test(text)) return "viewingAngleUp";
+  if (group === "viewingAngle" && /vertical.*down/.test(text)) return "viewingAngleDown";
+  if (group === "colorSpace" && /rec\s*709/.test(text)) return "colorSpaceRec709";
+  if (group === "colorSpace" && /dci.?p3/.test(text)) return "colorSpaceDciP3";
+  if (group === "colorSpace" && /rec\s*2020/.test(text)) return "colorSpaceRec2020";
+  if (group === "power" && /(?:^|\D)0\s*%|black screen/.test(text)) return "powerAt0";
+  if (group === "power" && /avg|typ/.test(text)) return "powerAvg";
+  if (group === "power" && /100\s*%|white screen/.test(text)) return "powerAt100";
+
+  return null;
+}
+
+type ProductDataBlockContext = "activeSize" | "physicalSize" | "pixelSpacing" | "viewingAngle" | "colorSpace" | "power" | null;
+
+function findProductDataValueColumn(sheet: ExcelJS.Worksheet, rowNumber: number, labelCol: number): number | null {
+  const row = sheet.getRow(rowNumber);
+  const mergedEnd = mergedCellEndColumn(sheet, rowNumber, labelCol);
+  const start = Math.max(labelCol + 1, mergedEnd ? mergedEnd + 1 : labelCol + 1);
+
+  for (let c = start; c <= Math.min(start + 4, 12); c++) {
+    const text = normalizeFormText(getCellText(row.getCell(c)));
+    if (!text || /^(enter|n\/a|tbd|—|-)$/.test(text)) return c;
+    if (/^(ft|px|mm|deg|kw|btu|nits|k|%)$/.test(text)) continue;
+    if (productDataFieldKey(text, null)) break;
+  }
+
+  return start <= 12 ? start : null;
+}
+
+function mergedCellEndColumn(sheet: ExcelJS.Worksheet, rowNumber: number, colNumber: number): number | null {
+  const model = sheet.model as any;
+  const merges = model?.merges || [];
+  for (const merge of merges) {
+    const match = String(merge).match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/);
+    if (!match) continue;
+    const startCol = columnLettersToNumber(match[1]);
+    const startRow = parseInt(match[2], 10);
+    const endCol = columnLettersToNumber(match[3]);
+    const endRow = parseInt(match[4], 10);
+    if (rowNumber >= startRow && rowNumber <= endRow && colNumber >= startCol && colNumber <= endCol) {
+      return endCol;
+    }
+  }
+  return null;
+}
+
+function columnLettersToNumber(letters: string): number {
+  let n = 0;
+  for (const ch of letters) n = n * 26 + ch.charCodeAt(0) - 64;
+  return n;
+}
+
+function normalizeFormText(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, " ").replace(/[：:]+$/g, "").trim();
+}
+
+function inferProductDataDisplayName(sheet: ExcelJS.Worksheet): string {
+  for (let r = 1; r <= Math.min(6, sheet.rowCount); r++) {
+    const row = sheet.getRow(r);
+    for (let c = 1; c <= 6; c++) {
+      const text = getCellText(row.getCell(c)).trim();
+      if (/LED[-\w.]+/i.test(text) || /\d+\.?\d*\s*mm/i.test(text)) return text;
+    }
+  }
+  return "";
+}
+
+function extractProductDataFormSpecs(workbook: ExcelJS.Workbook): ExtractedLEDSpec[] {
+  const summary = extractProductDataSummarySpecs(workbook);
+  if (summary.length > 0) return summary;
+
+  const specs: ExtractedLEDSpec[] = [];
+  const blocks = detectProductDataBlocks(workbook);
+  for (const block of blocks) {
+    const parsed = parseSpecFromProductDataTitle(block.displayName || block.sheetName, block.sheetName);
+    if (parsed) specs.push(parsed);
+  }
+  return specs;
+}
+
+function extractProductDataSummarySpecs(workbook: ExcelJS.Workbook): ExtractedLEDSpec[] {
+  const summarySheet = workbook.worksheets.find((sheet) => /summary/i.test(sheet.name));
+  if (!summarySheet) return [];
+
+  let headerRow = 0;
+  const colByName: Record<string, number> = {};
+  summarySheet.eachRow((row, rowNumber) => {
+    if (headerRow) return;
+    for (let c = 1; c <= Math.min(12, row.cellCount || 12); c++) {
+      const text = normalizeFormText(getCellText(row.getCell(c)));
+      if (/display id|display name/.test(text)) colByName.displayId = c;
+      else if (/vendor|manufacturer/.test(text)) colByName.vendor = c;
+      else if (/model/.test(text)) colByName.model = c;
+      else if (/pitch/.test(text)) colByName.pitch = c;
+      else if (/size/.test(text)) colByName.size = c;
+      else if (/indoor|outdoor/.test(text)) colByName.environment = c;
+    }
+    if (colByName.displayId && colByName.pitch && colByName.size) headerRow = rowNumber;
+  });
+
+  if (!headerRow) return [];
+
+  const specs: ExtractedLEDSpec[] = [];
+  for (let r = headerRow + 1; r <= summarySheet.rowCount; r++) {
+    const row = summarySheet.getRow(r);
+    const name = getCellText(row.getCell(colByName.displayId)).trim();
+    if (!name) continue;
+
+    const pitch = parseFirstNumber(getCellText(row.getCell(colByName.pitch)));
+    const size = getCellText(row.getCell(colByName.size));
+    const dims = parseDimensions(size);
+    const envText = colByName.environment ? getCellText(row.getCell(colByName.environment)) : "";
+    const vendor = colByName.vendor ? getCellText(row.getCell(colByName.vendor)).trim() : "";
+    const model = colByName.model ? getCellText(row.getCell(colByName.model)).trim() : "";
+
+    specs.push(buildExtractedSpec({
+      name,
+      location: name,
+      pitch,
+      widthFt: dims?.widthFt ?? null,
+      heightFt: dims?.heightFt ?? null,
+      environment: /outdoor/i.test(envText) ? "outdoor" : "indoor",
+      notes: [vendor, model].filter(Boolean).join(" "),
+      citation: `Bid form summary: ${summarySheet.name}, row ${r}`,
+    }));
+  }
+
+  return specs;
+}
+
+function parseSpecFromProductDataTitle(title: string, sheetName: string): ExtractedLEDSpec | null {
+  const pitch = parseFirstNumber(title.match(/(\d+\.?\d*)\s*mm/i)?.[0] || "");
+  const dims = parseDimensions(title);
+  if (pitch == null && !dims) return null;
+
+  return buildExtractedSpec({
+    name: sheetName,
+    location: sheetName,
+    pitch,
+    widthFt: dims?.widthFt ?? null,
+    heightFt: dims?.heightFt ?? null,
+    environment: /outdoor/i.test(title) ? "outdoor" : "indoor",
+    notes: title,
+    citation: `Bid form sheet title: ${sheetName}`,
+  });
+}
+
+function buildExtractedSpec(input: {
+  name: string;
+  location: string;
+  pitch: number | null;
+  widthFt: number | null;
+  heightFt: number | null;
+  environment: "indoor" | "outdoor";
+  notes: string | null;
+  citation: string;
+}): ExtractedLEDSpec {
+  const widthPx = input.widthFt != null && input.pitch != null
+    ? Math.round((input.widthFt * 304.8) / input.pitch)
+    : null;
+  const heightPx = input.heightFt != null && input.pitch != null
+    ? Math.round((input.heightFt * 304.8) / input.pitch)
+    : null;
+
+  return {
+    name: input.name,
+    location: input.location,
+    widthFt: input.widthFt,
+    heightFt: input.heightFt,
+    widthPx,
+    heightPx,
+    pixelPitchMm: input.pitch,
+    brightnessNits: null,
+    environment: input.environment,
+    quantity: 1,
+    serviceType: null,
+    mountingType: null,
+    maxPowerW: null,
+    weightLbs: null,
+    specialRequirements: [],
+    confidence: 0.85,
+    sourcePages: [],
+    sourceType: "table",
+    citation: input.citation,
+    notes: input.notes,
+  };
 }
 
 // ============================================================================
@@ -390,27 +710,34 @@ export async function extractSpecsFromBidForm(
   await workbook.xlsx.load(bidFormBuffer);
 
   const blocks = detectSpecBlocks(workbook);
+  if (blocks.length === 0) {
+    const productDataSpecs = extractProductDataFormSpecs(workbook);
+    if (productDataSpecs.length > 0) {
+      return { specs: productDataSpecs, blockCount: productDataSpecs.length };
+    }
+  }
+
   const specs: ExtractedLEDSpec[] = [];
 
   for (const block of blocks) {
     const sheet = workbook.getWorksheet(block.sheetName);
     if (!sheet) continue;
 
-    // Read all Column B values for this block
-    const readColB = (rowNum: number | null): number | null => {
+    // Read all spec-column values for this block
+    const readSpecCol = (rowNum: number | null): number | null => {
       if (!rowNum) return null;
-      const raw = getCellText(sheet.getRow(rowNum).getCell(2));
+      const raw = getCellText(sheet.getRow(rowNum).getCell(block.specCol));
       const m = raw.match(/([\d,.]+)/);
       return m ? parseFloat(m[1].replace(/,/g, "")) : null;
     };
 
     const pitch = block.colBPitch;
-    const qty = readColB(block.cells.quantity) ?? 1;
-    const pixelH = readColB(block.cells.pixelHeight);
-    const pixelL = readColB(block.cells.pixelLength);
-    const sysH = readColB(block.cells.systemHeight);
-    const sysL = readColB(block.cells.systemLength);
-    const nits = readColB(block.cells.brightness);
+    const qty = readSpecCol(block.cells.quantity) ?? 1;
+    const pixelH = readSpecCol(block.cells.pixelHeight);
+    const pixelL = readSpecCol(block.cells.pixelLength);
+    const sysH = readSpecCol(block.cells.systemHeight);
+    const sysL = readSpecCol(block.cells.systemLength);
+    const nits = readSpecCol(block.cells.brightness);
 
     // Determine environment from name hints
     const nameLower = block.displayName.toLowerCase();
@@ -435,7 +762,7 @@ export async function extractSpecsFromBidForm(
       quantity: qty,
       serviceType: null,
       mountingType: null,
-      maxPowerW: readColB(block.cells.powerDraw),
+      maxPowerW: readSpecCol(block.cells.powerDraw),
       weightLbs: null,
       specialRequirements: [],
       confidence: 0.9, // bid form data is high confidence
@@ -804,12 +1131,11 @@ function fillBlockCells(
     filled.push(fieldName);
   };
 
-  // Column C = 3
-  const C = 3;
+  const fillCol = block.fillCol;
   const mp = pricing?.matchedProduct;
 
   // Rename header: "VENDOR NAME" → "ANC" in Column C of the header row
-  const headerCell = sheet.getRow(block.headerRow).getCell(C);
+  const headerCell = sheet.getRow(block.headerRow).getCell(fillCol);
   const headerText = getCellText(headerCell);
   if (/vendor\s*name/i.test(headerText)) {
     headerCell.value = "ANC";
@@ -822,65 +1148,65 @@ function fillBlockCells(
   // Pixel Pitch — use matched product pitch if available
   const ancPitch = mp?.pitch ?? screen.pixelPitchMm;
   if (ancPitch != null) {
-    setCell(block.cells.pixelPitch, C, ancPitch, "Pixel Pitch");
+    setCell(block.cells.pixelPitch, fillCol, ancPitch, "Pixel Pitch");
   }
 
   // Quantity stays the same (ANC proposes same qty as requested)
-  setCell(block.cells.quantity, C, screen.quantity, "Quantity");
+  setCell(block.cells.quantity, fillCol, screen.quantity, "Quantity");
 
   // Resolution — use matched product resolution, fall back to RFP
   const ancHeightPx = mp?.resolutionY ?? screen.heightPx;
   const ancWidthPx = mp?.resolutionX ?? screen.widthPx;
   if (ancHeightPx != null) {
-    setCell(block.cells.pixelHeight, C, ancHeightPx, "Pixel Height");
+    setCell(block.cells.pixelHeight, fillCol, ancHeightPx, "Pixel Height");
   }
   if (ancWidthPx != null) {
-    setCell(block.cells.pixelLength, C, ancWidthPx, "Pixel Length");
+    setCell(block.cells.pixelLength, fillCol, ancWidthPx, "Pixel Length");
   }
 
   // Physical dimensions — use matched product active dimensions, fall back to RFP
   const ancHeightFt = mp?.activeHeightFt ?? screen.heightFt;
   const ancWidthFt = mp?.activeWidthFt ?? screen.widthFt;
   if (ancHeightFt != null) {
-    setCell(block.cells.systemHeight, C, Math.round(ancHeightFt * 100) / 100, "System Height (ft)");
+    setCell(block.cells.systemHeight, fillCol, Math.round(ancHeightFt * 100) / 100, "System Height (ft)");
   }
   if (ancWidthFt != null) {
-    setCell(block.cells.systemLength, C, Math.round(ancWidthFt * 100) / 100, "System Length (ft)");
+    setCell(block.cells.systemLength, fillCol, Math.round(ancWidthFt * 100) / 100, "System Length (ft)");
   }
 
   // Computed derived fields from ANC specs
   if (ancHeightPx != null && ancWidthPx != null && block.cells.totalPixels) {
-    setCell(block.cells.totalPixels, C, ancHeightPx * ancWidthPx, "Total Pixels");
+    setCell(block.cells.totalPixels, fillCol, ancHeightPx * ancWidthPx, "Total Pixels");
   }
   if (ancHeightFt != null && ancWidthFt != null && block.cells.totalSqFt) {
     const totalSqFt = Math.round(ancHeightFt * ancWidthFt);
-    setCell(block.cells.totalSqFt, C, totalSqFt, "Total Sq. Ft");
+    setCell(block.cells.totalSqFt, fillCol, totalSqFt, "Total Sq. Ft");
   }
   if (ancHeightPx != null && ancWidthPx != null && ancHeightFt != null && ancWidthFt != null && block.cells.pixelDensity) {
     const totalPx = ancHeightPx * ancWidthPx;
     const totalSqFt = ancHeightFt * ancWidthFt;
     const density = totalSqFt > 0 ? Math.round(totalPx / totalSqFt) : 0;
-    setCell(block.cells.pixelDensity, C, density, "Pixel Density Sq. Ft");
+    setCell(block.cells.pixelDensity, fillCol, density, "Pixel Density Sq. Ft");
   }
 
   // Extended spec fields — prefer matched product data, fall back to RFP data
   if (block.cells.brightness) {
     const nits = mp?.nits ?? screen.brightnessNits;
     if (nits != null) {
-      setCell(block.cells.brightness, C, nits, "Brightness (nits)");
+      setCell(block.cells.brightness, fillCol, nits, "Brightness (nits)");
     }
   }
 
   if (block.cells.powerDraw) {
     const power = mp?.totalMaxPowerW ?? screen.maxPowerW;
     if (power != null) {
-      setCell(block.cells.powerDraw, C, Math.round(power), "Power Draw");
+      setCell(block.cells.powerDraw, fillCol, Math.round(power), "Power Draw");
     }
   }
 
   // Manufacturer fields
   if (block.cells.ledManufacturer && mp?.manufacturer) {
-    setCell(block.cells.ledManufacturer, C, mp.manufacturer, "LED Manufacturer");
+    setCell(block.cells.ledManufacturer, fillCol, mp.manufacturer, "LED Manufacturer");
   }
   if (block.cells.chipManufacturer) {
     // Chip manufacturer is a sub-component detail — not in our catalog
@@ -895,36 +1221,270 @@ function fillBlockCells(
     const viewH = isOutdoor
       ? getRateSync("spec.viewing_angle.outdoor_h")
       : getRateSync("spec.viewing_angle.indoor_h");
-    setCell(block.cells.viewAngleH, C, viewH, "Viewing Angle H");
+    setCell(block.cells.viewAngleH, fillCol, viewH, "Viewing Angle H");
   }
   if (block.cells.viewAngleV) {
     const viewV = isOutdoor
       ? getRateSync("spec.viewing_angle.outdoor_v_up")
       : getRateSync("spec.viewing_angle.indoor_v");
-    setCell(block.cells.viewAngleV, C, viewV, "Viewing Angle V");
+    setCell(block.cells.viewAngleV, fillCol, viewV, "Viewing Angle V");
   }
 
   // Pricing fields — use SELLING PRICES (with margin), not internal costs
   if (pricing) {
     const sp = computeSellingPrices(pricing);
     if (block.cells.totalDisplayPrice) {
-      setCell(block.cells.totalDisplayPrice, C, sp.displayPrice, "Total Display Price");
+      setCell(block.cells.totalDisplayPrice, fillCol, sp.displayPrice, "Total Display Price");
     }
     if (block.cells.processingController && sp.processingPrice) {
-      setCell(block.cells.processingController, C, sp.processingPrice, "Processing/Controller");
+      setCell(block.cells.processingController, fillCol, sp.processingPrice, "Processing/Controller");
     }
     if (block.cells.shippingHandling && sp.shippingPrice) {
-      setCell(block.cells.shippingHandling, C, sp.shippingPrice, "Shipping & Handling");
+      setCell(block.cells.shippingHandling, fillCol, sp.shippingPrice, "Shipping & Handling");
     }
     if (block.cells.totalSystemPrice) {
-      setCell(block.cells.totalSystemPrice, C, sp.totalPrice, "Total System Price");
+      setCell(block.cells.totalSystemPrice, fillCol, sp.totalPrice, "Total System Price");
     }
     if (block.cells.installationSubtotal && sp.installPrice) {
-      setCell(block.cells.installationSubtotal, C, sp.installPrice, "Installation Sub-Total");
+      setCell(block.cells.installationSubtotal, fillCol, sp.installPrice, "Installation Sub-Total");
     }
   }
 
   return { filled, skipped };
+}
+
+function fillProductDataFormWorkbook(
+  workbook: ExcelJS.Workbook,
+  blocks: ProductDataBlock[],
+  screens: ExtractedLEDSpec[],
+  pricing?: PricingData[]
+): Omit<BidFormFillResult, "buffer"> {
+  const matches: BidFormMatch[] = [];
+  const unmatchedBlocks: string[] = [];
+  const usedScreens = new Set<number>();
+
+  const templateOnly =
+    blocks.length === 1 &&
+    screens.length > 1 &&
+    /product\s*data\s*form|template/i.test(blocks[0].sheetName);
+
+  if (templateOnly) {
+    const templateSheet = workbook.getWorksheet(blocks[0].sheetName);
+    if (templateSheet) {
+      for (let i = 1; i < screens.length; i++) {
+        const name = safeWorksheetName(screens[i].name || `Display ${i + 1}`);
+        cloneWorksheet(templateSheet, workbook, name);
+      }
+      const firstName = safeWorksheetName(screens[0].name || "Display 1");
+      templateSheet.name = firstName;
+    }
+    blocks = detectProductDataBlocks(workbook);
+  }
+
+  const isSingleSheet = new Set(blocks.map((b) => b.sheetName)).size === 1;
+
+  for (const block of blocks) {
+    const match = findBestProductDataMatch(block, screens, usedScreens, isSingleSheet);
+    if (!match) {
+      unmatchedBlocks.push(`${block.sheetName}: ${block.displayName}`);
+      continue;
+    }
+
+    usedScreens.add(match.screenIndex);
+    const pricingForScreen = pricing?.find(
+      (p) => p.name.toLowerCase() === match.screen.name.toLowerCase()
+    );
+    const { filled, skipped } = fillProductDataBlock(workbook, block, match.screen, pricingForScreen);
+
+    matches.push({
+      sheetName: block.sheetName,
+      displayName: block.displayName,
+      matchedScreen: match.screen.name,
+      confidence: match.confidence,
+      fieldsFilled: filled,
+      fieldsSkipped: skipped,
+    });
+  }
+
+  const unmatchedScreens = screens
+    .filter((_, i) => !usedScreens.has(i))
+    .map((s) => s.name);
+
+  return {
+    matches,
+    unmatchedBlocks,
+    unmatchedScreens,
+    totalBlocks: blocks.length,
+    totalScreens: screens.length,
+  };
+}
+
+function findBestProductDataMatch(
+  block: ProductDataBlock,
+  screens: ExtractedLEDSpec[],
+  usedScreens: Set<number>,
+  isSingleSheet: boolean
+): MatchCandidate | null {
+  if (isSingleSheet && screens.length === 1 && !usedScreens.has(0)) {
+    return { screen: screens[0], screenIndex: 0, confidence: 1 };
+  }
+
+  const candidates: MatchCandidate[] = [];
+  for (let i = 0; i < screens.length; i++) {
+    if (usedScreens.has(i)) continue;
+    const screen = screens[i];
+    const nameScore = Math.max(
+      fuzzyNameMatch(block.sheetName, screen.name),
+      fuzzyNameMatch(block.displayName, screen.name),
+      screen.location ? fuzzyNameMatch(block.sheetName, screen.location) : 0
+    );
+    if (nameScore > 0.35) candidates.push({ screen, screenIndex: i, confidence: nameScore });
+  }
+
+  if (candidates.length === 0) {
+    const nextIndex = screens.findIndex((_, i) => !usedScreens.has(i));
+    return nextIndex >= 0 ? { screen: screens[nextIndex], screenIndex: nextIndex, confidence: 0.55 } : null;
+  }
+
+  candidates.sort((a, b) => b.confidence - a.confidence);
+  return candidates[0];
+}
+
+function fillProductDataBlock(
+  workbook: ExcelJS.Workbook,
+  block: ProductDataBlock,
+  screen: ExtractedLEDSpec,
+  pricing?: PricingData
+): { filled: string[]; skipped: string[] } {
+  const sheet = workbook.getWorksheet(block.sheetName);
+  if (!sheet) return { filled: [], skipped: [] };
+
+  const filled: string[] = [];
+  const skipped: string[] = [];
+  const mp = pricing?.matchedProduct;
+  const isOutdoor = screen.environment === "outdoor";
+  const activeWidthFt = mp?.activeWidthFt ?? screen.activeWidthFt ?? screen.widthFt;
+  const activeHeightFt = mp?.activeHeightFt ?? screen.activeHeightFt ?? screen.heightFt;
+  const widthPx = mp?.resolutionX ?? screen.widthPx;
+  const heightPx = mp?.resolutionY ?? screen.heightPx;
+  const pitch = mp?.pitch ?? screen.pixelPitchMm;
+  const maxPowerW = mp?.totalMaxPowerW ?? screen.maxPowerW;
+  const totalSqFt = activeWidthFt != null && activeHeightFt != null ? activeWidthFt * activeHeightFt : null;
+  const pixelDensity = totalSqFt && widthPx != null && heightPx != null
+    ? Math.round((widthPx * heightPx) / totalSqFt)
+    : null;
+
+  const values: Record<string, string | number | null | undefined> = {
+    respondent: "ANC Sports Enterprises",
+    bidType: screen.isAlternate ? `Alternate ${screen.alternateId || ""}`.trim() : "Base Proposal",
+    ledType: pitch != null ? `${pitch}mm ${isOutdoor ? "Outdoor" : "Indoor"} LED Display` : `${isOutdoor ? "Outdoor" : "Indoor"} LED Display`,
+    model: mp?.model || screen.selectedProductName || null,
+    displayName: screen.name,
+    displayLocation: screen.location || screen.name,
+    oemLedModuleMfr: mp?.manufacturer || null,
+    oemProcessorMfr: "NovaStar",
+    factory: mp?.manufacturer ? `${mp.manufacturer}` : null,
+    ledLampType: isOutdoor ? "SMD (Surface-Mount Device) - IP rated package" : "SMD (Surface-Mount Device)",
+    activeHeightFt: round2(activeHeightFt),
+    activeWidthFt: round2(activeWidthFt),
+    physicalHeightFt: round2(activeHeightFt),
+    physicalWidthFt: round2(activeWidthFt),
+    pixelPitchV: pitch,
+    pixelPitchH: pitch,
+    virtualPixelPitch: "N/A",
+    pixelDensity,
+    viewingAngleH: isOutdoor ? getRateSync("spec.viewing_angle.outdoor_h") : getRateSync("spec.viewing_angle.indoor_h"),
+    viewingAngleUp: isOutdoor ? getRateSync("spec.viewing_angle.outdoor_v_up") : getRateSync("spec.viewing_angle.indoor_v"),
+    viewingAngleDown: isOutdoor ? getRateSync("spec.viewing_angle.outdoor_v_down") : getRateSync("spec.viewing_angle.indoor_v"),
+    pixelFillFactor: `${getRateSync("spec.pixel_fill_factor")}%`,
+    openArea: "N/A",
+    postCalibrationBrightness: mp?.nits ?? screen.brightnessNits,
+    brightnessAdjustment: "0-100% (256 steps)",
+    nativeColorTemperature: "3,200K-9,300K",
+    colorTempAdjustability: "3,200K-9,300K",
+    colorSpaceRec709: `${getRateSync("spec.color_space.rec709")}%`,
+    colorSpaceDciP3: `${getRateSync("spec.color_space.dci_p3")}%`,
+    colorSpaceRec2020: `${getRateSync("spec.color_space.rec2020")}%`,
+    powerAt0: maxPowerW != null ? round2((maxPowerW * getRateSync("spec.power_idle_ratio")) / 1000) : null,
+    powerAvg: maxPowerW != null ? round2((maxPowerW * getRateSync("spec.power_avg_ratio")) / 1000) : null,
+    powerAt100: maxPowerW != null ? round2(maxPowerW / 1000) : null,
+    powerRequirements: "AC 100-240V, 50/60Hz, Single Phase",
+    totalWeight: screen.weightLbs != null ? `${Math.round(screen.weightLbs)} lbs` : null,
+  };
+
+  for (const [fieldKey, field] of Object.entries(block.fields)) {
+    const value = values[fieldKey];
+    if (value == null || value === "") continue;
+
+    const cell = sheet.getRow(field.row).getCell(field.col);
+    if (cell.type === ExcelJS.ValueType.Formula) {
+      skipped.push(fieldKey);
+      continue;
+    }
+    if (cell.value != null && cell.value !== "" && cell.value !== 0) {
+      skipped.push(fieldKey);
+      continue;
+    }
+    cell.value = value;
+    filled.push(fieldKey);
+  }
+
+  return { filled, skipped };
+}
+
+function cloneWorksheet(sourceWs: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, newName: string): ExcelJS.Worksheet {
+  const ws = workbook.addWorksheet(newName);
+
+  sourceWs.columns.forEach((col, i) => {
+    const targetCol = ws.getColumn(i + 1);
+    if (col.width) targetCol.width = col.width;
+    if (col.hidden) targetCol.hidden = col.hidden;
+  });
+
+  const sourceModel = sourceWs.model as any;
+  for (const merge of sourceModel?.merges || []) {
+    try {
+      ws.mergeCells(merge);
+    } catch {
+      // Ignore invalid duplicate merge metadata from malformed templates.
+    }
+  }
+
+  sourceWs.eachRow({ includeEmpty: true }, (sourceRow, rowNumber) => {
+    const targetRow = ws.getRow(rowNumber);
+    targetRow.height = sourceRow.height;
+    sourceRow.eachCell({ includeEmpty: true }, (sourceCell, colNumber) => {
+      const targetCell = targetRow.getCell(colNumber);
+      targetCell.value = sourceCell.value;
+      targetCell.style = { ...sourceCell.style };
+    });
+  });
+
+  return ws;
+}
+
+function safeWorksheetName(name: string): string {
+  const cleaned = name.replace(/[\\/*?:[\]]/g, " ").trim() || "Display";
+  return cleaned.slice(0, 31);
+}
+
+function round2(value: number | null | undefined): number | null {
+  return value == null ? null : Math.round(value * 100) / 100;
+}
+
+function parseFirstNumber(text: string): number | null {
+  const match = text.match(/([\d,.]+)/);
+  return match ? parseFloat(match[1].replace(/,/g, "")) : null;
+}
+
+function parseDimensions(text: string): { heightFt: number; widthFt: number } | null {
+  const hw = text.match(/(\d+\.?\d*)\s*['′]?\s*h\s*x\s*(\d+\.?\d*)\s*['′]?\s*w/i);
+  if (hw) return { heightFt: parseFloat(hw[1]), widthFt: parseFloat(hw[2]) };
+
+  const generic = text.match(/(\d+\.?\d*)\s*['′]\s*(?:x|by)\s*(\d+\.?\d*)\s*['′]/i);
+  if (generic) return { heightFt: parseFloat(generic[1]), widthFt: parseFloat(generic[2]) };
+
+  return null;
 }
 
 // ============================================================================
