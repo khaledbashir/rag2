@@ -94,6 +94,84 @@ describe("generateScopingWorkbook", () => {
     expect(totalDisplayCost).toBe(rowDisplayCost);
   });
 
+  it("renders Natalia's Project Overview contract and warranty sections", async () => {
+    const { buffer } = await generateScopingWorkbook({
+      project: {
+        clientName: "ANC Client",
+        projectName: "Project Overview Additions",
+        venue: "Main Venue",
+        location: "New York, NY",
+        isOutdoor: true,
+        isUnionLabor: false,
+        bondRequired: false,
+        specialRequirements: [],
+        schedulePhases: [],
+      },
+      specs: [
+        {
+          name: "Main Display",
+          location: "Gate F",
+          widthFt: 20,
+          heightFt: 10,
+          widthPx: null,
+          heightPx: null,
+          pixelPitchMm: 10,
+          brightnessNits: 6000,
+          environment: "outdoor",
+          quantity: 1,
+          serviceType: "front",
+          mountingType: "Wall Mounted",
+          maxPowerW: null,
+          weightLbs: null,
+          specialRequirements: [],
+          confidence: 1,
+          sourcePages: [],
+          sourceType: "text",
+          citation: "test",
+          notes: null,
+        },
+      ],
+      paymentTerms: "50/20/20/10",
+      completionDate: "2026-09-01",
+      overrides: { taxRate: 0.095 },
+      coverPage: {
+        venueName: "Gate F",
+        venueAddress: "1 Stadium Way",
+        changeOrders: "CO-001 pending",
+        partsWarranty: "5 years",
+        laborWarranty: "2 years",
+        eventSupport: "Included",
+        preSeasonChecks: "Included",
+      },
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer));
+    const sheet = workbook.getWorksheet("Project Overview");
+    expect(sheet).toBeTruthy();
+
+    const rows = Array.from({ length: sheet!.rowCount }, (_, index) => index + 1);
+    const labels = rows.map((row) => String(sheet!.getCell(row, 2).value ?? "").trim());
+    expect(labels.filter((label) => label === "INFORMATION NEEDED")).toHaveLength(1);
+    expect(labels.filter((label) => label === "WARRANTY OPTIONS")).toHaveLength(1);
+
+    const valueFor = (label: string) => {
+      const row = rows.find((r) => String(sheet!.getCell(r, 2).value ?? "").trim() === label);
+      return row ? sheet!.getCell(row, 3).value : undefined;
+    };
+
+    expect(valueFor("Venue Name")).toBe("Gate F");
+    expect(valueFor("Venue Address")).toBe("1 Stadium Way");
+    expect(String(valueFor("Payment Terms"))).toContain("50% - on Contract Signing");
+    expect(valueFor("Taxes")).toBe("9.5%");
+    expect(valueFor("Substantial Completion Date")).toBe("2026-09-01");
+    expect(valueFor("Change Orders")).toBe("CO-001 pending");
+    expect(valueFor("Parts Warranty")).toBe("5 years");
+    expect(valueFor("Labor Warranty")).toBe("2 years");
+    expect(valueFor("Event Support")).toBe("Included");
+    expect(valueFor("Pre-Season Checks")).toBe("Included");
+  });
+
   it("uses the grand total cost row for Margin Analysis margin dollars", async () => {
     const { buffer } = await generateScopingWorkbook({
       project: {

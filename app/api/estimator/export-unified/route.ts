@@ -16,7 +16,6 @@ import { scaleWorkbookByFx } from "@/services/pricing/scaleWorkbookByFx";
 import { log } from "@/lib/logger";
 import { logActivity } from "@/services/proposal/server/activityLogService";
 import { universalCrmPush, saveCrmArtifact } from "@/services/integrations/twenty/crmAutomation";
-import { augmentCoverPage } from "@/services/proposal/server/augmentCoverPage";
 
 export async function POST(req: NextRequest) {
   try {
@@ -45,32 +44,6 @@ export async function POST(req: NextRequest) {
       scaleWorkbookByFx(wb, answers.exchangeRate);
     }
 
-    // Estimator-only: append Natalia's cover-page sections (Information Needed +
-    // Warranty Options) to the Project Overview sheet. The RFP path never calls
-    // this, so RFP output stays byte-identical.
-    const a = answers as typeof answers & {
-      venueName?: string; venueAddress?: string; paymentTerms?: string;
-      substantialCompletionDate?: string; changeOrders?: string;
-      laborWarranty?: string; eventSupport?: string; preSeasonChecks?: string;
-    };
-    const wYears = parseInt(a.warrantyYears, 10);
-    augmentCoverPage(wb, {
-      clientName: a.clientName,
-      venueName: a.venueName || a.projectName,
-      venueAddress: a.venueAddress || a.location,
-      paymentTerms: a.paymentTerms,
-      supplyOnly: a.servicesMargin === 0,
-      substantialCompletionDate: a.substantialCompletionDate,
-      changeOrders: a.changeOrders,
-      partsWarranty: a.includeWarranty !== "none" && Number.isFinite(wYears) && wYears > 0
-        ? `${wYears} year${wYears > 1 ? "s" : ""}`
-        : undefined,
-      laborWarranty: a.laborWarranty,
-      eventSupport: a.eventSupport,
-      preSeasonChecks: a.preSeasonChecks,
-    });
-
-    // Always re-serialize (we mutated the workbook).
     const buffer = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
 
     const safeName = (answers.projectName || answers.clientName || "Budget")

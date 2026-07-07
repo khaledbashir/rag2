@@ -215,6 +215,17 @@ export function mapEstimatorToScoping(answers: EstimatorAnswers): ScopingWorkboo
     perDisplayComplexity,
     perDisplayCostOverrides,
   };
+  const coverAnswers = answers as EstimatorAnswers & {
+    venueName?: string;
+    venueAddress?: string;
+    paymentTerms?: string;
+    substantialCompletionDate?: string;
+    changeOrders?: string;
+    laborWarranty?: string;
+    eventSupport?: string;
+    preSeasonChecks?: string;
+  };
+  const warrantyYears = parseInt(coverAnswers.warrantyYears || "0", 10);
 
   return {
     project: mapProject(answers),
@@ -226,6 +237,20 @@ export function mapEstimatorToScoping(answers: EstimatorAnswers): ScopingWorkboo
     includeBond: (answers.bondRate ?? 0) > 0,
     currency: answers.currency || "USD",
     paymentTerms: "Net 30",
+    coverPage: {
+      venueName: coverAnswers.venueName || answers.projectName,
+      venueAddress: coverAnswers.venueAddress || answers.location,
+      paymentTerms: coverAnswers.paymentTerms || "50/20/20/10",
+      supplyOnly: answers.servicesMargin === 0,
+      substantialCompletionDate: coverAnswers.substantialCompletionDate,
+      changeOrders: coverAnswers.changeOrders,
+      partsWarranty: answers.includeWarranty !== "none" && Number.isFinite(warrantyYears) && warrantyYears > 0
+        ? `${warrantyYears} year${warrantyYears > 1 ? "s" : ""}`
+        : undefined,
+      laborWarranty: coverAnswers.laborWarranty,
+      eventSupport: coverAnswers.eventSupport,
+      preSeasonChecks: coverAnswers.preSeasonChecks,
+    },
     overrides,
     includeAlternatesInBase: false,
   };

@@ -235,6 +235,14 @@ import { buildProjectSummary, type ProjectSummaryInfo } from "@/services/proposa
 let FMT_USD = '"$"#,##0';
 const FMT_PCT = "0.0%";
 const FMT_INT = "#,##0";
+const STD_PAYMENT_TERMS = [
+  "50% - on Contract Signing",
+  "20% - on Product Shipping",
+  "20% - on Substantial Completion",
+  "10% - on Final Sign-Off",
+].join("\n");
+const STD_PARTS_WARRANTY = "3 years (standard)";
+const STD_LABOR_WARRANTY = "1 year on-site (standard)";
 
 // ─── ANC Budget Logic ────────────────────────────────────────────────────────
 // Core budget helpers (rc, getSmartBundles, getBudgetRates) imported from computeDisplayCosts.ts
@@ -254,8 +262,22 @@ export interface ScopingWorkbookOptions {
   paymentTerms?: string;
   contractDate?: string;
   completionDate?: string;
+  coverPage?: CoverPageOptions;
   /** Financial overrides — when set, these take priority over defaults/heuristics */
   overrides?: FinancialOverrides;
+}
+
+export interface CoverPageOptions {
+  venueName?: string;
+  venueAddress?: string;
+  paymentTerms?: string;
+  supplyOnly?: boolean;
+  substantialCompletionDate?: string;
+  changeOrders?: string;
+  partsWarranty?: string;
+  laborWarranty?: string;
+  eventSupport?: string;
+  preSeasonChecks?: string;
 }
 
 // FinancialOverrides and ComputedDisplay interfaces imported from computeDisplayCosts.ts
@@ -387,6 +409,42 @@ function inputCell(cell: ExcelJS.Cell): void {
   };
 }
 
+function formatOverviewPct(value: number | undefined): string {
+  const pct = Number(value ?? 0);
+  return `${(pct * 100).toFixed(1)}%`;
+}
+
+function formatOverviewPaymentTerms(paymentTerms?: string): string {
+  if (!paymentTerms) return STD_PAYMENT_TERMS;
+  const trimmed = paymentTerms.trim();
+  return trimmed === "50/20/20/10" ? STD_PAYMENT_TERMS : trimmed;
+}
+
+function overviewSectionHeader(ws: ExcelJS.Worksheet, row: number, text: string): void {
+  const r = ws.getRow(row);
+  for (const col of [2, 3]) {
+    const cell = r.getCell(col);
+    cell.value = col === 2 ? text : "";
+    hdr(cell, C.ANC_BLUE);
+  }
+}
+
+function overviewKvRow(ws: ExcelJS.Worksheet, row: number, label: string, value: string, shade: boolean): void {
+  const r = ws.getRow(row);
+  r.getCell(2).value = label;
+  r.getCell(2).font = { bold: true, name: "Calibri", size: 10 };
+  r.getCell(2).alignment = { vertical: "top" };
+  r.getCell(3).value = value;
+  r.getCell(3).font = { name: "Calibri", size: 10 };
+  r.getCell(3).alignment = { wrapText: true, vertical: "top" };
+  if (shade) {
+    for (const col of [2, 3]) {
+      r.getCell(col).fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.LIGHT_GRAY } };
+    }
+  }
+  if (value.includes("\n")) r.height = 14 * (value.split("\n").length + 0.5);
+}
+
 // Display classification, LCD sizes, pitch maps, computeDisplays, and ProductResolver
 // all imported from computeDisplayCosts.ts
 
@@ -410,6 +468,7 @@ export async function generateScopingWorkbook(
     paymentTerms = "50/20/20/10",
     contractDate,
     completionDate,
+    coverPage,
     overrides: ov,
   } = options;
 
@@ -665,6 +724,10 @@ export async function generateScopingWorkbook(
     grandMargin,
     grandMarginPct,
     displays,
+    paymentTerms,
+    contractDate,
+    completionDate,
+    coverPage,
     ov,
   });
 
@@ -884,6 +947,10 @@ interface ProjectOverviewData {
   grandMargin: number;
   grandMarginPct: number;
   displays: ComputedDisplay[];
+  paymentTerms?: string;
+  contractDate?: string;
+  completionDate?: string;
+  coverPage?: CoverPageOptions;
   ov?: FinancialOverrides;
 }
 
@@ -1019,8 +1086,36 @@ function buildProjectOverview(wb: ExcelJS.Workbook, data: ProjectOverviewData): 
   row++;
   row++;
 
+  // Natalia/Chrissy cover-page additions (June 18 / July follow-up):
+  // keep the commercial terms visible on the first workbook page.
+  overviewSectionHeader(ws, row, "INFORMATION NEEDED");
+  row++;
+  const cover = data.coverPage;
+  const infoRowsExtra: [string, string][] = [
+    ["Client Name", data.clientName || "-"],
+    ["Venue Name", cover?.venueName || data.projectName || "-"],
+    ["Venue Address", cover?.venueAddress || data.location || "-"],
+    ["Payment Terms", formatOverviewPaymentTerms(cover?.paymentTerms || data.paymentTerms)],
+    ["Taxes", formatOverviewPct(data.ov?.taxRate ?? 0)],
+    ["Statement of Work", cover?.supplyOnly ? "Not included (supply only)" : "Included - full installation scope"],
+    ["Substantial Completion Date", cover?.substantialCompletionDate || data.completionDate || "To be confirmed with client"],
+    ["Change Orders", cover?.changeOrders || "None to date"],
+  ];
+  infoRowsExtra.forEach(([label, value], i) => overviewKvRow(ws, row++, label, value, i % 2 === 1));
+
+  row++;
+
+  overviewSectionHeader(ws, row, "WARRANTY OPTIONS");
+  row++;
+  const warrantyRows: [string, string][] = [
+    ["Parts Warranty", cover?.partsWarranty || STD_PARTS_WARRANTY],
+    ["Labor Warranty", cover?.laborWarranty || STD_LABOR_WARRANTY],
+    ["Event Support", cover?.eventSupport || "Per agreement"],
+    ["Pre-Season Checks", cover?.preSeasonChecks || "Per agreement"],
+  ];
+  warrantyRows.forEach(([label, value], i) => overviewKvRow(ws, row++, label, value, i % 2 === 1));
+
   // Display Summary removed per team review (March 11 2026).
-  // Project Overview shows only: project info, financial parameters, summary totals, document total.
 }
 
 // ─── 1b. BUDGET SUMMARY (per-category view) ─────────────────────────────────
