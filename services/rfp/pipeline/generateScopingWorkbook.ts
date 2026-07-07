@@ -2111,7 +2111,7 @@ function buildLedCostSheet(
     // Accumulate the exact rendered row values for TOTAL row consistency.
     accQtyTotal += qty;
     accSqFtTotal += snappedSqFt;
-    accDisplayCostTotal += round2(ledWithSpares);
+    accDisplayCostTotal += displayCostResult;
     accSponsorshipTotal += sponsorshipResult;
     accProcessorTotal += bundleEquipmentCost || 0;
     accShippingTotal += d.shippingCost;

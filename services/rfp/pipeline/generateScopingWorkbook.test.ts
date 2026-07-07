@@ -79,6 +79,19 @@ describe("generateScopingWorkbook", () => {
     expect(cellFormula(23)).toBe("IFERROR(U4/(1-V4),0)");
     // ANC Margin (X) = Selling − Total Cost.
     expect(cellFormula(24)).toBe("W4-U4");
+
+    const projectOverview = workbook.getWorksheet("Project Overview");
+    expect(projectOverview).toBeTruthy();
+    expect(typeof projectOverview!.getCell(21, 3).value).toBe("number");
+
+    let totalRowNumber = 0;
+    sheet!.eachRow((row) => {
+      if (String(row.getCell(1).value ?? "").startsWith("TOTAL")) totalRowNumber = row.number;
+    });
+    expect(totalRowNumber).toBeGreaterThan(0);
+    const rowDisplayCost = (sheet!.getCell(4, 17).value as { result?: number })?.result;
+    const totalDisplayCost = (sheet!.getCell(totalRowNumber, 17).value as { result?: number })?.result;
+    expect(totalDisplayCost).toBe(rowDisplayCost);
   });
 
   it("uses the grand total cost row for Margin Analysis margin dollars", async () => {

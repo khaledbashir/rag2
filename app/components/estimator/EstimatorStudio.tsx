@@ -1298,9 +1298,10 @@ export default function EstimatorStudio({
                                         </button>
                                     ) : undefined}
                                     onCellEdit={(_sheetIndex: number, rowIndex: number, colIndex: number, newValue: string) => {
-                                        // LED Cost Sheet Sponsorship input: workbook row 1 (Excel row 2), col 17 (R).
-                                        // Keep the in-preview edit wired to the same answer used by export.
-                                        if (rowIndex === 1 && colIndex === 17) {
+                                        const editedSheetName = wbData.sheets[_sheetIndex]?.name;
+                                        // Project Overview master Sponsorship Margin input: Excel C21.
+                                        // This is the primary input Natalia edits; keep preview and export answers in sync.
+                                        if (editedSheetName === "Project Overview" && rowIndex === 20 && colIndex === 2) {
                                             const raw = parseFloat(String(newValue).replace(/[%,$\s]/g, ""));
                                             if (isNaN(raw)) return;
                                             const pctValue = raw <= 1 ? raw * 100 : raw;
@@ -1312,8 +1313,22 @@ export default function EstimatorStudio({
                                             noteWorkbookSync(`Workbook edit synced: Sponsorship Margin -> ${normalized}%`);
                                             return;
                                         }
-                                        // LED Cost Sheet master margin override: workbook row 1 (Excel row 2), col 21 (V)
-                                        if (rowIndex === 1 && colIndex === 21) {
+                                        // LED Cost Sheet Sponsorship input: workbook row 1 (Excel row 2), col 17 (R).
+                                        // Keep the in-preview edit wired to the same answer used by export.
+                                        if (editedSheetName === "LED Cost Sheet" && rowIndex === 1 && colIndex === 17) {
+                                            const raw = parseFloat(String(newValue).replace(/[%,$\s]/g, ""));
+                                            if (isNaN(raw)) return;
+                                            const pctValue = raw <= 1 ? raw * 100 : raw;
+                                            const normalized = Math.max(0, Math.min(100, pctValue));
+                                            setAnswers((prev) => ({
+                                                ...prev,
+                                                sponsorshipMargin: normalized,
+                                            }));
+                                            noteWorkbookSync(`Workbook edit synced: Sponsorship Margin -> ${normalized}%`);
+                                            return;
+                                        }
+                                        // LED Cost Sheet master margin override: workbook row 1 (Excel row 2), col 22 (W)
+                                        if (editedSheetName === "LED Cost Sheet" && rowIndex === 1 && colIndex === 22) {
                                             const raw = parseFloat(String(newValue).replace(/[%,$\s]/g, ""));
                                             if (isNaN(raw)) return;
                                             const pctValue = raw <= 1 ? raw * 100 : raw;
