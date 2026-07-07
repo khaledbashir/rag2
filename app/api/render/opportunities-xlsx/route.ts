@@ -456,9 +456,11 @@ export async function GET(req: NextRequest) {
       });
       const dataEnd = ws.lastRow!.number;
 
-      // Per-group subtotal — light, hairline top rule
+      // Per-group total — make the dollar total row explicit at the bottom of
+      // each status section so exports read clearly outside the top roll-up.
       const st = ws.addRow({});
-      st.getCell(col(1)).value = `Subtotal — ${STATUS_LABEL[key] || key} (${list.length})`;
+      st.getCell(COL1).value = `Total $ — ${STATUS_LABEL[key] || key} (${list.length} opp${list.length === 1 ? "" : "s"})`;
+      ws.mergeCells(st.number, COL1, st.number, col(6));
       for (const c of moneyCols) {
         const L = letterOf(c);
         st.getCell(c).value = { formula: `SUM(${L}${dataStart}:${L}${dataEnd})`, result: subtotalResults.get(key)?.get(c) || 0 } as any;
@@ -468,6 +470,7 @@ export async function GET(req: NextRequest) {
         const cell = st.getCell(c);
         cell.font = { name: FONT, bold: true, size: 10, color: { argb: INK } };
         cell.border = { top: { style: "thin", color: { argb: LINE } } };
+        if (c === COL1) cell.alignment = { horizontal: "left" };
         if (moneyCols.includes(c)) cell.alignment = { horizontal: "right" };
       }
       subtotalRowIdxs.push(st.number);
