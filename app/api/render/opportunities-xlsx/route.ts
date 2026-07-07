@@ -294,6 +294,17 @@ export async function GET(req: NextRequest) {
     const moneyCols = cols.map((c, i) => (c.money ? col(i) : 0)).filter(Boolean);
     const moneyNumFmt = '#,##0;[Red](#,##0)';
     const letterOf = (c: number) => ws.getColumn(c).letter;
+    const moneyValueForCol = (o: any, c: number): number => {
+      switch (cols[c - COL1]?.key) {
+        case "rev": return dollars(o.totalProjectRevenue);
+        case "mar": return dollars(o.totalProjectMargin);
+        case "rev26": return dollars(o.revenue2026);
+        case "mar26": return dollars(o.margin2026);
+        case "rev27": return dollars(o.revenue2027);
+        case "mar27": return dollars(o.margin2027);
+        default: return 0;
+      }
+    };
 
     // Title block
     const reportTitle =
@@ -331,6 +342,18 @@ export async function GET(req: NextRequest) {
         cursor = subtotal + 1; // trailing blank row
       }
     }
+    const subtotalResults = new Map<string, Map<number, number>>();
+    const grandResults = new Map<number, number>();
+    for (const key of orderedKeys) {
+      const list = groups.get(key)!;
+      const totals = new Map<number, number>();
+      for (const c of moneyCols) {
+        const total = list.reduce((sum, o) => sum + moneyValueForCol(o, c), 0);
+        totals.set(c, total);
+        grandResults.set(c, (grandResults.get(c) || 0) + total);
+      }
+      subtotalResults.set(key, totals);
+    }
 
     // Header row
     const head = ws.getRow(HEAD_ROW);
@@ -367,7 +390,7 @@ export async function GET(req: NextRequest) {
         r.getCell(COL1 + 1).font = { name: FONT, size: 9, color: { argb: INK_SOFT } };
         for (const c of moneyCols) {
           const L = letterOf(c);
-          r.getCell(c).value = { formula: `${L}${subtotal}` } as any;
+          r.getCell(c).value = { formula: `${L}${subtotal}`, result: subtotalResults.get(key)?.get(c) || 0 } as any;
           r.getCell(c).numFmt = moneyNumFmt;
           r.getCell(c).font = { name: FONT, size: 10, color: { argb: INK } };
           r.getCell(c).alignment = { horizontal: "right" };
@@ -379,7 +402,7 @@ export async function GET(req: NextRequest) {
       for (const c of moneyCols) {
         const L = letterOf(c);
         const terms = orderedKeys.map((k) => `${L}${layout.get(k)!.subtotal}`).join(",");
-        g.getCell(c).value = { formula: terms ? `SUM(${terms})` : "0" } as any;
+        g.getCell(c).value = { formula: terms ? `SUM(${terms})` : "0", result: grandResults.get(c) || 0 } as any;
         g.getCell(c).numFmt = moneyNumFmt;
         g.getCell(c).font = { name: FONT, bold: true, size: 10, color: { argb: INK } };
         g.getCell(c).alignment = { horizontal: "right" };
@@ -438,7 +461,7 @@ export async function GET(req: NextRequest) {
       st.getCell(col(1)).value = `Subtotal — ${STATUS_LABEL[key] || key} (${list.length})`;
       for (const c of moneyCols) {
         const L = letterOf(c);
-        st.getCell(c).value = { formula: `SUM(${L}${dataStart}:${L}${dataEnd})` } as any;
+        st.getCell(c).value = { formula: `SUM(${L}${dataStart}:${L}${dataEnd})`, result: subtotalResults.get(key)?.get(c) || 0 } as any;
         st.getCell(c).numFmt = moneyNumFmt;
       }
       for (let c = COL1; c <= COLN; c++) {
@@ -458,7 +481,7 @@ export async function GET(req: NextRequest) {
     for (const c of moneyCols) {
       const L = letterOf(c);
       const terms = subtotalRowIdxs.map((r) => `${L}${r}`).join(",");
-      gt.getCell(c).value = { formula: terms ? `SUM(${terms})` : "0" } as any;
+      gt.getCell(c).value = { formula: terms ? `SUM(${terms})` : "0", result: grandResults.get(c) || 0 } as any;
       gt.getCell(c).numFmt = moneyNumFmt;
       gt.getCell(c).font = { name: FONT, bold: true, size: 11, color: { argb: INK } };
       gt.getCell(c).alignment = { horizontal: "right" };
