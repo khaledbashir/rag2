@@ -846,6 +846,16 @@ NEXT_PUBLIC_BASE_URL — Public app URL
 | Univer Sheets | 21 |
 | Prisma Models | 33 |
 | Service Files | 107 |
+
+### Service Contract Terms System (2026-07-08)
+- **Document mode:** `SERVICE_CONTRACT` (Prisma enum + migration `20260708120000`); legacy `SERVICE_AGREEMENT` resolves to it.
+- **Template registry:** `lib/serviceContracts/` — `types.ts`, `registry.ts` (getTemplate/getDefaultTemplate/resolveExhibits), `renderMarkdown.tsx` (react-markdown + remark-gfm, verbatim-preserving), `presets.ts` (4 project-type presets), `templates/ravens.ts` (verbatim Ravens exhibit bodies).
+- **PDF rendering:** `PdfServiceContract.tsx` (Ravens contract body + toggleable exhibits), `PdfTermExhibit.tsx` (exhibit header + Markdown body). Wired via `ProposalTemplate5.tsx` SERVICE_CONTRACT branch.
+- **CONTRACT General Terms:** `PdfTermsAndConditions.tsx` renamed header to "General Terms" + per-instance `generalTermsBodyOverride` Markdown override (byte-identical default).
+- **Edit UI:** `ServiceContractTermsPanel.tsx` (Step4Export) — preset selector, per-exhibit on/off + Markdown editor, signature editor. Document Lifecycle select: "Service Contract" option.
+- **Schema:** `termExhibitOverrides`, `serviceContractTemplateId`, `serviceContractProjectType`, `serviceContractSignatureText`, `generalTermsBodyOverride` on ProposalDetailsSchema.
+- **Tests:** `lib/serviceContracts/serviceContract.test.ts` (18) + 3 ProposalTemplate5 integration tests. Byte-identical default regression guard for CONTRACT T&C.
+- **Deferred:** 7–8 contract analysis pass (taxonomy refinement) when contracts land in `docs/service-agreements/`. DOCX export (data model future-proofed). Builder-from-scratch (P1-tied), Mirror-mode for services (P2), service estimator (P3) — separate specs.
 | AI Integrations | 6 |
 | User Roles | 7 |
 | Environment Variables | 20+ |
