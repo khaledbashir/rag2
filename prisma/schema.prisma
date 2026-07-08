@@ -45,6 +45,7 @@ enum DocumentMode {
   LOI
   CONTRACT
   CHANGE_ORDER
+  SERVICE_CONTRACT
 }
 
 enum ChangeRequestStatus {
