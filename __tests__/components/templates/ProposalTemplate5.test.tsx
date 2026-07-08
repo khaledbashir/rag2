@@ -463,3 +463,61 @@ describe("Additional Regression", () => {
     expect(container.textContent).toContain("All prices are valid for 30 days");
   });
 });
+
+// ============================================================================
+// 11. SERVICE CONTRACT (Priority 1) — term-exhibit system
+// ============================================================================
+describe("Service Contract mode", () => {
+  it("renders the verbatim Ravens contract body + General Terms + Parts exhibits", () => {
+    const props = baseProps({
+      documentMode: "SERVICE_CONTRACT",
+      serviceContractTemplateId: "ravens",
+      mirrorMode: false,
+    });
+    const { container } = render(<ProposalTemplate5 {...props} />);
+    const text = container.textContent || "";
+    // Header label
+    expect(text).toContain("SERVICE CONTRACT");
+    // Verbatim contract body
+    expect(text).toContain("AGREEMENT");
+    expect(text).toContain("ANC SPORTS ENTERPRISES, LLC");
+    expect(text).toContain("ANC’s Responsibilities");
+    expect(text).toContain("Purchaser’s Responsibilities");
+    expect(text).toContain("Compensation");
+    // General Terms exhibit (verbatim, all-caps limitation preserved)
+    expect(text).toContain("General Terms");
+    expect(text).toContain("THE PROVISIONS OF THE FOREGOING WARRANTIES ARE IN LIEU OF ANY OTHER WARRANTY");
+    expect(text).toContain("Intellectual Property");
+    expect(text).toContain("Force Majeure");
+    // Parts / Exhibit C exhibit (verbatim)
+    expect(text).toContain("Parts Replacement Procedures");
+    expect(text).toContain("(888) 875-2125");
+  });
+
+  it("hides a term exhibit when toggled off via override", () => {
+    const props = baseProps({
+      documentMode: "SERVICE_CONTRACT",
+      serviceContractTemplateId: "ravens",
+      mirrorMode: false,
+      termExhibitOverrides: { parts: { enabled: false } },
+    });
+    const { container } = render(<ProposalTemplate5 {...props} />);
+    const text = container.textContent || "";
+    // Parts exhibit hidden
+    expect(text).not.toContain("Parts Replacement Procedures");
+    expect(text).not.toContain("(888) 875-2125");
+    // General Terms still present
+    expect(text).toContain("General Terms");
+  });
+
+  it("renders a per-instance signature override in place of the template default", () => {
+    const props = baseProps({
+      documentMode: "SERVICE_CONTRACT",
+      serviceContractTemplateId: "ravens",
+      mirrorMode: false,
+      serviceContractSignatureText: "CUSTOM SIGNATURE OVERRIDE MARKER",
+    });
+    const { container } = render(<ProposalTemplate5 {...props} />);
+    expect(container.textContent).toContain("CUSTOM SIGNATURE OVERRIDE MARKER");
+  });
+});

@@ -10,6 +10,7 @@
  */
 import type { PdfColors } from "./shared";
 import { renderMarkdown } from "@/lib/serviceContracts/renderMarkdown";
+import React from "react";
 
 export interface PdfTermExhibitProps {
   colors: PdfColors;
