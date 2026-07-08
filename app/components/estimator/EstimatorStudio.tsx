@@ -1313,6 +1313,37 @@ export default function EstimatorStudio({
                                             noteWorkbookSync(`Workbook edit synced: Sponsorship Margin -> ${normalized}%`);
                                             return;
                                         }
+                                        // Project Overview Bond Rate input: Excel C22 (row 21). Linked to Margin
+                                        // Analysis — editing here updates answers.bondRate which feeds every screen.
+                                        if (editedSheetName === "Project Overview" && rowIndex === 21 && colIndex === 2) {
+                                            const raw = parseFloat(String(newValue).replace(/[%,$\s]/g, ""));
+                                            if (isNaN(raw)) return;
+                                            const pctValue = raw <= 1 ? raw * 100 : raw;
+                                            const normalized = Math.max(0, Math.min(25, pctValue));
+                                            setAnswers((prev) => ({ ...prev, bondRate: normalized }));
+                                            noteWorkbookSync(`Workbook edit synced: Bond Rate -> ${normalized}%`);
+                                            return;
+                                        }
+                                        // Project Overview Sales Tax Rate input: Excel C23 (row 22).
+                                        if (editedSheetName === "Project Overview" && rowIndex === 22 && colIndex === 2) {
+                                            const raw = parseFloat(String(newValue).replace(/[%,$\s]/g, ""));
+                                            if (isNaN(raw)) return;
+                                            const pctValue = raw <= 1 ? raw * 100 : raw;
+                                            const normalized = Math.max(0, Math.min(20, pctValue));
+                                            setAnswers((prev) => ({ ...prev, salesTaxRate: normalized }));
+                                            noteWorkbookSync(`Workbook edit synced: Sales Tax Rate -> ${normalized}%`);
+                                            return;
+                                        }
+                                        // Project Overview Tariff Rate input: Excel C24 (row 23).
+                                        if (editedSheetName === "Project Overview" && rowIndex === 23 && colIndex === 2) {
+                                            const raw = parseFloat(String(newValue).replace(/[%,$\s]/g, ""));
+                                            if (isNaN(raw)) return;
+                                            const pctValue = raw <= 1 ? raw * 100 : raw;
+                                            const normalized = Math.max(0, Math.min(50, pctValue));
+                                            setAnswers((prev) => ({ ...prev, tariffRate: normalized }));
+                                            noteWorkbookSync(`Workbook edit synced: Tariff Rate -> ${normalized}%`);
+                                            return;
+                                        }
                                         // LED Cost Sheet Sponsorship input: workbook row 1 (Excel row 2), col 17 (R).
                                         // Keep the in-preview edit wired to the same answer used by export.
                                         if (editedSheetName === "LED Cost Sheet" && rowIndex === 1 && colIndex === 17) {

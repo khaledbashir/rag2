@@ -1018,9 +1018,9 @@ function buildProjectOverview(wb: ExcelJS.Workbook, data: ProjectOverviewData): 
     ["Equipment Margin", DEFAULT_MARGINS.equipment],
     ["CMS Margin", DEFAULT_MARGINS.cms],
     ["Sponsorship Margin", data.ov?.sponsorshipPct ?? 0],
-    ["Bond Rate", data.bondRequired ? rc("bond_tax.bond_rate", BOND_RATE) : "N/A"],
+    ["Bond Rate", data.bondRequired ? (data.ov?.bondRate ?? rc("bond_tax.bond_rate", BOND_RATE)) : "N/A"],
     ["Tax Rate", data.ov?.taxRate ?? 0],
-    ["Tariff Rate", 0],
+    ["Tariff Rate", data.ov?.tariffRate ?? 0],
   ];
 
   for (const [label, value] of finRows) {
@@ -1548,28 +1548,33 @@ function buildMarginAnalysis(
     bdR.getCell(7).value = bondRateVal; bdR.getCell(7).numFmt = FMT_PCT; inputCell(bdR.getCell(7));
     row++;
 
-    // ─── TARIFF — formula: =D{subtotal} * rate ───
+    // ─── TARIFF — formula: =D{subtotal} * rate (pass-through, like tax/bond) ───
     const tariffRow = row;
+    const tariffRateVal = ov?.tariffRate ?? 0;
     const trR = ws.getRow(row);
     trR.getCell(2).value = "    TARIFF"; trR.getCell(2).font = subFont;
-    trR.getCell(3).value = 0;
+    trR.getCell(3).value = tariffRateVal > 0
+      ? { formula: `D${subtotalRow}*G${row}`, result: round2(d.sellingPrice * tariffRateVal) }
+      : 0;
     trR.getCell(3).numFmt = FMT_USD;
-    trR.getCell(4).value = 0;
+    trR.getCell(4).value = tariffRateVal > 0
+      ? { formula: `D${subtotalRow}*G${row}`, result: round2(d.sellingPrice * tariffRateVal) }
+      : 0;
     trR.getCell(4).numFmt = FMT_USD;
-    trR.getCell(5).value = 0;
+    trR.getCell(5).value = 0; // No margin on tariff
     trR.getCell(5).numFmt = FMT_USD;
-    trR.getCell(7).value = 0; trR.getCell(7).numFmt = FMT_PCT; inputCell(trR.getCell(7));
+    trR.getCell(7).value = tariffRateVal; trR.getCell(7).numFmt = FMT_PCT; inputCell(trR.getCell(7));
     row++;
 
     // ─── GRAND TOTAL — Subtotal + Tax + Bond + Tariff ───
     const grandRow = row;
     const grR = ws.getRow(row);
     grR.getCell(2).value = "    GRAND TOTAL"; grR.getCell(2).font = { bold: true, name: "Calibri", size: 11 };
-    // Cost includes tax/bond pass-through so margin isn't inflated
-    const grandCostPerScreen = d.totalCost + round2(d.sellingPrice * taxRateVal) + round2(d.sellingPrice * bondRateVal);
+    // Cost includes tax/bond/tariff pass-through so margin isn't inflated
+    const grandCostPerScreen = d.totalCost + round2(d.sellingPrice * taxRateVal) + round2(d.sellingPrice * bondRateVal) + round2(d.sellingPrice * tariffRateVal);
     grR.getCell(3).value = { formula: `C${subtotalRow}+C${taxRow}+C${bondRow}+C${tariffRow}`, result: grandCostPerScreen };
     grR.getCell(3).numFmt = FMT_USD; grR.getCell(3).font = { bold: true, name: "Calibri" };
-    const grandSell = d.sellingPrice + round2(d.sellingPrice * taxRateVal) + round2(d.sellingPrice * bondRateVal) + 0;
+    const grandSell = d.sellingPrice + round2(d.sellingPrice * taxRateVal) + round2(d.sellingPrice * bondRateVal) + round2(d.sellingPrice * tariffRateVal);
     grR.getCell(4).value = { formula: `D${subtotalRow}+D${taxRow}+D${bondRow}+D${tariffRow}`, result: grandSell };
     grR.getCell(4).numFmt = FMT_USD; grR.getCell(4).font = { bold: true, name: "Calibri" };
     grR.getCell(5).value = { formula: marginDollarFormula(grandRow), result: grandSell - grandCostPerScreen };

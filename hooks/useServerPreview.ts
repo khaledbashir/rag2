@@ -34,6 +34,20 @@ function productFingerprint(answers: EstimatorAnswers): string {
   return answers.displays.map((d) => d.productId ?? "").join("|");
 }
 
+// Rate fields edited on the Project Overview (bond/tax/tariff/sponsorship/margins).
+// A change here must refetch immediately (delay 0) so the platform reflects the
+// typed value without the typing debounce — Natalia 2026-07-08 "nothing happens online".
+function rateFingerprint(answers: EstimatorAnswers): string {
+  return [
+    answers.ledMargin ?? "",
+    answers.servicesMargin ?? "",
+    answers.bondRate ?? "",
+    answers.salesTaxRate ?? "",
+    (answers as any).tariffRate ?? "",
+    answers.sponsorshipMargin ?? "",
+  ].join("|");
+}
+
 export function useServerPreview(answers: EstimatorAnswers): {
   data: any | null;
   loading: boolean;
@@ -50,8 +64,10 @@ export function useServerPreview(answers: EstimatorAnswers): {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const prevProductFpRef = useRef("");
+  const prevRateFpRef = useRef("");
   const fingerprint = useMemo(() => answersFingerprint(answers), [answers]);
   const productFp = useMemo(() => productFingerprint(answers), [answers]);
+  const rateFp = useMemo(() => rateFingerprint(answers), [answers]);
 
   useEffect(() => {
     // Don't generate if no displays
@@ -74,7 +90,11 @@ export function useServerPreview(answers: EstimatorAnswers): {
     if (timerRef.current) clearTimeout(timerRef.current);
     const productChanged = prevProductFpRef.current !== "" && prevProductFpRef.current !== productFp;
     prevProductFpRef.current = productFp;
-    const delay = productChanged ? 0 : DEBOUNCE_TYPING_MS;
+    // Rate edits (bond/tax/tariff/sponsorship/margins on Project Overview) refetch
+    // immediately so the platform reflects the typed value without the typing debounce.
+    const rateChanged = prevRateFpRef.current !== "" && prevRateFpRef.current !== rateFp;
+    prevRateFpRef.current = rateFp;
+    const delay = (productChanged || rateChanged) ? 0 : DEBOUNCE_TYPING_MS;
 
     const doFetch = async () => {
       // Abort previous request
@@ -135,7 +155,7 @@ export function useServerPreview(answers: EstimatorAnswers): {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [answers, fingerprint, productFp]);
+  }, [answers, fingerprint, productFp, rateFp]);
 
   return { data, loading, error, projectTotal, displayRowMap };
 }

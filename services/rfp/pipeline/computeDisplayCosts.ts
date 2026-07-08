@@ -61,6 +61,7 @@ export interface FinancialOverrides {
   servicesMarginPct?: number;     // 0-1, e.g. 0.20 for 20%
   taxRate?: number;               // 0-1, e.g. 0.095 for 9.5%
   bondRate?: number;              // 0-1, e.g. 0.015 for 1.5%. 0 = no bond.
+  tariffRate?: number;            // 0-1, e.g. 0.10 for 10%. Import tariff per screen. 0 = none. (Jeremy ask 2026-07-08)
   sponsorshipPct?: number;        // 0-1, e.g. 0.05 for 5%. Applied to Display Cost per display. 0 = none.
   costPerSqFtOverride?: number;   // $/sqft override for LED hardware. 0 = use catalog.
   pmComplexity?: "standard" | "complex" | "major";

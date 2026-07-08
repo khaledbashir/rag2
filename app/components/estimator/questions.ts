@@ -555,6 +555,20 @@ export const FINANCIAL_QUESTIONS: Question[] = [
         quickActions: [{ label: "Not Included", value: 0 }],
     },
     {
+        id: "tariffRate",
+        phase: "financial",
+        type: "number",
+        label: "Tariff Rate",
+        subtitle: "Import tariff applied per screen. Leave at 0 if none. Flows to Margin Analysis and the Project Overview (Jeremy ask 2026-07-08).",
+        defaultValue: 0,
+        unit: "%",
+        min: 0,
+        max: 50,
+        step: 0.5,
+        affectsSheet: "Margin Analysis",
+        quickActions: [{ label: "Not Included", value: 0 }],
+    },
+    {
         id: "sponsorshipMargin",
         phase: "financial",
         type: "number",
@@ -802,6 +816,7 @@ export interface EstimatorAnswers {
     defaultMargin?: number;  // Legacy — no longer asked, kept for backward compat
     bondRate: number;
     salesTaxRate: number;
+    tariffRate: number;  // Import tariff % applied per screen (0 = none). Jeremy ask 2026-07-08.
     sponsorshipMargin: number;  // Sponsorship uplift % applied to Display Cost per display (0 = none)
     costPerSqFtOverride: number;
     pmComplexity: string;    // "standard" | "complex" | "major"
@@ -893,6 +908,7 @@ export function getDefaultAnswers(): EstimatorAnswers {
         defaultMargin: 15,
         bondRate: 1.5,
         salesTaxRate: 9.5,
+        tariffRate: 0,
         sponsorshipMargin: 0,
         costPerSqFtOverride: 0,
         pmComplexity: "standard",

@@ -68,6 +68,9 @@ interface DisplayCalc {
 
 const PROJECT_OVERVIEW_EDITABLE_CELLS = new Set([
   "20:2", // C21: Sponsorship Margin
+  "21:2", // C22: Bond Rate (Jeremy ask 2026-07-08 — editable + linked to Margin Analysis)
+  "22:2", // C23: Sales Tax Rate
+  "23:2", // C24: Tariff Rate
 ]);
 
 const LED_COST_SHEET_EDITABLE_CELLS = new Set([
