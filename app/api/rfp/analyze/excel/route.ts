@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
 
     // Parse screens from LED Cost Sheet (preferred) or Margin Analysis
     if (ledSheet) {
-      parseLedCostSheetSpecs(ledSheet, screens, project, warnings);
+      parseLedCostSheetSpecs(ledSheet, screens, project, warnings, xlsxWorkbook.Sheets[ledSheet.name]);
     } else if (marginSheet) {
       parseMarginAnalysisSpecs(marginSheet, screens, warnings);
     } else {
@@ -226,6 +226,7 @@ function parseLedCostSheetSpecs(
   screens: ExtractedLEDSpec[],
   project: ExtractedProjectInfo,
   warnings: string[],
+  valueSheet?: xlsx.WorkSheet,
 ) {
   // Find header row
   let headerRow = 0;
@@ -260,26 +261,48 @@ function parseLedCostSheetSpecs(
   }
 
   const nameCol = colMap["name"] || 1;
+  const readValue = (row: ExcelJS.Row, col: number | undefined) => {
+    if (!col) return null;
+    if (valueSheet) {
+      const address = xlsx.utils.encode_cell({ r: row.number - 1, c: col - 1 });
+      const valueCell = valueSheet[address];
+      if (valueCell && valueCell.v != null) return valueCell.v;
+    }
+    return row.getCell(col).value;
+  };
 
   for (let ri = headerRow + 1; ri <= sheet.rowCount; ri++) {
     const row = sheet.getRow(ri);
-    const name = String(row.getCell(nameCol).value || "").trim();
+    const name = String(readValue(row, nameCol) || "").trim();
     if (!name || name.toLowerCase().startsWith("total") || name.startsWith("+")) break;
 
-    const pitchStr = colMap["pitch"] ? String(row.getCell(colMap["pitch"]).value || "") : "";
-    const pitchMatch = pitchStr.match(/([\d.]+)/);
-    const pitch = pitchMatch ? parseFloat(pitchMatch[1]) : null;
+    const nameFallback = parseDisplaySpecsFromName(name);
+    const pitch =
+      parseNum(readValue(row, colMap["pitch"])) ??
+      nameFallback.pixelPitchMm;
+    const heightFt =
+      parseNum(readValue(row, colMap["height"])) ??
+      nameFallback.heightFt;
+    const widthFt =
+      parseNum(readValue(row, colMap["width"])) ??
+      nameFallback.widthFt;
+    const heightPx =
+      parseNum(readValue(row, colMap["heightPx"])) ??
+      (heightFt != null && pitch != null ? Math.round((heightFt * 304.8) / pitch) : null);
+    const widthPx =
+      parseNum(readValue(row, colMap["widthPx"])) ??
+      (widthFt != null && pitch != null ? Math.round((widthFt * 304.8) / pitch) : null);
 
     const spec: ExtractedLEDSpec = {
       name,
-      quantity: parseNum(colMap["qty"] ? row.getCell(colMap["qty"]).value : null) || 1,
+      quantity: parseNum(readValue(row, colMap["qty"])) || 1,
       pixelPitchMm: pitch,
-      widthFt: parseNum(colMap["width"] ? row.getCell(colMap["width"]).value : null) || undefined,
-      heightFt: parseNum(colMap["height"] ? row.getCell(colMap["height"]).value : null) || undefined,
-      widthPx: parseNum(colMap["widthPx"] ? row.getCell(colMap["widthPx"]).value : null) || undefined,
-      heightPx: parseNum(colMap["heightPx"] ? row.getCell(colMap["heightPx"]).value : null) || undefined,
-      brightnessNits: parseNum(colMap["nits"] ? row.getCell(colMap["nits"]).value : null) || undefined,
-      serviceType: colMap["service"] ? String(row.getCell(colMap["service"]).value || "") || undefined : undefined,
+      widthFt: widthFt ?? undefined,
+      heightFt: heightFt ?? undefined,
+      widthPx: widthPx ?? undefined,
+      heightPx: heightPx ?? undefined,
+      brightnessNits: parseNum(readValue(row, colMap["nits"])) || undefined,
+      serviceType: colMap["service"] ? String(readValue(row, colMap["service"]) || "") || undefined : undefined,
       environment: project.isOutdoor ? "outdoor" : "indoor",
       confidence: 0.9,
       sourcePages: [],
@@ -287,6 +310,22 @@ function parseLedCostSheetSpecs(
 
     screens.push(spec);
   }
+}
+
+function parseDisplaySpecsFromName(name: string): {
+  pixelPitchMm: number | null;
+  heightFt: number | null;
+  widthFt: number | null;
+} {
+  const pitchMatch = name.match(/([\d.]+)\s*mm/i);
+  const dimensionMatch = name.match(/([\d.]+)\s*'\s*H\s*x\s*([\d.]+)\s*'\s*W/i)
+    || name.match(/([\d.]+)\s*H\s*x\s*([\d.]+)\s*W/i);
+
+  return {
+    pixelPitchMm: pitchMatch ? parseFloat(pitchMatch[1]) : null,
+    heightFt: dimensionMatch ? parseFloat(dimensionMatch[1]) : null,
+    widthFt: dimensionMatch ? parseFloat(dimensionMatch[2]) : null,
+  };
 }
 
 function parseMarginAnalysisSpecs(

@@ -794,6 +794,10 @@ function findBestMatch(
   usedScreens: Set<number>,
   isSingleSheet: boolean = false
 ): MatchCandidate | null {
+  if (isSingleSheet && screens.length === 1 && !usedScreens.has(0)) {
+    return { screen: screens[0], screenIndex: 0, confidence: 1 };
+  }
+
   const candidates: MatchCandidate[] = [];
 
   for (let i = 0; i < screens.length; i++) {
@@ -1123,7 +1127,8 @@ function fillBlockCells(
     const cell = sheet.getRow(row).getCell(col);
     if (cell.type === ExcelJS.ValueType.Formula) return;
     // Never silently overwrite non-empty cells — skip and flag as conflict
-    if (cell.value != null && cell.value !== "" && cell.value !== 0) {
+    const existingText = typeof cell.value === "string" ? cell.value.trim() : null;
+    if (cell.value != null && existingText !== "" && cell.value !== 0) {
       skipped.push(fieldName);
       return;
     }
