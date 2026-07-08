@@ -1068,7 +1068,7 @@ function fillHeaderFields(
     if (row == null || value == null) return;
     const cell = sheet.getRow(row).getCell(C);
     // Don't overwrite formulas or existing values
-    if (cell.type === ExcelJS.ValueType.Formula) return;
+    if (isFormulaCell(cell)) return;
     if (cell.value != null && cell.value !== "" && cell.value !== 0) return;
     cell.value = value;
   };
@@ -1125,7 +1125,10 @@ function fillBlockCells(
   const setCell = (row: number, col: number, value: number | string | null, fieldName: string) => {
     if (value == null) return;
     const cell = sheet.getRow(row).getCell(col);
-    if (cell.type === ExcelJS.ValueType.Formula) return;
+    if (isFormulaCell(cell)) {
+      skipped.push(fieldName);
+      return;
+    }
     // Never silently overwrite non-empty cells — skip and flag as conflict
     const existingText = typeof cell.value === "string" ? cell.value.trim() : null;
     if (cell.value != null && existingText !== "" && cell.value !== 0) {
@@ -1142,7 +1145,7 @@ function fillBlockCells(
   // Rename header: "VENDOR NAME" → "ANC" in Column C of the header row
   const headerCell = sheet.getRow(block.headerRow).getCell(fillCol);
   const headerText = getCellText(headerCell);
-  if (/vendor\s*name/i.test(headerText)) {
+  if (/vendor\s*name/i.test(headerText) && !isFormulaCell(headerCell)) {
     headerCell.value = "ANC";
   }
 
@@ -1422,7 +1425,7 @@ function fillProductDataBlock(
     if (value == null || value === "") continue;
 
     const cell = sheet.getRow(field.row).getCell(field.col);
-    if (cell.type === ExcelJS.ValueType.Formula) {
+    if (isFormulaCell(cell)) {
       skipped.push(fieldKey);
       continue;
     }
@@ -1513,4 +1516,10 @@ function getCellText(cell: ExcelJS.Cell): string {
     }
   }
   return String(cell.value);
+}
+
+function isFormulaCell(cell: ExcelJS.Cell): boolean {
+  const value = cell.value;
+  return cell.type === ExcelJS.ValueType.Formula ||
+    (typeof value === "object" && value !== null && "formula" in value);
 }
