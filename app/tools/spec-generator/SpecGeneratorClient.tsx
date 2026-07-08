@@ -23,6 +23,7 @@ import type { FilledDisplay, TemplateField } from "@/app/api/spec-generator/pars
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 type Phase = "upload" | "processing" | "preview";
+type GeneratorMode = "product-data" | "ajp-bid-form";
 
 interface ParsedData {
   displays: FilledDisplay[];
@@ -47,6 +48,7 @@ const STAGES = [
 
 export default function SpecGeneratorClient() {
   const [phase, setPhase] = useState<Phase>("upload");
+  const [mode, setMode] = useState<GeneratorMode>("product-data");
   const [templateFile, setTemplateFile] = useState<File | null>(null);
   const [costFile, setCostFile] = useState<File | null>(null);
   const [vendorFile, setVendorFile] = useState<File | null>(null);
@@ -209,6 +211,11 @@ export default function SpecGeneratorClient() {
     setError(null);
   }, []);
 
+  const handleModeChange = useCallback((nextMode: GeneratorMode) => {
+    setMode(nextMode);
+    setError(null);
+  }, []);
+
   // ═════════════════════════════════════════════════════════════════════════
   // Render
   // ═════════════════════════════════════════════════════════════════════════
@@ -222,7 +229,9 @@ export default function SpecGeneratorClient() {
             <FileSpreadsheet className="w-6 h-6 text-primary" />
             <div>
               <h1 className="text-lg font-semibold">Spec Generator</h1>
-              <p className="text-xs text-muted-foreground">Product Data Form Automation</p>
+              <p className="text-xs text-muted-foreground">
+                Product data forms and AJP bid-form prefill
+              </p>
             </div>
           </div>
 
@@ -267,7 +276,93 @@ export default function SpecGeneratorClient() {
 
       {/* Upload Phase */}
       {phase === "upload" && (
-        <div className="max-w-4xl mx-auto px-6 py-16">
+        <div className="max-w-5xl mx-auto px-6 py-14">
+          <div className="mx-auto mb-10 grid w-full max-w-xl grid-cols-2 rounded-lg border border-border bg-muted/30 p-1">
+            <button
+              type="button"
+              onClick={() => handleModeChange("product-data")}
+              className={`
+                rounded-md px-4 py-2 text-sm font-medium transition-colors
+                ${mode === "product-data"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+                }
+              `}
+            >
+              Product Data Forms
+            </button>
+            <button
+              type="button"
+              onClick={() => handleModeChange("ajp-bid-form")}
+              className={`
+                rounded-md px-4 py-2 text-sm font-medium transition-colors
+                ${mode === "ajp-bid-form"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+                }
+              `}
+            >
+              AJP Bid Form
+            </button>
+          </div>
+
+          {mode === "ajp-bid-form" ? (
+            <div className="mx-auto max-w-3xl">
+              <div className="mb-10 text-center">
+                <h2 className="mb-2 text-2xl font-bold">Prefill AJP Bid Form</h2>
+                <p className="text-muted-foreground">
+                  Use this when you have a priced/spec Excel and an AJP bid-form workbook.
+                </p>
+              </div>
+
+              <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center">
+                  <FileSpreadsheet className="mx-auto mb-3 h-10 w-10 text-primary" />
+                  <p className="mb-1 text-sm font-medium">AJP Bid Form</p>
+                  <p className="text-xs text-muted-foreground">
+                    The blank AJP workbook that needs its vendor/spec fields filled.
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center">
+                  <Table className="mx-auto mb-3 h-10 w-10 text-amber-500" />
+                  <p className="mb-1 text-sm font-medium">Priced / Spec Excel</p>
+                  <p className="text-xs text-muted-foreground">
+                    The ANC pricing workbook with the LED Cost Sheet or spec data.
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-blue-200 bg-blue-50/80 p-5 text-sm text-blue-950">
+                <div className="mb-2 flex items-center gap-2 font-semibold">
+                  <CheckCircle2 className="h-4 w-4 text-blue-600" />
+                  How to run it
+                </div>
+                <ol className="list-inside list-decimal space-y-1 text-blue-900/80">
+                  <li>Open the upload screen.</li>
+                  <li>Drop both Excel files into the main upload box together.</li>
+                  <li>Open the analysis actions page and choose Generate Filled Bid Form.</li>
+                </ol>
+              </div>
+
+              <div className="mt-8 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = "/tools/rfp-analyzer";
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90"
+                >
+                  <Upload className="h-5 w-5" />
+                  Open Bid Form Upload
+                </button>
+                <p className="mt-2 text-xs text-muted-foreground/70">
+                  The fill engine stays on the RFP Analyzer action page, but this entry point lives under Spec Sheets.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
           <div className="text-center mb-12">
             <h2 className="text-2xl font-bold mb-2">Upload Your Files</h2>
             <p className="text-muted-foreground">
@@ -452,6 +547,8 @@ export default function SpecGeneratorClient() {
               </p>
             )}
           </div>
+            </>
+          )}
         </div>
       )}
 
