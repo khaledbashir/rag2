@@ -193,8 +193,8 @@ const defaultProposalContext = {
     setRulesDetected: (rules: any) => { },
     // Core State
     proposal: null as any,
-    headerType: "PROPOSAL" as "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT" | "CHANGE_ORDER",
-    setHeaderType: (type: "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT" | "CHANGE_ORDER") => { },
+    headerType: "PROPOSAL" as "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT" | "CHANGE_ORDER" | "SERVICE_CONTRACT",
+    setHeaderType: (type: "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT" | "CHANGE_ORDER" | "SERVICE_CONTRACT") => { },
     calculationMode: "MIRROR" as "MIRROR" | "INTELLIGENCE",
     setCalculationMode: (mode: "MIRROR" | "INTELLIGENCE") => { },
     risks: [] as RiskItem[],
@@ -615,6 +615,9 @@ export const ProposalContextProvider = ({
         if (watchedDocumentMode === "LOI") return "LOI" as const;
         if (watchedDocumentMode === "PROPOSAL") return "PROPOSAL" as const;
         if (watchedDocumentMode === "BUDGET") return "BUDGET" as const;
+        if (watchedDocumentMode === "SERVICE_CONTRACT") return "SERVICE_CONTRACT" as const;
+        // Legacy SERVICE_AGREEMENT resolves to SERVICE_CONTRACT (Priority 1 fold).
+        if (watchedDocumentMode === "SERVICE_AGREEMENT") return "SERVICE_CONTRACT" as const;
         // Fallback: infer from legacy fields
         return watchedDocumentType === "LOI"
             ? "LOI" as const
@@ -626,11 +629,28 @@ export const ProposalContextProvider = ({
     const mirrorMode = watch("details.mirrorMode") || false;
 
     const setHeaderType = useCallback(
-        (next: "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT" | "CHANGE_ORDER") => {
+        (next: "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT" | "CHANGE_ORDER" | "SERVICE_CONTRACT") => {
             setValue("details.documentMode", next, {
                 shouldValidate: true,
                 shouldDirty: true,
             });
+
+            // SERVICE_CONTRACT (Priority 1) — modular term-exhibit system. Terms come
+            // via the exhibit system, not the legacy showTermsAndConditions toggle.
+            if (next === "SERVICE_CONTRACT") {
+                setValue("details.documentType", "First Round", { shouldValidate: true, shouldDirty: true });
+                setValue("details.pricingType", "Budget", { shouldValidate: true, shouldDirty: true });
+                setValue("details.serviceContractTemplateId" as any, "ravens", { shouldDirty: true });
+                setValue("details.showTermsAndConditions" as any, false, { shouldDirty: true });
+                setValue("details.showResponsibilityMatrix" as any, false, { shouldDirty: true });
+                setValue("details.showSpecifications" as any, false, { shouldDirty: true });
+                setValue("details.showExhibitA" as any, false, { shouldDirty: true });
+                setValue("details.showExhibitB" as any, false, { shouldDirty: true });
+                setValue("details.showScopeOfWork", true, { shouldDirty: true });
+                setValue("details.showSignatureBlock", true, { shouldDirty: true });
+                setValue("details.showSubstantialCompletionDate" as any, false, { shouldDirty: true });
+                return;
+            }
 
             // Apply mode-specific defaults for PDF sections
             if (next === "LOI" || next === "CONTRACT") {

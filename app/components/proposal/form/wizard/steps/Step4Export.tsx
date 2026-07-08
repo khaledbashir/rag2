@@ -38,6 +38,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { TextEditorPanel } from "@/app/components";
 import SchedulePreview from "@/app/components/proposal/form/sections/SchedulePreview";
+import { ServiceContractTermsPanel } from "./ServiceContractTermsPanel";
 import { formatCurrency } from "@/lib/helpers";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -1874,6 +1875,9 @@ const Step4Export = () => {
                                 </CardContent>
                             )}
                         </Card>
+
+                        {/* Service Contract term-exhibit system (Priority 1) */}
+                        {headerType === "SERVICE_CONTRACT" && <ServiceContractTermsPanel />}
 
                         <Card className="bg-card/40 border border-border/60 overflow-hidden">
                             <CardHeader
