@@ -52,6 +52,10 @@ export default function SpecGeneratorClient() {
   const [templateFile, setTemplateFile] = useState<File | null>(null);
   const [costFile, setCostFile] = useState<File | null>(null);
   const [vendorFile, setVendorFile] = useState<File | null>(null);
+  const [ajpBidFormFile, setAjpBidFormFile] = useState<File | null>(null);
+  const [ajpSpecFile, setAjpSpecFile] = useState<File | null>(null);
+  const [ajpStatus, setAjpStatus] = useState<"idle" | "processing" | "ready">("idle");
+  const [ajpSummary, setAjpSummary] = useState<string | null>(null);
   const [vendorSpecs, setVendorSpecs] = useState<any>(null);
   const [parsedData, setParsedData] = useState<ParsedData | null>(null);
   const [workbookData, setWorkbookData] = useState<WorkbookData | null>(null);
@@ -63,6 +67,8 @@ export default function SpecGeneratorClient() {
   const templateInputRef = useRef<HTMLInputElement>(null);
   const costInputRef = useRef<HTMLInputElement>(null);
   const vendorInputRef = useRef<HTMLInputElement>(null);
+  const ajpBidFormInputRef = useRef<HTMLInputElement>(null);
+  const ajpSpecInputRef = useRef<HTMLInputElement>(null);
 
   // ─── Upload handlers ────────────────────────────────────────────────────
 
@@ -87,6 +93,20 @@ export default function SpecGeneratorClient() {
       }
     },
     [handleFileSelect]
+  );
+
+  const handleAjpDrop = useCallback(
+    (type: "bidForm" | "spec") => (e: React.DragEvent) => {
+      e.preventDefault();
+      const file = e.dataTransfer.files[0];
+      if (!file || !/\.xlsx?$/i.test(file.name)) return;
+      if (type === "bidForm") setAjpBidFormFile(file);
+      else setAjpSpecFile(file);
+      setAjpStatus("idle");
+      setAjpSummary(null);
+      setError(null);
+    },
+    []
   );
 
   // ─── Generate ───────────────────────────────────────────────────────────
@@ -196,6 +216,72 @@ export default function SpecGeneratorClient() {
     }
   }, [parsedData, templateFile, editedCells]);
 
+  const handleAjpGenerate = useCallback(async () => {
+    if (!ajpBidFormFile || !ajpSpecFile) return;
+
+    setAjpStatus("processing");
+    setAjpSummary(null);
+    setError(null);
+
+    try {
+      const analyzeFormData = new FormData();
+      analyzeFormData.append("file", ajpSpecFile);
+      const analyzeRes = await fetch("/api/rfp/analyze/excel", {
+        method: "POST",
+        body: analyzeFormData,
+      });
+
+      if (!analyzeRes.ok) {
+        const errData = await analyzeRes.json().catch(() => null);
+        throw new Error(errData?.error || `Spec workbook analysis failed (${analyzeRes.status})`);
+      }
+
+      const analyzeData = await analyzeRes.json();
+      const analysisId = analyzeData?.result?.id;
+      if (!analysisId) {
+        throw new Error("Spec workbook analysis did not return an analysis ID.");
+      }
+
+      const fillFormData = new FormData();
+      fillFormData.append("analysisId", analysisId);
+      fillFormData.append("bidForm", ajpBidFormFile);
+
+      const fillRes = await fetch("/api/rfp/pipeline/fill-bid-form", {
+        method: "POST",
+        body: fillFormData,
+      });
+
+      if (!fillRes.ok) {
+        const errData = await fillRes.json().catch(() => null);
+        throw new Error(errData?.error || `Bid form fill failed (${fillRes.status})`);
+      }
+
+      const matches = JSON.parse(fillRes.headers.get("X-Bid-Form-Matches") || "[]");
+      const totalBlocks = fillRes.headers.get("X-Bid-Form-Total-Blocks") || "0";
+      const unmatchedBlocks = JSON.parse(fillRes.headers.get("X-Bid-Form-Unmatched-Blocks") || "[]");
+      const unmatchedScreens = JSON.parse(fillRes.headers.get("X-Bid-Form-Unmatched-Screens") || "[]");
+      const blob = await fillRes.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const fallbackName = ajpBidFormFile.name.replace(/\.xlsx?$/i, "") + "_FILLED.xlsx";
+      link.href = url;
+      link.download = fillRes.headers.get("Content-Disposition")?.split("filename=")[1]?.replace(/"/g, "") || fallbackName;
+      link.click();
+      URL.revokeObjectURL(url);
+
+      setAjpStatus("ready");
+      setAjpSummary(
+        `${matches.length}/${totalBlocks} sections filled` +
+          (unmatchedBlocks.length || unmatchedScreens.length
+            ? `, ${unmatchedBlocks.length} unmatched sections, ${unmatchedScreens.length} unmatched displays`
+            : ", no unmatched items")
+      );
+    } catch (err: any) {
+      setAjpStatus("idle");
+      setError(err.message || "Failed to generate filled bid form");
+    }
+  }, [ajpBidFormFile, ajpSpecFile]);
+
   // ─── Reset ──────────────────────────────────────────────────────────────
 
   const handleReset = useCallback(() => {
@@ -203,6 +289,10 @@ export default function SpecGeneratorClient() {
     setTemplateFile(null);
     setCostFile(null);
     setVendorFile(null);
+    setAjpBidFormFile(null);
+    setAjpSpecFile(null);
+    setAjpStatus("idle");
+    setAjpSummary(null);
     setVendorSpecs(null);
     setParsedData(null);
     setWorkbookData(null);
@@ -316,20 +406,124 @@ export default function SpecGeneratorClient() {
               </div>
 
               <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2">
-                <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center">
-                  <FileSpreadsheet className="mx-auto mb-3 h-10 w-10 text-primary" />
-                  <p className="mb-1 text-sm font-medium">AJP Bid Form</p>
-                  <p className="text-xs text-muted-foreground">
-                    The blank AJP workbook that needs its vendor/spec fields filled.
-                  </p>
+                <div
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={handleAjpDrop("bidForm")}
+                  onClick={() => ajpBidFormInputRef.current?.click()}
+                  className={`
+                    relative cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-all
+                    ${ajpBidFormFile
+                      ? "border-emerald-500/50 bg-emerald-500/5 dark:bg-emerald-950/20"
+                      : "border-border bg-card hover:border-primary/50 hover:bg-muted/30"
+                    }
+                  `}
+                >
+                  <input
+                    ref={ajpBidFormInputRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setAjpBidFormFile(file);
+                        setAjpStatus("idle");
+                        setAjpSummary(null);
+                        setError(null);
+                      }
+                    }}
+                  />
+                  {ajpBidFormFile ? (
+                    <>
+                      <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-emerald-500" />
+                      <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">{ajpBidFormFile.name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {(ajpBidFormFile.size / 1024).toFixed(0)} KB
+                      </p>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAjpBidFormFile(null);
+                          setAjpStatus("idle");
+                          setAjpSummary(null);
+                        }}
+                        className="absolute right-3 top-3 rounded-full p-1 hover:bg-muted"
+                      >
+                        <X className="h-4 w-4 text-muted-foreground" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <FileSpreadsheet className="mx-auto mb-3 h-10 w-10 text-primary" />
+                      <p className="mb-1 text-sm font-medium">AJP Bid Form</p>
+                      <p className="text-xs text-muted-foreground">
+                        The blank AJP workbook that needs its vendor/spec fields filled.
+                      </p>
+                      <p className="mt-3 text-xs text-muted-foreground/60">
+                        Drag & drop or click to browse
+                      </p>
+                    </>
+                  )}
                 </div>
 
-                <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center">
-                  <Table className="mx-auto mb-3 h-10 w-10 text-amber-500" />
-                  <p className="mb-1 text-sm font-medium">Priced / Spec Excel</p>
-                  <p className="text-xs text-muted-foreground">
-                    The ANC pricing workbook with the LED Cost Sheet or spec data.
-                  </p>
+                <div
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={handleAjpDrop("spec")}
+                  onClick={() => ajpSpecInputRef.current?.click()}
+                  className={`
+                    relative cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-all
+                    ${ajpSpecFile
+                      ? "border-emerald-500/50 bg-emerald-500/5 dark:bg-emerald-950/20"
+                      : "border-border bg-card hover:border-primary/50 hover:bg-muted/30"
+                    }
+                  `}
+                >
+                  <input
+                    ref={ajpSpecInputRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setAjpSpecFile(file);
+                        setAjpStatus("idle");
+                        setAjpSummary(null);
+                        setError(null);
+                      }
+                    }}
+                  />
+                  {ajpSpecFile ? (
+                    <>
+                      <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-emerald-500" />
+                      <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">{ajpSpecFile.name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {(ajpSpecFile.size / 1024).toFixed(0)} KB
+                      </p>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAjpSpecFile(null);
+                          setAjpStatus("idle");
+                          setAjpSummary(null);
+                        }}
+                        className="absolute right-3 top-3 rounded-full p-1 hover:bg-muted"
+                      >
+                        <X className="h-4 w-4 text-muted-foreground" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Table className="mx-auto mb-3 h-10 w-10 text-amber-500" />
+                      <p className="mb-1 text-sm font-medium">Priced / Spec Excel</p>
+                      <p className="text-xs text-muted-foreground">
+                        The ANC pricing workbook with the LED Cost Sheet or spec data.
+                      </p>
+                      <p className="mt-3 text-xs text-muted-foreground/60">
+                        Drag & drop or click to browse
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -348,17 +542,36 @@ export default function SpecGeneratorClient() {
               <div className="mt-8 text-center">
                 <button
                   type="button"
-                  onClick={() => {
-                    window.location.href = "/tools/rfp-analyzer";
-                  }}
-                  className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90"
+                  onClick={handleAjpGenerate}
+                  disabled={!ajpBidFormFile || !ajpSpecFile || ajpStatus === "processing"}
+                  className={`
+                    inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all
+                    ${ajpBidFormFile && ajpSpecFile && ajpStatus !== "processing"
+                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90"
+                      : "cursor-not-allowed bg-muted text-muted-foreground"
+                    }
+                  `}
                 >
-                  <Upload className="h-5 w-5" />
-                  Open Bid Form Upload
+                  {ajpStatus === "processing" ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Download className="h-5 w-5" />
+                  )}
+                  {ajpStatus === "processing" ? "Generating Filled Bid Form" : "Generate Filled AJP Bid Form"}
                 </button>
-                <p className="mt-2 text-xs text-muted-foreground/70">
-                  The fill engine stays on the RFP Analyzer action page, but this entry point lives under Spec Sheets.
-                </p>
+                {!ajpBidFormFile || !ajpSpecFile ? (
+                  <p className="mt-2 text-xs text-muted-foreground/70">
+                    Upload both Excel files to continue
+                  </p>
+                ) : ajpSummary ? (
+                  <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+                    {ajpSummary}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-muted-foreground/70">
+                    Downloads the filled workbook when processing finishes
+                  </p>
+                )}
               </div>
             </div>
           ) : (
