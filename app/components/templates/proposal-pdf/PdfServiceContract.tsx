@@ -142,13 +142,17 @@ export default function PdfServiceContract({ colors, config, details }: PdfServi
         accepted by purchaser.
       </p>
 
+      {/* Free-form pricing tables (Priority 1-tied) — user-built "from scratch"
+          pricing. Renders before the signature block so the flow is pricing →
+          signature → exhibits. Shown when present and toggled on. */}
+      {((details?.showFreeformTables ?? true) && (details?.freeformTables?.length > 0)) && (
+        <div className="mt-4">
+          <PdfFreeformTables colors={colors} tables={details.freeformTables} />
+        </div>
+      )}
+
       {/* Signature block — verbatim from template (or per-instance override). */}
       {renderMarkdown(signatureText)}
-
-      {/* Free-form pricing tables (Priority 1-tied) — user-built, shown when present. */}
-      {((details?.showFreeformTables ?? true) && (details?.freeformTables?.length > 0)) && (
-        <PdfFreeformTables colors={colors} tables={details.freeformTables} />
-      )}
 
       {/* Toggleable term exhibits, in template order, filtered by enabled. */}
       {resolved.map((ex) => (

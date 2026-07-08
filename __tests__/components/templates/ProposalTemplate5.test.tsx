@@ -575,3 +575,42 @@ describe("Free-form tables", () => {
     expect(container.textContent || "").not.toContain("secret");
   });
 });
+
+// ============================================================================
+// 13. SERVICE CONTRACT + FREE-FORM PRICING (the from-scratch loop)
+// ============================================================================
+describe("Service Contract from-scratch loop", () => {
+  it("renders user-built pricing in a Service Contract", () => {
+    const props = baseProps({
+      documentMode: "SERVICE_CONTRACT",
+      serviceContractTemplateId: "ravens",
+      mirrorMode: false,
+      showFreeformTables: true,
+      freeformTables: [
+        {
+          id: "t1", name: "Annual Service Fee",
+          columns: [
+            { id: "c1", label: "Year", type: "text" },
+            { id: "c2", label: "Fee", type: "number" },
+          ],
+          rows: [
+            { id: "r1", cells: { c1: "2026–2027", c2: "45000" } },
+            { id: "r2", cells: { c1: "2027–2028", c2: "51439.33" } },
+          ],
+          showTotalsRow: false,
+        },
+      ],
+    });
+    const { container } = render(<ProposalTemplate5 {...props} />);
+    const text = container.textContent || "";
+    // Service Contract header + verbatim body still render
+    expect(text).toContain("SERVICE CONTRACT");
+    expect(text).toContain("ANC SPORTS ENTERPRISES, LLC");
+    expect(text).toContain("General Terms");
+    // User-built pricing table renders in the contract
+    expect(text).toContain("Annual Service Fee");
+    expect(text).toContain("2026–2027");
+    expect(text).toContain("$45,000.00");
+    expect(text).toContain("$51,439.33");
+  });
+});
