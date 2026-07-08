@@ -533,9 +533,9 @@ export default function SpecGeneratorClient() {
                   How to run it
                 </div>
                 <ol className="list-inside list-decimal space-y-1 text-blue-900/80">
-                  <li>Open the upload screen.</li>
-                  <li>Drop both Excel files into the main upload box together.</li>
-                  <li>Open the analysis actions page and choose Generate Filled Bid Form.</li>
+                  <li>Choose AJP Bid Form under Spec Sheets.</li>
+                  <li>Upload the blank AJP bid form and the priced/spec Excel.</li>
+                  <li>Click Generate Filled AJP Bid Form to download the completed workbook.</li>
                 </ol>
               </div>
 
