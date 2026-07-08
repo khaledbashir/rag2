@@ -56,6 +56,7 @@ interface SpecBlock {
     // Manufacturer fields
     ledManufacturer: number | null;
     chipManufacturer: number | null;
+    chipModel: number | null;
   };
   /** Column B pitch value (for single-sheet matching) */
   colBPitch: number | null;
@@ -128,6 +129,19 @@ export interface PricingData {
   bidFormShippingSellingPrice?: number;
   bidFormInstallSellingPrice?: number;
   bidFormGcSellingPrice?: number;
+  /**
+   * Additional AJP summary-line selling prices sourced from the Margin Analysis
+   * sheet (as opposed to the LED Cost Sheet). These feed the bid-form summary
+   * lines that the LED Cost Sheet alone can't populate. All are optional; when
+   * absent the corresponding line is left for manual entry.
+   */
+  bidFormCablingSellingPrice?: number;      // Electrical & data portion of install (feeds CABLING detail row)
+  bidFormOperatingSystemPrice?: number;     // Control system / CMS integration (feeds OPERATING SYSTEM line)
+  bidFormTaxAmount?: number;                // Sales tax (feeds TAXES line)
+  bidFormAlternates?: { label: string; price: number }[]; // Voluntary alternates
+  /** LED chip specs read from the LED Cost Sheet PRODUCT column (spec block). */
+  bidFormChipModel?: string;
+  bidFormChipManufacturer?: string;
   /** Matched ANC product specs — actual dimensions/resolution from catalog */
   matchedProduct?: {
     manufacturer: string;
@@ -236,6 +250,27 @@ export async function fillBidForm(
     }
   }
 
+  // Step 3.5: Fill AJP summary/detail lines sourced from the Margin Analysis
+  // (installation detail, general conditions, operating system, taxes,
+  // alternates) — only when that service pricing is present.
+  const servicePricing = pricing?.find(
+    (p) =>
+      p.bidFormInstallSellingPrice != null ||
+      p.bidFormGcSellingPrice != null ||
+      p.bidFormOperatingSystemPrice != null ||
+      p.bidFormTaxAmount != null ||
+      (p.bidFormAlternates?.length ?? 0) > 0,
+  );
+  if (servicePricing) {
+    for (const sheetName of uniqueSheets) {
+      const ajpFilled = fillAjpSummaryAndDetail(workbook, sheetName, servicePricing);
+      if (ajpFilled.length > 0) {
+        const match = matches.find((m) => m.sheetName === sheetName);
+        if (match) match.fieldsFilled.push(...ajpFilled);
+      }
+    }
+  }
+
   // Step 4: Write the filled workbook
   const outputBuffer = Buffer.from(await workbook.xlsx.writeBuffer());
 
@@ -306,6 +341,7 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
           pixelDensity: null as number | null,
           ledManufacturer: null as number | null,
           chipManufacturer: null as number | null,
+          chipModel: null as number | null,
         };
 
         // Read Column B pitch value for matching
@@ -381,7 +417,9 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
             cells.secondarySteel = r;
           }
           // Manufacturer fields
-          else if (/led\s*chip\s*manufacturer/i.test(label) || /chip\s*manufacturer/i.test(label)) {
+          else if (/chip\s*model/i.test(label)) {
+            cells.chipModel = r;
+          } else if (/led\s*chip\s*manufacturer/i.test(label) || /chip\s*manufacturer/i.test(label)) {
             cells.chipManufacturer = r;
           } else if (/led\s*manufacturer/i.test(label) && !/chip/i.test(label)) {
             cells.ledManufacturer = r;
@@ -1079,19 +1117,23 @@ function fillHeaderFields(
     cell.value = value;
   };
 
-  // Vendor Name → always "ANC Sports Enterprises"
-  setHeaderCell(header.vendorName, "ANC Sports Enterprises");
+  // Vendor Name → "ANC" everywhere (Natalia). The AJP template drives every
+  // vendor cell off a single master "VENDOR NAME" cell via =C6 references, so
+  // setting that master cell propagates "ANC" across the whole form. Replace any
+  // literal "VENDOR NAME" placeholder (non-formula) directly.
+  setHeaderCell(header.vendorName, "ANC");
+  sheet.eachRow((row) => {
+    row.eachCell({ includeEmpty: false }, (cell) => {
+      if (isFormulaCell(cell)) return;
+      if (typeof cell.value === "string" && /^\s*vendor\s*name\s*$/i.test(cell.value)) {
+        cell.value = "ANC";
+      }
+    });
+  });
 
-  // Installation Subcontractor → "ANC Sports Enterprises"
-  setHeaderCell(header.installSubcontractor, "ANC Sports Enterprises");
-
-  // LED Manufacturer → from the first matched product
-  if (header.ledManufacturer && pricing) {
-    const firstManuf = pricing.find((p) => p.matchedProduct?.manufacturer)?.matchedProduct?.manufacturer;
-    if (firstManuf) {
-      setHeaderCell(header.ledManufacturer, firstManuf);
-    }
-  }
+  // Subcontractors / LED-supplier section → LEFT BLANK (Natalia: filled based on
+  // who actually quoted the job). Do NOT auto-fill installation subcontractor,
+  // control system, LED manufacturer, or chip supplier.
 
   // Aggregate pricing for summary rows — use SELLING PRICES (with margin)
   if (pricing && pricing.length > 0) {
@@ -1110,6 +1152,108 @@ function fillHeaderFields(
     const totalGC = allSP.reduce((s, sp) => s + sp.gcPrice, 0);
     setHeaderCell(header.generalConditions, totalGC);
   }
+}
+
+/**
+ * Fill AJP LED-tunnel bid-form summary + detail lines that the block/header
+ * passes don't reach:
+ *   - installation detail rows (COMPONENT INSTALLATION, CABLING) → feed the
+ *     INSTALLATION SUB-TOTAL formula → feed the INSTALLATION summary line
+ *   - general-conditions detail row (PROJECT MANAGEMENT) → feeds the GENERAL
+ *     CONDITIONS sub-total formula → feeds the GENERAL CONDITIONS summary line
+ *   - OPERATING SYSTEM, TAXES (direct value lines)
+ *   - voluntary ALTERNATES (label + ADD/DEDUCT placeholder rows)
+ *
+ * Scans column A across the whole sheet — the GC detail rows sit ABOVE the spec
+ * block anchor, so the downward block scan never reaches them. Writes only to
+ * blank / zero / "ADD/DEDUCT"-placeholder cells and never to formula cells, so
+ * template roll-up formulas and any manual entries are preserved.
+ *
+ * Guarded by the caller on the presence of Margin-Analysis service pricing, so
+ * non-AJP / RFP forms are never touched.
+ */
+function fillAjpSummaryAndDetail(
+  workbook: ExcelJS.Workbook,
+  sheetName: string,
+  pricing: PricingData,
+): string[] {
+  const sheet = workbook.getWorksheet(sheetName);
+  if (!sheet) return [];
+  const filled: string[] = [];
+  const C = 3;
+
+  const write = (row: number, value: number | string, field: string) => {
+    const cell = sheet.getRow(row).getCell(C);
+    if (isFormulaCell(cell)) return;
+    const v = cell.value;
+    const isEmpty =
+      v == null || v === 0 || (typeof v === "string" && v.trim() === "");
+    const isPlaceholder = typeof v === "string" && /add\/deduct/i.test(v);
+    if (!isEmpty && !isPlaceholder) return; // never overwrite real data
+    cell.value = value;
+    filled.push(field);
+  };
+
+  const sp = computeSellingPrices(pricing);
+  const cabling = pricing.bidFormCablingSellingPrice ?? 0;
+  const installTotal = pricing.bidFormInstallSellingPrice ?? 0;
+  const componentInstall = Math.max(0, installTotal - cabling);
+  const gc = pricing.bidFormGcSellingPrice ?? sp.gcPrice;
+  const operating = pricing.bidFormOperatingSystemPrice ?? 0;
+  const tax = pricing.bidFormTaxAmount ?? 0;
+  const alternates = pricing.bidFormAlternates ?? [];
+
+  let inAlternatesSection = false;
+  let alternateIdx = 0;
+
+  for (let r = 1; r <= sheet.rowCount; r++) {
+    const aCell = sheet.getRow(r).getCell(1);
+    const label = getCellText(aCell);
+    const low = label.toLowerCase().trim();
+    const cCell = sheet.getRow(r).getCell(C);
+    const cText = getCellText(cCell);
+
+    // Track the voluntary-alternates region
+    if (/voluntary\s*alternate/i.test(low)) {
+      inAlternatesSection = true;
+      continue;
+    }
+    if (
+      inAlternatesSection &&
+      /(sub-?contractor|extended\s*warranty|detailed\s*specification)/i.test(low)
+    ) {
+      inAlternatesSection = false;
+    }
+
+    // Voluntary alternate rows: fill each ADD/DEDUCT placeholder in order
+    if (
+      inAlternatesSection &&
+      /add\/deduct/i.test(cText) &&
+      alternateIdx < alternates.length
+    ) {
+      const alt = alternates[alternateIdx++];
+      write(r, alt.price, `Alternate: ${alt.label}`);
+      if (!label.trim() && !isFormulaCell(aCell)) {
+        aCell.value = alt.label;
+      }
+      continue;
+    }
+
+    // Summary + detail value lines
+    if (/operating\s*system/i.test(low) && operating > 0) {
+      write(r, operating, "Operating System");
+    } else if (/^taxes?$/i.test(low) && tax > 0) {
+      write(r, tax, "Taxes");
+    } else if (/project\s*management/i.test(low) && gc > 0) {
+      write(r, gc, "General Conditions (PM)");
+    } else if (/component\s*installation/i.test(low) && componentInstall > 0) {
+      write(r, componentInstall, "Component Installation");
+    } else if (/^cabling$/i.test(low) && cabling > 0) {
+      write(r, cabling, "Cabling");
+    }
+  }
+
+  return filled;
 }
 
 // ============================================================================
@@ -1222,11 +1366,13 @@ function fillBlockCells(
   if (block.cells.ledManufacturer && mp?.manufacturer) {
     setCell(block.cells.ledManufacturer, fillCol, mp.manufacturer, "LED Manufacturer");
   }
-  if (block.cells.chipManufacturer) {
-    // Chip manufacturer is a sub-component detail — not in our catalog
-    // Common defaults: NationStar for most Chinese LED panels
-    // Only fill if we have a matched product (so we know it's real data)
-    // For now, leave blank — will fill when catalog has this field
+  // LED chip specs — read from the LED Cost Sheet PRODUCT column (spec, not
+  // subcontractor/supplier info). e.g. "U1.6 (NS MIP1010+GOB)".
+  if (block.cells.chipManufacturer && pricing?.bidFormChipManufacturer) {
+    setCell(block.cells.chipManufacturer, fillCol, pricing.bidFormChipManufacturer, "LED Chip Manufacturer");
+  }
+  if (block.cells.chipModel && pricing?.bidFormChipModel) {
+    setCell(block.cells.chipModel, fillCol, pricing.bidFormChipModel, "LED Chip Model");
   }
 
   const readSpecNumber = (row: number | null): number | null => {
