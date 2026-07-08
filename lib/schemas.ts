@@ -392,6 +392,17 @@ const ProposalDetailsSchema = z.object({
     showCompanyFooter: z.boolean().optional().default(true),
     showPaymentTerms: z.boolean().optional().default(true), // Toggle for payment terms section
     showTermsAndConditions: z.boolean().optional().default(false), // Toggle for contract terms exhibit
+    // Service Contract term-exhibit system (Priority 1). Per-instance overrides
+    // over repo-seeded templates (lib/serviceContracts). Bodies are Markdown text.
+    serviceContractTemplateId: z.string().optional().default("ravens"),
+    serviceContractProjectType: z.string().optional(), // selected preset id
+    termExhibitOverrides: z.record(z.object({
+        enabled: z.boolean().optional(),
+        bodyMarkdown: z.string().optional(),
+    })).optional().default({}),
+    serviceContractSignatureText: z.string().optional(), // verbatim signature override
+    // CONTRACT path: editable General Terms override (seeded from contract-general-terms)
+    generalTermsBodyOverride: z.string().optional(),
     showSubstantialCompletionDate: z.boolean().optional().default(false), // Toggle for substantial completion date
     showSignatureBlock: z.boolean().optional().default(true), // Toggle for signature block
     showAssumptions: z.boolean().optional().default(false), // Toggle for assumptions text (default OFF per client)

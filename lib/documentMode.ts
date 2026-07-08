@@ -1,7 +1,7 @@
 import { DOCUMENT_MODES } from "@/services/rfp/productCatalog";
 import type { DocumentMode as CatalogDocumentMode } from "@/services/rfp/productCatalog";
 
-export type DocumentMode = "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT" | "CHANGE_ORDER" | "SERVICE_AGREEMENT";
+export type DocumentMode = "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT" | "CHANGE_ORDER" | "SERVICE_CONTRACT" | "SERVICE_AGREEMENT";
 
 // Change Order config lives here (not in the RFP-protected productCatalog) so the shared module stays frozen.
 const CHANGE_ORDER_CONFIG = {
@@ -13,11 +13,23 @@ const CHANGE_ORDER_CONFIG = {
   includeResponsibilityMatrix: false,
 };
 
-// Service Contract Agreement — standalone legal document (not built from an estimate).
-// The agreement body is rendered verbatim by PdfServiceAgreement; suppress the
-// proposal/estimate chrome (no pricing tables, no exhibits, no responsibility matrix).
+// Service Contract — modular, toggleable/editable term-exhibit system (Priority 1).
+// Built from a repo-seeded template (lib/serviceContracts) + per-instance overrides.
+// Suppress the proposal/estimate chrome (no responsibility matrix); terms come via
+// the term-exhibit system, not the legacy showTermsAndConditions toggle.
+const SERVICE_CONTRACT_CONFIG = {
+  headerText: "SERVICE CONTRACT",
+  includeSignatures: true,
+  includePaymentTerms: false,
+  includeLegalIntro: false,
+  includeProjectSummaryFirst: false,
+  includeResponsibilityMatrix: false,
+};
+
+// Legacy Service Agreement config retained for backward-compat resolution only;
+// legacy SERVICE_AGREEMENT values resolve to SERVICE_CONTRACT (see resolveDocumentMode).
 const SERVICE_AGREEMENT_CONFIG = {
-  headerText: "SERVICE AGREEMENT",
+  headerText: "SERVICE CONTRACT",
   includeSignatures: true,
   includePaymentTerms: false,
   includeLegalIntro: false,
@@ -27,7 +39,7 @@ const SERVICE_AGREEMENT_CONFIG = {
 
 export function getModeConfig(mode: DocumentMode) {
   if (mode === "CHANGE_ORDER") return CHANGE_ORDER_CONFIG;
-  if (mode === "SERVICE_AGREEMENT") return SERVICE_AGREEMENT_CONFIG;
+  if (mode === "SERVICE_CONTRACT" || mode === "SERVICE_AGREEMENT") return SERVICE_CONTRACT_CONFIG;
   return DOCUMENT_MODES[mode.toLowerCase() as CatalogDocumentMode] || DOCUMENT_MODES.proposal;
 }
 
@@ -39,14 +51,17 @@ export function resolveDocumentMode(details: any): DocumentMode {
     explicit === "LOI" ||
     explicit === "CONTRACT" ||
     explicit === "CHANGE_ORDER" ||
-    explicit === "SERVICE_AGREEMENT"
+    explicit === "SERVICE_CONTRACT"
   ) return explicit;
+  // Legacy SERVICE_AGREEMENT -> SERVICE_CONTRACT (the new system formalizes it).
+  if (explicit === "SERVICE_AGREEMENT") return "SERVICE_CONTRACT";
 
   const documentType = details?.documentType;
   if (documentType === "LOI") return "LOI";
   if (documentType === "CONTRACT") return "CONTRACT";
   if (documentType === "CHANGE_ORDER" || documentType === "Change Order") return "CHANGE_ORDER";
-  if (documentType === "SERVICE_AGREEMENT" || documentType === "Service Agreement") return "SERVICE_AGREEMENT";
+  if (documentType === "SERVICE_CONTRACT" || documentType === "Service Contract") return "SERVICE_CONTRACT";
+  if (documentType === "SERVICE_AGREEMENT" || documentType === "Service Agreement") return "SERVICE_CONTRACT";
 
   const pricingType = details?.pricingType;
   if (pricingType === "Hard Quoted") return "PROPOSAL";
@@ -97,6 +112,22 @@ export function applyDocumentModeDefaults(mode: DocumentMode, current: any) {
     if (base.showTermsAndConditions === undefined) base.showTermsAndConditions = false;
     base.showResponsibilityMatrix = false;
     if (base.showChangeOrderTotals === undefined) base.showChangeOrderTotals = true;
+    return base;
+  }
+
+  // SERVICE_CONTRACT — modular term-exhibit system (Priority 1). Terms come via
+  // the exhibit system, not the legacy showTermsAndConditions toggle. No
+  // responsibility matrix, no Exhibit A/B/SOW exhibits; scope of work + signatures on.
+  if (mode === "SERVICE_CONTRACT") {
+    if (base.serviceContractTemplateId === undefined) base.serviceContractTemplateId = "ravens";
+    if (base.showSpecifications === undefined) base.showSpecifications = false;
+    if (base.showExhibitA === undefined) base.showExhibitA = false;
+    if (base.showExhibitB === undefined) base.showExhibitB = false;
+    if (base.showSubstantialCompletionDate === undefined) base.showSubstantialCompletionDate = false;
+    if (base.showTermsAndConditions === undefined) base.showTermsAndConditions = false;
+    base.showResponsibilityMatrix = false;
+    if (base.showScopeOfWork === undefined) base.showScopeOfWork = true;
+    if (base.showSignatureBlock === undefined) base.showSignatureBlock = true;
     return base;
   }
 
