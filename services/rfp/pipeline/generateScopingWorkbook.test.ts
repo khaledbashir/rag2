@@ -226,6 +226,49 @@ describe("generateScopingWorkbook", () => {
     expect(value?.formula).toBe(`IFERROR(D${grandTotalRow}-C${grandTotalRow},0)`);
   });
 
+  it("carries sponsorship into the Margin Analysis grand total (Jeremy 2026-07-08)", async () => {
+    const spec = {
+      name: "Main Scoreboard", location: "scoreboard",
+      widthFt: 33, heightFt: 18, widthPx: null, heightPx: null,
+      pixelPitchMm: 10, brightnessNits: 6000, environment: "outdoor", quantity: 1,
+      serviceType: "front", mountingType: "Wall Mounted", maxPowerW: null, weightLbs: null,
+      specialRequirements: [], confidence: 1, sourcePages: [], sourceType: "text", citation: "test", notes: null,
+    };
+    // With sponsorship = 0 (default) — no SPONSORSHIP row content, grand total unchanged
+    const { buffer: b0 } = await generateScopingWorkbook({
+      project: { clientName: "C", projectName: "P", venue: null, location: null, isOutdoor: true, isUnionLabor: false, bondRequired: true, specialRequirements: [], schedulePhases: [] },
+      specs: [spec],
+      overrides: { sponsorshipPct: 0 },
+    } as any);
+    const wb0 = new ExcelJS.Workbook(); await wb0.xlsx.load(Buffer.from(b0));
+    const ma0 = wb0.getWorksheet("Margin Analysis")!;
+    // With sponsorship = 5%
+    const { buffer: b5 } = await generateScopingWorkbook({
+      project: { clientName: "C", projectName: "P", venue: null, location: null, isOutdoor: true, isUnionLabor: false, bondRequired: true, specialRequirements: [], schedulePhases: [] },
+      specs: [spec],
+      overrides: { sponsorshipPct: 0.05, ledMarginPct: 0.38 },
+    } as any);
+    const wb5 = new ExcelJS.Workbook(); await wb5.xlsx.load(Buffer.from(b5));
+    const ma5 = wb5.getWorksheet("Margin Analysis")!;
+    // Find the SPONSORSHIP row + GRAND TOTAL row in the 5% workbook
+    const rows = Array.from({ length: ma5.actualRowCount }, (_, i) => i + 1);
+    const sponsorRow = rows.find(r => String(ma5.getCell(r, 2).value ?? "").trim() === "SPONSORSHIP");
+    const grandRow = rows.find(r => String(ma5.getCell(r, 2).value ?? "").trim() === "GRAND TOTAL");
+    expect(sponsorRow).toBeTruthy();
+    expect(grandRow).toBeTruthy();
+    // Sponsorship cost > 0 (display cost × 5%)
+    const spCost = (ma5.getCell(sponsorRow!, 3).value as any)?.result ?? 0;
+    expect(spCost).toBeGreaterThan(0);
+    // Sponsorship sell = cost / (1 - 0.38), so sell > cost (margin marked up)
+    const spSell = (ma5.getCell(sponsorRow!, 4).value as any)?.result ?? 0;
+    expect(spSell).toBeGreaterThan(spCost);
+    // Grand total cost with 5% sponsorship > grand total cost with 0% sponsorship
+    const grandCost5 = (ma5.getCell(grandRow!, 3).value as any)?.result ?? 0;
+    const grand0Row = Array.from({ length: ma0.actualRowCount }, (_, i) => i + 1).find(r => String(ma0.getCell(r, 2).value ?? "").trim() === "GRAND TOTAL");
+    const grandCost0 = (ma0.getCell(grand0Row!, 3).value as any)?.result ?? 0;
+    expect(grandCost5).toBeGreaterThan(grandCost0);
+  });
+
   it("formula-links every margin cell back to Project Overview master (Natalia Apr 2026)", async () => {
     const { buffer } = await generateScopingWorkbook({
       project: {

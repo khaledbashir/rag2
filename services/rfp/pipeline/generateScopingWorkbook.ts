@@ -1566,16 +1566,44 @@ function buildMarginAnalysis(
     trR.getCell(7).value = tariffRateVal; trR.getCell(7).numFmt = FMT_PCT; inputCell(trR.getCell(7));
     row++;
 
-    // ─── GRAND TOTAL — Subtotal + Tax + Bond + Tariff ───
+    // ─── SPONSORSHIP — Display Cost × Sponsorship%, marked up at the hardware
+    // margin (mirrors LED Cost Sheet R/W so the Margin Analysis tab carries
+    // sponsorship into its totals, not just the LED Cost Sheet; Jeremy 2026-07-08).
+    // Placed after tariff so tax/bond/tariff (which apply to the subtotal) are
+    // unchanged — only the grand total gains the sponsorship line. No effect when
+    // sponsorshipPct is 0 (the default). ───
+    const sponsorRow = row;
+    const sponsorshipPctVal = Number(ov?.sponsorshipPct ?? 0);
+    const sponsorshipCost = round2(ledHardwareWithSpares * sponsorshipPctVal);
+    const sponsorshipSell = hwMargin < 1 ? round2(sponsorshipCost / (1 - hwMargin)) : sponsorshipCost;
+    const spR = ws.getRow(row);
+    spR.getCell(2).value = "    SPONSORSHIP"; spR.getCell(2).font = subFont;
+    spR.getCell(3).value = sponsorshipPctVal > 0
+      ? { formula: `'LED Cost Sheet'!R${ledSheetRow}`, result: sponsorshipCost }
+      : 0;
+    spR.getCell(3).numFmt = FMT_USD;
+    spR.getCell(4).value = sponsorshipPctVal > 0
+      ? { formula: `IFERROR(C${sponsorRow}/(1-'Project Overview'!$C$16),C${sponsorRow})`, result: sponsorshipSell }
+      : 0;
+    spR.getCell(4).numFmt = FMT_USD;
+    spR.getCell(5).value = sponsorshipPctVal > 0
+      ? { formula: `D${sponsorRow}-C${sponsorRow}`, result: round2(sponsorshipSell - sponsorshipCost) }
+      : 0;
+    spR.getCell(5).numFmt = FMT_USD;
+    spR.getCell(6).value = sponsorshipPctVal > 0 ? { formula: `'Project Overview'!$C$16`, result: hwMargin } : 0;
+    spR.getCell(6).numFmt = FMT_PCT;
+    row++;
+
+    // ─── GRAND TOTAL — Subtotal + Tax + Bond + Tariff + Sponsorship ───
     const grandRow = row;
     const grR = ws.getRow(row);
     grR.getCell(2).value = "    GRAND TOTAL"; grR.getCell(2).font = { bold: true, name: "Calibri", size: 11 };
     // Cost includes tax/bond/tariff pass-through so margin isn't inflated
-    const grandCostPerScreen = d.totalCost + round2(d.sellingPrice * taxRateVal) + round2(d.sellingPrice * bondRateVal) + round2(d.sellingPrice * tariffRateVal);
-    grR.getCell(3).value = { formula: `C${subtotalRow}+C${taxRow}+C${bondRow}+C${tariffRow}`, result: grandCostPerScreen };
+    const grandCostPerScreen = d.totalCost + round2(d.sellingPrice * taxRateVal) + round2(d.sellingPrice * bondRateVal) + round2(d.sellingPrice * tariffRateVal) + sponsorshipCost;
+    grR.getCell(3).value = { formula: `C${subtotalRow}+C${taxRow}+C${bondRow}+C${tariffRow}+C${sponsorRow}`, result: grandCostPerScreen };
     grR.getCell(3).numFmt = FMT_USD; grR.getCell(3).font = { bold: true, name: "Calibri" };
-    const grandSell = d.sellingPrice + round2(d.sellingPrice * taxRateVal) + round2(d.sellingPrice * bondRateVal) + round2(d.sellingPrice * tariffRateVal);
-    grR.getCell(4).value = { formula: `D${subtotalRow}+D${taxRow}+D${bondRow}+D${tariffRow}`, result: grandSell };
+    const grandSell = d.sellingPrice + round2(d.sellingPrice * taxRateVal) + round2(d.sellingPrice * bondRateVal) + round2(d.sellingPrice * tariffRateVal) + sponsorshipSell;
+    grR.getCell(4).value = { formula: `D${subtotalRow}+D${taxRow}+D${bondRow}+D${tariffRow}+D${sponsorRow}`, result: grandSell };
     grR.getCell(4).numFmt = FMT_USD; grR.getCell(4).font = { bold: true, name: "Calibri" };
     grR.getCell(5).value = { formula: marginDollarFormula(grandRow), result: grandSell - grandCostPerScreen };
     grR.getCell(5).numFmt = FMT_USD; grR.getCell(5).font = { bold: true, name: "Calibri" };
