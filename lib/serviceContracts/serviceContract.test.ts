@@ -12,6 +12,40 @@ describe("service contract registry", () => {
     expect(listTemplates().length).toBeGreaterThanOrEqual(1);
   });
 
+  it("Ravens General Terms body is verbatim (all-caps limitation + every section title)", () => {
+    const body = RAVENS_TEMPLATE.exhibits.find((e) => e.id === "general-terms")!.bodyMarkdown;
+    // All-caps limitation preserved verbatim
+    expect(body).toContain("THE PROVISIONS OF THE FOREGOING WARRANTIES ARE IN LIEU OF ANY OTHER WARRANTY");
+    expect(body).toContain("IN NO EVENT SHALL ANC BE LIABLE TO PURCHASER OR ANY OTHER PERSON OR ENTITY FOR SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES");
+    // All 10 numbered sections present
+    for (const title of [
+      "Intellectual Property",
+      "Ownership of the Work",
+      "Existence, Power and Authority",
+      "Confidentiality",
+      "Warranty",
+      "Indemnification",
+      "Purchaser's Obligation to Pay",
+      "Force Majeure",
+      "Future Pandemic",
+      "Miscellaneous",
+    ]) {
+      expect(body).toContain(`**${title}.**`);
+    }
+  });
+
+  it("Ravens Parts exhibit body is verbatim (hotline + parts email)", () => {
+    const body = RAVENS_TEMPLATE.exhibits.find((e) => e.id === "parts")!.bodyMarkdown;
+    expect(body).toContain("(888) 875-2125");
+    expect(body).toContain("parts@anc.com");
+    expect(body).toContain("Parts Repair/Replacement");
+  });
+
+  it("Ravens signature block text is verbatim", () => {
+    expect(RAVENS_TEMPLATE.signatureBlockText).toContain("AGREED TO AND ACCEPTED:");
+    expect(RAVENS_TEMPLATE.signatureBlockText).toContain("ANC SPORTS ENTERPRISES, LLC");
+  });
+
   it("resolveExhibits returns template defaults when no overrides are given", () => {
     const resolved = resolveExhibits(RAVENS_TEMPLATE, {});
     const general = resolved.find((e) => e.id === "general-terms");
