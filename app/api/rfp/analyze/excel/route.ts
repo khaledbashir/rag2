@@ -306,6 +306,33 @@ function parseLedCostSheetSpecs(
     }
   });
 
+  const usesAncLedCostLayout = (() => {
+    const row5 = Array.from({ length: 15 }, (_, index) =>
+      String(sheet.getRow(5).getCell(index + 1).value || "").toLowerCase().trim()
+    ).join(" ");
+    const row6 = Array.from({ length: 15 }, (_, index) =>
+      String(sheet.getRow(6).getCell(index + 1).value || "").toLowerCase().trim()
+    ).join(" ");
+    return (
+      row5.includes("active display size") &&
+      row5.includes("pixel count") &&
+      row6.includes("pitch")
+    );
+  })();
+
+  if (usesAncLedCostLayout) {
+    headerRow = headerRow || 6;
+    colMap["name"] ??= 1;
+    colMap["pitch"] ??= 5;
+    colMap["height"] ??= 6;
+    colMap["width"] ??= 7;
+    colMap["heightPx"] ??= 8;
+    colMap["widthPx"] ??= 10;
+    colMap["qty"] ??= 12;
+    colMap["nits"] ??= 14;
+    colMap["service"] ??= 15;
+  }
+
   if (headerRow === 0) {
     warnings.push("LED Cost Sheet: Could not find header row");
     return;
