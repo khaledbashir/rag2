@@ -403,6 +403,22 @@ const ProposalDetailsSchema = z.object({
     serviceContractSignatureText: z.string().optional(), // verbatim signature override
     // CONTRACT path: editable General Terms override (seeded from contract-general-terms)
     generalTermsBodyOverride: z.string().optional(),
+    // Free-form table builder (Priority 1-tied): user-defined columns/rows, text+numbers.
+    freeformTables: z.array(z.object({
+        id: z.string(),
+        name: z.string(),
+        columns: z.array(z.object({
+            id: z.string(),
+            label: z.string(),
+            type: z.enum(["text", "number"]).default("text"),
+        })),
+        rows: z.array(z.object({
+            id: z.string(),
+            cells: z.record(z.string()).default({}),
+        })),
+        showTotalsRow: z.boolean().optional().default(false),
+    })).optional().default([]),
+    showFreeformTables: z.boolean().optional().default(true),
     showSubstantialCompletionDate: z.boolean().optional().default(false), // Toggle for substantial completion date
     showSignatureBlock: z.boolean().optional().default(true), // Toggle for signature block
     showAssumptions: z.boolean().optional().default(false), // Toggle for assumptions text (default OFF per client)

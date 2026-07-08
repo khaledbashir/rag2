@@ -21,6 +21,7 @@ import PageBreak from "@/app/components/templates/proposal-pdf/PageBreak";
 // Section sub-components
 import PdfHeader from "./sections/PdfHeader";
 import PdfPricingTables from "./sections/PdfPricingTables";
+import PdfFreeformTables from "./sections/PdfFreeformTables";
 import PdfSpecsTable from "./sections/PdfSpecsTable";
 import PdfResponsibilityMatrix from "./sections/PdfResponsibilityMatrix";
 import PdfSignatureBlock from "./sections/PdfSignatureBlock";
@@ -361,6 +362,12 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
             colHeaderRight={colHeaderRight}
         />
     );
+
+    // Free-form Pricing Tables (Priority 1-tied) — user-built tables, any columns/rows.
+    const freeformTables = ((details as any)?.freeformTables || []) as any[];
+    const showFreeformTables = (details as any)?.showFreeformTables ?? true;
+    const FreeformTablesSection = () =>
+        showFreeformTables && freeformTables.length > 0 ? <PdfFreeformTables colors={colors} tables={freeformTables} /> : null;
 
     // Payment Terms Section
     const PaymentTermsSection = () => {
@@ -843,6 +850,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                                 <PricingSection />
                             </div>
                         )}
+                        {showFreeformTables && freeformTables.length > 0 && <FreeformTablesSection />}
 
                         {/* ═══ LEGAL (Page 2): Notes → Payment Terms → Signatures ═══ */}
                         <PageBreak />
@@ -926,6 +934,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                                 <PricingSection />
                             </div>
                         )}
+                        {showFreeformTables && freeformTables.length > 0 && <FreeformTablesSection />}
 
                         {/* Then: Notes → Payment Terms → Signature Block */}
                         {showNotes && (
@@ -1005,6 +1014,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                             <PricingSection />
                         </div>
                     )}
+                    {showFreeformTables && freeformTables.length > 0 && <FreeformTablesSection />}
 
                     {showNotes && (
                         <div className="px-6">

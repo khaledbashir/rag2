@@ -16,6 +16,7 @@ import React from "react";
 
 import type { PdfColors } from "./sections/shared";
 import PdfTermExhibit from "./sections/PdfTermExhibit";
+import PdfFreeformTables from "./sections/PdfFreeformTables";
 import type { ServiceAgreementConfig, ServiceAgreementFeeRow } from "./sections/PdfServiceAgreement";
 import { RAVENS_SERVICE_AGREEMENT_DEFAULTS } from "./sections/PdfServiceAgreement";
 import { getDefaultTemplate, resolveExhibits } from "@/lib/serviceContracts/registry";
@@ -143,6 +144,11 @@ export default function PdfServiceContract({ colors, config, details }: PdfServi
 
       {/* Signature block — verbatim from template (or per-instance override). */}
       {renderMarkdown(signatureText)}
+
+      {/* Free-form pricing tables (Priority 1-tied) — user-built, shown when present. */}
+      {((details?.showFreeformTables ?? true) && (details?.freeformTables?.length > 0)) && (
+        <PdfFreeformTables colors={colors} tables={details.freeformTables} />
+      )}
 
       {/* Toggleable term exhibits, in template order, filtered by enabled. */}
       {resolved.map((ex) => (

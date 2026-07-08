@@ -521,3 +521,57 @@ describe("Service Contract mode", () => {
     expect(container.textContent).toContain("CUSTOM SIGNATURE OVERRIDE MARKER");
   });
 });
+
+// ============================================================================
+// 12. FREE-FORM TABLES (Priority 1-tied) — builder-from-scratch pricing
+// ============================================================================
+describe("Free-form tables", () => {
+  it("renders user-built tables in the pricing section", () => {
+    const props = baseProps({
+      documentMode: "BUDGET",
+      mirrorMode: false,
+      showFreeformTables: true,
+      freeformTables: [
+        {
+          id: "t1",
+          name: "Service Pricing",
+          columns: [
+            { id: "c1", label: "Item", type: "text" },
+            { id: "c2", label: "Price", type: "number" },
+          ],
+          rows: [
+            { id: "r1", cells: { c1: "Labor", c2: "2000" } },
+            { id: "r2", cells: { c1: "Parts", c2: "800" } },
+          ],
+          showTotalsRow: true,
+        },
+      ],
+    });
+    const { container } = render(<ProposalTemplate5 {...props} />);
+    const text = container.textContent || "";
+    expect(text).toContain("Service Pricing");
+    expect(text).toContain("Labor");
+    expect(text).toContain("Parts");
+    expect(text).toContain("$2,000.00");
+    expect(text).toContain("$800.00");
+    expect(text).toContain("Total");
+    expect(text).toContain("$2,800.00");
+  });
+
+  it("hides free-form tables when showFreeformTables is false", () => {
+    const props = baseProps({
+      documentMode: "BUDGET",
+      mirrorMode: false,
+      showFreeformTables: false,
+      freeformTables: [
+        {
+          id: "t1", name: "Hidden", columns: [{ id: "c1", label: "X", type: "text" }],
+          rows: [{ id: "r1", cells: { c1: "secret" } }], showTotalsRow: false,
+        },
+      ],
+    });
+    const { container } = render(<ProposalTemplate5 {...props} />);
+    expect(container.textContent || "").not.toContain("Hidden");
+    expect(container.textContent || "").not.toContain("secret");
+  });
+});

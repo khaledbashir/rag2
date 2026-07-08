@@ -39,6 +39,7 @@ import { Label } from "@/components/ui/label";
 import { TextEditorPanel } from "@/app/components";
 import SchedulePreview from "@/app/components/proposal/form/sections/SchedulePreview";
 import { ServiceContractTermsPanel } from "./ServiceContractTermsPanel";
+import { FreeformTableBuilder } from "./FreeformTableBuilder";
 import { formatCurrency } from "@/lib/helpers";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -1878,6 +1879,9 @@ const Step4Export = () => {
 
                         {/* Service Contract term-exhibit system (Priority 1) */}
                         {headerType === "SERVICE_CONTRACT" && <ServiceContractTermsPanel />}
+
+                        {/* Free-form pricing table builder (Priority 1-tied) — all modes */}
+                        <FreeformTableBuilder />
 
                         <Card className="bg-card/40 border border-border/60 overflow-hidden">
                             <CardHeader
