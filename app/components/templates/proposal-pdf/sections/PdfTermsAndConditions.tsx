@@ -1,5 +1,5 @@
 /**
- * PdfTermsAndConditions — T&C Exhibit for CONTRACT document mode.
+ * PdfTermsAndConditions — "General Terms" Exhibit for CONTRACT document mode.
  *
  * Based on ANC's standard Sales Terms and Conditions (Dodgers template).
  * Renders as additional page(s) at the end of the Contract PDF.
@@ -7,9 +7,17 @@
  *
  * Fillable spots: purchaser name, entity names
  * Toggleable sections: CMS, graphics, labor warranty, materials warranty
+ *
+ * Priority 1 (Natalia 1C): renamed from "Terms and Conditions" to "General Terms"
+ * and made editable per-instance via `bodyOverride` (Markdown). When no override
+ * is present, the clause text + layout below render exactly as before
+ * (byte-identical default). When `bodyOverride` is set, the override Markdown
+ * renders in place of the fixed sections.
  */
 
 import type { PdfColors } from "./shared";
+import { renderMarkdown } from "@/lib/serviceContracts/renderMarkdown";
+import React from "react";
 
 export interface TermsAndConditionsConfig {
     /** Purchaser entity name (e.g., "Los Angeles Dodgers") */
@@ -26,6 +34,9 @@ export interface TermsAndConditionsConfig {
     includeGraphics?: boolean;
     /** Exhibit letter (default: "C") */
     exhibitLetter?: string;
+    /** Per-instance Markdown override of the whole General Terms body. When set,
+     *  the fixed sections below are skipped and the Markdown renders verbatim. */
+    bodyOverride?: string;
 }
 
 interface PdfTermsAndConditionsProps {
@@ -42,20 +53,30 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
         includeCms = false,
         includeGraphics = false,
         exhibitLetter = "C",
+        bodyOverride,
     } = config;
 
     let sectionNum = 1;
 
+    const overrideText = (bodyOverride || "").trim();
+
     return (
         <div data-preview-section="terms-and-conditions" className="px-6">
-            {/* Exhibit Header — matches "Exhibit B — Statement of Work" style */}
+            {/* Exhibit Header — "General Terms" (renamed per Natalia 1C). */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
                 <div style={{ width: '3px', height: '14px', borderRadius: '1px', background: colors.primary, flexShrink: 0 }} />
                 <span className="text-[14px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>
-                    Exhibit {exhibitLetter} — Terms and Conditions
+                    Exhibit {exhibitLetter} — General Terms
                 </span>
             </div>
 
+            {/* Per-instance editable override (Markdown). Renders verbatim in place
+                of the fixed sections below. */}
+            {overrideText ? (
+                <div className="text-[12px] leading-relaxed" style={{ color: colors.text }}>
+                    {renderMarkdown(overrideText)}
+                </div>
+            ) : (
             <div className="space-y-3 text-[12px] leading-relaxed" style={{ color: colors.text }}>
                 {/* Section 1: Intellectual Property */}
                 <Section num={sectionNum++} title="Intellectual Property" colors={colors}>
@@ -228,6 +249,7 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
                     </p>
                 </Section>
             </div>
+            )}
         </div>
     );
 }

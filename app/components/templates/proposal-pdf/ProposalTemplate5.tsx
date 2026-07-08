@@ -26,6 +26,7 @@ import PdfResponsibilityMatrix from "./sections/PdfResponsibilityMatrix";
 import PdfSignatureBlock from "./sections/PdfSignatureBlock";
 import PdfTermsAndConditions from "./sections/PdfTermsAndConditions";
 import PdfServiceAgreement, { type ServiceAgreementConfig } from "./sections/PdfServiceAgreement";
+import PdfServiceContract from "./PdfServiceContract";
 import { MasterTableSummary, LOISummaryTable } from "./sections/PdfProjectSummary";
 import type { PdfColors, PdfTemplateSpacing } from "./sections/shared";
 
@@ -63,6 +64,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const isContract = documentMode === "CONTRACT";
     const isCO = documentMode === "CHANGE_ORDER";
     const isServiceAgreement = documentMode === "SERVICE_AGREEMENT";
+    const isServiceContract = documentMode === "SERVICE_CONTRACT";
     const shortFormDocumentName = isContract ? "Short Form Contract" : "Short Form Agreement";
 
     // Change Order metadata
@@ -90,6 +92,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         includeMaterialsWarranty: (details as any)?.tcIncludeMaterialsWarranty ?? true,
         includeCms: (details as any)?.tcIncludeCms ?? false,
         includeGraphics: (details as any)?.tcIncludeGraphics ?? false,
+        bodyOverride: (details as any)?.generalTermsBodyOverride ?? undefined,
     } : null;
 
     // Guard against raw numbers (e.g., project IDs mistakenly used as names)
@@ -703,10 +706,11 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         .pdf-font-scaled .text-\\[11px\\] { font-size: ${11 + fontOffset}px !important; }
     ` : "";
 
-    // SERVICE AGREEMENT — standalone legal document. Renders only the verbatim agreement
-    // (header shell reused); bypasses the entire estimate/proposal body. Isolated from all
-    // other document modes.
-    if (isServiceAgreement) {
+    // SERVICE CONTRACT (Priority 1) — modular term-exhibit system. Renders the
+    // verbatim contract body + toggleable/editable term exhibits from the template
+    // registry. Legacy SERVICE_AGREEMENT resolves to SERVICE_CONTRACT (see
+    // resolveDocumentMode), so this branch also serves any pre-existing SA proposals.
+    if (isServiceContract || isServiceAgreement) {
         const saConfig: Partial<ServiceAgreementConfig> = {
             ...(purchaserLegalName ? { purchaserName: purchaserLegalName } : {}),
             ...(purchaserAddress ? { purchaserAddress } : {}),
@@ -725,7 +729,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                         clientName={receiver?.name || "Client Name"}
                         date={headerDate}
                     />
-                    <PdfServiceAgreement colors={colors} config={saConfig} />
+                    <PdfServiceContract colors={colors} config={saConfig} details={details} />
                 </div>
             </ProposalLayout>
         );

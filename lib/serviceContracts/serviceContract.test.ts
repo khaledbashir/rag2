@@ -5,6 +5,34 @@ import { resolveDocumentMode } from "../documentMode";
 import { RAVENS_TEMPLATE } from "./templates/ravens";
 import { SERVICE_CONTRACT_PRESETS, getPreset } from "./presets";
 
+// Render PdfTermsAndConditions to a string to assert the byte-identical default
+// (no override) still contains every original clause. This is the CONTRACT-path
+// regression guard for the Priority-1 "General Terms" refactor.
+async function renderTcToString(override?: string): Promise<string> {
+  const React = await import("react");
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const Mod = (await import("../../app/components/templates/proposal-pdf/sections/PdfTermsAndConditions")).default;
+  const colors = {
+    primary: "#1f4e79", primaryDark: "#1f4e79", text: "#1f2937", textMuted: "#6b7280",
+  } as any;
+  const markup = renderToStaticMarkup(
+    React.createElement(Mod, {
+      colors,
+      config: {
+        purchaserName: "Los Angeles Dodgers",
+        warrantyYears: 5,
+        includeLaborWarranty: true,
+        includeMaterialsWarranty: true,
+        includeCms: false,
+        includeGraphics: false,
+        exhibitLetter: "C",
+        bodyOverride: override,
+      },
+    } as any)
+  );
+  return markup;
+}
+
 describe("service contract registry", () => {
   it("exposes the Ravens template as the default", () => {
     expect(getDefaultTemplate().id).toBe("ravens");
@@ -136,5 +164,38 @@ describe("service contract presets", () => {
       parts: true,
       labor: true,
     });
+  });
+});
+
+describe("CONTRACT General Terms (byte-identical default regression)", () => {
+  it("renders every original clause + all-caps limitation with no override", async () => {
+    const html = await renderTcToString();
+    // Header renamed to "General Terms"
+    expect(html).toContain("Exhibit C — General Terms");
+    // Every original numbered section title still present (default layout unchanged)
+    for (const title of [
+      "Intellectual Property",
+      "Ownership of the Equipment",
+      "Existence, Power and Authority",
+      "Warranty",
+      "Indemnification",
+      "Force Majeure",
+      "Miscellaneous",
+    ]) {
+      expect(html).toContain(title);
+    }
+    // All-caps limitation clause preserved verbatim
+    expect(html).toContain("THE WARRANTY SET FORTH HEREIN IS THE SOLE AND EXCLUSIVE WARRANTY");
+    expect(html).toContain("CONSEQUENTIAL, INCIDENTAL, OR SPECIAL DAMAGES");
+    // Labor warranty default (5 years) text present
+    expect(html).toContain("forty-eight (48) hours");
+  });
+
+  it("renders the Markdown override in place of the fixed sections", async () => {
+    const html = await renderTcToString("1. **Custom Clause.** OVERRIDE BODY TEXT");
+    expect(html).toContain("OVERRIDE BODY TEXT");
+    expect(html).toContain("Custom Clause");
+    // Default fixed sections are suppressed when override is set
+    expect(html).not.toContain("Intellectual Property");
   });
 });
