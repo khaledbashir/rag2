@@ -142,6 +142,87 @@ describe("bidFormFiller product data forms", () => {
     expect(filledSheet.getCell("C63").value).toMatchObject({ formula: "C60*C58/25.4/12" });
   });
 
+  it("fills AJP pricing split cells from direct bid-form pricing", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("BidForm");
+
+    sheet.getCell("A57").value = "LED TUNNEL DISPLAY";
+    sheet.getCell("A58").value = "PIXEL PITCH";
+    sheet.getCell("B58").value = 1.5625;
+    sheet.getCell("A59").value = "QUANTITY";
+    sheet.getCell("B59").value = 1;
+    sheet.getCell("A60").value = "PIXEL HEIGHT";
+    sheet.getCell("B60").value = 780;
+    sheet.getCell("A61").value = "PIXEL LENGTH";
+    sheet.getCell("B61").value = 7680;
+    sheet.getCell("A63").value = "SYSTEM HEIGHT";
+    sheet.getCell("B63").value = 4;
+    sheet.getCell("A64").value = "SYSTEM LENGTH";
+    sheet.getCell("B64").value = 39.4;
+    sheet.getCell("A68").value = "TOTAL DISPLAY PRICE";
+    sheet.getCell("A69").value = "PROCESSING";
+    sheet.getCell("A70").value = "SHIPPING";
+    sheet.getCell("A72").value = "TOTAL SYSTEM PRICE";
+    sheet.getCell("C72").value = { formula: "SUM(C68:C70)", result: 0 };
+    sheet.getCell("A80").value = "VIEWING ANGLE - HORIZONTAL";
+    sheet.getCell("B80").value = 140;
+    sheet.getCell("A81").value = "VIEWING ANGLE - VERTICAL";
+    sheet.getCell("B81").value = 140;
+
+    const bidFormBuffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    const screen: ExtractedLEDSpec = {
+      name: "SEZ - LED Tunnel Display - 4' H x 39.4' W - 1.5mm (Yaham - MIP)",
+      location: "Rose Bowl",
+      widthFt: 39.4,
+      heightFt: 4,
+      widthPx: 7680,
+      heightPx: 780,
+      pixelPitchMm: 1.5625,
+      brightnessNits: null,
+      environment: "outdoor",
+      quantity: 1,
+      serviceType: null,
+      mountingType: null,
+      maxPowerW: null,
+      weightLbs: null,
+      specialRequirements: [],
+      confidence: 0.9,
+      sourcePages: [],
+      sourceType: "table",
+      citation: "Rose Bowl priced/spec workbook",
+      notes: null,
+    };
+
+    const result = await fillBidForm(bidFormBuffer, [screen], [
+      {
+        name: screen.name,
+        hardwareCost: 112712,
+        processingCost: 30800,
+        shippingCost: 12725,
+        totalCost: 156237,
+        hardwareSellingPrice: 173596.66666666666,
+        servicesSellingPrice: 48361.11111111111,
+        totalSellingPrice: 173596.66666666666,
+        bidFormDisplaySellingPrice: 125235.55555555555,
+        bidFormProcessingSellingPrice: 34222.22222222222,
+        bidFormShippingSellingPrice: 14138.888888888889,
+      },
+    ]);
+
+    expect(result.matches).toHaveLength(1);
+
+    const filledWorkbook = new ExcelJS.Workbook();
+    await filledWorkbook.xlsx.load(result.buffer);
+    const filledSheet = filledWorkbook.getWorksheet("BidForm")!;
+
+    expect(filledSheet.getCell("C68").value).toBe(125235.55555555555);
+    expect(filledSheet.getCell("C69").value).toBe(34222.22222222222);
+    expect(filledSheet.getCell("C70").value).toBe(14138.888888888889);
+    expect(filledSheet.getCell("C72").value).toMatchObject({ formula: "SUM(C68:C70)" });
+    expect(filledSheet.getCell("C80").value).toBe(140);
+    expect(filledSheet.getCell("C81").value).toBe(140);
+  });
+
   it("extracts one screen per sheet from generated product data forms", async () => {
     const buffer = fs.readFileSync(
       fixture("docs/Capital One Arena - Bid Package 4_Product_Data_Forms.xlsx")

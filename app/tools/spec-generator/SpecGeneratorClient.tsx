@@ -245,6 +245,9 @@ export default function SpecGeneratorClient() {
       const fillFormData = new FormData();
       fillFormData.append("analysisId", analysisId);
       fillFormData.append("bidForm", ajpBidFormFile);
+      if (Array.isArray(analyzeData?.result?.bidFormPricing) && analyzeData.result.bidFormPricing.length > 0) {
+        fillFormData.append("pricing", JSON.stringify(analyzeData.result.bidFormPricing));
+      }
 
       const fillRes = await fetch("/api/rfp/pipeline/fill-bid-form", {
         method: "POST",

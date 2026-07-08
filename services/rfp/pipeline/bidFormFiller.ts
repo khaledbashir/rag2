@@ -122,6 +122,12 @@ export interface PricingData {
   hardwareSellingPrice: number;
   servicesSellingPrice: number;
   totalSellingPrice: number;
+  /** Optional direct AJP bid-form splits from the source workbook. */
+  bidFormDisplaySellingPrice?: number;
+  bidFormProcessingSellingPrice?: number;
+  bidFormShippingSellingPrice?: number;
+  bidFormInstallSellingPrice?: number;
+  bidFormGcSellingPrice?: number;
   /** Matched ANC product specs — actual dimensions/resolution from catalog */
   matchedProduct?: {
     manufacturer: string;
@@ -154,12 +160,12 @@ function computeSellingPrices(pricing: PricingData) {
     : 1;
 
   return {
-    displayPrice: Math.round(pricing.hardwareSellingPrice || pricing.hardwareCost),
-    processingPrice: Math.round((pricing.processingCost || 0) * serviceMarkup),
-    shippingPrice: Math.round((pricing.shippingCost || 0) * serviceMarkup),
-    installPrice: Math.round((pricing.installCost || 0) * serviceMarkup),
-    gcPrice: Math.round((pricing.pmCost || 0) * serviceMarkup),
-    totalPrice: Math.round(pricing.totalSellingPrice),
+    displayPrice: pricing.bidFormDisplaySellingPrice ?? Math.round(pricing.hardwareSellingPrice || pricing.hardwareCost),
+    processingPrice: pricing.bidFormProcessingSellingPrice ?? Math.round((pricing.processingCost || 0) * serviceMarkup),
+    shippingPrice: pricing.bidFormShippingSellingPrice ?? Math.round((pricing.shippingCost || 0) * serviceMarkup),
+    installPrice: pricing.bidFormInstallSellingPrice ?? Math.round((pricing.installCost || 0) * serviceMarkup),
+    gcPrice: pricing.bidFormGcSellingPrice ?? Math.round((pricing.pmCost || 0) * serviceMarkup),
+    totalPrice: pricing.totalSellingPrice,
   };
 }
 
@@ -1223,18 +1229,25 @@ function fillBlockCells(
     // For now, leave blank — will fill when catalog has this field
   }
 
-  // Viewing angles — from rate card (Natalia/Jeremy rules)
+  const readSpecNumber = (row: number | null): number | null => {
+    if (!row) return null;
+    const text = getCellText(sheet.getRow(row).getCell(block.specCol));
+    const match = text.match(/-?\d+(?:\.\d+)?/);
+    return match ? Number(match[0]) : null;
+  };
+
+  // Viewing angles — preserve explicit bid/spec values first; fall back to defaults.
   const isOutdoor = screen.environment === "outdoor";
   if (block.cells.viewAngleH) {
-    const viewH = isOutdoor
+    const viewH = readSpecNumber(block.cells.viewAngleH) ?? (isOutdoor
       ? getRateSync("spec.viewing_angle.outdoor_h")
-      : getRateSync("spec.viewing_angle.indoor_h");
+      : getRateSync("spec.viewing_angle.indoor_h"));
     setCell(block.cells.viewAngleH, fillCol, viewH, "Viewing Angle H");
   }
   if (block.cells.viewAngleV) {
-    const viewV = isOutdoor
+    const viewV = readSpecNumber(block.cells.viewAngleV) ?? (isOutdoor
       ? getRateSync("spec.viewing_angle.outdoor_v_up")
-      : getRateSync("spec.viewing_angle.indoor_v");
+      : getRateSync("spec.viewing_angle.indoor_v"));
     setCell(block.cells.viewAngleV, fillCol, viewV, "Viewing Angle V");
   }
 

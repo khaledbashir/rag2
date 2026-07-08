@@ -16,6 +16,7 @@ import type { ExtractedLEDSpec, ExtractedProjectInfo } from "@/services/rfp/unif
 import { parsePricingTablesWithValidation } from "@/services/pricing/pricingTableParser";
 import { log } from "@/lib/logger";
 import { auth } from "@/auth";
+import type { PricingData } from "@/services/rfp/pipeline/bidFormFiller";
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -46,8 +47,8 @@ export async function POST(request: NextRequest) {
     // This extracts actual costs from Margin Analysis instead of re-estimating
     let pricingDocument: any = null;
     let mirrorModePricing: any[] = []; // Per-display pricing extracted from Excel
+    const xlsxWorkbook = xlsx.read(buffer, { type: "buffer" });
     try {
-      const xlsxWorkbook = xlsx.read(buffer, { type: "buffer" });
       const pricingResult = parsePricingTablesWithValidation(xlsxWorkbook, file.name, { strict: false });
       pricingDocument = pricingResult.document;
       if (pricingDocument?.tables?.length > 0) {
@@ -118,6 +119,8 @@ export async function POST(request: NextRequest) {
         .trim();
     }
 
+    const bidFormPricing = ledSheet ? parseBidFormPricingFromLedCostSheet(ledSheet) : [];
+
     // Create analysis record (persist pricing data for reload survival)
     const analysis = await prisma.rfpAnalysis.create({
       data: {
@@ -167,6 +170,7 @@ export async function POST(request: NextRequest) {
       // Mirror Mode pricing extracted from Excel
       pricingDocument,
       mirrorModePricing,
+      bidFormPricing,
     };
 
     log.info(`[analyze-excel] Parsed ${screens.length} displays from ${file.name} in ${Date.now() - startTime}ms`);
@@ -203,6 +207,53 @@ function parseNum(value: unknown): number | null {
     return parseNum((value as Record<string, unknown>).result);
   }
   return null;
+}
+
+function readNumericCell(sheet: ExcelJS.Worksheet, row: number, col: number): number | null {
+  return parseNum(sheet.getRow(row).getCell(col).value);
+}
+
+function parseBidFormPricingFromLedCostSheet(sheet: ExcelJS.Worksheet): PricingData[] {
+  const pricing: PricingData[] = [];
+
+  for (let rowNumber = 1; rowNumber <= sheet.rowCount; rowNumber++) {
+    const row = sheet.getRow(rowNumber);
+    const name = String(row.getCell(1).value || "").trim();
+    if (!name || /^option$/i.test(name) || /^total/i.test(name) || name.startsWith("+")) continue;
+
+    const hardwareCost = readNumericCell(sheet, rowNumber, 17); // Q: Display Cost
+    const processingCost = readNumericCell(sheet, rowNumber, 19); // S: Processor
+    const shippingCost = readNumericCell(sheet, rowNumber, 20); // T: Shipping
+    const totalCost = readNumericCell(sheet, rowNumber, 21); // U: Total Cost
+    const totalSellingPrice = readNumericCell(sheet, rowNumber, 23); // W: Price
+
+    if (hardwareCost == null && totalSellingPrice == null) continue;
+
+    const splitRowNumber = rowNumber + 1;
+    const bidFormDisplaySellingPrice = readNumericCell(sheet, splitRowNumber, 17);
+    const bidFormProcessingSellingPrice = readNumericCell(sheet, splitRowNumber, 19);
+    const bidFormShippingSellingPrice = readNumericCell(sheet, splitRowNumber, 20);
+
+    pricing.push({
+      name,
+      hardwareCost: hardwareCost ?? 0,
+      processingCost: processingCost ?? 0,
+      shippingCost: shippingCost ?? 0,
+      totalCost: totalCost ?? hardwareCost ?? 0,
+      hardwareSellingPrice: bidFormDisplaySellingPrice ?? totalSellingPrice ?? hardwareCost ?? 0,
+      servicesSellingPrice: (bidFormProcessingSellingPrice ?? 0) + (bidFormShippingSellingPrice ?? 0),
+      totalSellingPrice:
+        totalSellingPrice ??
+        (bidFormDisplaySellingPrice ?? 0) +
+          (bidFormProcessingSellingPrice ?? 0) +
+          (bidFormShippingSellingPrice ?? 0),
+      bidFormDisplaySellingPrice: bidFormDisplaySellingPrice ?? undefined,
+      bidFormProcessingSellingPrice: bidFormProcessingSellingPrice ?? undefined,
+      bidFormShippingSellingPrice: bidFormShippingSellingPrice ?? undefined,
+    });
+  }
+
+  return pricing;
 }
 
 function extractProjectInfo(sheet: ExcelJS.Worksheet, project: ExtractedProjectInfo) {
