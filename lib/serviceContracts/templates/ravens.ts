@@ -12,6 +12,8 @@
  */
 import type { ServiceContractTemplate } from "../types";
 import { SERVICE_CONTRACT_PRESETS } from "../presets";
+import { GRAPHICS_PRODUCTION_BODY } from "./exhibits/graphicsProduction";
+import { SOFTWARE_EULA_BODY } from "./exhibits/softwareEula";
 
 const GENERAL_TERMS_BODY = `These general terms apply to the work performed by ANC Sports Enterprises, LLC ("ANC") as described in the attached sales proposal (the "Work") and the acceptance of such Work by Purchaser:
 
@@ -133,8 +135,8 @@ export const RAVENS_TEMPLATE: ServiceContractTemplate = {
     {
       id: "software",
       exhibitLetter: "",
-      title: "Software",
-      bodyMarkdown: "",
+      title: "Software End User License Agreement",
+      bodyMarkdown: SOFTWARE_EULA_BODY,
       defaultOn: false,
       category: "optional",
     },
@@ -143,6 +145,14 @@ export const RAVENS_TEMPLATE: ServiceContractTemplate = {
       exhibitLetter: "",
       title: "Labor",
       bodyMarkdown: "",
+      defaultOn: false,
+      category: "optional",
+    },
+    {
+      id: "graphics",
+      exhibitLetter: "",
+      title: "Graphics Production",
+      bodyMarkdown: GRAPHICS_PRODUCTION_BODY,
       defaultOn: false,
       category: "optional",
     },

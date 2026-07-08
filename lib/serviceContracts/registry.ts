@@ -13,6 +13,39 @@ import type {
 } from "./types";
 import { RAVENS_TEMPLATE } from "./templates/ravens";
 
+/**
+ * Token values substituted into exhibit bodies (e.g. the Software EULA preamble
+ * references the Licensee name+address). All optional — an unknown token is left
+ * as-is so the user sees it and fills it per-instance.
+ */
+export interface TemplateTokenValues {
+  purchaserName?: string;
+  purchaserAddress?: string;
+  venueName?: string;
+  agreementDate?: string;
+  termStart?: string;
+  termEnd?: string;
+  [key: string]: string | undefined;
+}
+
+/**
+ * Replace `{{token}}` placeholders in a body string with configured values.
+ * Case-insensitive on the key. Unknown tokens are left in place (visible so the
+ * user knows to fill them). Used for the Software EULA preamble and any exhibit
+ * that references party fields.
+ */
+export function applyTemplateTokens(body: string, values: TemplateTokenValues): string {
+  if (!body) return body;
+  return body.replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (m, key: string) => {
+    const direct = values[key];
+    if (direct != null && direct !== "") return direct;
+    for (const k of Object.keys(values)) {
+      if (k.toLowerCase() === key.toLowerCase() && values[k]) return values[k] as string;
+    }
+    return m;
+  });
+}
+
 const TEMPLATES: Record<string, ServiceContractTemplate> = {
   ravens: RAVENS_TEMPLATE,
 };

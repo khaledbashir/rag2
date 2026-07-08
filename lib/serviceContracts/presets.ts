@@ -1,11 +1,18 @@
 /**
  * Service Contract project-type presets.
  *
- * A preset pre-toggles term exhibits to a known configuration. Seeded with the
- * four project types Natalia named: general-only, general+live-sync,
- * general+parts, general+parts&labor. When the 7–8 example contracts arrive
- * (pass 2), presets + exhibits are refined from real contract analysis — no
- * schema change required, only new seed files.
+ * Refined 2026-07-08 (pass 2) from the 7-contract analysis
+ * (docs/service-agreements/contract-analysis-2026-07-08.md) — these match the
+ * real combinations observed across ANC's service contracts:
+ *   general-only (Ad Hoc Services), general+labor (Arizona),
+ *   general+graphics (Ad Hoc Graphics, Toronto), general+software (Hub City),
+ *   general+parts (Ravens), general+labor+software+parts (SMU),
+ *   general+labor+software+graphics (Iona).
+ *
+ * "software" covers LiveSync (the EULA bundles the LiveSync license).
+ * "labor" is kept as a flag though labor is a body/scope element (no separate
+ * legal exhibit) — toggling it on is a signal for the proposal author to include
+ * on-site labor scope; the exhibit body is editable per-instance.
  */
 import type { ProjectTypePreset } from "./types";
 
@@ -16,9 +23,19 @@ export const SERVICE_CONTRACT_PRESETS: ProjectTypePreset[] = [
     defaultExhibits: { "general-terms": true },
   },
   {
-    id: "general+live-sync",
-    label: "General Terms + Live Sync",
-    defaultExhibits: { "general-terms": true, "live-sync": true },
+    id: "general+labor",
+    label: "General Terms + Labor",
+    defaultExhibits: { "general-terms": true, labor: true },
+  },
+  {
+    id: "general+graphics",
+    label: "General Terms + Graphics",
+    defaultExhibits: { "general-terms": true, graphics: true },
+  },
+  {
+    id: "general+software",
+    label: "General Terms + Software (incl. LiveSync)",
+    defaultExhibits: { "general-terms": true, software: true },
   },
   {
     id: "general+parts",
@@ -26,9 +43,14 @@ export const SERVICE_CONTRACT_PRESETS: ProjectTypePreset[] = [
     defaultExhibits: { "general-terms": true, parts: true },
   },
   {
-    id: "general+parts&labor",
-    label: "General Terms + Parts & Labor",
-    defaultExhibits: { "general-terms": true, parts: true, labor: true },
+    id: "general+labor+software+parts",
+    label: "General + Labor + Software + Parts",
+    defaultExhibits: { "general-terms": true, labor: true, software: true, parts: true },
+  },
+  {
+    id: "general+labor+software+graphics",
+    label: "General + Labor + Software + Graphics",
+    defaultExhibits: { "general-terms": true, labor: true, software: true, graphics: true },
   },
 ];
 

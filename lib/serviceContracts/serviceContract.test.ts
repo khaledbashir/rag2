@@ -144,13 +144,16 @@ describe("service contract documentMode resolver", () => {
 });
 
 describe("service contract presets", () => {
-  it("seeds the four named project-type presets", () => {
+  it("seeds the seven project-type presets inferred from the contract analysis", () => {
     const ids = SERVICE_CONTRACT_PRESETS.map((p) => p.id);
     expect(ids).toEqual([
       "general-only",
-      "general+live-sync",
+      "general+labor",
+      "general+graphics",
+      "general+software",
       "general+parts",
-      "general+parts&labor",
+      "general+labor+software+parts",
+      "general+labor+software+graphics",
     ]);
   });
 
@@ -158,12 +161,64 @@ describe("service contract presets", () => {
     expect(getPreset("general-only")?.defaultExhibits).toEqual({ "general-terms": true });
   });
 
-  it("general+parts&labor enables general-terms, parts, labor", () => {
-    expect(getPreset("general+parts&labor")?.defaultExhibits).toEqual({
+  it("general+labor+software+parts enables general-terms, labor, software, parts (SMU type)", () => {
+    expect(getPreset("general+labor+software+parts")?.defaultExhibits).toEqual({
       "general-terms": true,
-      parts: true,
       labor: true,
+      software: true,
+      parts: true,
     });
+  });
+});
+
+describe("variable term exhibits populated verbatim (pass 2)", () => {
+  it("Ravens template has a populated Graphics exhibit body", () => {
+    const ex = RAVENS_TEMPLATE.exhibits.find((e) => e.id === "graphics");
+    expect(ex).toBeTruthy();
+    expect(ex!.bodyMarkdown.length).toBeGreaterThan(100);
+    expect(ex!.bodyMarkdown).toContain("TERMS & CONDITIONS FOR GRAPHICS PRODUCTION");
+    expect(ex!.bodyMarkdown).toContain("Scope of Services");
+    expect(ex!.bodyMarkdown).toContain("Ownership of Materials");
+    // Uses "Purchaser" throughout — no party-name placeholder
+    expect(ex!.bodyMarkdown).not.toContain("{{purchaserName}}");
+  });
+
+  it("Ravens template has a populated Software EULA exhibit with templatized preamble", () => {
+    const ex = RAVENS_TEMPLATE.exhibits.find((e) => e.id === "software");
+    expect(ex).toBeTruthy();
+    expect(ex!.bodyMarkdown.length).toBeGreaterThan(1000);
+    expect(ex!.bodyMarkdown).toContain("Software End User License Agreement");
+    // Preamble licensee name+address templatized
+    expect(ex!.bodyMarkdown).toContain("{{purchaserName}}");
+    expect(ex!.bodyMarkdown).toContain("{{purchaserAddress}}");
+    // No leftover specific party name from the source contract
+    expect(ex!.bodyMarkdown).not.toContain("Hub City Spartanburgers");
+    expect(ex!.bodyMarkdown).not.toContain("300 West Henry");
+  });
+});
+
+describe("applyTemplateTokens", () => {
+  it("replaces {{token}} placeholders with configured values", async () => {
+    const { applyTemplateTokens } = await import("./registry");
+    const out = applyTemplateTokens(
+      "between ANC and {{purchaserName}}, located at {{purchaserAddress}} (“Licensee”)",
+      { purchaserName: "Iona University", purchaserAddress: "New Rochelle, NY" },
+    );
+    expect(out).toContain("Iona University");
+    expect(out).toContain("New Rochelle, NY");
+    expect(out).not.toContain("{{purchaserName}}");
+  });
+
+  it("leaves unknown tokens in place (visible so the user fills them)", async () => {
+    const { applyTemplateTokens } = await import("./registry");
+    const out = applyTemplateTokens("{{unknownToken}} stays", { purchaserName: "X" });
+    expect(out).toContain("{{unknownToken}}");
+  });
+
+  it("is case-insensitive on the token key", async () => {
+    const { applyTemplateTokens } = await import("./registry");
+    const out = applyTemplateTokens("{{PurchaserName}}", { purchaserName: "Y" });
+    expect(out).toBe("Y");
   });
 });
 
