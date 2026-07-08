@@ -355,7 +355,9 @@ function parseMarginAnalysisServicePricing(
   let seenBaseDisplay = false;
 
   for (let rowNumber = 1; rowNumber <= sheet.rowCount; rowNumber++) {
-    const label = String(sheet.getRow(rowNumber).getCell(2).value || "").trim();
+    // Labels in the Margin Analysis are rich-text cells — String() would yield
+    // "[object Object]", so use the rich-text-aware extractor.
+    const label = cellString(sheet.getRow(rowNumber).getCell(2).value).trim();
     if (!label) continue;
     const low = label.toLowerCase();
 
