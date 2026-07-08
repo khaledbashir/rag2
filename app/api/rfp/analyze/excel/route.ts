@@ -435,7 +435,7 @@ function extractProjectInfo(sheet: ExcelJS.Worksheet, project: ExtractedProjectI
   });
 }
 
-function parseLedCostSheetSpecs(
+export function parseLedCostSheetSpecs(
   sheet: ExcelJS.Worksheet,
   screens: ExtractedLEDSpec[],
   project: ExtractedProjectInfo,
@@ -512,10 +512,21 @@ function parseLedCostSheetSpecs(
     return row.getCell(col).value;
   };
 
+  // ANC LED Cost Sheets pad each display row with 1–2 blank spacer rows; a blank
+  // name does NOT mean end-of-list (only a totals/summary row or a long blank run
+  // does). Skip blank spacers, break on a genuine terminator, and cap on a long
+  // blank run so we don't read junk past the real end of the display list.
+  let consecutiveBlanks = 0;
   for (let ri = headerRow + 1; ri <= sheet.rowCount; ri++) {
     const row = sheet.getRow(ri);
     const name = String(readValue(row, nameCol) || "").trim();
-    if (!name || name.toLowerCase().startsWith("total") || name.startsWith("+")) break;
+    if (!name) {
+      consecutiveBlanks++;
+      if (consecutiveBlanks >= 5) break; // end-of-list: long blank run
+      continue; // skip blank spacer rows between displays
+    }
+    consecutiveBlanks = 0;
+    if (name.toLowerCase().startsWith("total") || name.startsWith("+")) break;
 
     const nameFallback = parseDisplaySpecsFromName(name);
     const pitch =
