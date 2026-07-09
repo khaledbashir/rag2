@@ -60,6 +60,17 @@ interface SpecBlock {
   };
   /** Column B pitch value (for single-sheet matching) */
   colBPitch: number | null;
+  /**
+   * Column B physical spec — the size the RFP asks for. This is the reliable
+   * matching signal: pitch is often identical across every block (the RFP names
+   * one pitch for the whole project) while dimensions are unique per display,
+   * and a vendor's proposed display lands within a few percent of the request.
+   */
+  colBQuantity: number | null;
+  colBPixelHeight: number | null;
+  colBPixelLength: number | null;
+  colBSystemHeight: number | null;
+  colBSystemLength: number | null;
   labelCol: number;
   specCol: number;
   fillCol: number;
@@ -210,31 +221,39 @@ export async function fillBidForm(
   const uniqueSheets = new Set(blocks.map((b) => b.sheetName));
   const isSingleSheet = uniqueSheets.size === 1;
 
-  // Step 2: Match each block to an extracted screen
-  const usedScreens = new Set<number>();
+  // Step 2: Match blocks to screens.
+  //
+  // Assign globally, strongest pair first, rather than walking blocks in order and
+  // letting each take the best screen still available. Sequential greed made one bad
+  // early match cascade: on the UNC Kenan form the first block consumed a ribbon that
+  // belonged three blocks later, and three blocks finished empty (Natalia 2026-07-09).
+  const assignments = assignBlocksToScreens(blocks, screens, isSingleSheet);
+
+  const usedScreens = new Set<number>(assignments.values());
   const matches: BidFormMatch[] = [];
   const unmatchedBlocks: string[] = [];
 
-  for (const block of blocks) {
-    const match = findBestMatch(block, screens, usedScreens, isSingleSheet);
-    if (match) {
-      usedScreens.add(match.screenIndex);
-      // Find pricing data for this screen (match by name)
-      const pricingForScreen = pricing?.find(
-        (p) => p.name.toLowerCase() === match.screen.name.toLowerCase()
-      );
-      const { filled, skipped } = fillBlockCells(workbook, block, match.screen, pricingForScreen);
-      matches.push({
-        sheetName: block.sheetName,
-        displayName: block.displayName,
-        matchedScreen: match.screen.name,
-        confidence: match.confidence,
-        fieldsFilled: filled,
-        fieldsSkipped: skipped,
-      });
-    } else {
+  for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+    const block = blocks[blockIndex];
+    const screenIndex = assignments.get(blockIndex);
+    if (screenIndex === undefined) {
       unmatchedBlocks.push(`${block.sheetName}: ${block.displayName}`);
+      continue;
     }
+    const screen = screens[screenIndex];
+    // Find pricing data for this screen (match by name)
+    const pricingForScreen = pricing?.find(
+      (p) => p.name.toLowerCase() === screen.name.toLowerCase()
+    );
+    const { filled, skipped } = fillBlockCells(workbook, block, screen, pricingForScreen);
+    matches.push({
+      sheetName: block.sheetName,
+      displayName: block.displayName,
+      matchedScreen: screen.name,
+      confidence: scoreBlockScreen(block, screen, isSingleSheet, screens.length),
+      fieldsFilled: filled,
+      fieldsSkipped: skipped,
+    });
   }
 
   // Find unmatched screens
@@ -428,12 +447,28 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
 
         // Only add if we found the core fields
         if (cells.quantity && cells.pixelHeight && cells.pixelLength) {
+          // Column B holds the RFP's requested spec for this block. Read it now,
+          // while we still have the row numbers, so matching can compare sizes.
+          const readColB = (rowNum: number | null): number | null => {
+            if (!rowNum) return null;
+            const raw = getCellText(sheet.getRow(rowNum).getCell(specCol));
+            const m = raw.replace(/,/g, "").match(/-?\d*\.?\d+/);
+            if (!m) return null;
+            const n = parseFloat(m[0]);
+            return Number.isFinite(n) ? n : null;
+          };
+
           blocks.push({
             sheetName,
             displayName: headerA || `Display at row ${headerRow}`,
             headerRow,
             cells,
             colBPitch,
+            colBQuantity: readColB(cells.quantity),
+            colBPixelHeight: readColB(cells.pixelHeight),
+            colBPixelLength: readColB(cells.pixelLength),
+            colBSystemHeight: readColB(cells.systemHeight),
+            colBSystemLength: readColB(cells.systemLength),
             labelCol,
             specCol,
             fillCol,
@@ -832,6 +867,69 @@ interface MatchCandidate {
   confidence: number;
 }
 
+/** Minimum score for a block/screen pair to be considered a match at all. */
+const MATCH_THRESHOLD = 0.5;
+
+/**
+ * Score one block against one screen. Single source of truth, so the score that
+ * drives assignment is the same one reported as `confidence`.
+ *
+ * A single-sheet form with exactly one screen is unambiguous by construction.
+ */
+function scoreBlockScreen(
+  block: SpecBlock,
+  screen: ExtractedLEDSpec,
+  isSingleSheet: boolean,
+  totalScreens: number,
+): number {
+  if (isSingleSheet && totalScreens === 1) return 1;
+  return isSingleSheet
+    ? computeSingleSheetMatchScore(block, screen)
+    : computeMatchScore(block, screen);
+}
+
+/**
+ * Assign screens to blocks by strongest pair first, globally.
+ *
+ * Scores every viable (block, screen) pair, sorts descending, then walks the list
+ * taking a pair whenever both sides are still free. A block that is certain of its
+ * screen therefore claims it before a weaker block can steal it — which is the
+ * failure sequential matching produced on the UNC Kenan form.
+ *
+ * Ties break on block order, so the result is deterministic.
+ *
+ * Returns block index → screen index. Blocks with no viable pair are absent.
+ */
+function assignBlocksToScreens(
+  blocks: SpecBlock[],
+  screens: ExtractedLEDSpec[],
+  isSingleSheet: boolean,
+): Map<number, number> {
+  const pairs: Array<{ blockIndex: number; screenIndex: number; score: number }> = [];
+
+  for (let b = 0; b < blocks.length; b++) {
+    for (let s = 0; s < screens.length; s++) {
+      const score = scoreBlockScreen(blocks[b], screens[s], isSingleSheet, screens.length);
+      if (score > MATCH_THRESHOLD) {
+        pairs.push({ blockIndex: b, screenIndex: s, score });
+      }
+    }
+  }
+
+  pairs.sort((a, b) => (b.score - a.score) || (a.blockIndex - b.blockIndex) || (a.screenIndex - b.screenIndex));
+
+  const assignments = new Map<number, number>();
+  const takenScreens = new Set<number>();
+
+  for (const pair of pairs) {
+    if (assignments.has(pair.blockIndex) || takenScreens.has(pair.screenIndex)) continue;
+    assignments.set(pair.blockIndex, pair.screenIndex);
+    takenScreens.add(pair.screenIndex);
+  }
+
+  return assignments;
+}
+
 function findBestMatch(
   block: SpecBlock,
   screens: ExtractedLEDSpec[],
@@ -906,59 +1004,93 @@ function computeMatchScore(block: SpecBlock, screen: ExtractedLEDSpec): number {
   return maxScore > 0 ? score / maxScore : 0;
 }
 
+/** True when a screen is an alternate, whether flagged or only named as one. */
+function screenIsAlternate(screen: ExtractedLEDSpec): boolean {
+  return screen.isAlternate === true || /\balternate\b|\balt\s*#?\s*\d/i.test(screen.name || "");
+}
+
+/** Relative difference between two positive measurements, 0 = identical. */
+function relativeDiff(a: number, b: number): number {
+  const larger = Math.max(Math.abs(a), Math.abs(b));
+  if (larger === 0) return 0;
+  return Math.abs(a - b) / larger;
+}
+
 /**
- * Single-sheet matching — for forms like AJP where all blocks are on one sheet.
- * Relies on Column B pitch values and display name tokens instead of venue/sheet matching.
+ * How closely a screen's physical size matches the size Column B asks for, 0..1.
+ *
+ * Prefers system height/length (feet); falls back to the pixel grid when the
+ * form omits feet. Returns null when the block carries no usable size, so the
+ * caller can fall back to name matching rather than treat "no data" as "no match".
+ *
+ * A vendor's proposal is never exactly the requested size — UNC asks for 32' x 106'
+ * and ANC proposes 32.81' x 106.63' — so slack is expected, and cabinet sizing can
+ * push it further (5' requested vs 5.47' built for the Monster Ribbon). Treat
+ * anything within EXACT_ENOUGH as a clean hit, decay to zero by DIFFERENT_DISPLAY.
+ */
+function dimensionSimilarity(block: SpecBlock, screen: ExtractedLEDSpec): number | null {
+  const pairs: Array<[number, number]> = [];
+
+  if (block.colBSystemHeight != null && block.colBSystemLength != null
+      && screen.heightFt != null && screen.widthFt != null) {
+    pairs.push([block.colBSystemHeight, screen.heightFt], [block.colBSystemLength, screen.widthFt]);
+  } else if (block.colBPixelHeight != null && block.colBPixelLength != null
+      && screen.heightPx != null && screen.widthPx != null) {
+    pairs.push([block.colBPixelHeight, screen.heightPx], [block.colBPixelLength, screen.widthPx]);
+  }
+
+  if (pairs.length === 0) return null;
+
+  const worst = Math.max(...pairs.map(([a, b]) => relativeDiff(a, b)));
+  const EXACT_ENOUGH = 0.05;
+  const DIFFERENT_DISPLAY = 0.18;
+  if (worst <= EXACT_ENOUGH) return 1;
+  if (worst >= DIFFERENT_DISPLAY) return 0;
+  return 1 - (worst - EXACT_ENOUGH) / (DIFFERENT_DISPLAY - EXACT_ENOUGH);
+}
+
+/**
+ * Single-sheet matching — for forms like AJP and UNC where all blocks share one sheet.
+ *
+ * Column B's physical size leads. Pitch used to lead, which broke the UNC Kenan
+ * form (Natalia 2026-07-09): the RFP requests 10mm for every display, so pitch
+ * discriminated nothing, and because ANC proposes 10.41mm for the video boards a
+ * 10mm ribbon outscored the video display that actually belonged in the block.
+ * Pitch survives only as a small tiebreak between otherwise-equal candidates.
  */
 function computeSingleSheetMatchScore(block: SpecBlock, screen: ExtractedLEDSpec): number {
   let score = 0;
-  let maxScore = 0;
 
-  // 1. Pixel pitch match from Column B — strongest signal
-  maxScore += 35;
-  if (block.colBPitch != null && screen.pixelPitchMm != null) {
-    if (Math.abs(block.colBPitch - screen.pixelPitchMm) < 0.1) {
-      score += 35;
-    } else if (Math.abs(block.colBPitch - screen.pixelPitchMm) < 0.5) {
-      score += 15;
-    }
-  }
-
-  // 2. Display name match (block header vs screen name)
-  maxScore += 30;
-  const nameScore = fuzzyNameMatch(block.displayName, screen.name);
-  score += nameScore * 30;
-
-  // 3. Dimension match — compare block displayName hints with screen dimensions
-  maxScore += 25;
-  const blockNameLower = block.displayName.toLowerCase();
-  // Check if dimensions appear in display name (e.g., "32' x 106'")
-  const dimMatch = blockNameLower.match(/([\d.]+)['']\s*(?:x|by)\s*([\d.]+)/);
-  if (dimMatch && screen.heightFt != null && screen.widthFt != null) {
-    const d1 = parseFloat(dimMatch[1]);
-    const d2 = parseFloat(dimMatch[2]);
-    // Dimensions could be in either order
-    if ((Math.abs(d1 - screen.heightFt) < 1 && Math.abs(d2 - screen.widthFt) < 1) ||
-        (Math.abs(d1 - screen.widthFt) < 1 && Math.abs(d2 - screen.heightFt) < 1)) {
-      score += 25;
-    }
-  } else {
-    // Partial credit if name includes location keywords matching the screen
-    const locScore = screen.location
-      ? fuzzyNameMatch(block.displayName, screen.location) * 0.5
-      : 0;
-    score += locScore * 25;
-  }
-
-  // 4. Alternate flag match
-  maxScore += 10;
   const isBlockAlternate = /alternate|alt\s*\d/i.test(block.displayName);
-  const isScreenAlternate = screen.isAlternate === true;
-  if (isBlockAlternate === isScreenAlternate) {
+  const isScreenAlternate = screenIsAlternate(screen);
+
+  // An alternate screen must never fill a base-bid block, or vice versa.
+  if (isBlockAlternate !== isScreenAlternate) return 0;
+
+  // 1. Physical size from Column B — decisive when the form provides it.
+  const dimScore = dimensionSimilarity(block, screen);
+  if (dimScore != null) {
+    if (dimScore === 0) return 0; // different display, whatever the name says
+    score += dimScore * 50;
+  }
+
+  // 2. Quantity — "Two (2)" ribbons vs a single board.
+  if (block.colBQuantity != null && screen.quantity != null && block.colBQuantity === screen.quantity) {
     score += 10;
   }
 
-  return maxScore > 0 ? score / maxScore : 0;
+  // 3. Name — separates same-size displays (Blue Zone vs East End Zone).
+  score += fuzzyNameMatch(block.displayName, screen.name) * 30;
+
+  // 4. Pitch — weak tiebreak only, and only on an exact match.
+  if (block.colBPitch != null && screen.pixelPitchMm != null
+      && Math.abs(block.colBPitch - screen.pixelPitchMm) < 0.05) {
+    score += 5;
+  }
+
+  // Blocks with no Column B size fall back to the name, which alone can carry a match.
+  const maxScore = dimScore != null ? 95 : 45;
+  return score / maxScore;
 }
 
 function fuzzyVenueMatch(sheetName: string, screenLocation: string, screenName: string): number {
