@@ -11,6 +11,7 @@ import SchedulePreview from "@/app/components/proposal/form/sections/SchedulePre
 import { Badge } from "@/components/ui/badge";
 import { useProposalContext } from "@/contexts/ProposalContext";
 import { SOWGeneratorPanel } from "@/app/components/proposal/SOWGeneratorPanel";
+import { FreeformTableBuilder } from "./FreeformTableBuilder";
 import type { ProposalType } from "@/types";
 
 const Step2Intelligence = () => {
@@ -66,6 +67,9 @@ const Step2Intelligence = () => {
             <div className="h-full flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 {/* Pricing Line Items — primary editing surface for Mirror Mode */}
                 <PricingTableEditor />
+
+                {/* Free-form pricing tables — build pricing from scratch, alongside the mirrored tables */}
+                <FreeformTableBuilder />
 
                 {/* Brightness Editor — minimal per-screen brightness input */}
                 {screenCount > 0 && (
@@ -294,6 +298,9 @@ const Step2Intelligence = () => {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Free-form pricing tables — build pricing from scratch */}
+            <FreeformTableBuilder />
 
             {ntpDate && (
                 <SchedulePreview />
