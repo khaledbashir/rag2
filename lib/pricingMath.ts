@@ -84,6 +84,33 @@ export interface RenderedLineItem {
 }
 
 // ============================================================================
+// TAX LABEL
+// ============================================================================
+
+/**
+ * Build the tax row's display label, surfacing the rate the sheet already carries.
+ *
+ * ANC cost sheets put the tax *rate* in its own cell ("10.25%") and the tax
+ * *amount* in the selling-price column, so the parsed label is a bare "TAX".
+ * Rendering that alone forced Natalia to type the percentage into every PDF by
+ * hand (2026-07-09). When the rate is known and the label doesn't already spell
+ * it out (e.g. Canadian sheets label the row "HST 13%"), append it.
+ *
+ * The Excel label's own casing is preserved — Mirror Mode mirrors the sheet.
+ */
+export function formatTaxLabel(label: string | null | undefined, rate: number | null | undefined): string {
+    const base = (label || "").trim() || "Tax";
+    if (base.includes("%")) return base; // sheet already spelled the rate into the label
+    const r = Number(rate);
+    // Rates outside (0, 0.5] are absent or misparsed dollar amounts — show the bare label.
+    if (!Number.isFinite(r) || r <= 0 || r > 0.5) return base;
+    // Keep 4 decimal places of percent so real rates survive intact (NYC is 8.875%),
+    // then let Number drop trailing zeros: 0.1025 → 10.25, 0.13 → 13.
+    const pct = Math.round(r * 1e6) / 1e4;
+    return `${base} (${pct}%)`;
+}
+
+// ============================================================================
 // TABLE-LEVEL TOTALS
 // ============================================================================
 
@@ -92,7 +119,7 @@ export interface RenderedTableTotals {
     items: RenderedLineItem[];
     /** Sum of rounded item prices (excludes isIncluded items) */
     subtotal: number;
-    /** Tax label from parsed data (e.g. "Tax 13%", "HST 13%") */
+    /** Tax label with the sheet's rate appended when known (e.g. "TAX (10.25%)", "HST 13%") */
     taxLabel: string;
     /** Tax amount — rounded(subtotal × derivedRate) */
     tax: number;
@@ -159,7 +186,7 @@ export function computeTableTotals(
     let tax = 0;
     let taxLabel = "";
     if (table.tax) {
-        taxLabel = table.tax.label || "Tax";
+        taxLabel = formatTaxLabel(table.tax.label, table.tax.rate);
         if (typeof table.tax.amount === "number") {
             // Excel provided the tax amount (including 0) — use it directly (Mirror Mode), then convert
             tax = roundToDisplay(table.tax.amount * fx);

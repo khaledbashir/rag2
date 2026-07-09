@@ -174,6 +174,27 @@ describe("Mirror vs Intelligence mode", () => {
     expect(container.textContent).toContain("GRAND TOTAL");
   });
 
+  // Natalia 2026-07-09: her San Jose - CPA sheet keeps the tax RATE in its own
+  // cell and the AMOUNT in the selling-price column, so the PDF used to print a
+  // bare "TAX" and she typed "10.25%" in by hand on every export.
+  it("Mirror mode prints the sheet's tax rate in the tax row label", () => {
+    const table1 = buildPricingTable("San Jose - CPA", [
+      { description: "Generator Rental (One Month)", sellingPrice: 9900 },
+      { description: "Project Management", sellingPrice: 2000 },
+    ], 29443);
+    (table1 as any).subtotal = 26706;
+    (table1 as any).tax = { rate: 0.1025, label: "TAX", amount: 2737 };
+    const pricingDocument = buildPricingDocument([table1]);
+
+    const props = baseProps({
+      documentMode: "BUDGET",
+      pricingDocument,
+      mirrorMode: true,
+    });
+    const { container } = render(<ProposalTemplate5 {...props} />);
+    expect(container.textContent).toContain("TAX (10.25%)");
+  });
+
   it("Intelligence mode renders line items from screens/quoteItems", () => {
     const props = baseProps({
       documentMode: "PROPOSAL",
@@ -284,8 +305,9 @@ describe("Signature Block", () => {
     expect(container.textContent).toContain("Agreed To And Accepted");
     expect(container.textContent).toContain("ANC Sports Enterprises, LLC");
     expect(container.textContent).toContain("Purchaser");
-    // Default signature block text
-    expect(container.textContent).toContain("entire understanding between the parties");
+    // Default signature block text (Natalia 2026-07-09)
+    expect(container.textContent).toContain("agreement to purchase the Display System as described herein");
+    expect(container.textContent).toContain("Payment is due within thirty (30) days");
   });
 
   it("CHANGE_ORDER mode includes signature block and agreement text by default", () => {
@@ -296,7 +318,7 @@ describe("Signature Block", () => {
     });
     const { container } = render(<ProposalTemplate5 {...props} />);
     expect(container.textContent).toContain("Agreed To And Accepted");
-    expect(container.textContent).toContain("entire understanding between the parties");
+    expect(container.textContent).toContain("agreement to purchase the Display System as described herein");
   });
 });
 

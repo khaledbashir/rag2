@@ -4,6 +4,7 @@ import {
     computeTableReconciliation,
     computeTableTotals,
     findHiddenRowGaps,
+    formatTaxLabel,
 } from "./pricingMath";
 import type { PricingDocument, PricingTable } from "@/types/pricing";
 
@@ -34,6 +35,78 @@ describe("computeTableTotals", () => {
             { description: "Included Service", price: 250, isIncluded: true, textValue: "INCLUDED" },
             { description: "Excluded Option", price: 500, isExcluded: true, textValue: "EXCLUDED" },
         ]);
+    });
+});
+
+describe("formatTaxLabel (Natalia 2026-07-09 — surface the sheet's tax rate)", () => {
+    it("appends the rate when the sheet keeps it in a separate cell", () => {
+        expect(formatTaxLabel("TAX", 0.1025)).toBe("TAX (10.25%)");
+    });
+
+    it("preserves the Excel label's own casing (Mirror Mode mirrors the sheet)", () => {
+        expect(formatTaxLabel("Sales Tax", 0.08875)).toBe("Sales Tax (8.875%)");
+    });
+
+    it("drops trailing zeros on whole-number rates", () => {
+        expect(formatTaxLabel("TAX", 0.13)).toBe("TAX (13%)");
+    });
+
+    it("leaves the label alone when the sheet already spelled the rate into it", () => {
+        expect(formatTaxLabel("HST 13%", 0.13)).toBe("HST 13%");
+    });
+
+    it("falls back to a bare label when no rate was parsed", () => {
+        expect(formatTaxLabel("TAX", 0)).toBe("TAX");
+        expect(formatTaxLabel("TAX", null)).toBe("TAX");
+        expect(formatTaxLabel("TAX", undefined)).toBe("TAX");
+    });
+
+    it("ignores a misparsed dollar amount masquerading as a rate", () => {
+        expect(formatTaxLabel("TAX", 2737)).toBe("TAX");
+    });
+
+    it("defaults an empty label to Tax", () => {
+        expect(formatTaxLabel("", 0.1025)).toBe("Tax (10.25%)");
+    });
+});
+
+describe("computeTableTotals — tax label carries the rate", () => {
+    // Natalia's San Jose - CPA sheet: TAX row holds 10.25% in the cost column and
+    // $2,737 in the selling-price column. The PDF used to render a bare "TAX".
+    const sanJoseCpa: PricingTable = {
+        id: "table-sj",
+        name: "San Jose - CPA",
+        currency: "USD",
+        items: [
+            { description: "Generator Rental (One Month)", sellingPrice: 9900, isIncluded: false },
+            { description: "Genator Delivery Charge", sellingPrice: 1375, isIncluded: false },
+            { description: "Damage Waiver", sellingPrice: 825, isIncluded: false },
+            { description: "Generator Connect and Disconnect", sellingPrice: 12606, isIncluded: false },
+            { description: "Project Management", sellingPrice: 2000, isIncluded: false },
+        ],
+        subtotal: 26706,
+        tax: { rate: 0.1025, label: "TAX", amount: 2737 },
+        bond: 0,
+        tariff: 0,
+        grandTotal: 29443,
+        alternates: [],
+    };
+
+    it("renders the rate in the tax label", () => {
+        const totals = computeTableTotals(sanJoseCpa);
+        expect(totals.taxLabel).toBe("TAX (10.25%)");
+    });
+
+    it("still mirrors Excel's tax amount and grand total exactly", () => {
+        const totals = computeTableTotals(sanJoseCpa);
+        expect(totals.tax).toBe(2737);
+        expect(totals.subtotal).toBe(26706);
+        expect(totals.grandTotal).toBe(29443);
+    });
+
+    it("leaves the label bare when the sheet carries an amount but no rate", () => {
+        const noRate = { ...sanJoseCpa, tax: { rate: 0, label: "TAX", amount: 2737 } };
+        expect(computeTableTotals(noRate).taxLabel).toBe("TAX");
     });
 });
 

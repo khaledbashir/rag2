@@ -51,7 +51,6 @@ interface ProposalTemplate5Props extends ProposalType {
     isSharedView?: boolean;
 }
 
-const DEFAULT_SIGNATURE_BLOCK_TEXT = "This agreement constitutes the entire understanding between the parties and supersedes all prior agreements. Any modifications must be in writing and signed by both parties.";
 
 const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const { sender, receiver, details, forceWhiteLogo, screens: screensProp, isSharedView = false } = data;

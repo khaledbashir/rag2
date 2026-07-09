@@ -15,6 +15,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTranslationContext } from "@/contexts/TranslationContext";
 import { useProposalContext } from "@/contexts/ProposalContext";
 
+// Shared legal defaults (same text the PDF falls back to when the field is empty)
+import { DEFAULT_SIGNATURE_BLOCK_TEXT } from "@/app/components/templates/proposal-pdf/sections/shared";
+
 // Icons
 import { Plus, Settings2, ChevronDown, ChevronUp, FileText, FileSpreadsheet, FileCheck, Trash2 } from "lucide-react";
 
@@ -59,10 +62,9 @@ const Screens = () => {
         return `This Sales Quotation will set forth the terms by which ${clientName} ("Purchaser") located at ${clientAddress} and ANC Sports Enterprises, LLC ("ANC") located at 2 Manhattanville Road, Suite 402, Purchase, NY 10577 (collectively, the "Parties") agree that ANC will provide following LED Display and services (the "Display System") described below for the ${projectName}.`;
     };
 
-    // Default legal text for signature block
-    const defaultSignatureText = `Please sign below to indicate Purchaser's agreement to purchase the Display System as described herein and to authorize ANC to commence production.
-
-If, for any reason, Purchaser terminates this Agreement prior to the completion of the work, ANC will immediately cease all work and Purchaser will pay ANC for any work performed, work in progress, and materials purchased, if any. This document will be considered binding on both parties; however, it will be followed by a formal agreement containing standard contract language, including terms of liability, indemnification, and warranty. Payment is due within thirty (30) days of ANC's invoice(s).`;
+    // Default legal text for signature block — shared with the PDF fallback so
+    // "Load default" inserts exactly what an untouched proposal already renders.
+    const defaultSignatureText = DEFAULT_SIGNATURE_BLOCK_TEXT;
 
     const SCREENS_NAME = "details.screens";
     const { fields, append, remove, move } = useFieldArray({
