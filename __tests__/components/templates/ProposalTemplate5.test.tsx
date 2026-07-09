@@ -273,7 +273,11 @@ describe("Responsibility Matrix", () => {
     expect(container.textContent).toContain("Provide structural steel");
   });
 
-  it("hidden when includeResponsibilityMatrix is false and no respMatrix in pricingDocument", () => {
+  // feb2c2b2 baked the ANC master matrix into every proposal PDF, so it now
+  // auto-appears with no Excel sheet and no wizard opt-in — mirroring how the
+  // Exhibit A specs page is auto-generated. includeResponsibilityMatrix only
+  // governs the Intelligence Mode wizard's own matrix, not this fallback.
+  it("falls back to the ANC master matrix when the sheet has none and the wizard opted out", () => {
     const table1 = buildPricingTable("LED Display", [
       { description: "Panel", sellingPrice: 10000 },
     ], 10000);
@@ -285,6 +289,24 @@ describe("Responsibility Matrix", () => {
       pricingDocument,
       mirrorMode: true,
       includeResponsibilityMatrix: false,
+    });
+    const { container } = render(<ProposalTemplate5 {...props} />);
+    expect(container.textContent).toContain("Exhibit B — Statement of Work");
+  });
+
+  // showResponsibilityMatrix is the author-facing kill switch — the one that has
+  // to work, since it's what keeps an unwanted Exhibit B out of a client PDF.
+  it("hidden when the author turns showResponsibilityMatrix off", () => {
+    const table1 = buildPricingTable("LED Display", [
+      { description: "Panel", sellingPrice: 10000 },
+    ], 10000);
+    const pricingDocument = buildPricingDocument([table1]);
+
+    const props = baseProps({
+      documentMode: "BUDGET",
+      pricingDocument,
+      mirrorMode: true,
+      showResponsibilityMatrix: false,
     });
     const { container } = render(<ProposalTemplate5 {...props} />);
     expect(container.textContent).not.toContain("Exhibit B — Statement of Work");
