@@ -32,6 +32,7 @@ import {
     SHORT_DATE_OPTIONS,
     LOCAL_STORAGE_PROPOSAL_DRAFT_KEY,
 } from "@/lib/variables";
+import { getDocumentTypeLabel } from "@/lib/documentMode";
 
 // Types
 import { ExportTypes, ProposalType } from "@/types";
@@ -1426,7 +1427,7 @@ export const ProposalContextProvider = ({
                     const clientName = (details?.clientName || details?.proposalName || "proposal").toString();
                     const safeUnderscored = (s: string) => s.replace(/[/\\:*?"<>|]/g, "").replace(/\s+/g, "_").trim().slice(0, 50) || "Client";
                     const docMode = details?.documentMode || "LOI";
-                    const documentTypeLabel = docMode === "LOI" ? "Short_Form_Agreement" : docMode === "CONTRACT" ? "Short_Form_Contract" : docMode === "PROPOSAL" ? "Proposal" : "Budget_Estimate";
+                    const documentTypeLabel = getDocumentTypeLabel(docMode);
                     const dateStr = new Date().toISOString().slice(0, 10);
                     const fileName = `ANC_${safeUnderscored(clientName)}_${documentTypeLabel}_${dateStr}_jsreport.pdf`;
                     const a = document.createElement("a");
@@ -1528,14 +1529,7 @@ export const ProposalContextProvider = ({
                     .trim()
                     .slice(0, 50) || "Client";
             const docMode = details?.documentMode ?? headerType;
-            const documentTypeLabel =
-                docMode === "LOI"
-                    ? "Short_Form_Agreement"
-                    : docMode === "CONTRACT"
-                        ? "Short_Form_Contract"
-                        : docMode === "PROPOSAL"
-                        ? "Proposal"
-                        : "Budget_Estimate";
+            const documentTypeLabel = getDocumentTypeLabel(docMode);
             const dateStr = new Date().toISOString().slice(0, 10);
             const fileName = `ANC_${safeUnderscored(clientName)}_${documentTypeLabel}_${dateStr}.pdf`;
             const a = document.createElement("a");
@@ -1826,7 +1820,7 @@ export const ProposalContextProvider = ({
                 const blob = await res.blob();
                 if (blob.size === 0) continue;
 
-                const bundleDocType = mode === "LOI" ? "Short_Form_Agreement" : mode === "CONTRACT" ? "Short_Form_Contract" : mode === "PROPOSAL" ? "Proposal" : "Budget_Estimate";
+                const bundleDocType = getDocumentTypeLabel(mode);
                 const fileName = `ANC_${safeUnderscored(clientName)}_${bundleDocType}_${bundleDateStr}.pdf`;
 
                 triggerDownload(blob, fileName);

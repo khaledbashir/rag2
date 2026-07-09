@@ -202,6 +202,7 @@ export const FORM_DEFAULT_VALUES = {
     changeOrderRequestedBy: "",
     changeOrderDate: "",
     changeOrderOriginalContractNumber: "",
+    changeOrderOriginalAgreementDate: "",
     changeOrderOriginalContractAmount: 0,
     changeOrderPreviousTotalAmount: 0,
     changeOrderOverheadPct: 0,

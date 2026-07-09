@@ -43,6 +43,27 @@ export function getModeConfig(mode: DocumentMode) {
   return DOCUMENT_MODES[mode.toLowerCase() as CatalogDocumentMode] || DOCUMENT_MODES.proposal;
 }
 
+/**
+ * Filename/title label for a document mode, e.g. "Change_Order".
+ *
+ * Every export path used to inline its own ternary ladder, and three of the four
+ * omitted CHANGE_ORDER — so change orders downloaded as "..._Budget_Estimate_...".
+ * (Natalia 2026-07-09: "CO comes up exported and in file name it says Budget".)
+ * Keep every export path pointed at this function so a new mode can't silently
+ * fall through to Budget again.
+ */
+export function getDocumentTypeLabel(mode: DocumentMode | string | null | undefined): string {
+  switch (mode) {
+    case "LOI": return "Short_Form_Agreement";
+    case "CONTRACT": return "Short_Form_Contract";
+    case "CHANGE_ORDER": return "Change_Order";
+    case "SERVICE_CONTRACT":
+    case "SERVICE_AGREEMENT": return "Service_Contract";
+    case "PROPOSAL": return "Proposal";
+    default: return "Budget_Estimate";
+  }
+}
+
 export function resolveDocumentMode(details: any): DocumentMode {
   const explicit = details?.documentMode;
   if (

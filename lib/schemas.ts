@@ -340,6 +340,7 @@ const ProposalDetailsSchema = z.object({
     changeOrderRequestedBy: z.string().optional(),
     changeOrderDate: z.string().optional(),
     changeOrderOriginalContractNumber: z.string().optional(), // Reference # of the parent contract being amended
+    changeOrderOriginalAgreementDate: z.string().optional(), // Date of the parent agreement — "Agreement dated ____" in the CO intro
     changeOrderOriginalContractAmount: z.number().optional().default(0),
     changeOrderPreviousTotalAmount: z.number().optional().default(0),
     changeOrderOverheadPct: z.number().optional().default(0), // ANC overhead %

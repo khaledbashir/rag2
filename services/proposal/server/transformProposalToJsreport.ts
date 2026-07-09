@@ -2,6 +2,7 @@ import { ProposalType } from "@/types";
 import { computeTableTotals, computeDocumentTotalFromTables, resolveExchangeRate } from "@/lib/pricingMath";
 import { normalizePitch } from "@/lib/helpers";
 import { resolveDocumentMode } from "@/lib/documentMode";
+import { changeOrderIntroHtml } from "@/lib/changeOrderIntro";
 import { DOCUMENT_MODES, DocumentMode as CatalogDocumentMode } from "@/services/rfp/productCatalog";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -260,8 +261,13 @@ export function transformProposalToJsreport(
     if (isCO && changeOrderIntroOverride) {
         introText = changeOrderIntroOverride;
     } else if (isCO) {
-        const venueClause = venueLabel ? ` at <strong style="color:black">${venueLabel}</strong>` : "";
-        introText = `This Change Order amends the existing agreement between <strong style="color:black">${purchaserLegalName}</strong> and <strong style="color:black">ANC Sports Enterprises, LLC</strong> for the <strong style="color:black">${details?.proposalName || "project"}</strong>${venueClause}. The scope, pricing, and revised contract totals are set forth below.`;
+        introText = changeOrderIntroHtml({
+            changeOrderNumber: (details as any)?.changeOrderNumber,
+            originalAgreementDate: (details as any)?.changeOrderOriginalAgreementDate,
+            purchaserLegalName,
+            purchaserAddress,
+            projectName: details?.proposalName || "",
+        });
     } else if (isLOI && details?.loiHeaderText?.trim()) {
         introText = details.loiHeaderText.trim();
     } else if (details?.introText?.trim()) {

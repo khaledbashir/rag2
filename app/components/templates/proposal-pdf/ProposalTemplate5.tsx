@@ -44,6 +44,7 @@ import type { DocumentMode as CatalogDocumentMode } from "@/services/rfp/product
 import { ProposalType } from "@/types";
 import { RespMatrix } from "@/types/pricing";
 import { getMasterRespMatrix } from "@/lib/respMatrixMaster";
+import { buildChangeOrderIntroSegments } from "@/lib/changeOrderIntro";
 
 interface ProposalTemplate5Props extends ProposalType {
     forceWhiteLogo?: boolean;
@@ -76,6 +77,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const changeOrderPreviousTotalAmount = Number((details as any)?.changeOrderPreviousTotalAmount) || 0;
     const changeOrderOverheadPct = Number((details as any)?.changeOrderOverheadPct) || 0;
     const changeOrderIntroText = (((details as any)?.changeOrderIntroText || "") + "").trim();
+    const changeOrderOriginalAgreementDate = (((details as any)?.changeOrderOriginalAgreementDate || "") + "").trim();
 
     // Header label — CO mode appends the CO number ("CHANGE ORDER · CO-01") so it shows in the header per the CO #4 spec.
     const docLabel = isCO && changeOrderNumber
@@ -767,7 +769,17 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                                 <p className="text-justify whitespace-pre-wrap">{changeOrderIntroText}</p>
                             ) : (
                                 <p className="text-justify">
-                                    This Change Order amends the existing agreement between <strong style={{ color: colors.text }}>{purchaserLegalName}</strong> and <strong style={{ color: colors.text }}>ANC Sports Enterprises, LLC</strong> for the <strong style={{ color: colors.text }}>{details?.proposalName || (details as any)?.clientName || receiver?.name || "project"}</strong>{venueLabel ? <> at <strong style={{ color: colors.text }}>{venueLabel}</strong></> : null}. The scope, pricing, and revised contract totals are set forth below.
+                                    {buildChangeOrderIntroSegments({
+                                        changeOrderNumber,
+                                        originalAgreementDate: formatShortFormDate(changeOrderOriginalAgreementDate) || changeOrderOriginalAgreementDate,
+                                        purchaserLegalName,
+                                        purchaserAddress,
+                                        projectName: details?.proposalName || (details as any)?.clientName || receiver?.name || "",
+                                    }).map((seg, i) =>
+                                        seg.bold
+                                            ? <strong key={i} style={{ color: colors.text }}>{seg.text}</strong>
+                                            : <React.Fragment key={i}>{seg.text}</React.Fragment>
+                                    )}
                                 </p>
                             )
                         ) : isLOI ? (

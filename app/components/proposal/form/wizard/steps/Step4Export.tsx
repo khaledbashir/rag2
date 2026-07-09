@@ -1364,6 +1364,19 @@ const Step4Export = () => {
                                             />
                                         </div>
                                         <div className="flex flex-col gap-1">
+                                            <Label htmlFor="changeOrderOriginalAgreementDate" className="text-[11px] font-medium text-muted-foreground">Original Agreement Date</Label>
+                                            <Input
+                                                id="changeOrderOriginalAgreementDate"
+                                                type="date"
+                                                value={watch("details.changeOrderOriginalAgreementDate" as any) || ""}
+                                                onChange={(e) => setValue("details.changeOrderOriginalAgreementDate" as any, e.target.value, { shouldDirty: true })}
+                                                className="h-8 text-xs"
+                                            />
+                                            <p className="text-[10px] text-muted-foreground">Date of the agreement this CO amends — fills &quot;Agreement dated ___&quot; in the opening.</p>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="flex flex-col gap-1">
                                             <Label htmlFor="changeOrderOriginalContractAmount" className="text-[11px] font-medium text-muted-foreground">Original Contract Amount</Label>
                                             <Input
                                                 id="changeOrderOriginalContractAmount"
@@ -1711,6 +1724,16 @@ const Step4Export = () => {
                                                     <p className="text-[11px] text-muted-foreground">Include payment terms section</p>
                                                 </div>
                                                 <Switch id="showPaymentTerms-proposal" checked={watch("details.showPaymentTerms") ?? true} onCheckedChange={(checked) => setValue("details.showPaymentTerms", checked)} className="data-[state=checked]:bg-brand-blue" />
+                                            </div>
+                                            {/* Change Orders and Service Contracts resolve to this tab, and both sign.
+                                                The toggle existed only on the LOI tab, so a CO author could never turn
+                                                signature lines off (Natalia 2026-07-09). */}
+                                            <div className="flex items-center justify-between py-3 border-b border-border/30">
+                                                <div className="flex flex-col">
+                                                    <Label htmlFor="showSignatureBlock-proposal" className="text-sm font-semibold text-foreground">Signature Lines</Label>
+                                                    <p className="text-[11px] text-muted-foreground">Include signature block for both parties</p>
+                                                </div>
+                                                <Switch id="showSignatureBlock-proposal" checked={watch("details.showSignatureBlock") ?? true} onCheckedChange={(checked) => setValue("details.showSignatureBlock", checked, { shouldDirty: true })} className="data-[state=checked]:bg-brand-blue" />
                                             </div>
                                             <div className="flex items-center justify-between py-3 border-b border-border/30">
                                                 <div className="flex flex-col">

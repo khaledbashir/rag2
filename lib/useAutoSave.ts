@@ -108,6 +108,20 @@ export function useAutoSave({
                         showNotes: (formData.details as any)?.showNotes,
                         showScopeOfWork: (formData.details as any)?.showScopeOfWork,
                         pageLayout: (formData.details as any)?.pageLayout,
+                        // Change Order fields. There are no changeOrder* columns on Project —
+                        // mapDbProposalToForm reads them back out of documentConfig — so without
+                        // these lines every CO field (number, dates, amounts, intro) was silently
+                        // dropped on reload.
+                        changeOrderNumber: (formData.details as any)?.changeOrderNumber,
+                        changeOrderRequestedBy: (formData.details as any)?.changeOrderRequestedBy,
+                        changeOrderDate: (formData.details as any)?.changeOrderDate,
+                        changeOrderOriginalContractNumber: (formData.details as any)?.changeOrderOriginalContractNumber,
+                        changeOrderOriginalAgreementDate: (formData.details as any)?.changeOrderOriginalAgreementDate,
+                        changeOrderOriginalContractAmount: (formData.details as any)?.changeOrderOriginalContractAmount,
+                        changeOrderPreviousTotalAmount: (formData.details as any)?.changeOrderPreviousTotalAmount,
+                        changeOrderOverheadPct: (formData.details as any)?.changeOrderOverheadPct,
+                        changeOrderIntroText: (formData.details as any)?.changeOrderIntroText,
+                        showChangeOrderTotals: (formData.details as any)?.showChangeOrderTotals,
                     },
                     // CRITICAL: Persist Excel pricing data to prevent data loss
                     pricingDocument: (formData.details as any)?.pricingDocument,

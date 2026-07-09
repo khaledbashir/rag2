@@ -342,6 +342,67 @@ describe("Signature Block", () => {
     expect(container.textContent).toContain("Agreed To And Accepted");
     expect(container.textContent).toContain("agreement to purchase the Display System as described herein");
   });
+
+  // Natalia 2026-07-09: "CO has to have option to tuggle signature block on off".
+  // The field and the template already supported it; the Step4Export toggle only
+  // existed on the LOI tab, which a Change Order never lands on.
+  it("CHANGE_ORDER honors showSignatureBlock=false", () => {
+    const props = baseProps({
+      documentMode: "CHANGE_ORDER",
+      showSignatureBlock: false,
+      showPaymentTerms: false,
+    });
+    const { container } = render(<ProposalTemplate5 {...props} />);
+    expect(container.textContent).not.toContain("Agreed To And Accepted");
+  });
+});
+
+// ============================================================================
+// CHANGE ORDER INTRO (Natalia 2026-07-09 — "new intro for CO")
+// ============================================================================
+
+describe("Change Order intro", () => {
+  it("renders Natalia's opening, filling the blanks from project data", () => {
+    const props = baseProps({
+      documentMode: "CHANGE_ORDER",
+      showIntroText: true,
+      additionalNotes: "",
+      changeOrderNumber: "CO-02",
+      changeOrderOriginalAgreementDate: "2026-03-04",
+      purchaserLegalName: "Baltimore Ravens LP",
+    });
+    const { container } = render(<ProposalTemplate5 {...props} />);
+    const text = container.textContent || "";
+    expect(text).toContain("This Change Order No. CO-02 modifies Agreement dated");
+    expect(text).toContain("shall be incorporated into and become part of the Original Agreement");
+    expect(text).toContain("remain in full force and effect");
+    // The pre-2026-07-09 wording must be gone.
+    expect(text).not.toContain("amends the existing agreement between");
+  });
+
+  it("shows fill-in rules rather than 'undefined' when CO fields are blank", () => {
+    const props = baseProps({
+      documentMode: "CHANGE_ORDER",
+      showIntroText: true,
+      additionalNotes: "",
+    });
+    const { container } = render(<ProposalTemplate5 {...props} />);
+    const text = container.textContent || "";
+    expect(text).toContain("This Change Order No. ___ modifies Agreement dated ________");
+    expect(text).not.toMatch(/undefined|NaN/);
+  });
+
+  it("a per-deal changeOrderIntroText override still wins", () => {
+    const props = baseProps({
+      documentMode: "CHANGE_ORDER",
+      showIntroText: true,
+      additionalNotes: "",
+      changeOrderIntroText: "Bespoke opening for this deal.",
+    });
+    const { container } = render(<ProposalTemplate5 {...props} />);
+    expect(container.textContent).toContain("Bespoke opening for this deal.");
+    expect(container.textContent).not.toContain("modifies Agreement dated");
+  });
 });
 
 describe("Change Order Totals", () => {
