@@ -225,7 +225,7 @@ export function FreeformTableBuilder() {
                                             <div className="flex items-center justify-between gap-3">
                                                 <div>
                                                     <Label className="text-[11px] text-muted-foreground">Rows</Label>
-                                                    <p className="text-[10px] text-muted-foreground/80">Choose Header, Subtotal, or Grand Total only to change appearance.</p>
+                                                    <p className="text-[10px] text-muted-foreground/80">Choose Header, Subtotal, Tax, Bond, or Grand Total only to change appearance.</p>
                                                 </div>
                                                 <BaseButton variant="outline" size="sm" onClick={() => addRow(table.id)} className="h-7 text-xs shrink-0">
                                                     <Plus className="h-3 w-3 mr-1" /> Add row
