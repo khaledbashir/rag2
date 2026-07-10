@@ -21,6 +21,15 @@ export const authConfig = {
         nextUrl.pathname.startsWith("/api/uploadthing") ||
         nextUrl.pathname.startsWith("/api/pricing-logic") ||
         nextUrl.pathname.startsWith("/api/agent-skill") ||
+        // Headless bot API. Exempt in middleware.ts but, until now, not here —
+        // so the session guard redirected it to /auth/login before its own
+        // check could run. Every /api/bot route validates
+        // `Authorization: Bearer $BOT_API_TOKEN` itself (app/api/bot/auth.ts),
+        // so this exempts the session guard, not authentication.
+        // Deliberately NOT extended to /api/mcp: that route has no inbound
+        // auth of its own, and exposing it would make create_proposal callable
+        // by anyone.
+        nextUrl.pathname.startsWith("/api/bot") ||
         nextUrl.pathname.startsWith("/api/twenty-bridge/") ||
         nextUrl.pathname.startsWith("/api/jireh-reports/") ||
         nextUrl.pathname.startsWith("/api/crm-reports/") ||
