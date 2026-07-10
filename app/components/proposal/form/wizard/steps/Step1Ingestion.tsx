@@ -1,6 +1,6 @@
 "use client";
 
-import { useFieldArray, useFormContext, useWatch } from "react-hook-form";
+import { useFormContext, useWatch } from "react-hook-form";
 import {
     Upload,
     FileSpreadsheet,
@@ -13,9 +13,12 @@ import {
     FileSearch,
     Settings2,
     RefreshCw,
-    Plus,
     ArrowLeftRight,
+    ArrowRight,
+    Boxes,
+    Calculator,
     PenTool,
+    TableProperties,
     ExternalLink,
 } from "lucide-react";
 import { useProposalContext } from "@/contexts/ProposalContext";
@@ -23,7 +26,6 @@ import { FEATURES } from "@/lib/featureFlags";
 import { useState, useEffect } from "react";
 import { useWizard } from "react-use-wizard";
 import ExcelGridViewer from "@/app/components/ExcelGridViewer";
-import ScreensGridEditor from "@/app/components/proposal/form/ScreensGridEditor";
 import ActivityLog from "@/app/components/proposal/ActivityLog";
 import BriefMePanel from "@/app/components/proposal/intelligence/BriefMePanel";
 import { AiWand, FormInput } from "@/app/components";
@@ -85,14 +87,11 @@ const Step1Ingestion = () => {
         aiWorkspaceSlug,
     } = useProposalContext();
 
-    const { getValues, watch, control, setValue } = useFormContext();
+    const { getValues, watch, control, setValue, trigger } = useFormContext();
     const { nextStep } = useWizard();
-    const { fields: screenFields, append: appendScreen } = useFieldArray({
-        control,
-        name: "details.screens",
-    });
     const proposalId = watch("details.proposalId");
     const [address, city, zipCode] = watch(["receiver.address", "receiver.city", "receiver.zipCode"]);
+    const [proposalName, clientName] = watch(["details.proposalName", "receiver.name"]);
     const [rfpUploading, setRfpUploading] = useState(false);
     const [showDetails, setShowDetails] = useState(!excelPreview);
     const [searchPhase, setSearchPhase] = useState<AgentSearchPhase>("idle");
@@ -110,6 +109,20 @@ const Step1Ingestion = () => {
 
     const handleModeSelect = (_mirror: boolean, _mode?: WorkflowMode) => {
         setModeJustSelected(true);
+        setShowDetails(true);
+    };
+
+    const projectDetailsReady = Boolean(
+        proposalName?.toString().trim() && clientName?.toString().trim(),
+    );
+
+    const handleOpenFullBuilder = async () => {
+        const valid = await trigger(["details.proposalName", "receiver.name"]);
+        if (!valid || !projectDetailsReady) {
+            setShowDetails(true);
+            return;
+        }
+        nextStep();
     };
 
     const handleSwitchMode = () => {
@@ -473,7 +486,10 @@ const Step1Ingestion = () => {
                         )
                     ) : (
                         /* ═══ INTELLIGENCE MODE ═══ */
-                        <div className="flex flex-col h-full space-y-4">
+                        <div
+                            className="flex flex-col h-full space-y-5"
+                            data-testid="build-from-scratch-launch"
+                        >
                             {/* Start Blank / Import from RFP toggle */}
                             <div className="flex items-center gap-1 p-1 rounded-lg bg-muted/40 w-fit">
                                 <button
@@ -493,63 +509,62 @@ const Step1Ingestion = () => {
                                 </button>
                             </div>
 
-                            <div className="flex items-center justify-between px-1">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs font-semibold text-foreground">
-                                        {screenFields.length} screen{screenFields.length !== 1 ? "s" : ""}
-                                    </span>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        appendScreen({
-                                            name: "",
-                                            productType: "",
-                                            zoneComplexity: "standard",
-                                            zoneSize: "small",
-                                            widthFt: 0,
-                                            heightFt: 0,
-                                            quantity: 1,
-                                            pitchMm: 10,
-                                            costPerSqFt: 120,
-                                            desiredMargin: 0.25,
-                                            hiddenFromSpecs: false,
-                                            isReplacement: false,
-                                            useExistingStructure: false,
-                                            includeSpareParts: false,
-                                            isManualLineItem: false,
-                                        });
-                                    }}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-blue/10 text-brand-blue border border-brand-blue/20 text-xs font-medium hover:bg-brand-blue/20 transition-all"
-                                >
-                                    <Plus className="w-3.5 h-3.5" />
-                                    Add Screen
-                                </button>
-                            </div>
-
-                            <div className="rounded-2xl border border-border bg-card/30 overflow-hidden">
-                                <Tabs defaultValue="screens">
-                                    <div className="px-4 py-3 border-b border-border/70 flex items-center justify-between">
-                                        <div className="flex flex-col">
-                                            <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Screens</span>
-                                            <span className="text-xs font-semibold text-foreground">Configure display specifications</span>
+                            <div className="rounded-2xl border border-brand-blue/25 bg-gradient-to-br from-brand-blue/10 via-card to-card p-6 md:p-8 shadow-sm">
+                                <div className="flex flex-col gap-6">
+                                    <div className="flex items-start gap-4">
+                                        <div className="w-12 h-12 rounded-xl bg-brand-blue text-white flex items-center justify-center shrink-0 shadow-md shadow-brand-blue/20">
+                                            <PenTool className="w-6 h-6" />
                                         </div>
-                                        <TabsList className="bg-muted/40">
-                                            <TabsTrigger value="screens">Screen Editor</TabsTrigger>
-                                            <TabsTrigger value="activity">History</TabsTrigger>
-                                        </TabsList>
+                                        <div className="space-y-2">
+                                            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-blue">
+                                                Build from Scratch
+                                            </div>
+                                            <h2 className="text-xl font-bold text-foreground">
+                                                Open the full proposal builder
+                                            </h2>
+                                            <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
+                                                Setup only collects the project and client details. The full builder is in Configure, where you can add screens, select products and pitch, enter costs and margins, add manual line items, and build custom pricing tables.
+                                            </p>
+                                        </div>
                                     </div>
-                                    <TabsContent value="screens" className="m-0 h-full data-[state=inactive]:hidden">
-                                        <div className="h-[620px] max-h-[72vh] min-h-[400px] overflow-hidden flex flex-col">
-                                            <ScreensGridEditor />
-                                        </div>
-                                    </TabsContent>
-                                    <TabsContent value="activity" className="m-0 h-full data-[state=inactive]:hidden">
-                                        <div className="h-[620px] max-h-[72vh] min-h-[400px] overflow-hidden flex flex-col">
-                                            <ActivityLog proposalId={proposalId} />
-                                        </div>
-                                    </TabsContent>
-                                </Tabs>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                                        {[
+                                            { icon: Boxes, label: "Screens & specifications" },
+                                            { icon: Calculator, label: "Costs & margins" },
+                                            { icon: TableProperties, label: "Free-form pricing tables" },
+                                            { icon: FileText, label: "SOW & document settings" },
+                                        ].map(({ icon: Icon, label }) => (
+                                            <div
+                                                key={label}
+                                                className="flex items-center gap-2.5 rounded-lg border border-border/70 bg-background/70 px-3 py-3 text-xs font-medium text-foreground"
+                                            >
+                                                <Icon className="w-4 h-4 text-brand-blue shrink-0" />
+                                                {label}
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-border/60 pt-5">
+                                        <p className={cn(
+                                            "text-xs",
+                                            projectDetailsReady ? "text-emerald-600" : "text-muted-foreground",
+                                        )}>
+                                            {projectDetailsReady
+                                                ? "Project details are ready. Continue to the full builder."
+                                                : "Enter Project Name and Client Name above to continue."}
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={handleOpenFullBuilder}
+                                            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-brand-blue text-white text-sm font-semibold hover:bg-brand-blue/90 transition-colors shadow-sm"
+                                            data-testid="open-full-builder"
+                                        >
+                                            Open Full Builder
+                                            <ArrowRight className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
