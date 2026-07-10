@@ -45,6 +45,17 @@ function rowCellStyle(
     };
   }
 
+  // Tax and Bond are adjustment lines: they sit under the subtotal and read
+  // quieter than it, matching the VAT line on ANC's existing pricing tables.
+  if (rowStyle === "tax" || rowStyle === "bond") {
+    return {
+      ...base,
+      color: colors.textMuted,
+      fontSize: "11px",
+      borderBottom: `1px solid ${colors.borderLight}`,
+    };
+  }
+
   if (rowStyle === "grand-total") {
     return {
       ...base,

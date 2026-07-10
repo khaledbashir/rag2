@@ -43,6 +43,8 @@ const ROW_STYLE_LABELS: Record<FreeformRowStyle, string> = {
     normal: "Normal",
     header: "Header",
     subtotal: "Subtotal",
+    tax: "Tax",
+    bond: "Bond",
     "grand-total": "Grand Total",
 };
 

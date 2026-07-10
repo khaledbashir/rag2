@@ -420,7 +420,7 @@ const ProposalDetailsSchema = z.object({
         rows: z.array(z.object({
             id: z.string(),
             cells: z.record(z.string()).default({}),
-            style: z.enum(["normal", "header", "subtotal", "grand-total"]).optional().default("normal"),
+            style: z.enum(["normal", "header", "subtotal", "tax", "bond", "grand-total"]).optional().default("normal"),
         })),
         // Legacy flag accepted for reload compatibility. Automatic totals are disabled.
         showTotalsRow: z.boolean().optional().default(false),

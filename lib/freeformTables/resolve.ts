@@ -33,9 +33,17 @@ export function newTable(name = "DESCRIPTION OF WORK"): FreeformTable {
   return { id: uid("t"), name, columns: [], rows: [] };
 }
 
+const ROW_STYLES: ReadonlySet<string> = new Set<FreeformRowStyle>([
+  "header",
+  "subtotal",
+  "tax",
+  "bond",
+  "grand-total",
+]);
+
 export function normalizeRowStyle(value: unknown): FreeformRowStyle {
-  return value === "header" || value === "subtotal" || value === "grand-total"
-    ? value
+  return typeof value === "string" && ROW_STYLES.has(value)
+    ? (value as FreeformRowStyle)
     : "normal";
 }
 

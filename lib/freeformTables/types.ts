@@ -6,7 +6,13 @@
  */
 
 export type FreeformColumnAlignment = "left" | "center" | "right";
-export type FreeformRowStyle = "normal" | "header" | "subtotal" | "grand-total";
+export type FreeformRowStyle =
+  | "normal"
+  | "header"
+  | "subtotal"
+  | "tax"
+  | "bond"
+  | "grand-total";
 
 export interface FreeformColumn {
   /** Stable id, e.g. "c1". */

@@ -12,6 +12,7 @@ async function renderFreeform(tables: FreeformTable[]): Promise<string> {
     primaryLight: "#e6efff",
     text: "#1f2937",
     textMuted: "#6b7280",
+    borderLight: "#e5e7eb",
   } as any;
   return renderToStaticMarkup(React.createElement(Module, { colors, tables }));
 }
@@ -25,8 +26,9 @@ function buildManualTable(): FreeformTable {
     { id: "r2", style: "normal", cells: { [description.id]: "Gantry Demo, Walking Deck and Bracket Removal", [pricing.id]: "£11,250" } },
     { id: "r3", style: "normal", cells: { [description.id]: "Project Management, General Conditions, Travel & Expenses", [pricing.id]: "£350" } },
     { id: "r4", style: "subtotal", cells: { [description.id]: "SUBTOTAL", [pricing.id]: "£11,600" } },
-    { id: "r5", style: "normal", cells: { [description.id]: "VAT (20%)", [pricing.id]: "£2,320" } },
-    { id: "r6", style: "grand-total", cells: { [description.id]: "GRAND TOTAL", [pricing.id]: "£13,920" } },
+    { id: "r5", style: "tax", cells: { [description.id]: "VAT (20%)", [pricing.id]: "£2,320" } },
+    { id: "r6", style: "bond", cells: { [description.id]: "BOND (1.5%)", [pricing.id]: "£174" } },
+    { id: "r7", style: "grand-total", cells: { [description.id]: "GRAND TOTAL", [pricing.id]: "£13,920" } },
   ];
   return table;
 }
@@ -57,6 +59,25 @@ describe("manual table helpers", () => {
     expect(normalized.showTotalsRow).toBe(false);
   });
 
+  it("preserves tax and bond row roles without calculating them", () => {
+    const price = newColumn("Pricing", "right");
+    const normalized = normalizeTable({
+      id: "t",
+      name: "Adjustments",
+      columns: [price],
+      rows: [
+        { id: "r1", style: "tax", cells: { [price.id]: "£2,320" } },
+        { id: "r2", style: "bond", cells: { [price.id]: "£174" } },
+        { id: "r3", style: "vat" as any, cells: { [price.id]: "£1" } },
+      ],
+    });
+    expect(normalized.rows[0].style).toBe("tax");
+    expect(normalized.rows[1].style).toBe("bond");
+    // Unknown roles fall back to normal rather than throwing away the row.
+    expect(normalized.rows[2].style).toBe("normal");
+    expect(normalized.rows[0].cells[price.id]).toBe("£2,320");
+  });
+
   it("backfills added columns and removes deleted cells", () => {
     const table = buildManualTable();
     const firstColumnId = table.columns[0].id;
@@ -83,6 +104,8 @@ describe("PdfFreeformTables", () => {
     expect(html).toContain("£13,920");
     expect(html).toContain('data-row-style="header"');
     expect(html).toContain('data-row-style="subtotal"');
+    expect(html).toContain('data-row-style="tax"');
+    expect(html).toContain('data-row-style="bond"');
     expect(html).toContain('data-row-style="grand-total"');
     expect(html).not.toContain("$11,250.00");
     expect(html).not.toContain("Editor description");
