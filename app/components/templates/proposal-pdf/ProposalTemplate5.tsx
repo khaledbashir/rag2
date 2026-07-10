@@ -719,10 +719,40 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     // registry. Legacy SERVICE_AGREEMENT resolves to SERVICE_CONTRACT (see
     // resolveDocumentMode), so this branch also serves any pre-existing SA proposals.
     if (isServiceContract || isServiceAgreement) {
+        // Explicit service-contract identity fields (set in ServiceContractTermsPanel)
+        // take precedence, then fall back to the derived project values.
+        const scPurchaserName = ((details as any)?.serviceContractPurchaserName || "").toString().trim();
+        const scVenueName = ((details as any)?.serviceContractVenueName || "").toString().trim();
+        const scPurchaserAddress = ((details as any)?.serviceContractPurchaserAddress || "").toString().trim();
+        const scAgreementDate = ((details as any)?.serviceContractAgreementDate || "").toString().trim();
+
+        const resolvedPurchaserName = scPurchaserName || purchaserLegalName;
+        const resolvedVenueName = scVenueName || venueLabel;
+        const resolvedPurchaserAddress = scPurchaserAddress || purchaserAddress;
+        // Default the agreement date to today so the contract never renders a
+        // stale template date; the panel lets the user override it.
+        const resolvedAgreementDate =
+            scAgreementDate ||
+            new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+        // Only inherit the Ravens template's venue/address defaults for an actual
+        // Ravens contract. For any other purchaser, an unset venue/address renders
+        // blank (prompting the user to fill the field) rather than leaking
+        // "M&T Bank Stadium" / the Ravens address onto someone else's contract.
+        const inheritTemplateDefaults = /ravens/i.test(resolvedPurchaserName);
+
         const saConfig: Partial<ServiceAgreementConfig> = {
-            ...(purchaserLegalName ? { purchaserName: purchaserLegalName } : {}),
-            ...(purchaserAddress ? { purchaserAddress } : {}),
-            ...(venueLabel ? { venueName: venueLabel } : {}),
+            purchaserName: resolvedPurchaserName,
+            agreementDate: resolvedAgreementDate,
+            ...(resolvedPurchaserAddress
+                ? { purchaserAddress: resolvedPurchaserAddress }
+                : inheritTemplateDefaults ? {} : { purchaserAddress: "" }),
+            // Venue drives the contract title + body prose, so a blank one reads
+            // broken. When unset on a non-Ravens contract, fall back to the
+            // purchaser name (coherent title) until the user sets the real venue.
+            ...(resolvedVenueName
+                ? { venueName: resolvedVenueName }
+                : inheritTemplateDefaults ? {} : { venueName: resolvedPurchaserName }),
         };
         return (
             <ProposalLayout data={data} disableFixedFooter>

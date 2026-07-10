@@ -13,6 +13,7 @@ import { useFormContext } from "react-hook-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -26,6 +27,15 @@ export function ServiceContractTermsPanel() {
 
     const templateId = (watch("details.serviceContractTemplateId" as any) as string) || "ravens";
     const projectType = (watch("details.serviceContractProjectType" as any) as string) || "";
+
+    // Contract identity fields — override the template's party/venue/date so a
+    // Carolina Panthers contract doesn't keep the Ravens' "M&T Bank Stadium".
+    const scPurchaserName = (watch("details.serviceContractPurchaserName" as any) as string) || "";
+    const scVenueName = (watch("details.serviceContractVenueName" as any) as string) || "";
+    const scPurchaserAddress = (watch("details.serviceContractPurchaserAddress" as any) as string) || "";
+    const scAgreementDate = (watch("details.serviceContractAgreementDate" as any) as string) || "";
+    const receiverName = (watch("receiver.name" as any) as string) || "";
+    const todayFormatted = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
     const overrides = (watch("details.termExhibitOverrides" as any) || {}) as Record<string, { enabled?: boolean; bodyMarkdown?: string }>;
     const signatureText = (watch("details.serviceContractSignatureText" as any) as string) || "";
 
@@ -66,6 +76,49 @@ export function ServiceContractTermsPanel() {
                 </p>
             </CardHeader>
             <CardContent className="space-y-4">
+                {/* Contract details — purchaser, venue, address, date. These
+                    override the template defaults per-instance so the contract
+                    matches the actual client (not the Ravens template values). */}
+                <div className="grid grid-cols-1 gap-3 border-b border-border/30 pb-4">
+                    <p className="text-[11px] text-muted-foreground -mb-1">
+                        Set who this contract is for. These fill the contract body and replace the template&rsquo;s example values.
+                    </p>
+                    <div className="flex flex-col gap-1.5">
+                        <Label className="text-sm font-semibold">Purchaser / Client Name</Label>
+                        <Input
+                            value={scPurchaserName}
+                            onChange={(e) => setValue("details.serviceContractPurchaserName" as any, e.target.value, { shouldDirty: true })}
+                            placeholder={receiverName || "e.g. Carolina Panthers"}
+                        />
+                        <p className="text-[11px] text-muted-foreground">Leave blank to use the project client{receiverName ? ` (${receiverName})` : ""}.</p>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                        <Label className="text-sm font-semibold">Venue / Stadium</Label>
+                        <Input
+                            value={scVenueName}
+                            onChange={(e) => setValue("details.serviceContractVenueName" as any, e.target.value, { shouldDirty: true })}
+                            placeholder="e.g. Bank of America Stadium"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                        <Label className="text-sm font-semibold">Purchaser Address</Label>
+                        <Input
+                            value={scPurchaserAddress}
+                            onChange={(e) => setValue("details.serviceContractPurchaserAddress" as any, e.target.value, { shouldDirty: true })}
+                            placeholder="e.g. 800 S Mint St, Charlotte, NC 28202"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                        <Label className="text-sm font-semibold">Agreement Date</Label>
+                        <Input
+                            value={scAgreementDate}
+                            onChange={(e) => setValue("details.serviceContractAgreementDate" as any, e.target.value, { shouldDirty: true })}
+                            placeholder={todayFormatted}
+                        />
+                        <p className="text-[11px] text-muted-foreground">Leave blank to use today&rsquo;s date ({todayFormatted}).</p>
+                    </div>
+                </div>
+
                 {/* Project-type preset selector */}
                 <div className="flex flex-col gap-1.5">
                     <Label className="text-sm font-semibold">Project Type</Label>
