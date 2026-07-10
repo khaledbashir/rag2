@@ -567,12 +567,57 @@ describe("Additional Regression", () => {
     expect(container.textContent).toContain("Notes");
     expect(container.textContent).toContain("All prices are valid for 30 days");
   });
+
+  it.each(["BUDGET", "PROPOSAL"] as const)(
+    "%s mode hides populated notes when showNotes is false",
+    (documentMode) => {
+      const props = baseProps({
+        documentMode,
+        showNotes: false,
+        customProposalNotes: "This note must not appear in the exported document.",
+      });
+      const { container } = render(<ProposalTemplate5 {...props} />);
+      expect(container.querySelector('[data-preview-section="notes"]')).toBeNull();
+      expect(container.textContent).not.toContain("This note must not appear");
+    },
+  );
 });
 
 // ============================================================================
 // 11. SERVICE CONTRACT (Priority 1) — term-exhibit system
 // ============================================================================
 describe("Service Contract mode", () => {
+  it("auto-fills the Carolina Panthers venue, address, and current agreement date", () => {
+    const props = baseProps({
+      documentMode: "SERVICE_CONTRACT",
+      serviceContractTemplateId: "ravens",
+      purchaserLegalName: "Carolina Panthers",
+      venue: "Generic",
+      mirrorMode: false,
+    });
+    props.receiver = {
+      ...props.receiver,
+      name: "Carolina Panthers",
+      address: "",
+      city: "",
+      zipCode: "",
+    };
+
+    const { container } = render(<ProposalTemplate5 {...props} />);
+    const text = container.textContent || "";
+    const today = new Date().toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+
+    expect(text).toContain("Bank of America Stadium");
+    expect(text).toContain("800 S Mint St, Charlotte, NC 28202");
+    expect(text).toContain(today);
+    expect(text).not.toContain("M&T Bank Stadium");
+    expect(text).not.toContain("1101 Russell St");
+  });
+
   it("renders the verbatim Ravens contract body + General Terms + Parts exhibits", () => {
     const props = baseProps({
       documentMode: "SERVICE_CONTRACT",

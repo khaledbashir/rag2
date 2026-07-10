@@ -1657,7 +1657,7 @@ const Step4Export = () => {
                                                     <Label htmlFor="showNotes" className="text-sm font-semibold text-foreground block">Notes Section</Label>
                                                     <p className="text-[11px] text-muted-foreground leading-relaxed">Include additional notes in the PDF</p>
                                                 </div>
-                                                <Switch id="showNotes" checked={watch("details.showNotes") ?? true} onCheckedChange={(checked) => setValue("details.showNotes", checked)} className="data-[state=checked]:bg-brand-blue shrink-0 mt-0.5" />
+                                                <Switch id="showNotes" checked={watch("details.showNotes") ?? true} onCheckedChange={(checked) => setValue("details.showNotes", checked, { shouldDirty: true, shouldTouch: true })} className="data-[state=checked]:bg-brand-blue shrink-0 mt-0.5" />
                                             </div>
                                             <div className="flex items-start justify-between py-3 border-b border-border/30 gap-4">
                                                 <div className="flex flex-col min-w-0">
@@ -1766,7 +1766,7 @@ const Step4Export = () => {
                                                     <Label htmlFor="showNotes-proposal" className="text-sm font-semibold text-foreground">Notes Section</Label>
                                                     <p className="text-[11px] text-muted-foreground">Include additional notes in the PDF</p>
                                                 </div>
-                                                <Switch id="showNotes-proposal" checked={watch("details.showNotes") ?? true} onCheckedChange={(checked) => setValue("details.showNotes", checked)} className="data-[state=checked]:bg-brand-blue" />
+                                                <Switch id="showNotes-proposal" checked={watch("details.showNotes") ?? true} onCheckedChange={(checked) => setValue("details.showNotes", checked, { shouldDirty: true, shouldTouch: true })} className="data-[state=checked]:bg-brand-blue" />
                                             </div>
                                             <div className="flex items-center justify-between py-3 border-b border-border/30">
                                                 <div className="flex flex-col">
@@ -1905,7 +1905,7 @@ const Step4Export = () => {
                                                     <Label htmlFor="showNotes-loi" className="text-sm font-semibold text-foreground">Notes Section</Label>
                                                     <p className="text-[11px] text-muted-foreground">Include additional notes in the PDF</p>
                                                 </div>
-                                                <Switch id="showNotes-loi" checked={watch("details.showNotes") ?? true} onCheckedChange={(checked) => setValue("details.showNotes", checked)} className="data-[state=checked]:bg-brand-blue" />
+                                                <Switch id="showNotes-loi" checked={watch("details.showNotes") ?? true} onCheckedChange={(checked) => setValue("details.showNotes", checked, { shouldDirty: true, shouldTouch: true })} className="data-[state=checked]:bg-brand-blue" />
                                             </div>
                                             {/* T&C Exhibit toggle — Short Form Agreement (LOI) + Short Form Contract */}
                                             {(headerType === "LOI" || headerType === "CONTRACT") && (
