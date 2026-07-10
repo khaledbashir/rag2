@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { getDefaultTemplate, resolveExhibits } from "@/lib/serviceContracts/registry";
 import { getPreset } from "@/lib/serviceContracts/presets";
+import { matchTeamVenue } from "@/lib/serviceContracts/teamVenues";
 import type { ProposalType } from "@/types";
 
 export function ServiceContractTermsPanel() {
@@ -36,6 +37,9 @@ export function ServiceContractTermsPanel() {
     const scAgreementDate = (watch("details.serviceContractAgreementDate" as any) as string) || "";
     const receiverName = (watch("receiver.name" as any) as string) || "";
     const todayFormatted = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    // Auto-detect the venue from the team so the placeholders show what the
+    // contract will use before the user types anything.
+    const detectedTeamVenue = matchTeamVenue(scPurchaserName || receiverName);
     const overrides = (watch("details.termExhibitOverrides" as any) || {}) as Record<string, { enabled?: boolean; bodyMarkdown?: string }>;
     const signatureText = (watch("details.serviceContractSignatureText" as any) as string) || "";
 
@@ -97,15 +101,18 @@ export function ServiceContractTermsPanel() {
                         <Input
                             value={scVenueName}
                             onChange={(e) => setValue("details.serviceContractVenueName" as any, e.target.value, { shouldDirty: true })}
-                            placeholder="e.g. Bank of America Stadium"
+                            placeholder={detectedTeamVenue?.venue || "e.g. Bank of America Stadium"}
                         />
+                        {detectedTeamVenue && !scVenueName && (
+                            <p className="text-[11px] text-muted-foreground">Auto-detected from the team: {detectedTeamVenue.venue}. Leave blank to use it, or type a different venue.</p>
+                        )}
                     </div>
                     <div className="flex flex-col gap-1.5">
                         <Label className="text-sm font-semibold">Purchaser Address</Label>
                         <Input
                             value={scPurchaserAddress}
                             onChange={(e) => setValue("details.serviceContractPurchaserAddress" as any, e.target.value, { shouldDirty: true })}
-                            placeholder="e.g. 800 S Mint St, Charlotte, NC 28202"
+                            placeholder={detectedTeamVenue?.address || "e.g. 800 S Mint St, Charlotte, NC 28202"}
                         />
                     </div>
                     <div className="flex flex-col gap-1.5">

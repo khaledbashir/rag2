@@ -28,6 +28,7 @@ import PdfSignatureBlock from "./sections/PdfSignatureBlock";
 import PdfTermsAndConditions from "./sections/PdfTermsAndConditions";
 import PdfServiceAgreement, { type ServiceAgreementConfig } from "./sections/PdfServiceAgreement";
 import PdfServiceContract from "./PdfServiceContract";
+import { matchTeamVenue } from "@/lib/serviceContracts/teamVenues";
 import { MasterTableSummary, LOISummaryTable } from "./sections/PdfProjectSummary";
 import type { PdfColors, PdfTemplateSpacing } from "./sections/shared";
 
@@ -727,32 +728,27 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         const scAgreementDate = ((details as any)?.serviceContractAgreementDate || "").toString().trim();
 
         const resolvedPurchaserName = scPurchaserName || purchaserLegalName;
-        const resolvedVenueName = scVenueName || venueLabel;
-        const resolvedPurchaserAddress = scPurchaserAddress || purchaserAddress;
+        // Auto-fill the venue + address from the team when the purchaser is a
+        // known team and the user hasn't set them — so a Carolina Panthers
+        // contract picks up Bank of America Stadium instead of a template default.
+        const teamVenue = matchTeamVenue(resolvedPurchaserName);
+        // Venue drives the title + body prose, so it must never be blank. Order:
+        // explicit field > derived project value > team lookup > purchaser name.
+        const resolvedVenueName = scVenueName || venueLabel || teamVenue?.venue || resolvedPurchaserName;
+        const resolvedPurchaserAddress = scPurchaserAddress || purchaserAddress || teamVenue?.address || "";
         // Default the agreement date to today so the contract never renders a
         // stale template date; the panel lets the user override it.
         const resolvedAgreementDate =
             scAgreementDate ||
             new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
-        // Only inherit the Ravens template's venue/address defaults for an actual
-        // Ravens contract. For any other purchaser, an unset venue/address renders
-        // blank (prompting the user to fill the field) rather than leaking
-        // "M&T Bank Stadium" / the Ravens address onto someone else's contract.
-        const inheritTemplateDefaults = /ravens/i.test(resolvedPurchaserName);
-
         const saConfig: Partial<ServiceAgreementConfig> = {
             purchaserName: resolvedPurchaserName,
             agreementDate: resolvedAgreementDate,
-            ...(resolvedPurchaserAddress
-                ? { purchaserAddress: resolvedPurchaserAddress }
-                : inheritTemplateDefaults ? {} : { purchaserAddress: "" }),
-            // Venue drives the contract title + body prose, so a blank one reads
-            // broken. When unset on a non-Ravens contract, fall back to the
-            // purchaser name (coherent title) until the user sets the real venue.
-            ...(resolvedVenueName
-                ? { venueName: resolvedVenueName }
-                : inheritTemplateDefaults ? {} : { venueName: resolvedPurchaserName }),
+            venueName: resolvedVenueName,
+            // Explicit empty override (rather than omit) so an unknown team never
+            // falls through to the Ravens template address.
+            purchaserAddress: resolvedPurchaserAddress,
         };
         return (
             <ProposalLayout data={data} disableFixedFooter>
