@@ -1550,8 +1550,11 @@ const Step4Export = () => {
                             </Card>
                         )}
 
-                        {/* ─── Edit Document Text — collapsible, collapsed by default ─── */}
-                        {!manualTableMode && <Card className="bg-card/40 border border-border/60 overflow-hidden">
+                        {/* ─── Edit Document Text — collapsible, collapsed by default ───
+                            Shown in the manual path too: these are document-layout controls
+                            (notes, scope of work, responsibility matrix, signature lines),
+                            not pricing logic. */}
+                        <Card className="bg-card/40 border border-border/60 overflow-hidden">
                             <CardHeader
                                 className="border-b border-border/60 pb-3 cursor-pointer select-none"
                                 onClick={() => setIsTextEditOpen(!isTextEditOpen)}
@@ -1921,10 +1924,12 @@ const Step4Export = () => {
                                     <TextEditorPanel />
                                 </CardContent>
                             )}
-                        </Card>}
+                        </Card>
 
-                        {/* Service Contract term-exhibit system (Priority 1) */}
-                        {!manualTableMode && headerType === "SERVICE_CONTRACT" && <ServiceContractTermsPanel />}
+                        {/* Service Contract term-exhibit system (Priority 1) — the manual
+                            path is how a Service Contract gets built from scratch, so its
+                            exhibits must be reachable there. */}
+                        {headerType === "SERVICE_CONTRACT" && <ServiceContractTermsPanel />}
 
                         {!manualTableMode && <Card className="bg-card/40 border border-border/60 overflow-hidden">
                             <CardHeader
