@@ -9,6 +9,11 @@ export function mapDbProposalToFormSchema(dbProject: any) {
     const documentMode = (dbProject.documentMode || "BUDGET") as "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT" | "CHANGE_ORDER";
     const documentType = (documentMode === "LOI" || documentMode === "CONTRACT" || documentMode === "CHANGE_ORDER") ? "LOI" : "First Round";
     const pricingType = (documentMode === "PROPOSAL" || documentMode === "CONTRACT" || documentMode === "CHANGE_ORDER") ? "Hard Quoted" : "Budget";
+    const manualTableMode = cfg.manualTableMode ?? (
+        dbProject.mirrorMode === false &&
+        dbProject.calculationMode !== "ESTIMATE" &&
+        !((dbProject.pricingDocument as any)?.tables?.length > 0)
+    );
 
     return {
         sender: FORM_DEFAULT_VALUES.sender,
@@ -76,16 +81,19 @@ export function mapDbProposalToFormSchema(dbProject: any) {
                 ? dbProject.mirrorMode
                 : (dbProject.calculationMode === "MIRROR" || (dbProject.pricingDocument as any)?.tables?.length > 0 ? true : undefined),
             calculationMode: dbProject.calculationMode || "INTELLIGENCE",
+            manualTableMode,
             taxRateOverride: Number(dbProject.taxRateOverride) || 0,
             bondRateOverride: Number(dbProject.bondRateOverride) || 0,
             aiWorkspaceSlug: dbProject.aiWorkspaceSlug || null,
             venue: (dbProject.venue || "Generic") as "Milan Puskar Stadium" | "WVU Coliseum" | "Generic",
             quoteItems: (dbProject.quoteItems || []) as any,
             includePricingBreakdown: cfg.includePricingBreakdown ?? false,
-            showPricingTables: cfg.showPricingTables ?? true,
+            showPricingTables: manualTableMode ? false : (cfg.showPricingTables ?? true),
             showIntroText: cfg.showIntroText ?? true,
+            freeformTables: Array.isArray(cfg.freeformTables) ? cfg.freeformTables : [],
+            showFreeformTables: cfg.showFreeformTables ?? true,
             showBaseBidTable: cfg.showBaseBidTable ?? false,
-            showSpecifications: cfg.showSpecifications ?? true,
+            showSpecifications: manualTableMode ? false : (cfg.showSpecifications ?? true),
             showCompanyFooter: cfg.showCompanyFooter ?? true,
             showPaymentTerms: cfg.showPaymentTerms ?? false,
             showTermsAndConditions: cfg.showTermsAndConditions ?? documentMode === "CONTRACT",
@@ -95,7 +103,7 @@ export function mapDbProposalToFormSchema(dbProject: any) {
             showExhibitA: cfg.showExhibitA ?? false,
             showExhibitB: cfg.showExhibitB ?? false,
             showNotes: cfg.showNotes ?? true,
-            showScopeOfWork: cfg.showScopeOfWork ?? false,
+            showScopeOfWork: manualTableMode ? false : (cfg.showScopeOfWork ?? false),
             pageLayout: cfg.pageLayout ?? "portrait-letter",
             specsDisplayMode: dbProject.specsDisplayMode || cfg.specsDisplayMode || "extended",
             tableHeaderOverrides: (dbProject as any).tableHeaderOverrides || {},
@@ -105,7 +113,8 @@ export function mapDbProposalToFormSchema(dbProject: any) {
             loiHeaderText: dbProject.loiHeaderText || "",
             signatureBlockText: dbProject.signatureBlockText || "",
             purchaserLegalName: dbProject.purchaserLegalName || "",
-            includeResponsibilityMatrix: dbProject.includeResponsibilityMatrix ?? false,
+            includeResponsibilityMatrix: manualTableMode ? false : (dbProject.includeResponsibilityMatrix ?? false),
+            showResponsibilityMatrix: manualTableMode ? false : (cfg.showResponsibilityMatrix ?? true),
             responsibilityMatrix: dbProject.responsibilityMatrix || null,
             respMatrixFormatOverride: dbProject.respMatrixFormatOverride || "auto",
             pricingDocument: dbProject.pricingDocument || undefined,

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
-import { Calculator, Info, ChevronDown, ChevronUp, RotateCcw, Tv, EyeOff, Eye } from "lucide-react";
+import { Calculator, Info, ChevronDown, ChevronUp, RotateCcw, Tv, EyeOff, Eye, TableProperties } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Screens } from "@/app/components";
@@ -25,6 +25,7 @@ const Step2Intelligence = () => {
     const details = useWatch({ name: "details", control });
     const ntpDate = useWatch({ name: "details.ntpDate", control });
     const mirrorModeFlag = useWatch({ name: "details.mirrorMode", control });
+    const manualTableMode = useWatch({ name: "details.manualTableMode" as any, control }) === true;
     const pricingDocument = useWatch({ name: "details.pricingDocument" as any, control });
     const mirrorMode =
         mirrorModeFlag === true || ((pricingDocument as any)?.tables?.length ?? 0) > 0;
@@ -59,6 +60,23 @@ const Step2Intelligence = () => {
             return next;
         });
     }, [screens]);
+
+    if (manualTableMode) {
+        return (
+            <div className="h-full flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="rounded-lg border border-brand-blue/20 bg-brand-blue/5 px-4 py-3 flex items-start gap-3">
+                    <TableProperties className="w-4 h-4 text-brand-blue mt-0.5 shrink-0" />
+                    <div>
+                        <h3 className="text-sm font-semibold text-foreground">Manual table composer</h3>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            This workflow contains no pricing logic. Every cell is plain text and row roles only control appearance.
+                        </p>
+                    </div>
+                </div>
+                <FreeformTableBuilder />
+            </div>
+        );
+    }
 
     if (mirrorMode) {
         // ═══ MIRROR MODE: Configure ═══

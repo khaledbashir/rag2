@@ -135,7 +135,7 @@ _(none currently)_
 3. Margin tier not syncing to individual fields — FIXED (c74133e0)
 4. Project Info showing hardcoded tier labels instead of actual values — FIXED (c74133e0)
 5. Pricing Line Items Amount editor rejected typed INCLUDED/EXCLUDED while changing proposal phase/document mode — FIXED
-6. Build from Scratch opened a reduced Setup grid and the live preview still demanded Excel, hiding the full Configure capabilities — FIXED (2026-07-10; full-builder launch + form-driven preview)
+6. Build from Scratch was incorrectly treated as an estimator/calculator. Natalia clarified it must only add columns/rows, accept exact text, and visually mark Header/Subtotal/Grand Total rows — FIXED (2026-07-10; dedicated manual-table path, no screens/margins/tax/audit/Math, exact-text PDF, persisted tables, legacy-draft migration)
 
 ### Built (FREE)
 7. **Alt pitch system** — 2-3 pixel pitch alternates per display, only LED hardware cost changes. Multi-select question after pixel pitch, interleaved alt rows in Display Details + Budget Summary with yellow highlighting, totals exclude alts. — BUILT (5c2bd11b)

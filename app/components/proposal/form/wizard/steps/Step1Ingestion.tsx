@@ -2,21 +2,16 @@
 
 import { useFormContext, useWatch } from "react-hook-form";
 import {
-    Upload,
     FileSpreadsheet,
     Sparkles,
-    Shield,
     Zap,
     CheckCircle2,
     AlertTriangle,
-    FileText,
     FileSearch,
     Settings2,
     RefreshCw,
     ArrowLeftRight,
     ArrowRight,
-    Boxes,
-    Calculator,
     PenTool,
     TableProperties,
     ExternalLink,
@@ -129,6 +124,20 @@ const Step1Ingestion = () => {
         const newMode = !mirrorMode;
         setValue("details.mirrorMode", newMode, { shouldDirty: true });
         setValue("details.calculationMode", newMode ? "MIRROR" : "INTELLIGENCE", { shouldDirty: true });
+        setValue("details.manualTableMode", !newMode, { shouldDirty: true });
+        setValue("details.aiImport", false, { shouldDirty: true });
+        if (newMode) {
+            setValue("details.showPricingTables", true, { shouldDirty: true });
+            setValue("details.showSpecifications", true, { shouldDirty: true });
+            setValue("details.showResponsibilityMatrix", true, { shouldDirty: true });
+        } else {
+            setValue("details.showPricingTables", false, { shouldDirty: true });
+            setValue("details.showSpecifications", false, { shouldDirty: true });
+            setValue("details.showScopeOfWork", false, { shouldDirty: true });
+            setValue("details.showFreeformTables", true, { shouldDirty: true });
+            setValue("details.includeResponsibilityMatrix", false, { shouldDirty: true });
+            setValue("details.showResponsibilityMatrix", false, { shouldDirty: true });
+        }
     };
 
     // Auto-collapse details when Excel is loaded ONLY if required fields are filled
@@ -170,7 +179,7 @@ const Step1Ingestion = () => {
                     )}
                     {!mirrorMode && (
                         <p className="text-muted-foreground text-xs mt-0.5">
-                            Add screens and configure your project
+                            Create manual tables exactly as they should appear
                         </p>
                     )}
                 </div>
@@ -520,20 +529,19 @@ const Step1Ingestion = () => {
                                                 Build from Scratch
                                             </div>
                                             <h2 className="text-xl font-bold text-foreground">
-                                                Open the full proposal builder
+                                                Open the manual table builder
                                             </h2>
                                             <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
-                                                Setup only collects the project and client details. The full builder is in Configure, where you can add screens, select products and pitch, enter costs and margins, add manual line items, and build custom pricing tables.
+                                                Add columns and rows, type any content, and choose which rows look like headers, subtotals, or grand totals. The proposal engine will not calculate or reformat anything.
                                             </p>
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                         {[
-                                            { icon: Boxes, label: "Screens & specifications" },
-                                            { icon: Calculator, label: "Costs & margins" },
-                                            { icon: TableProperties, label: "Free-form pricing tables" },
-                                            { icon: FileText, label: "SOW & document settings" },
+                                            { icon: TableProperties, label: "Any columns and rows" },
+                                            { icon: PenTool, label: "Exact text entry" },
+                                            { icon: FileSpreadsheet, label: "Visual row styles only" },
                                         ].map(({ icon: Icon, label }) => (
                                             <div
                                                 key={label}
@@ -551,7 +559,7 @@ const Step1Ingestion = () => {
                                             projectDetailsReady ? "text-emerald-600" : "text-muted-foreground",
                                         )}>
                                             {projectDetailsReady
-                                                ? "Project details are ready. Continue to the full builder."
+                                                ? "Project details are ready. Continue to the table builder."
                                                 : "Enter Project Name and Client Name above to continue."}
                                         </p>
                                         <button
@@ -560,7 +568,7 @@ const Step1Ingestion = () => {
                                             className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-brand-blue text-white text-sm font-semibold hover:bg-brand-blue/90 transition-colors shadow-sm"
                                             data-testid="open-full-builder"
                                         >
-                                            Open Full Builder
+                                            Open Table Builder
                                             <ArrowRight className="w-4 h-4" />
                                         </button>
                                     </div>

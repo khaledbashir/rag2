@@ -52,6 +52,7 @@ const WizardWrapper = ({ projectId, initialData, twentyOpportunityId }: Proposal
 
   const details = useWatch({ name: "details", control });
   const isMirrorMode = checkMirrorMode(details);
+  const isManualTableMode = (details as any)?.manualTableMode === true;
 
   // Skip to Step 2 (Intelligence) when proposal was created from PDF Filter
   // Reads from DB field (proposal.source) via initialData, not URL params
@@ -252,8 +253,8 @@ const WizardWrapper = ({ projectId, initialData, twentyOpportunityId }: Proposal
         header={HeaderContent}
         formContent={FormContent}
         aiContent={AIContent}
-        auditContent={isMirrorMode ? null : AuditContent}
-        showAudit={!isMirrorMode}
+        auditContent={isMirrorMode || isManualTableMode ? null : AuditContent}
+        showAudit={!isMirrorMode && !isManualTableMode}
         pdfContent={PDFContent}
       />
       <CopilotPanel

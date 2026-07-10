@@ -549,6 +549,8 @@ const Step4Export = () => {
     const totalValue = internalAudit?.totals?.finalClientTotal || 0;
     const lastSaved = watch("details.updatedAt");
     const mirrorModeFlag = watch("details.mirrorMode");
+    const manualTableMode = watch("details.manualTableMode" as any) === true;
+    const manualTables = (watch("details.freeformTables" as any) || []) as any[];
     const pricingDocument = watch("details.pricingDocument" as any);
     const mirrorMode =
         mirrorModeFlag === true || ((pricingDocument as any)?.tables?.length ?? 0) > 0;
@@ -697,13 +699,21 @@ const Step4Export = () => {
     };
 
     const screenCount = screens.length;
+    const hasManualTableContent = manualTables.some((table: any) =>
+        Array.isArray(table?.columns) && table.columns.length > 0 &&
+        Array.isArray(table?.rows) && table.rows.length > 0,
+    );
     // In Mirror Mode, screens come from Excel and may use width/height instead of widthFt/heightFt
     const hasErrors = screens.some((s: any) => {
         const w = s.widthFt ?? s.width;
         const h = s.heightFt ?? s.height;
         return !w || !h || !s.name;
     });
-    const allScreensValid = mirrorMode ? screenCount > 0 : (screenCount > 0 && !hasErrors);
+    const allScreensValid = manualTableMode
+        ? hasManualTableContent
+        : mirrorMode
+            ? screenCount > 0
+            : (screenCount > 0 && !hasErrors);
     const hasOptionPlaceholder = screens.some((s: any) => {
         const name = (s?.name ?? "").toString().trim().toUpperCase();
         const w = Number(s?.widthFt ?? s?.width ?? 0);
@@ -745,7 +755,9 @@ const Step4Export = () => {
 
     const isMirrorReadyToExport = mirrorBlockingIssues.length === 0;
     // Mirror PDF only needs pricing tables — screen dimensions are for audit workbook, not the PDF
-    const isPdfPreviewBlocked = mirrorMode
+    const isPdfPreviewBlocked = manualTableMode
+        ? !hasManualTableContent || isGatekeeperLocked
+        : mirrorMode
         ? isGatekeeperLocked
         : !allScreensValid || isGatekeeperLocked;
     const pricingTables = useMemo(() => (((pricingDocument as any)?.tables || []) as any[]), [pricingDocument]);
@@ -851,6 +863,7 @@ const Step4Export = () => {
                 return `Verify ${unverifiedAiFields.length} more field${unverifiedAiFields.length !== 1 ? 's' : ''} to export`;
             }
             if (!allScreensValid) {
+                if (manualTableMode) return "Add at least one table with a row to export";
                 const missingFields = screens.filter((s: any) => !s.widthFt || !s.heightFt || !s.name);
                 if (missingFields.length > 0) {
                     return `${missingFields.length} screen${missingFields.length !== 1 ? 's' : ''} missing dimensions or name`;
@@ -887,6 +900,7 @@ const Step4Export = () => {
             }
         } else {
             if (!allScreensValid) {
+                if (manualTableMode) return "Add at least one table with a row to export";
                 const missingFields = screens.filter((s: any) => !s.widthFt || !s.heightFt || !s.name);
                 if (missingFields.length > 0) {
                     return `${missingFields.length} screen${missingFields.length !== 1 ? 's' : ''} missing dimensions or name`;
@@ -1088,13 +1102,15 @@ const Step4Export = () => {
 
                     <h2 className="text-3xl font-bold text-foreground tracking-tight mb-2">Review & Export</h2>
                     <p className="text-muted-foreground text-sm max-w-md font-medium">
-                        Final review of your proposal. Verify data accuracy and export professional documents.
+                        {manualTableMode
+                            ? "Confirm the manual table text and export the client PDF. No pricing calculations are applied."
+                            : "Final review of your proposal. Verify data accuracy and export professional documents."}
                     </p>
                 </div>
 
-                {FEATURES.CURRENCY_EXCHANGE_RATE && <CurrencyAndRatePanel />}
+                {FEATURES.CURRENCY_EXCHANGE_RATE && !manualTableMode && <CurrencyAndRatePanel />}
 
-                {Number(totalValue) === 0 && screens.length > 0 && (
+                {!manualTableMode && Number(totalValue) === 0 && screens.length > 0 && (
                     <div className="mb-6 rounded-xl border border-amber-600/30 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-3 flex items-center gap-3">
                         <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
                         <div>
@@ -1260,19 +1276,27 @@ const Step4Export = () => {
                                 <div>
                                     <h3 className="text-lg font-bold text-foreground mb-1 truncate">{proposalName}</h3>
                                     <div className="flex items-center gap-2">
-                                        <Badge variant="outline" className="text-[10px] border-border text-muted-foreground font-bold uppercase tracking-widest">
-                                            {screenCount} Screens
-                                        </Badge>
-                                        <Badge className="bg-brand-blue/10 text-brand-blue border-none text-[10px] font-bold uppercase tracking-widest">
-                                            {formatCurrency(totalValue)}
-                                        </Badge>
+                                        {manualTableMode ? (
+                                            <Badge className="bg-brand-blue/10 text-brand-blue border-none text-[10px] font-bold uppercase tracking-widest">
+                                                Manual table proposal
+                                            </Badge>
+                                        ) : (
+                                            <>
+                                                <Badge variant="outline" className="text-[10px] border-border text-muted-foreground font-bold uppercase tracking-widest">
+                                                    {screenCount} Screens
+                                                </Badge>
+                                                <Badge className="bg-brand-blue/10 text-brand-blue border-none text-[10px] font-bold uppercase tracking-widest">
+                                                    {formatCurrency(totalValue)}
+                                                </Badge>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
 
                                 <div className="space-y-3 pt-4 border-t border-border/50">
                                     <div className="flex items-center justify-between text-xs">
                                         <span className="text-muted-foreground font-medium">Calculation Mode</span>
-                                        <span className="text-foreground font-bold">{mirrorMode ? "Mirror Mode" : "Strategic AI"}</span>
+                                        <span className="text-foreground font-bold">{manualTableMode ? "Manual Tables" : mirrorMode ? "Mirror Mode" : "Strategic AI"}</span>
                                     </div>
                                     <div className="flex items-center justify-between text-xs">
                                         <span className="text-muted-foreground font-medium">Data Integrity</span>
@@ -1295,13 +1319,13 @@ const Step4Export = () => {
                             </CardContent>
                         </Card>
 
-                        <div className="p-4 rounded-xl bg-card/30 border border-border flex items-center gap-3">
+                        {!manualTableMode && <div className="p-4 rounded-xl bg-card/30 border border-border flex items-center gap-3">
                             <Clock className="w-4 h-4 text-muted-foreground" />
                             <div className="flex flex-col">
                                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Last Vault Sync</span>
                                 <span className="text-xs text-muted-foreground font-medium">{lastSaved ? new Date(lastSaved as any).toLocaleString() : "Pending sync..."}</span>
                             </div>
-                        </div>
+                        </div>}
                     </div>
 
                     {/* Right Column: Global Export Action */}
@@ -1527,7 +1551,7 @@ const Step4Export = () => {
                         )}
 
                         {/* ─── Edit Document Text — collapsible, collapsed by default ─── */}
-                        <Card className="bg-card/40 border border-border/60 overflow-hidden">
+                        {!manualTableMode && <Card className="bg-card/40 border border-border/60 overflow-hidden">
                             <CardHeader
                                 className="border-b border-border/60 pb-3 cursor-pointer select-none"
                                 onClick={() => setIsTextEditOpen(!isTextEditOpen)}
@@ -1897,12 +1921,12 @@ const Step4Export = () => {
                                     <TextEditorPanel />
                                 </CardContent>
                             )}
-                        </Card>
+                        </Card>}
 
                         {/* Service Contract term-exhibit system (Priority 1) */}
-                        {headerType === "SERVICE_CONTRACT" && <ServiceContractTermsPanel />}
+                        {!manualTableMode && headerType === "SERVICE_CONTRACT" && <ServiceContractTermsPanel />}
 
-                        <Card className="bg-card/40 border border-border/60 overflow-hidden">
+                        {!manualTableMode && <Card className="bg-card/40 border border-border/60 overflow-hidden">
                             <CardHeader
                                 className="border-b border-border/60 pb-3 cursor-pointer select-none"
                                 onClick={() => setIsVisualBuilderOpen(!isVisualBuilderOpen)}
@@ -2248,12 +2272,12 @@ const Step4Export = () => {
                                 </div>
                             </CardContent>
                             )}
-                        </Card>
+                        </Card>}
 
                         {/* ─── Spacer between text editing and export ─── */}
                         <div className="h-2" />
 
-                        {!mirrorMode && (
+                        {!mirrorMode && !manualTableMode && (
                             <Card className="bg-card/40 border border-border/60 overflow-hidden">
                                 <CardHeader
                                     className="border-b border-border/60 pb-3 cursor-pointer select-none"
@@ -2323,9 +2347,11 @@ const Step4Export = () => {
                                     </div>
                                     <div>
                                         <h4 className="text-base font-bold text-foreground">Export Documents</h4>
-                                        <p className="text-xs text-muted-foreground mt-1">Budget PDF, Proposal PDF, LOI PDF, and Internal Audit Excel</p>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            {manualTableMode ? "Client PDF with the exact table text shown in the preview" : "Budget PDF, Proposal PDF, LOI PDF, and Internal Audit Excel"}
+                                        </p>
                                     </div>
-                                    <Tooltip>
+                                    {!manualTableMode && <Tooltip>
                                         <TooltipTrigger asChild>
                                             <button
                                                 onClick={handleGlobalExport}
@@ -2362,17 +2388,17 @@ const Step4Export = () => {
                                                 <p className="text-xs">{getDownloadBundleErrorMessage()}</p>
                                             </TooltipContent>
                                         )}
-                                    </Tooltip>
+                                    </Tooltip>}
                                 </div>
 
                                 {/* Individual Options */}
-                                <div className="border-t border-border/60 grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border/60">
+                                <div className={cn("border-t border-border/60 grid grid-cols-1 divide-y divide-border/60", !manualTableMode && "md:grid-cols-3 md:divide-y-0 md:divide-x")}>
                                     {/* "Excel Only" (Audit Workbook) export removed from the UI per Natalia (2026-06-18):
                                         it regenerates its own computed margin/budget numbers that diverge from the
                                         uploaded source Excel (her 73→191 report). The exportAudit() capability is kept
                                         in code for any Finance/Internal-Audit RBAC path, just not surfaced here. */}
 
-                                    <div className="p-4 flex items-center justify-between hover:bg-card/40 transition-colors">
+                                    {!manualTableMode && <div className="p-4 flex items-center justify-between hover:bg-card/40 transition-colors">
                                         <div className="flex items-center gap-3">
                                             <div className="p-2 rounded-lg bg-muted/50 text-muted-foreground">
                                                 <FileText className="w-4 h-4" />
@@ -2398,7 +2424,7 @@ const Step4Export = () => {
                                                 </TooltipContent>
                                             )}
                                         </Tooltip>
-                                    </div>
+                                    </div>}
 
                                     <div className="p-4 flex items-center justify-between hover:bg-card/40 transition-colors">
                                         <div className="flex items-center gap-3">
@@ -2428,7 +2454,7 @@ const Step4Export = () => {
                                         </Tooltip>
                                     </div>
 
-                                    <div className="p-4 flex items-center justify-between hover:bg-card/40 transition-colors border-t border-border/30">
+                                    {!manualTableMode && <div className="p-4 flex items-center justify-between hover:bg-card/40 transition-colors border-t border-border/30">
                                         <div className="flex items-center gap-3">
                                             <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500">
                                                 <Zap className="w-4 h-4" />
@@ -2454,9 +2480,9 @@ const Step4Export = () => {
                                                 <p className="text-xs">Generate PDF via jsreport engine (deterministic rendering)</p>
                                             </TooltipContent>
                                         </Tooltip>
-                                    </div>
+                                    </div>}
 
-                                    <div className="p-4 flex items-center justify-between hover:bg-card/40 transition-colors border-t border-border/30">
+                                    {!manualTableMode && <div className="p-4 flex items-center justify-between hover:bg-card/40 transition-colors border-t border-border/30">
                                         <div className="flex items-center gap-3">
                                             <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600">
                                                 <FileSignature className="w-4 h-4" />
@@ -2480,7 +2506,7 @@ const Step4Export = () => {
                                                 <p className="text-xs">{screens.length === 0 ? "Add screens first" : "Generate Installation Scope of Work (DOCX)"}</p>
                                             </TooltipContent>
                                         </Tooltip>
-                                    </div>
+                                    </div>}
                                 </div>
                             </CardContent>
                         </Card>

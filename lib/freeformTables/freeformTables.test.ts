@@ -1,97 +1,109 @@
 import { describe, expect, it } from "vitest";
-import { columnTotal, formatCurrency, newColumn, newRow, newTable, normalizeTable } from "./resolve";
+import { newColumn, newRow, newTable, normalizeTable } from "./resolve";
 import type { FreeformTable } from "./types";
 
 async function renderFreeform(tables: FreeformTable[]): Promise<string> {
   const React = await import("react");
   const { renderToStaticMarkup } = await import("react-dom/server");
-  const Mod = (await import("../../app/components/templates/proposal-pdf/sections/PdfFreeformTables")).default;
+  const Module = (await import("../../app/components/templates/proposal-pdf/sections/PdfFreeformTables")).default;
   const colors = {
-    primary: "#1f4e79", primaryDark: "#1f4e79", primaryLight: "#dbe5f1", text: "#1f2937", textMuted: "#6b7280",
+    primary: "#0A52EF",
+    primaryDark: "#003b8f",
+    primaryLight: "#e6efff",
+    text: "#1f2937",
+    textMuted: "#6b7280",
   } as any;
-  return renderToStaticMarkup(React.createElement(Mod, { colors, tables }));
+  return renderToStaticMarkup(React.createElement(Module, { colors, tables }));
 }
 
-function buildTable(): FreeformTable {
-  const item = newColumn("Item", "text");
-  const price = newColumn("Price", "number");
-  const t = { ...newTable("Pricing"), columns: [item, price], rows: [], showTotalsRow: true };
-  t.rows = [
-    { id: "r1", cells: { [item.id]: "Install labor", [price.id]: "5000" } },
-    { id: "r2", cells: { [item.id]: "Parts", [price.id]: "1500.50" } },
-    { id: "r3", cells: { [item.id]: "N/A", [price.id]: "" } },
+function buildManualTable(): FreeformTable {
+  const description = newColumn("Editor description", "left");
+  const pricing = newColumn("Editor pricing", "right");
+  const table: FreeformTable = { ...newTable("DESCRIPTION OF WORK"), columns: [description, pricing], rows: [] };
+  table.rows = [
+    { id: "r1", style: "header", cells: { [description.id]: "LFC GANTRY DEMO", [pricing.id]: "PRICING" } },
+    { id: "r2", style: "normal", cells: { [description.id]: "Gantry Demo, Walking Deck and Bracket Removal", [pricing.id]: "£11,250" } },
+    { id: "r3", style: "normal", cells: { [description.id]: "Project Management, General Conditions, Travel & Expenses", [pricing.id]: "£350" } },
+    { id: "r4", style: "subtotal", cells: { [description.id]: "SUBTOTAL", [pricing.id]: "£11,600" } },
+    { id: "r5", style: "normal", cells: { [description.id]: "VAT (20%)", [pricing.id]: "£2,320" } },
+    { id: "r6", style: "grand-total", cells: { [description.id]: "GRAND TOTAL", [pricing.id]: "£13,920" } },
   ];
-  return t;
+  return table;
 }
 
-describe("freeform table helpers", () => {
-  it("factories produce stable shapes", () => {
-    const t = newTable("My Table");
-    expect(t.name).toBe("My Table");
-    expect(t.columns).toEqual([]);
-    expect(t.rows).toEqual([]);
-    expect(t.showTotalsRow).toBe(false);
+describe("manual table helpers", () => {
+  it("creates text-only columns and visual row roles", () => {
+    const column = newColumn("Pricing", "right");
+    expect(column).toMatchObject({ label: "Pricing", align: "right" });
+    expect(column).not.toHaveProperty("type");
 
-    const col = newColumn("Qty", "number");
-    expect(col.type).toBe("number");
-    const row = newRow([col]);
-    expect(row.cells[col.id]).toBe("");
+    const row = newRow([column], "grand-total");
+    expect(row.style).toBe("grand-total");
+    expect(row.cells[column.id]).toBe("");
   });
 
-  it("columnTotal sums number columns and ignores blanks/non-numeric", () => {
-    const t = buildTable();
-    const priceCol = t.columns[1].id;
-    expect(columnTotal(t, priceCol)).toBeCloseTo(6500.5, 2);
-    // text columns total to 0
-    expect(columnTotal(t, t.columns[0].id)).toBe(0);
-    // unknown column total to 0
-    expect(columnTotal(t, "nope")).toBe(0);
+  it("normalizes legacy numeric columns without changing cell text or calculating", () => {
+    const legacy = {
+      id: "legacy",
+      name: "Legacy",
+      columns: [{ id: "c1", label: "Price", type: "number" as const }],
+      rows: [{ id: "r1", cells: { c1: "1111" } }],
+      showTotalsRow: true,
+    };
+    const normalized = normalizeTable(legacy);
+    expect(normalized.columns[0].align).toBe("right");
+    expect(normalized.rows[0].cells.c1).toBe("1111");
+    expect(normalized.rows[0].style).toBe("normal");
+    expect(normalized.showTotalsRow).toBe(false);
   });
 
-  it("normalizeTable backfills missing cells and drops removed columns", () => {
-    const t = buildTable();
-    const itemCol = t.columns[0].id;
-    const priceCol = t.columns[1].id;
-    // remove the price column; add a stray cell for a non-existent column
-    const cols = t.columns.filter((c) => c.id !== priceCol);
-    const rows = t.rows.map((r) => ({ id: r.id, cells: { ...r.cells, ghost: "x" } }));
-    const norm = normalizeTable({ ...t, columns: cols, rows });
-    // ghost cell dropped, price cell dropped, item cell retained
-    expect(norm.rows[0].cells).toEqual({ [itemCol]: "Install labor" });
-    // adding a new column: cells backfilled to ""
-    const withNew = normalizeTable({ ...norm, columns: [...cols, newColumn("Notes", "text")] });
-    const newId = withNew.columns[1].id;
-    expect(withNew.rows[0].cells[newId]).toBe("");
-  });
+  it("backfills added columns and removes deleted cells", () => {
+    const table = buildManualTable();
+    const firstColumnId = table.columns[0].id;
+    const normalized = normalizeTable({
+      ...table,
+      columns: [table.columns[0]],
+      rows: table.rows.map((row) => ({ ...row, cells: { ...row.cells, ghost: "keep out" } })),
+    });
+    expect(normalized.rows[0].cells).toEqual({ [firstColumnId]: "LFC GANTRY DEMO" });
 
-  it("formatCurrency formats USD with 2 decimals", () => {
-    expect(formatCurrency(6500.5)).toBe("$6,500.50");
-    expect(formatCurrency(0)).toBe("$0.00");
+    const added = newColumn("Notes");
+    const withAddedColumn = normalizeTable({ ...normalized, columns: [...normalized.columns, added] });
+    expect(withAddedColumn.rows[0].cells[added.id]).toBe("");
   });
 });
 
-describe("PdfFreeformTables render", () => {
-  it("renders column headers, rows, and a summed totals row", async () => {
-    const html = await renderFreeform([buildTable()]);
-    // Table title
-    expect(html).toContain("Pricing");
-    // Column headers
-    expect(html).toContain("Item");
-    expect(html).toContain("Price");
-    // Row content (text cell)
-    expect(html).toContain("Install labor");
-    expect(html).toContain("Parts");
-    // Numeric cells formatted as currency
-    expect(html).toContain("$5,000.00");
-    expect(html).toContain("$1,500.50");
-    // Totals row sums the number column (5000 + 1500.50)
-    expect(html).toContain("Total");
-    expect(html).toContain("$6,500.50");
+describe("PdfFreeformTables", () => {
+  it("renders exact typed text and visual row roles without currency formatting or totals", async () => {
+    const html = await renderFreeform([buildManualTable()]);
+    expect(html).toContain("DESCRIPTION OF WORK");
+    expect(html).toContain("LFC GANTRY DEMO");
+    expect(html).toContain("VAT (20%)");
+    expect(html).toContain("£11,250");
+    expect(html).toContain("£13,920");
+    expect(html).toContain('data-row-style="header"');
+    expect(html).toContain('data-row-style="subtotal"');
+    expect(html).toContain('data-row-style="grand-total"');
+    expect(html).not.toContain("$11,250.00");
+    expect(html).not.toContain("Editor description");
+    expect(html).not.toContain("Editor pricing");
   });
 
-  it("renders nothing for empty tables / no columns", async () => {
+  it("renders legacy totals as typed rows only and never generates a total", async () => {
+    const html = await renderFreeform([{
+      id: "legacy",
+      name: "Legacy",
+      columns: [{ id: "c1", label: "Item", type: "text" }, { id: "c2", label: "Price", type: "number" }],
+      rows: [{ id: "r1", cells: { c1: "Manual value", c2: "1111" } }],
+      showTotalsRow: true,
+    }]);
+    expect(html).toContain("1111");
+    expect(html).not.toContain("$1,111.00");
+    expect(html).not.toContain(">Total<");
+  });
+
+  it("renders nothing for empty tables", async () => {
     expect(await renderFreeform([])).toBe("");
-    const empty = { ...newTable("Empty"), columns: [], rows: [] };
-    expect(await renderFreeform([empty])).toBe("");
+    expect(await renderFreeform([{ ...newTable("Empty"), columns: [], rows: [] }])).toBe("");
   });
 });

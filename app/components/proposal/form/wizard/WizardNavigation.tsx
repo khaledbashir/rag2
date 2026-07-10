@@ -20,9 +20,10 @@ import { useFormContext } from "react-hook-form";
 import { ProposalType } from "@/types";
 
 const WizardNavigation = () => {
-    const { isFirstStep, isLastStep, nextStep, previousStep, activeStep } = useWizard();
+    const { isFirstStep, isLastStep, nextStep, previousStep, goToStep, activeStep } = useWizard();
     const { watch, trigger } = useFormContext<ProposalType>();
     const [proposalName, receiverName] = watch(["details.proposalName", "receiver.name"]);
+    const manualTableMode = watch("details.manualTableMode" as any) === true;
     const isStep1Ready = Boolean(proposalName?.toString().trim()) && Boolean(receiverName?.toString().trim());
 
     // Allow clicking next even if "disabled" to show error toast
@@ -37,7 +38,19 @@ const WizardNavigation = () => {
                 return;
             }
         }
+        if (manualTableMode && activeStep === 1) {
+            goToStep(3);
+            return;
+        }
         nextStep();
+    };
+
+    const handlePrevious = () => {
+        if (manualTableMode && activeStep === 3) {
+            goToStep(1);
+            return;
+        }
+        previousStep();
     };
 
     const { _t } = useTranslationContext();
@@ -53,7 +66,7 @@ const WizardNavigation = () => {
             {!isFirstStep && (
                 <BaseButton
                     tooltipLabel="Go back to the previous step"
-                    onClick={() => previousStep()}
+                    onClick={handlePrevious}
                 >
                     <ArrowLeft />
                     {_t("form.wizard.back")}

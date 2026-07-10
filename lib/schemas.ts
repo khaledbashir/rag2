@@ -349,6 +349,8 @@ const ProposalDetailsSchema = z.object({
     specsDisplayMode: z.enum(["condensed", "extended"]).optional().default("extended"),
     mirrorMode: z.boolean().default(false),
     calculationMode: z.enum(["MIRROR", "INTELLIGENCE"]).default("INTELLIGENCE"),
+    // Build from Scratch is a manual document-table workflow, not an estimator.
+    manualTableMode: z.boolean().optional(),
     pricingDocument: z.any().optional().nullable(),
     pricingMode: z.string().optional().nullable(),
     status: fieldValidators.stringOptional,
@@ -404,19 +406,23 @@ const ProposalDetailsSchema = z.object({
     serviceContractSignatureText: z.string().optional(), // verbatim signature override
     // CONTRACT path: editable General Terms override (seeded from contract-general-terms)
     generalTermsBodyOverride: z.string().optional(),
-    // Free-form table builder (Priority 1-tied): user-defined columns/rows, text+numbers.
+    // Manual table composer: exact text only, with visual-only row roles.
     freeformTables: z.array(z.object({
         id: z.string(),
         name: z.string(),
         columns: z.array(z.object({
             id: z.string(),
             label: z.string(),
-            type: z.enum(["text", "number"]).default("text"),
+            align: z.enum(["left", "center", "right"]).optional().default("left"),
+            // Legacy drafts may still contain this. It is never used for math.
+            type: z.enum(["text", "number"]).optional(),
         })),
         rows: z.array(z.object({
             id: z.string(),
             cells: z.record(z.string()).default({}),
+            style: z.enum(["normal", "header", "subtotal", "grand-total"]).optional().default("normal"),
         })),
+        // Legacy flag accepted for reload compatibility. Automatic totals are disabled.
         showTotalsRow: z.boolean().optional().default(false),
     })).optional().default([]),
     showFreeformTables: z.boolean().optional().default(true),

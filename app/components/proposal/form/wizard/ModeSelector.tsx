@@ -21,15 +21,32 @@ const ModeSelector = ({ onSelect }: ModeSelectorProps) => {
     if (mode === "mirror") {
       setValue("details.mirrorMode", true, { shouldDirty: true });
       setValue("details.calculationMode", "MIRROR", { shouldDirty: true });
+      setValue("details.manualTableMode", false, { shouldDirty: true });
+      setValue("details.aiImport", false, { shouldDirty: true });
+      setValue("details.showPricingTables", true, { shouldDirty: true });
+      setValue("details.showSpecifications", true, { shouldDirty: true });
+      setValue("details.showResponsibilityMatrix", true, { shouldDirty: true });
       onSelect(true, "mirror");
     } else if (mode === "ai-import") {
       setValue("details.mirrorMode", true, { shouldDirty: true });
       setValue("details.calculationMode", "MIRROR", { shouldDirty: true });
+      setValue("details.manualTableMode", false, { shouldDirty: true });
       setValue("details.aiImport", true, { shouldDirty: true });
+      setValue("details.showPricingTables", true, { shouldDirty: true });
+      setValue("details.showSpecifications", true, { shouldDirty: true });
+      setValue("details.showResponsibilityMatrix", true, { shouldDirty: true });
       onSelect(true, "ai-import");
     } else {
       setValue("details.mirrorMode", false, { shouldDirty: true });
       setValue("details.calculationMode", "INTELLIGENCE", { shouldDirty: true });
+      setValue("details.manualTableMode", true, { shouldDirty: true });
+      setValue("details.aiImport", false, { shouldDirty: true });
+      setValue("details.showPricingTables", false, { shouldDirty: true });
+      setValue("details.showSpecifications", false, { shouldDirty: true });
+      setValue("details.showScopeOfWork", false, { shouldDirty: true });
+      setValue("details.showFreeformTables", true, { shouldDirty: true });
+      setValue("details.includeResponsibilityMatrix", false, { shouldDirty: true });
+      setValue("details.showResponsibilityMatrix", false, { shouldDirty: true });
       onSelect(false, "intelligence");
     }
   };
@@ -116,7 +133,7 @@ const ModeSelector = ({ onSelect }: ModeSelectorProps) => {
             Build from Scratch
           </h3>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Start a new proposal without an RFP. Add screens and configure pricing manually.
+            Add columns and rows, type any content, and mark header or total lines. No calculations.
           </p>
           <div className="mt-5 px-4 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground group-hover:border-foreground/30 group-hover:text-foreground transition-all duration-200">
             Select

@@ -628,7 +628,7 @@ describe("Service Contract mode", () => {
 });
 
 // ============================================================================
-// 12. FREE-FORM TABLES (Priority 1-tied) — builder-from-scratch pricing
+// 12. MANUAL TABLES — exact text with visual-only row roles
 // ============================================================================
 describe("Free-form tables", () => {
   it("renders user-built tables in the pricing section", () => {
@@ -639,28 +639,29 @@ describe("Free-form tables", () => {
       freeformTables: [
         {
           id: "t1",
-          name: "Service Pricing",
+          name: "DESCRIPTION OF WORK",
           columns: [
-            { id: "c1", label: "Item", type: "text" },
-            { id: "c2", label: "Price", type: "number" },
+            { id: "c1", label: "Editor description", align: "left" },
+            { id: "c2", label: "Editor pricing", align: "right" },
           ],
           rows: [
-            { id: "r1", cells: { c1: "Labor", c2: "2000" } },
-            { id: "r2", cells: { c1: "Parts", c2: "800" } },
+            { id: "r1", style: "header", cells: { c1: "LFC GANTRY DEMO", c2: "PRICING" } },
+            { id: "r2", style: "normal", cells: { c1: "Labor", c2: "£2,000" } },
+            { id: "r3", style: "grand-total", cells: { c1: "GRAND TOTAL", c2: "£2,800" } },
           ],
-          showTotalsRow: true,
         },
       ],
     });
     const { container } = render(<ProposalTemplate5 {...props} />);
     const text = container.textContent || "";
-    expect(text).toContain("Service Pricing");
+    expect(text).toContain("DESCRIPTION OF WORK");
+    expect(text).toContain("LFC GANTRY DEMO");
     expect(text).toContain("Labor");
-    expect(text).toContain("Parts");
-    expect(text).toContain("$2,000.00");
-    expect(text).toContain("$800.00");
-    expect(text).toContain("Total");
-    expect(text).toContain("$2,800.00");
+    expect(text).toContain("£2,000");
+    expect(text).toContain("GRAND TOTAL");
+    expect(text).toContain("£2,800");
+    expect(text).not.toContain("$2,800.00");
+    expect(text).not.toContain("Editor description");
   });
 
   it("hides free-form tables when showFreeformTables is false", () => {
@@ -695,12 +696,12 @@ describe("Service Contract from-scratch loop", () => {
         {
           id: "t1", name: "Annual Service Fee",
           columns: [
-            { id: "c1", label: "Year", type: "text" },
-            { id: "c2", label: "Fee", type: "number" },
+            { id: "c1", label: "Year", align: "left" },
+            { id: "c2", label: "Fee", align: "right" },
           ],
           rows: [
-            { id: "r1", cells: { c1: "2026–2027", c2: "45000" } },
-            { id: "r2", cells: { c1: "2027–2028", c2: "51439.33" } },
+            { id: "r1", cells: { c1: "2026–2027", c2: "$45,000.00" } },
+            { id: "r2", cells: { c1: "2027–2028", c2: "$51,439.33" } },
           ],
           showTotalsRow: false,
         },

@@ -107,7 +107,11 @@ export function useAutoSave({
                         showExhibitB: (formData.details as any)?.showExhibitB,
                         showNotes: (formData.details as any)?.showNotes,
                         showScopeOfWork: (formData.details as any)?.showScopeOfWork,
+                        showResponsibilityMatrix: (formData.details as any)?.showResponsibilityMatrix,
                         pageLayout: (formData.details as any)?.pageLayout,
+                        manualTableMode: (formData.details as any)?.manualTableMode,
+                        freeformTables: (formData.details as any)?.freeformTables,
+                        showFreeformTables: (formData.details as any)?.showFreeformTables,
                         // Change Order fields. There are no changeOrder* columns on Project —
                         // mapDbProposalToForm reads them back out of documentConfig — so without
                         // these lines every CO field (number, dates, amounts, intro) was silently

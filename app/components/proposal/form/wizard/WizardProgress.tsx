@@ -35,8 +35,10 @@ const WizardStepper = ({ wizard }: WizardStepperProps) => {
     const { activeStep, stepCount } = wizard;
 
     const {
+        watch,
         formState: { errors },
     } = useFormContext<ProposalType>();
+    const manualTableMode = watch("details.manualTableMode" as any) === true;
 
     const { _t } = useTranslationContext();
 
@@ -49,12 +51,18 @@ const WizardStepper = ({ wizard }: WizardStepperProps) => {
     const step3Valid = !errors.details?.items;
     const step4Valid = !errors.details?.paymentInformation;
 
-    const steps: Array<{ wizardStep: number; label: string; isValid?: boolean }> = [
-        { wizardStep: 0, label: "Setup", isValid: step1Valid },
-        { wizardStep: 1, label: "Configure", isValid: step2Valid },
-        { wizardStep: 2, label: "Math", isValid: step3Valid },
-        { wizardStep: 3, label: "Review", isValid: step4Valid },
-    ];
+    const steps: Array<{ wizardStep: number; label: string; isValid?: boolean }> = manualTableMode
+        ? [
+            { wizardStep: 0, label: "Setup", isValid: step1Valid },
+            { wizardStep: 1, label: "Tables", isValid: step2Valid },
+            { wizardStep: 3, label: "Review", isValid: step4Valid },
+        ]
+        : [
+            { wizardStep: 0, label: "Setup", isValid: step1Valid },
+            { wizardStep: 1, label: "Configure", isValid: step2Valid },
+            { wizardStep: 2, label: "Math", isValid: step3Valid },
+            { wizardStep: 3, label: "Review", isValid: step4Valid },
+        ];
 
     const { saveToDb } = useDebouncedSave();
 

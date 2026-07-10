@@ -50,3 +50,49 @@ describe("mapDbProposalToFormSchema — Change Order round-trip via documentConf
     expect(details.changeOrderOriginalContractAmount).toBe(0);
   });
 });
+
+describe("mapDbProposalToFormSchema — manual table workflow", () => {
+  it("restores manual tables and keeps calculator sections disabled", () => {
+    const result = mapDbProposalToFormSchema({
+      id: "manual-project-1",
+      clientName: "Manual Proposal",
+      mirrorMode: false,
+      calculationMode: "INTELLIGENCE",
+      documentConfig: {
+        manualTableMode: true,
+        showPricingTables: true,
+        showSpecifications: true,
+        showScopeOfWork: true,
+        showFreeformTables: true,
+        freeformTables: [{
+          id: "t1",
+          name: "DESCRIPTION OF WORK",
+          columns: [{ id: "c1", label: "Description", align: "left" }],
+          rows: [{ id: "r1", style: "grand-total", cells: { c1: "GRAND TOTAL £13,920" } }],
+        }],
+      },
+    }) as any;
+
+    expect(result.details.manualTableMode).toBe(true);
+    expect(result.details.showPricingTables).toBe(false);
+    expect(result.details.showSpecifications).toBe(false);
+    expect(result.details.showScopeOfWork).toBe(false);
+    expect(result.details.showResponsibilityMatrix).toBe(false);
+    expect(result.details.freeformTables[0].rows[0].cells.c1).toBe("GRAND TOTAL £13,920");
+  });
+
+  it("migrates a legacy non-mirror proposal into the manual table workflow", () => {
+    const result = mapDbProposalToFormSchema({
+      id: "legacy-manual-1",
+      clientName: "Legacy Manual",
+      mirrorMode: false,
+      calculationMode: "INTELLIGENCE",
+      documentConfig: {},
+    }) as any;
+
+    expect(result.details.manualTableMode).toBe(true);
+    expect(result.details.showPricingTables).toBe(false);
+    expect(result.details.showSpecifications).toBe(false);
+    expect(result.details.showResponsibilityMatrix).toBe(false);
+  });
+});
