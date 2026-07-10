@@ -813,6 +813,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                             <ChangeOrderDescriptionOfWork />
                         </div>
                     )}
+                    {showFreeformTables && freeformTables.length > 0 && <FreeformTablesSection />}
                     {showChangeOrderTotals && <ChangeOrderTotalsBlock />}
                     {showNotes && (
                         <div className="px-6">

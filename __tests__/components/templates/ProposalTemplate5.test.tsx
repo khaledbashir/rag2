@@ -664,6 +664,42 @@ describe("Free-form tables", () => {
     expect(text).not.toContain("Editor description");
   });
 
+  // Natalia 2026-07-10: manual tables rendered on Budget and Proposal but were
+  // silently dropped on Change Order, which has its own layout branch.
+  it.each(["BUDGET", "PROPOSAL", "LOI", "CHANGE_ORDER"])(
+    "renders user-built tables in %s mode",
+    (documentMode) => {
+      const props = baseProps({
+        documentMode,
+        mirrorMode: false,
+        showFreeformTables: true,
+        freeformTables: [
+          {
+            id: "t1",
+            name: "DESCRIPTION OF WORK",
+            columns: [
+              { id: "c1", label: "Editor description", align: "left" },
+              { id: "c2", label: "Editor pricing", align: "right" },
+            ],
+            rows: [
+              { id: "r1", style: "header", cells: { c1: "LFC GANTRY DEMO", c2: "PRICING" } },
+              { id: "r2", style: "subtotal", cells: { c1: "SUBTOTAL", c2: "£11,600" } },
+              { id: "r3", style: "tax", cells: { c1: "VAT (20%)", c2: "£2,320" } },
+              { id: "r4", style: "bond", cells: { c1: "BOND (1.5%)", c2: "£174" } },
+              { id: "r5", style: "grand-total", cells: { c1: "GRAND TOTAL", c2: "£13,920" } },
+            ],
+          },
+        ],
+      });
+      const { container } = render(<ProposalTemplate5 {...props} />);
+      const text = container.textContent || "";
+      expect(text).toContain("LFC GANTRY DEMO");
+      expect(text).toContain("VAT (20%)");
+      expect(text).toContain("BOND (1.5%)");
+      expect(text).toContain("£13,920");
+    },
+  );
+
   it("hides free-form tables when showFreeformTables is false", () => {
     const props = baseProps({
       documentMode: "BUDGET",
