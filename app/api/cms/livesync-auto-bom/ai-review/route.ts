@@ -13,8 +13,9 @@
  * is already in the app env (glm-5.2), else Ollama Cloud.
  */
 import { NextRequest } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/apiAuth";
+import type { UserRole } from "@/lib/rbac";
 import { log } from "@/lib/logger";
 import {
   buildLivesyncAutoBom,
@@ -22,49 +23,54 @@ import {
   type LivesyncScreenInput,
 } from "@/lib/cms/livesyncAutoBom";
 
-const prisma = new PrismaClient();
+const ALLOWED_ROLES: UserRole[] = ["ADMIN", "PRODUCT_EXPERT"];
 
 type Provider = { name: string; baseUrl: string; apiKey: string; model: string };
 
-function pickProvider(): Provider | null {
+function pickProviders(): Provider[] {
+  const providers: Provider[] = [];
   if (process.env.LIVESYNC_AI_API_KEY && process.env.LIVESYNC_AI_BASE_URL) {
-    return {
+    providers.push({
       name: "custom",
       baseUrl: process.env.LIVESYNC_AI_BASE_URL,
       apiKey: process.env.LIVESYNC_AI_API_KEY,
       model: process.env.LIVESYNC_AI_MODEL || "glm-5.2",
-    };
+    });
   }
   if (process.env.Z_AI_API_KEY) {
-    return {
+    providers.push({
       name: "z-ai",
       baseUrl: process.env.Z_AI_BASE_URL || "https://api.z.ai/api/coding/paas/v4",
       apiKey: process.env.Z_AI_API_KEY,
       model: process.env.LIVESYNC_AI_MODEL || "glm-5.2",
-    };
+    });
   }
   if (process.env.OLLAMA_API_KEY) {
-    return {
+    providers.push({
       name: "ollama-cloud",
       baseUrl: process.env.OLLAMA_BASE_URL || "https://ollama.com/v1",
       apiKey: process.env.OLLAMA_API_KEY,
-      model: process.env.LIVESYNC_AI_MODEL || "glm-5.2",
-    };
+      model: process.env.OLLAMA_MODEL || "kimi-k2.5",
+    });
   }
-  return null;
+  return providers;
 }
 
 export async function POST(request: NextRequest) {
-  const [, authError] = await requireAuth();
+  const [session, authError] = await requireAuth();
   if (authError) return authError;
+  const role = (session as unknown as { user?: { role?: UserRole } } | null)?.user?.role;
+  if (!role || !ALLOWED_ROLES.includes(role)) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 });
+  }
 
   const body = await request.json().catch(() => null);
   if (!body || !Array.isArray(body.screens) || body.screens.length === 0) {
     return new Response(JSON.stringify({ error: "Provide at least one screen." }), { status: 400 });
   }
 
-  const provider = pickProvider();
-  if (!provider) {
+  const providers = pickProviders();
+  if (providers.length === 0) {
     return new Response(JSON.stringify({ error: "No AI provider configured." }), { status: 503 });
   }
 
@@ -118,31 +124,44 @@ export async function POST(request: NextRequest) {
       const send = (type: string, text: string) =>
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type, text })}\n\n`));
       try {
-        send("meta", provider.model);
-        const upstream = await fetch(`${provider.baseUrl}/chat/completions`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${provider.apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: provider.model,
-            stream: true,
-            temperature: 0.3,
-            max_tokens: 3000,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt },
-            ],
-          }),
-        });
-        if (!upstream.ok || !upstream.body) {
-          const errText = await upstream.text().catch(() => "");
-          log.error("[livesync ai-review] upstream error", { status: upstream.status, errText: errText.slice(0, 300) });
-          send("error", `AI provider returned ${upstream.status}.`);
+        let upstream: Response | null = null;
+        let provider: Provider | null = null;
+        for (const candidate of providers) {
+          const response = await fetch(`${candidate.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${candidate.apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: candidate.model,
+              stream: true,
+              temperature: 0.3,
+              max_tokens: 3000,
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt },
+              ],
+            }),
+          });
+          if (response.ok && response.body) {
+            upstream = response;
+            provider = candidate;
+            break;
+          }
+          const errText = await response.text().catch(() => "");
+          log.error("[livesync ai-review] upstream error", {
+            provider: candidate.name,
+            status: response.status,
+            errText: errText.slice(0, 300),
+          });
+        }
+        if (!upstream || !upstream.body) {
+          send("error", "AI review providers are temporarily unavailable.");
           controller.close();
           return;
         }
+        send("meta", provider?.model || "AI review");
         const reader = upstream.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
