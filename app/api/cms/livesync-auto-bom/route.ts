@@ -9,8 +9,9 @@
  * proposal for a human to review — every judgment call carries a flag.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/apiAuth";
+import type { UserRole } from "@/lib/rbac";
 import { log } from "@/lib/logger";
 import {
   buildLivesyncAutoBom,
@@ -18,12 +19,16 @@ import {
   type LivesyncScreenInput,
 } from "@/lib/cms/livesyncAutoBom";
 
-const prisma = new PrismaClient();
+const ALLOWED_ROLES: UserRole[] = ["ADMIN", "PRODUCT_EXPERT"];
 
 export async function POST(request: NextRequest) {
   try {
-    const [, authError] = await requireAuth();
+    const [session, authError] = await requireAuth();
     if (authError) return authError;
+    const role = (session as unknown as { user?: { role?: UserRole } } | null)?.user?.role;
+    if (!role || !ALLOWED_ROLES.includes(role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const body = await request.json().catch(() => null);
     if (!body || !Array.isArray(body.screens) || body.screens.length === 0) {

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Plus, Trash2, Calculator, AlertTriangle, Info, Loader2, BrainCircuit, FileSpreadsheet, Sparkles } from "lucide-react";
+import { Plus, Trash2, Calculator, AlertTriangle, Info, Loader2, BrainCircuit, FileSpreadsheet, Sparkles, History } from "lucide-react";
 
 type ScreenRow = {
   name: string;
@@ -70,6 +70,32 @@ type AutoBomResponse = {
   catalog: { itemCount: number; lastPriceUpdate: string | null };
 };
 
+type SavedCalculation = {
+  id: string;
+  name: string;
+  savedAt: string;
+  screens: ScreenRow[];
+  sportsVenue: boolean;
+  includeLicense: boolean;
+  payload: ReturnType<typeof makePayload>;
+  result: AutoBomResponse;
+};
+
+const HISTORY_KEY = "anc-livesync-calculator-history-v1";
+
+const makePayload = (screens: ScreenRow[], sportsVenue: boolean, includeLicense: boolean) => ({
+  sportsVenue,
+  includeLicense,
+  screens: screens.filter((s) => s.pixelWidth && s.pixelHeight).map((s, i) => ({
+    name: s.name || `Screen ${i + 1}`,
+    pixelWidth: Number(s.pixelWidth),
+    pixelHeight: Number(s.pixelHeight),
+    liveVideo: s.liveVideo,
+    outdoor: s.outdoor,
+    physicalWidthFt: s.physicalWidthFt ? Number(s.physicalWidthFt) : null,
+  })),
+});
+
 const CATEGORY_LABEL: Record<string, string> = {
   SERVER_EQUIPMENT: "Server Equipment",
   SERVER_ADDON: "Server Add-ons",
@@ -101,21 +127,25 @@ function ReasoningPanel({ steps }: { steps: ReasoningStep[] }) {
     let i = 0;
     const timer = setInterval(() => {
       i += 1;
-      setVisibleCount(i);
+      setVisibleCount((prev) => Math.max(prev, i));
       if (i >= steps.length) clearInterval(timer);
-    }, 420);
+    }, 200);
     return () => clearInterval(timer);
   }, [steps]);
 
   const thinking = visibleCount < steps.length;
 
   return (
-    <section className="border border-border rounded-lg bg-muted/30 overflow-hidden">
+    <section
+      className={`border border-border rounded-lg bg-muted/30 overflow-hidden ${thinking ? "cursor-pointer" : ""}`}
+      onClick={() => thinking && setVisibleCount(steps.length)}
+      title={thinking ? "Click to reveal all steps" : undefined}
+    >
       <div className="px-4 py-3 border-b border-border flex items-center gap-2">
         <BrainCircuit className={`w-4 h-4 ${thinking ? "animate-pulse text-primary" : "text-primary"}`} />
         <h2 className="text-lg font-semibold">How it thought through this job</h2>
         <span className="ml-auto text-xs text-muted-foreground">
-          {thinking ? `reasoning… ${visibleCount}/${steps.length}` : `${steps.length} decisions`}
+          {thinking ? `reasoning… ${visibleCount}/${steps.length} — click to skip` : `${steps.length} decisions`}
         </span>
       </div>
       <ol className="p-4 space-y-3">
@@ -252,6 +282,20 @@ const emptyScreen = (): ScreenRow => ({
   physicalWidthFt: "",
 });
 
+/** Typical screen types — dims match the grounded examples from Jackson's rules */
+const PRESETS: Array<{ label: string } & Partial<ScreenRow>> = [
+  { label: "Main board", name: "Main Video Board", pixelWidth: "7680", pixelHeight: "1000" },
+  { label: "Center-hung (live)", name: "Center Hung", pixelWidth: "5000", pixelHeight: "2000", liveVideo: true },
+  { label: "Ribbon", name: "Ribbon", pixelWidth: "3000", pixelHeight: "500" },
+  { label: "Concourse", name: "Concourse", pixelWidth: "1920", pixelHeight: "1080" },
+];
+
+/** "7680x1080" / "7680×1080" / "7680 × 1080" pasted into the width field → both fields */
+const parseDimsPaste = (text: string): { w: string; h: string } | null => {
+  const m = text.trim().match(/^(\d{2,6})\s*[x×*,]\s*(\d{2,6})$/i);
+  return m ? { w: m[1], h: m[2] } : null;
+};
+
 export default function LivesyncCalculatorClient() {
   const [screens, setScreens] = useState<ScreenRow[]>([
     { name: "Main Video Board", pixelWidth: "7680", pixelHeight: "1000", liveVideo: false, outdoor: false, physicalWidthFt: "" },
@@ -262,30 +306,32 @@ export default function LivesyncCalculatorClient() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AutoBomResponse | null>(null);
+  // Inputs snapshotted at generate time — AI review and Excel export run off
+  // this, never the live form, so they always describe the BOM on screen.
+  const [generatedPayload, setGeneratedPayload] = useState<ReturnType<typeof buildPayload> | null>(null);
+  const [history, setHistory] = useState<SavedCalculation[]>([]);
+  const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
 
-  const buildPayload = () => ({
-    sportsVenue,
-    includeLicense,
-    screens: screens
-      .filter((s) => s.pixelWidth && s.pixelHeight)
-      .map((s, i) => ({
-        name: s.name || `Screen ${i + 1}`,
-        pixelWidth: Number(s.pixelWidth),
-        pixelHeight: Number(s.pixelHeight),
-        liveVideo: s.liveVideo,
-        outdoor: s.outdoor,
-        physicalWidthFt: s.physicalWidthFt ? Number(s.physicalWidthFt) : null,
-      })),
-  });
+  useEffect(() => {
+    try {
+      setHistory(JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"));
+    } catch {
+      setHistory([]);
+    }
+  }, []);
+
+  const buildPayload = () => makePayload(screens, sportsVenue, includeLicense);
 
   const exportExcel = async () => {
+    if (!generatedPayload) return;
     setExporting(true);
     setError(null);
     try {
+      const firstName = String(generatedPayload.screens[0]?.name ?? "");
       const res = await fetch("/api/cms/livesync-auto-bom/export.xlsx", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...buildPayload(), jobName: screens[0]?.name ? `Control System — ${screens[0].name}` : "Control System Estimate" }),
+        body: JSON.stringify({ ...generatedPayload, bomLines: result?.lines, jobName: firstName ? `Control System — ${firstName}` : "Control System Estimate" }),
       });
       if (!res.ok) {
         setError("Failed to generate the Excel export.");
@@ -329,6 +375,23 @@ export default function LivesyncCalculatorClient() {
         return;
       }
       setResult(data as AutoBomResponse);
+      setGeneratedPayload(payload);
+      const saved: SavedCalculation = {
+        id: crypto.randomUUID(),
+        name: payload.screens[0]?.name || "Control System Estimate",
+        savedAt: new Date().toISOString(),
+        screens,
+        sportsVenue,
+        includeLicense,
+        payload,
+        result: data as AutoBomResponse,
+      };
+      setHistory((previous) => {
+        const next = [saved, ...previous].slice(0, 50);
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+        return next;
+      });
+      setActiveHistoryId(saved.id);
     } catch {
       setError("Failed to generate the bill of materials.");
     } finally {
@@ -346,8 +409,57 @@ export default function LivesyncCalculatorClient() {
     ? result.lines.filter((l) => !CATEGORY_ORDER.includes(l.category))
     : [];
 
+  const editBomLine = (lineIndex: number, patch: Partial<Pick<BomLine, "quantity" | "unitPrice">>) => {
+    setResult((current) => {
+      if (!current) return current;
+      const lines = current.lines.map((line, index) => {
+        if (index !== lineIndex) return line;
+        const next = { ...line, ...patch };
+        return { ...next, lineTotal: Number((next.quantity * next.unitPrice).toFixed(2)) };
+      });
+      const sum = (category: string) => lines.filter((line) => line.category === category).reduce((n, line) => n + line.lineTotal, 0);
+      const softCost = sum("INTEGRATION");
+      const license = sum("LICENSE");
+      const grand = lines.reduce((n, line) => n + line.lineTotal, 0);
+      return { ...current, lines, totals: { hardware: grand - softCost - license, softCost, license, grand } };
+    });
+  };
+
+  const openHistory = (saved: SavedCalculation) => {
+    setScreens(saved.screens);
+    setSportsVenue(saved.sportsVenue);
+    setIncludeLicense(saved.includeLicense);
+    setGeneratedPayload(saved.payload);
+    setResult(saved.result);
+    setActiveHistoryId(saved.id);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    if (!activeHistoryId || !result) return;
+    setHistory((previous) => {
+      const next = previous.map((saved) => saved.id === activeHistoryId ? { ...saved, result } : saved);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, [activeHistoryId, result]);
+
   return (
     <div className="space-y-8">
+      {history.length > 0 && (
+        <section className="border border-border rounded-lg p-4 bg-muted/30 space-y-3">
+          <h2 className="text-lg font-semibold flex items-center gap-2"><History className="w-4 h-4" /> Calculation history</h2>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {history.map((saved) => (
+              <button key={saved.id} onClick={() => openHistory(saved)} className="min-w-56 text-left rounded-md border border-border bg-background px-3 py-2 hover:bg-muted">
+                <div className="font-medium truncate">{saved.name}</div>
+                <div className="text-xs text-muted-foreground">{saved.payload.screens.length} screen(s) · {money(saved.result.totals.grand)}</div>
+                <div className="text-xs text-muted-foreground">{new Date(saved.savedAt).toLocaleString()}</div>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       {/* ── Inputs ── */}
       <section className="border border-border rounded-lg p-4 bg-muted/30 space-y-4">
         <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -384,6 +496,13 @@ export default function LivesyncCalculatorClient() {
                       placeholder="7680"
                       value={screen.pixelWidth}
                       onChange={(e) => updateScreen(i, { pixelWidth: e.target.value })}
+                      onPaste={(e) => {
+                        const dims = parseDimsPaste(e.clipboardData.getData("text"));
+                        if (dims) {
+                          e.preventDefault();
+                          updateScreen(i, { pixelWidth: dims.w, pixelHeight: dims.h });
+                        }
+                      }}
                     />
                   </td>
                   <td className="px-3 py-1.5">
@@ -442,6 +561,26 @@ export default function LivesyncCalculatorClient() {
           >
             <Plus className="w-4 h-4" /> Add screen
           </button>
+          <span className="flex items-center gap-1.5 flex-wrap">
+            {PRESETS.map(({ label, ...preset }) => (
+              <button
+                key={label}
+                className="px-2 py-1 rounded-full border border-border text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                title={`Add a ${label} screen (${preset.pixelWidth}×${preset.pixelHeight})`}
+                onClick={() =>
+                  setScreens((prev) => {
+                    const next = { ...emptyScreen(), ...preset };
+                    // Replace a single untouched starter row instead of appending
+                    const untouched =
+                      prev.length === 1 && !prev[0].pixelWidth && !prev[0].pixelHeight && !prev[0].name;
+                    return untouched ? [next] : [...prev, next];
+                  })
+                }
+              >
+                + {label}
+              </button>
+            ))}
+          </span>
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             <input
               type="checkbox"
@@ -482,7 +621,7 @@ export default function LivesyncCalculatorClient() {
           {result.reasoning?.length > 0 && <ReasoningPanel steps={result.reasoning} />}
 
           {/* ── Live model review ── */}
-          <AiReviewPanel getPayload={buildPayload} />
+          {generatedPayload && <AiReviewPanel getPayload={() => generatedPayload} />}
 
           {/* ── Summary ── */}
           <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -524,7 +663,16 @@ export default function LivesyncCalculatorClient() {
                       </td>
                       <td className="px-3 py-1.5 text-right">{plan.outputs}</td>
                       <td className="px-3 py-1.5 text-right">
-                        {plan.renderServersTotal} ({plan.renderPrimaries}+{plan.renderPrimaries} backup)
+                        {plan.sharedServer ? (
+                          <span className="text-muted-foreground">
+                            shared — pack of {result.screenPlans.filter((p) => p.sharedServer).length} on{" "}
+                            {plan.renderServersTotal} server(s)
+                          </span>
+                        ) : (
+                          <>
+                            {plan.renderServersTotal} ({plan.renderPrimaries}+{plan.renderPrimaries} backup)
+                          </>
+                        )}
                       </td>
                       <td className="px-3 py-1.5">{plan.storageTier}</td>
                       <td className="px-3 py-1.5 text-xs text-muted-foreground">
@@ -576,14 +724,16 @@ export default function LivesyncCalculatorClient() {
                             {CATEGORY_LABEL[group.category] ?? group.category}
                           </td>
                         </tr>
-                        {group.lines.map((line) => (
+                        {group.lines.map((line) => {
+                          const lineIndex = result.lines.indexOf(line);
+                          return (
                           <tr key={line.sku + line.rationale} className="border-t border-border align-top">
                             <td className="px-3 py-1.5">
                               <div>{line.displayName}</div>
                               <div className="font-mono text-xs text-muted-foreground">{line.sku}</div>
                             </td>
-                            <td className="px-3 py-1.5 text-right">{line.quantity}</td>
-                            <td className="px-3 py-1.5 text-right">{money(line.unitPrice)}</td>
+                            <td className="px-3 py-1.5 text-right"><input aria-label={`Quantity for ${line.displayName}`} type="number" min="0" step="1" className="w-20 px-2 py-1 rounded border border-border bg-background text-right" value={line.quantity} onChange={(e) => editBomLine(lineIndex, { quantity: Math.max(0, Number(e.target.value)) })} /></td>
+                            <td className="px-3 py-1.5 text-right"><input aria-label={`Unit price for ${line.displayName}`} type="number" min="0" step="0.01" className="w-28 px-2 py-1 rounded border border-border bg-background text-right" value={line.unitPrice} onChange={(e) => editBomLine(lineIndex, { unitPrice: Math.max(0, Number(e.target.value)) })} /></td>
                             <td className="px-3 py-1.5 text-right font-medium">{money(line.lineTotal)}</td>
                             <td className="px-3 py-1.5 text-xs text-muted-foreground max-w-md">
                               {line.rationale}
@@ -594,7 +744,7 @@ export default function LivesyncCalculatorClient() {
                               ))}
                             </td>
                           </tr>
-                        ))}
+                        );})}
                       </React.Fragment>
                     )
                   )}

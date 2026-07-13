@@ -222,6 +222,10 @@ export function buildLivesyncAutoBom(
 
   const priceOf = (entry: CatalogEntry) =>
     entry.unitPrice != null && entry.unitPrice > 0 ? entry.unitPrice : entry.unitCost;
+  // Lines with no sell price fall back to unit COST — tracked and surfaced as
+  // one aggregate review flag (today the whole catalog is cost-basis, so a
+  // per-line flag would just be noise on every row).
+  let costBasisLines = 0;
 
   const addLine = (
     sku: string,
@@ -241,6 +245,7 @@ export function buildLivesyncAutoBom(
     if (!entry.isActive) {
       allFlags.push("SKU is marked inactive in the catalog — verify before quoting.");
     }
+    if (entry.unitPrice == null || entry.unitPrice <= 0) costBasisLines += 1;
     const unitPrice = priceOf(entry);
     lines.push({
       sku: entry.sku,
@@ -259,6 +264,11 @@ export function buildLivesyncAutoBom(
   const screenPlans: ScreenPlan[] = [];
   // 1-output, non-live screens can share a server (2 outputs per box)
   const shareableScreens: { name: string; tier: "4TB" | "6TB" | "8TB" }[] = [];
+  // Dual-GPU boxes carry 4 physical outputs — they feed the matrix at 4, not 2
+  let dualCardServers = 0;
+  // Screens bumped above 4TB — aggregated into ONE review flag instead of
+  // repeating the same pending-Jackson sentence on every server line
+  const tierBumps: { name: string; tier: string }[] = [];
 
   for (const screen of job.screens) {
     const flags: string[] = [];
@@ -281,9 +291,7 @@ export function buildLivesyncAutoBom(
     );
 
     if (tier !== "4TB") {
-      flags.push(
-        `Storage bumped to ${tier} because of screen size — exact 4/6/8 TB rule is pending Jackson's confirmation.`
-      );
+      tierBumps.push({ name: screen.name, tier });
     }
 
     if (outputs === 1 && !liveVideo && !needsDualCard) {
@@ -336,6 +344,7 @@ export function buildLivesyncAutoBom(
     }
 
     const total = primaries * 2; // 1:1 dedicated backup, always (Jackson)
+    if (needsDualCard && !liveVideo) dualCardServers += total;
     think(
       "Select render servers",
       `${screen.name}: ${outputs} output(s), and we never exceed ${OUTPUTS_PER_SERVER} outputs per server when we can help it → ${primaries} render primary(ies). ` +
@@ -485,11 +494,26 @@ export function buildLivesyncAutoBom(
   addLine(SKU.KVM_MGT, 1, "KVM management appliance: 1 per deployment.");
 
   // ── 6. Matrix / router — never exactly what you need, next size up ──
-  const matrixInputsNeeded = totalServers * OUTPUTS_PER_SERVER;
+  // Jackson's stated rule is 2 outputs per server; dual-GPU boxes physically
+  // carry 4, so they feed the matrix at 4 and the job is flagged for his
+  // confirmation rather than silently undersizing the router.
+  const standardServers = totalServers - dualCardServers;
+  const matrixInputsNeeded =
+    standardServers * OUTPUTS_PER_SERVER + dualCardServers * OUTPUTS_PER_DUAL_SERVER;
   const matrixSize = pickMatrixSize(matrixInputsNeeded);
+  const matrixMath =
+    dualCardServers > 0
+      ? `${standardServers} standard servers × 2 + ${dualCardServers} dual-GPU servers × ${OUTPUTS_PER_DUAL_SERVER} = ${matrixInputsNeeded}`
+      : `${totalServers} servers × 2 = ${matrixInputsNeeded}`;
+  const matrixFlags =
+    dualCardServers > 0
+      ? [
+          `Dual-GPU servers counted at ${OUTPUTS_PER_DUAL_SERVER} outputs into the matrix (Jackson's stated rule only covered standard 2-output boxes) — confirm router feed count with Jackson.`,
+        ]
+      : [];
   think(
     "Size the matrix",
-    `Every server puts two outputs toward the router: ${totalServers} servers × 2 = ${matrixInputsNeeded} sources into the matrix. ` +
+    `Every server puts its outputs toward the router: ${matrixMath} sources into the matrix. ` +
       (matrixSize
         ? `You never select exactly what you need — always the next size up, so ${matrixInputsNeeded} inputs lands on a ${matrixSize}×${matrixSize}.`
         : `That's beyond the largest matrix on the rate card (48×48) — this one goes to design review instead of a guess.`)
@@ -498,7 +522,8 @@ export function buildLivesyncAutoBom(
     addLine(
       SKU.MATRIX(matrixSize),
       1,
-      `Matrix: ${totalServers} servers × 2 outputs = ${matrixInputsNeeded} inputs → next size up = ${matrixSize}×${matrixSize} (never select exactly what you need).`
+      `Matrix: ${matrixMath} inputs → next size up = ${matrixSize}×${matrixSize} (never select exactly what you need).`,
+      matrixFlags
     );
     addLine(
       SKU.ROUTER_CABLE,
@@ -508,7 +533,8 @@ export function buildLivesyncAutoBom(
     );
   } else {
     reviewFlags.push(
-      `System needs ${matrixInputsNeeded} matrix inputs — beyond the largest catalog matrix (48×48). Needs Jackson's design.`
+      `System needs ${matrixInputsNeeded} matrix inputs — beyond the largest catalog matrix (48×48). Needs Jackson's design.`,
+      ...matrixFlags
     );
   }
 
@@ -648,6 +674,16 @@ export function buildLivesyncAutoBom(
   });
 
   // ── Job-level review flags ──
+  if (tierBumps.length > 0) {
+    reviewFlags.push(
+      `Storage bumped above 4TB on: ${tierBumps.map((t) => `${t.name} (${t.tier})`).join(", ")} — exact 4/6/8 TB thresholds are pending Jackson's confirmation.`
+    );
+  }
+  if (costBasisLines > 0) {
+    reviewFlags.push(
+      `${costBasisLines} of ${lines.length} BOM lines have no sell price on the rate card — they are priced at unit COST (zero margin). Confirm margin is applied downstream or set sell prices in the CMS catalog.`
+    );
+  }
   reviewFlags.push(
     "Server hardware prices fluctuate roughly every 15 days (Jackson) — verify catalog prices are current before quoting."
   );

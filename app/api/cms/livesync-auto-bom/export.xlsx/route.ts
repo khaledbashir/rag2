@@ -8,9 +8,10 @@
  * rationale, and review flags.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import ExcelJS from "exceljs";
 import { requireAuth } from "@/lib/apiAuth";
+import type { UserRole } from "@/lib/rbac";
 import { log } from "@/lib/logger";
 import {
   buildLivesyncAutoBom,
@@ -18,7 +19,7 @@ import {
   type LivesyncScreenInput,
 } from "@/lib/cms/livesyncAutoBom";
 
-const prisma = new PrismaClient();
+const ALLOWED_ROLES: UserRole[] = ["ADMIN", "PRODUCT_EXPERT"];
 
 const SECTIONS: Array<{ title: string; category: string }> = [
   { title: "Server Equipement", category: "SERVER_EQUIPMENT" },
@@ -35,8 +36,12 @@ const SECTIONS: Array<{ title: string; category: string }> = [
 
 export async function POST(request: NextRequest) {
   try {
-    const [, authError] = await requireAuth();
+    const [session, authError] = await requireAuth();
     if (authError) return authError;
+    const role = (session as unknown as { user?: { role?: UserRole } } | null)?.user?.role;
+    if (!role || !ALLOWED_ROLES.includes(role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const body = await request.json().catch(() => null);
     if (!body || !Array.isArray(body.screens) || body.screens.length === 0) {
@@ -73,7 +78,20 @@ export async function POST(request: NextRequest) {
       unitPrice: item.unitPrice == null ? null : Number(item.unitPrice),
       isActive: item.isActive,
     }));
-    const result = buildLivesyncAutoBom(job, catalog);
+    const generated = buildLivesyncAutoBom(job, catalog);
+    const postedLines = Array.isArray(body.bomLines) ? body.bomLines : null;
+    const result = postedLines
+      ? {
+          ...generated,
+          lines: generated.lines.map((line) => {
+            const edited = postedLines.find((candidate: Record<string, unknown>) => candidate.sku === line.sku);
+            if (!edited) return line;
+            const quantity = Math.max(0, Number(edited.quantity));
+            const unitPrice = Math.max(0, Number(edited.unitPrice));
+            return { ...line, quantity, unitPrice, lineTotal: Number((quantity * unitPrice).toFixed(2)) };
+          }),
+        }
+      : generated;
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "ANC Proposal Engine";
@@ -89,6 +107,7 @@ export async function POST(request: NextRequest) {
 
     let row = 5;
     let grandTotal = 0;
+    const sectionTotalRows: number[] = [];
     for (const section of SECTIONS) {
       const items = result.lines.filter((l) => l.category === section.category);
       if (items.length === 0) continue;
@@ -105,13 +124,15 @@ export async function POST(request: NextRequest) {
       row++;
 
       let sectionTotal = 0;
+      const firstLineRow = row;
       for (const line of items) {
         const r = sheet.getRow(row);
         r.getCell(2).value = line.displayName;
         r.getCell(3).value = line.sku;
         r.getCell(4).value = line.unitPrice;
         r.getCell(5).value = line.quantity;
-        r.getCell(6).value = line.lineTotal;
+        // Live formula so the integration team can tweak cost/qty in the file
+        r.getCell(6).value = { formula: `D${row}*E${row}`, result: line.lineTotal };
         r.getCell(7).value = line.rationale + (line.flags.length ? ` [REVIEW: ${line.flags.join(" | ")}]` : "");
         r.getCell(4).numFmt = '"$"#,##0.00';
         r.getCell(6).numFmt = '"$"#,##0.00';
@@ -120,15 +141,24 @@ export async function POST(request: NextRequest) {
       }
       const totalRow = sheet.getRow(row);
       totalRow.getCell(2).value = "Total";
-      totalRow.getCell(6).value = sectionTotal;
+      totalRow.getCell(6).value = {
+        formula: `SUM(F${firstLineRow}:F${row - 1})`,
+        result: Number(sectionTotal.toFixed(2)),
+      };
       totalRow.getCell(6).numFmt = '"$"#,##0.00';
       totalRow.font = { bold: true };
+      sectionTotalRows.push(row);
       grandTotal += sectionTotal;
       row += 2;
     }
     sheet.getRow(row).getCell(2).value = "TOTAL";
     sheet.getRow(row).getCell(4).value = "USD:";
-    sheet.getRow(row).getCell(6).value = grandTotal;
+    sheet.getRow(row).getCell(6).value = sectionTotalRows.length
+      ? {
+          formula: sectionTotalRows.map((r) => `F${r}`).join("+"),
+          result: Number(grandTotal.toFixed(2)),
+        }
+      : 0;
     sheet.getRow(row).getCell(6).numFmt = '"$"#,##0.00';
     sheet.getRow(row).font = { bold: true, size: 12 };
 

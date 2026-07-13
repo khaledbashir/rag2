@@ -128,6 +128,40 @@ describe("matrix sizing — never select exactly what you need", () => {
   });
 });
 
+describe("matrix sizing — dual-GPU servers feed 4 outputs", () => {
+  it("counts dual boxes at 4 inputs and flags the assumption", () => {
+    // Three 8000×2000 boards: each is wider than 7680 → dual-GPU, 3 outputs,
+    // 1 primary + 1 backup each → 6 dual servers. Plus 2 UI (standard).
+    const result = buildLivesyncAutoBom(
+      {
+        screens: [
+          { name: "A", pixelWidth: 8000, pixelHeight: 2000 },
+          { name: "B", pixelWidth: 8000, pixelHeight: 2000 },
+          { name: "C", pixelWidth: 8000, pixelHeight: 2000 },
+        ],
+      },
+      CATALOG
+    );
+    expect(result.counts.totalServers).toBe(8);
+    // 6 dual × 4 + 2 UI × 2 = 28 inputs → next size up = 32×32
+    // (the old servers×2 math would have undersized this to a 24×24)
+    expect(result.counts.matrixInputsNeeded).toBe(28);
+    expect(result.counts.matrixSize).toBe(32);
+    const matrixLine = result.lines.find((l) => l.sku === "ANC-MTRX-32x32-5YR");
+    expect(matrixLine).toBeDefined();
+    expect(matrixLine!.flags.some((f) => f.includes("Dual-GPU"))).toBe(true);
+  });
+
+  it("standard-only jobs keep Jackson's servers × 2 math unchanged", () => {
+    const result = buildLivesyncAutoBom(
+      { screens: [{ name: "Main Board", pixelWidth: 7680, pixelHeight: 1000 }] },
+      CATALOG
+    );
+    expect(result.counts.matrixInputsNeeded).toBe(8);
+    expect(result.counts.matrixSize).toBe(16);
+  });
+});
+
 describe("live video screens", () => {
   it("selects the CC capture variant for a center-hung with live video", () => {
     const result = buildLivesyncAutoBom(
@@ -236,6 +270,30 @@ describe("flag-don't-guess behavior", () => {
       tiny
     );
     expect(result.reviewFlags.some((f) => f.includes("missing SKU"))).toBe(true);
+  });
+
+  it("surfaces cost-basis pricing as one aggregate review flag", () => {
+    // Test catalog has no sell prices at all → every line is quoted at cost
+    const result = buildLivesyncAutoBom(
+      { screens: [{ name: "X", pixelWidth: 3000, pixelHeight: 600 }] },
+      CATALOG
+    );
+    const flag = result.reviewFlags.find((f) => f.includes("unit COST"));
+    expect(flag).toBeDefined();
+    expect(flag).toContain(`${result.lines.length} of ${result.lines.length}`);
+  });
+
+  it("uses the sell price when the catalog has one and excludes it from the cost-basis count", () => {
+    const priced = CATALOG.map((c) =>
+      c.sku === "CMS-GPI-TRIGGER" ? { ...c, unitPrice: 2900 } : c
+    );
+    const result = buildLivesyncAutoBom(
+      { screens: [{ name: "X", pixelWidth: 3000, pixelHeight: 600 }] },
+      priced
+    );
+    expect(result.lines.find((l) => l.sku === "CMS-GPI-TRIGGER")?.unitPrice).toBe(2900);
+    const flag = result.reviewFlags.find((f) => f.includes("unit COST"));
+    expect(flag).toContain(`${result.lines.length - 1} of ${result.lines.length}`);
   });
 
   it("always warns about the 15-day price fluctuation", () => {
