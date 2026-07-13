@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Plus, Trash2, Calculator, AlertTriangle, Info, Loader2, BrainCircuit, FileSpreadsheet, Sparkles, History } from "lucide-react";
+import { Plus, Trash2, Calculator, AlertTriangle, Info, Loader2, BrainCircuit, FileSpreadsheet, Sparkles, History, CheckCircle2, ArrowDown } from "lucide-react";
 
 type ScreenRow = {
   name: string;
@@ -605,7 +605,7 @@ export default function LivesyncCalculatorClient() {
             disabled={loading}
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calculator className="w-4 h-4" />}
-            Build the BOM
+            {result ? "Rebuild estimate" : "Next: Build estimate"}
           </button>
         </div>
         {error && (
@@ -617,14 +617,32 @@ export default function LivesyncCalculatorClient() {
 
       {result && (
         <>
-          {/* ── Reasoning trail ── */}
-          {result.reasoning?.length > 0 && <ReasoningPanel steps={result.reasoning} />}
-
-          {/* ── Live model review ── */}
-          {generatedPayload && <AiReviewPanel getPayload={() => generatedPayload} />}
+          <section className="sticky top-3 z-20 rounded-xl border border-primary/30 bg-background/95 p-4 shadow-lg shadow-black/5 backdrop-blur">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                <div>
+                  <p className="font-semibold">Estimate ready · {money(result.totals.grand)}</p>
+                  <p className="text-sm text-muted-foreground">Review the editable BOM, then export the working estimate.</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 lg:ml-auto">
+                <button className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted" onClick={() => document.getElementById("bom-editor")?.scrollIntoView({ behavior: "smooth" })}>
+                  Review and edit BOM
+                </button>
+                <button className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground flex items-center gap-2 disabled:opacity-60" onClick={exportExcel} disabled={exporting}>
+                  {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+                  Export Excel
+                </button>
+              </div>
+            </div>
+            <button className="mt-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground" onClick={() => document.getElementById("estimate-summary")?.scrollIntoView({ behavior: "smooth" })}>
+              See estimate details <ArrowDown className="h-3 w-3" />
+            </button>
+          </section>
 
           {/* ── Summary ── */}
-          <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <section id="estimate-summary" className="grid scroll-mt-28 grid-cols-2 md:grid-cols-4 gap-3">
             {[
               ["Total servers", `${result.counts.totalServers}`, `${result.counts.renderServers} render + ${result.counts.uiServers} UI`],
               ["Matrix", result.counts.matrixSize ? `${result.counts.matrixSize}×${result.counts.matrixSize}` : "Needs design", `${result.counts.matrixInputsNeeded} inputs needed`],
@@ -639,8 +657,14 @@ export default function LivesyncCalculatorClient() {
             ))}
           </section>
 
+          {/* ── Reasoning trail ── */}
+          {result.reasoning?.length > 0 && <ReasoningPanel steps={result.reasoning} />}
+
+          {/* ── Live model review ── */}
+          {generatedPayload && <AiReviewPanel getPayload={() => generatedPayload} />}
+
           {/* ── Per-screen plan ── */}
-          <section className="space-y-2">
+          <section id="bom-editor" className="scroll-mt-28 space-y-2">
             <h2 className="text-lg font-semibold">Per-screen server plan</h2>
             <div className="overflow-x-auto border border-border rounded-lg">
               <table className="w-full text-sm">
