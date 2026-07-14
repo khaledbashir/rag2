@@ -23,4 +23,14 @@ describe("getProposalPreviewState", () => {
     it("does not show a misleading Excel prompt before a mode is selected", () => {
         expect(getProposalPreviewState({}, false, false)).toBe("mode-unselected");
     });
+
+    it("renders service-sheet imports from the persisted document, incl. after reload", () => {
+        const details = {
+            mirrorMode: true,
+            calculationMode: "MIRROR",
+            servicePricingDocument: { sourceSheet: "26-28 w Break fix", yearLabels: ["26/27"], rows: [] },
+        };
+        // No in-memory workbook (fresh page load) — still previewable.
+        expect(getProposalPreviewState(details, false, false)).toBe("template");
+    });
 });

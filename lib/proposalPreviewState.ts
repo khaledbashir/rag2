@@ -17,6 +17,9 @@ export function getProposalPreviewState(
 ): ProposalPreviewState {
     if (isModeUnselected(details)) return "mode-unselected";
     if (!isMirrorMode(details)) return "template";
+    // Service-sheet imports render from the persisted servicePricingDocument,
+    // not the in-memory workbook — previewable immediately and after reload.
+    if ((details as any)?.servicePricingDocument) return "template";
     if (hasExcelPreview) return "template";
     return excelImportLoading ? "excel-loading" : "excel-required";
 }
