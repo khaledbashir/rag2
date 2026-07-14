@@ -1929,7 +1929,7 @@ const Step4Export = () => {
                         {/* Service Contract term-exhibit system (Priority 1) — the manual
                             path is how a Service Contract gets built from scratch, so its
                             exhibits must be reachable there. */}
-                        {headerType === "SERVICE_CONTRACT" && <ServiceContractTermsPanel />}
+                        {(headerType === "SERVICE_CONTRACT" || headerType === "SERVICE_PROPOSAL") && <ServiceContractTermsPanel />}
 
                         {!manualTableMode && <Card className="bg-card/40 border border-border/60 overflow-hidden">
                             <CardHeader

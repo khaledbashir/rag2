@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { parseANCExcel } from "@/services/proposal/server/excelImportService";
 import { parsePricingTablesWithValidation, PRICING_PARSER_STRICT_VERSION } from "@/services/pricing/pricingTableParser";
+import { parseServiceSheet, isServiceSheetWorkbook } from "@/services/pricing/serviceSheetParser";
+import { findMarginAnalysisSheet } from "@/lib/sheetDetection";
 import { normalizeExcel } from "@/services/import/excelNormalizer";
 import * as xlsx from "xlsx";
 import crypto from "node:crypto";
@@ -22,6 +24,45 @@ export async function POST(req: NextRequest) {
         }
 
         const buffer = Buffer.from(await file.arrayBuffer());
+
+        // --- Step 0: Service-sheet recognition (Natalia 2026-07-14) ---
+        // A "Property/Event Budget Overview" service workbook (Income/Expenses
+        // budget + per-contract-year columns) is NOT an LED workbook: no Margin
+        // Analysis tab, no LED Sheet. Recognize it first and return the mirrored
+        // service envelope. Guarded on the Margin Analysis tab being absent so
+        // every existing LED/Mirror workbook path is untouched.
+        const serviceProbe = xlsx.read(buffer, { type: "buffer", cellStyles: true });
+        if (!findMarginAnalysisSheet(serviceProbe) && isServiceSheetWorkbook(serviceProbe)) {
+            const { document: servicePricingDocument, prefill } = parseServiceSheet(serviceProbe, file.name);
+            log.info(`[EXCEL IMPORT] Service sheet recognized: "${servicePricingDocument.sourceSheet}" — ${servicePricingDocument.rows.length} client-facing rows × ${servicePricingDocument.termYears} year(s), client="${prefill.clientName ?? ""}"`);
+
+            const clientName = prefill.clientName || file.name.replace(/\.(xlsx?|csv)$/i, "");
+            return NextResponse.json({
+                formData: {
+                    details: {
+                        proposalName: `${clientName} Service Proposal`,
+                        screens: [],
+                        items: [],
+                        documentMode: "SERVICE_PROPOSAL",
+                        servicePricingDocument,
+                        serviceContractPurchaserName: prefill.clientName ?? "",
+                        serviceContractVenueName: prefill.venueName ?? "",
+                        serviceContractTermStart: prefill.termStartYear ? String(prefill.termStartYear) : "",
+                        serviceContractTermEnd: prefill.termEndYear ? String(prefill.termEndYear) : "",
+                        calculationMode: "MIRROR",
+                        mirrorMode: true,
+                        ...(servicePricingDocument.currency && servicePricingDocument.currency !== "USD"
+                            ? { currency: servicePricingDocument.currency }
+                            : {}),
+                    },
+                    receiver: {
+                        name: clientName,
+                    },
+                },
+                serviceSheetImport: true,
+                servicePrefill: prefill,
+            });
+        }
 
         // --- Step 1: Try Intelligence Mode parser (full LED Sheet extraction) ---
         let data: any = null;

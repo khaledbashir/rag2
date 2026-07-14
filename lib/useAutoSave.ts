@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useFormContext } from "react-hook-form";
 import { resolveProposalTitle } from "@/lib/proposals/resolveProposalTitle";
+import { buildDocumentConfig } from "@/lib/proposals/buildDocumentConfig";
 
 export type AutoSaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -90,43 +91,7 @@ export function useAutoSave({
                     taxRateOverride: formData.details?.taxRateOverride,
                     bondRateOverride: formData.details?.bondRateOverride,
                     documentMode: (formData.details as any)?.documentMode,
-                    documentConfig: {
-                        currency: (formData.details as any)?.currency,
-                        exchangeRate: (formData.details as any)?.exchangeRate,
-                        includePricingBreakdown: (formData.details as any)?.includePricingBreakdown,
-                        showPricingTables: (formData.details as any)?.showPricingTables,
-                        showIntroText: (formData.details as any)?.showIntroText,
-                        showBaseBidTable: (formData.details as any)?.showBaseBidTable,
-                        showSpecifications: (formData.details as any)?.showSpecifications,
-                        showCompanyFooter: (formData.details as any)?.showCompanyFooter,
-                        showPaymentTerms: (formData.details as any)?.showPaymentTerms,
-                        showTermsAndConditions: (formData.details as any)?.showTermsAndConditions,
-                        showSubstantialCompletionDate: (formData.details as any)?.showSubstantialCompletionDate,
-                        showSignatureBlock: (formData.details as any)?.showSignatureBlock,
-                        showExhibitA: (formData.details as any)?.showExhibitA,
-                        showExhibitB: (formData.details as any)?.showExhibitB,
-                        showNotes: (formData.details as any)?.showNotes,
-                        showScopeOfWork: (formData.details as any)?.showScopeOfWork,
-                        showResponsibilityMatrix: (formData.details as any)?.showResponsibilityMatrix,
-                        pageLayout: (formData.details as any)?.pageLayout,
-                        manualTableMode: (formData.details as any)?.manualTableMode,
-                        freeformTables: (formData.details as any)?.freeformTables,
-                        showFreeformTables: (formData.details as any)?.showFreeformTables,
-                        // Change Order fields. There are no changeOrder* columns on Project —
-                        // mapDbProposalToForm reads them back out of documentConfig — so without
-                        // these lines every CO field (number, dates, amounts, intro) was silently
-                        // dropped on reload.
-                        changeOrderNumber: (formData.details as any)?.changeOrderNumber,
-                        changeOrderRequestedBy: (formData.details as any)?.changeOrderRequestedBy,
-                        changeOrderDate: (formData.details as any)?.changeOrderDate,
-                        changeOrderOriginalContractNumber: (formData.details as any)?.changeOrderOriginalContractNumber,
-                        changeOrderOriginalAgreementDate: (formData.details as any)?.changeOrderOriginalAgreementDate,
-                        changeOrderOriginalContractAmount: (formData.details as any)?.changeOrderOriginalContractAmount,
-                        changeOrderPreviousTotalAmount: (formData.details as any)?.changeOrderPreviousTotalAmount,
-                        changeOrderOverheadPct: (formData.details as any)?.changeOrderOverheadPct,
-                        changeOrderIntroText: (formData.details as any)?.changeOrderIntroText,
-                        showChangeOrderTotals: (formData.details as any)?.showChangeOrderTotals,
-                    },
+                    documentConfig: buildDocumentConfig(formData.details),
                     // CRITICAL: Persist Excel pricing data to prevent data loss
                     pricingDocument: (formData.details as any)?.pricingDocument,
                     parserValidationReport: (formData.details as any)?.parserValidationReport,

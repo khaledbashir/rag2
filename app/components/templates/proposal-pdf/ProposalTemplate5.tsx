@@ -28,7 +28,10 @@ import PdfSignatureBlock from "./sections/PdfSignatureBlock";
 import PdfTermsAndConditions from "./sections/PdfTermsAndConditions";
 import PdfServiceAgreement, { type ServiceAgreementConfig } from "./sections/PdfServiceAgreement";
 import PdfServiceContract from "./PdfServiceContract";
+import PdfServiceProposal from "./PdfServiceProposal";
 import { matchTeamVenue } from "@/lib/serviceContracts/teamVenues";
+import { cityStateFromAddress } from "@/lib/serviceContracts/serviceProposalIntro";
+import type { ServicePricingDocument } from "@/types/servicePricing";
 import { MasterTableSummary, LOISummaryTable } from "./sections/PdfProjectSummary";
 import type { PdfColors, PdfTemplateSpacing } from "./sections/shared";
 
@@ -67,6 +70,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const isCO = documentMode === "CHANGE_ORDER";
     const isServiceAgreement = documentMode === "SERVICE_AGREEMENT";
     const isServiceContract = documentMode === "SERVICE_CONTRACT";
+    const isServiceProposal = documentMode === "SERVICE_PROPOSAL";
     const shortFormDocumentName = isContract ? "Short Form Contract" : "Short Form Agreement";
 
     // Change Order metadata
@@ -726,8 +730,11 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         const scVenueName = ((details as any)?.serviceContractVenueName || "").toString().trim();
         const scPurchaserAddress = ((details as any)?.serviceContractPurchaserAddress || "").toString().trim();
         const scAgreementDate = ((details as any)?.serviceContractAgreementDate || "").toString().trim();
+        const scTermStart = ((details as any)?.serviceContractTermStart || "").toString().trim();
+        const scTermEnd = ((details as any)?.serviceContractTermEnd || "").toString().trim();
+        const scSvcDoc = ((details as any)?.servicePricingDocument ?? null) as ServicePricingDocument | null;
 
-        const resolvedPurchaserName = scPurchaserName || purchaserLegalName;
+        const resolvedPurchaserName = scPurchaserName || (scSvcDoc?.clientName ?? "") || purchaserLegalName;
         // Auto-fill the venue + address from the team when the purchaser is a
         // known team and the user hasn't set them — so a Carolina Panthers
         // contract picks up Bank of America Stadium instead of a template default.
@@ -742,6 +749,12 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
             scAgreementDate ||
             new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
+        // Term dates: explicit panel fields win, then the recognized workbook's
+        // term years — never a stale template default for a different client
+        // (the Panthers "June 30, 2026" bug class, Natalia 2026-07-10).
+        const resolvedTermStart = scTermStart || (scSvcDoc?.termStartYear ? String(scSvcDoc.termStartYear) : "");
+        const resolvedTermEnd = scTermEnd || (scSvcDoc?.termEndYear ? String(scSvcDoc.termEndYear) : "");
+
         const saConfig: Partial<ServiceAgreementConfig> = {
             purchaserName: resolvedPurchaserName,
             agreementDate: resolvedAgreementDate,
@@ -749,6 +762,8 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
             // Explicit empty override (rather than omit) so an unknown team never
             // falls through to the Ravens template address.
             purchaserAddress: resolvedPurchaserAddress,
+            ...(resolvedTermStart ? { termStart: resolvedTermStart } : {}),
+            ...(resolvedTermEnd ? { termEnd: resolvedTermEnd } : {}),
         };
         return (
             <ProposalLayout data={data} disableFixedFooter>
@@ -764,6 +779,61 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                         date={headerDate}
                     />
                     <PdfServiceContract colors={colors} config={saConfig} details={details} />
+                </div>
+            </ProposalLayout>
+        );
+    }
+
+    // SERVICE PROPOSAL (Natalia 2026-07-14) — the client-facing service offer
+    // that precedes a Service Contract (same family; budget → proposal → LOI
+    // pattern). Intro prose + mirrored service fee table from the imported
+    // service sheet. Identity resolution mirrors the SERVICE_CONTRACT branch:
+    // explicit panel fields > recognized workbook prefill > team lookup.
+    if (isServiceProposal) {
+        const svcDoc = ((details as any)?.servicePricingDocument ?? null) as ServicePricingDocument | null;
+
+        const scPurchaserName = ((details as any)?.serviceContractPurchaserName || "").toString().trim();
+        const scVenueName = ((details as any)?.serviceContractVenueName || "").toString().trim();
+        const scPurchaserAddress = ((details as any)?.serviceContractPurchaserAddress || "").toString().trim();
+        const scTermStart = ((details as any)?.serviceContractTermStart || "").toString().trim();
+        const scTermEnd = ((details as any)?.serviceContractTermEnd || "").toString().trim();
+
+        const resolvedPurchaserName = scPurchaserName || svcDoc?.clientName || purchaserLegalName;
+        const teamVenue = matchTeamVenue(resolvedPurchaserName);
+        const resolvedVenueName = scVenueName || venueLabel || teamVenue?.venue || resolvedPurchaserName;
+        // Purchaser office address: explicit > derived project value. The team
+        // lookup address is the STADIUM's — never assume it is the purchaser's
+        // office; when unknown the intro simply omits the located-at clause.
+        const resolvedPurchaserAddress = scPurchaserAddress || purchaserAddress || "";
+
+        return (
+            <ProposalLayout data={data} disableFixedFooter>
+                {fontSizeOverrideCss && <style dangerouslySetInnerHTML={{ __html: fontSizeOverrideCss }} />}
+                <div className={fontOffset !== 0 ? "pdf-font-scaled" : ""}>
+                    <PdfHeader
+                        colors={colors}
+                        contentPaddingX={contentPaddingX}
+                        headerToIntroGap={headerToIntroGap}
+                        docLabel={docLabel}
+                        proposalName={details?.proposalName || ""}
+                        clientName={receiver?.name || "Client Name"}
+                        date={headerDate}
+                    />
+                    <PdfServiceProposal
+                        colors={colors}
+                        details={details}
+                        intro={{
+                            purchaserName: resolvedPurchaserName,
+                            purchaserAddress: resolvedPurchaserAddress,
+                            venueName: resolvedVenueName,
+                            venueCity: cityStateFromAddress(teamVenue?.address || resolvedPurchaserAddress),
+                            teamName: svcDoc?.clientName || (teamVenue ? teamVenue.team : resolvedPurchaserName),
+                            league: teamVenue?.league ?? null,
+                            termYears: svcDoc?.termYears ?? null,
+                            termStart: scTermStart || (svcDoc?.termStartYear ? String(svcDoc.termStartYear) : null),
+                            termEnd: scTermEnd || (svcDoc?.termEndYear ? String(svcDoc.termEndYear) : null),
+                        }}
+                    />
                 </div>
             </ProposalLayout>
         );

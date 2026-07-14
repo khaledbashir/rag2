@@ -22,6 +22,7 @@ import useToasts from "@/hooks/useToasts";
 import { exportProposal } from "@/services/proposal/client/exportProposal";
 import { apiFetch, isForbidden } from "@/lib/api-client";
 import { resolveProposalTitle } from "@/lib/proposals/resolveProposalTitle";
+import { buildDocumentConfig } from "@/lib/proposals/buildDocumentConfig";
 
 // Variables
 import {
@@ -617,6 +618,7 @@ export const ProposalContextProvider = ({
         if (watchedDocumentMode === "PROPOSAL") return "PROPOSAL" as const;
         if (watchedDocumentMode === "BUDGET") return "BUDGET" as const;
         if (watchedDocumentMode === "SERVICE_CONTRACT") return "SERVICE_CONTRACT" as const;
+        if (watchedDocumentMode === "SERVICE_PROPOSAL") return "SERVICE_PROPOSAL" as const;
         // Legacy SERVICE_AGREEMENT resolves to SERVICE_CONTRACT (Priority 1 fold).
         if (watchedDocumentMode === "SERVICE_AGREEMENT") return "SERVICE_CONTRACT" as const;
         // Fallback: infer from legacy fields
@@ -630,11 +632,28 @@ export const ProposalContextProvider = ({
     const mirrorMode = watch("details.mirrorMode") || false;
 
     const setHeaderType = useCallback(
-        (next: "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT" | "CHANGE_ORDER" | "SERVICE_CONTRACT") => {
+        (next: "LOI" | "PROPOSAL" | "BUDGET" | "CONTRACT" | "CHANGE_ORDER" | "SERVICE_CONTRACT" | "SERVICE_PROPOSAL") => {
             setValue("details.documentMode", next, {
                 shouldValidate: true,
                 shouldDirty: true,
             });
+
+            // SERVICE_PROPOSAL (Natalia 2026-07-14) — client-facing service offer:
+            // intro + mirrored fee table only. No exhibits/signatures until the
+            // proposal finalizes into a SERVICE_CONTRACT.
+            if (next === "SERVICE_PROPOSAL") {
+                setValue("details.documentType", "First Round", { shouldValidate: true, shouldDirty: true });
+                setValue("details.pricingType", "Budget", { shouldValidate: true, shouldDirty: true });
+                setValue("details.showTermsAndConditions" as any, false, { shouldDirty: true });
+                setValue("details.showResponsibilityMatrix" as any, false, { shouldDirty: true });
+                setValue("details.showSpecifications" as any, false, { shouldDirty: true });
+                setValue("details.showExhibitA" as any, false, { shouldDirty: true });
+                setValue("details.showExhibitB" as any, false, { shouldDirty: true });
+                setValue("details.showScopeOfWork", false, { shouldDirty: true });
+                setValue("details.showSignatureBlock", false, { shouldDirty: true });
+                setValue("details.showSubstantialCompletionDate" as any, false, { shouldDirty: true });
+                return;
+            }
 
             // SERVICE_CONTRACT (Priority 1) — modular term-exhibit system. Terms come
             // via the exhibit system, not the legacy showTermsAndConditions toggle.
@@ -923,24 +942,9 @@ export const ProposalContextProvider = ({
                         taxRateOverride: d?.taxRateOverride,
                         bondRateOverride: d?.bondRateOverride,
                         documentMode: d?.documentMode,
-                        documentConfig: {
-                            includePricingBreakdown: d?.includePricingBreakdown,
-                            showPricingTables: d?.showPricingTables,
-                            showIntroText: d?.showIntroText,
-                            showBaseBidTable: d?.showBaseBidTable,
-                            showSpecifications: d?.showSpecifications,
-                            showCompanyFooter: d?.showCompanyFooter,
-                            showPaymentTerms: d?.showPaymentTerms,
-                            showTermsAndConditions: d?.showTermsAndConditions,
-                            showSubstantialCompletionDate: d?.showSubstantialCompletionDate,
-                            showSignatureBlock: d?.showSignatureBlock,
-                            showExhibitA: d?.showExhibitA,
-                            showExhibitB: d?.showExhibitB,
-                            showNotes: d?.showNotes,
-                            showScopeOfWork: d?.showScopeOfWork,
-                            showResponsibilityMatrix: d?.showResponsibilityMatrix,
-                            pageLayout: d?.pageLayout,
-                        },
+                        // Whole-replace column: always the FULL key set (buildDocumentConfig),
+                        // never a partial object — a partial save wipes the other paths' keys.
+                        documentConfig: buildDocumentConfig(d),
                         quoteItems: d?.quoteItems,
                         paymentTerms: d?.paymentTerms,
                         substantialCompletionDate: d?.substantialCompletionDate,
@@ -2156,24 +2160,7 @@ export const ProposalContextProvider = ({
                             taxRateOverride: d?.taxRateOverride,
                             bondRateOverride: d?.bondRateOverride,
                             documentMode: d?.documentMode,
-                            documentConfig: {
-                                includePricingBreakdown: d?.includePricingBreakdown,
-                                showPricingTables: d?.showPricingTables,
-                                showIntroText: d?.showIntroText,
-                                showBaseBidTable: d?.showBaseBidTable,
-                                showSpecifications: d?.showSpecifications,
-                                showCompanyFooter: d?.showCompanyFooter,
-                                showPaymentTerms: d?.showPaymentTerms,
-                                showTermsAndConditions: d?.showTermsAndConditions,
-                                showSubstantialCompletionDate: d?.showSubstantialCompletionDate,
-                                showSignatureBlock: d?.showSignatureBlock,
-                                showExhibitA: d?.showExhibitA,
-                                showExhibitB: d?.showExhibitB,
-                                showNotes: d?.showNotes,
-                                showScopeOfWork: d?.showScopeOfWork,
-                                showResponsibilityMatrix: d?.showResponsibilityMatrix,
-                                pageLayout: d?.pageLayout,
-                            },
+                            documentConfig: buildDocumentConfig(d),
                             quoteItems: d?.quoteItems,
                             paymentTerms: d?.paymentTerms,
                             substantialCompletionDate: d?.substantialCompletionDate,
@@ -2242,35 +2229,7 @@ export const ProposalContextProvider = ({
                 taxRateOverride: formValues?.details?.taxRateOverride,
                 bondRateOverride: formValues?.details?.bondRateOverride,
                 documentMode: (formValues as any)?.details?.documentMode,
-                documentConfig: {
-                    includePricingBreakdown: (formValues as any)?.details
-                        ?.includePricingBreakdown,
-                    showPricingTables: (formValues as any)?.details
-                        ?.showPricingTables,
-                    showIntroText: (formValues as any)?.details?.showIntroText,
-                    showBaseBidTable: (formValues as any)?.details
-                        ?.showBaseBidTable,
-                    showSpecifications: (formValues as any)?.details
-                        ?.showSpecifications,
-                    showCompanyFooter: (formValues as any)?.details
-                        ?.showCompanyFooter,
-                    showPaymentTerms: (formValues as any)?.details
-                        ?.showPaymentTerms,
-                    showTermsAndConditions: (formValues as any)?.details
-                        ?.showTermsAndConditions,
-                    showSubstantialCompletionDate: (formValues as any)?.details
-                        ?.showSubstantialCompletionDate,
-                    showSignatureBlock: (formValues as any)?.details
-                        ?.showSignatureBlock,
-                    showExhibitA: (formValues as any)?.details?.showExhibitA,
-                    showExhibitB: (formValues as any)?.details?.showExhibitB,
-                    showNotes: (formValues as any)?.details?.showNotes,
-                    showScopeOfWork: (formValues as any)?.details
-                        ?.showScopeOfWork,
-                    showResponsibilityMatrix: (formValues as any)?.details
-                        ?.showResponsibilityMatrix,
-                    pageLayout: (formValues as any)?.details?.pageLayout,
-                },
+                documentConfig: buildDocumentConfig((formValues as any)?.details),
                 quoteItems: (formValues as any)?.details?.quoteItems,
                 paymentTerms: (formValues as any)?.details?.paymentTerms,
                 substantialCompletionDate: (formValues as any)?.details?.substantialCompletionDate,
@@ -3489,6 +3448,28 @@ export const ProposalContextProvider = ({
                         formData.details.mirrorMode ? "MIRROR" : "INTELLIGENCE",
                         { shouldValidate: true, shouldDirty: true },
                     );
+                }
+
+                // Service-sheet import (Natalia 2026-07-14): hydrate the mirrored
+                // service fee document, switch to SERVICE_PROPOSAL, and prefill
+                // the recognized identity/term fields (all user-editable).
+                if ((data as any).serviceSheetImport && formData.details?.servicePricingDocument) {
+                    const dirty = { shouldValidate: true, shouldDirty: true } as const;
+                    setValue("details.servicePricingDocument" as any, formData.details.servicePricingDocument, dirty);
+                    setValue("details.documentMode" as any, "SERVICE_PROPOSAL", dirty);
+                    const prefillFields = [
+                        "serviceContractPurchaserName",
+                        "serviceContractVenueName",
+                        "serviceContractTermStart",
+                        "serviceContractTermEnd",
+                    ] as const;
+                    prefillFields.forEach((field) => {
+                        const imported = ((formData.details as any)?.[field] ?? "").toString().trim();
+                        const current = ((getValues(`details.${field}` as any) ?? "") + "").trim();
+                        if (imported && !current) {
+                            setValue(`details.${field}` as any, imported, dirty);
+                        }
+                    });
                 }
 
                 // 2. Handle Screens & Line Items

@@ -1,7 +1,7 @@
 import { DOCUMENT_MODES } from "@/services/rfp/productCatalog";
 import type { DocumentMode as CatalogDocumentMode } from "@/services/rfp/productCatalog";
 
-export type DocumentMode = "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT" | "CHANGE_ORDER" | "SERVICE_CONTRACT" | "SERVICE_AGREEMENT";
+export type DocumentMode = "BUDGET" | "PROPOSAL" | "LOI" | "CONTRACT" | "CHANGE_ORDER" | "SERVICE_CONTRACT" | "SERVICE_PROPOSAL" | "SERVICE_AGREEMENT";
 
 // Change Order config lives here (not in the RFP-protected productCatalog) so the shared module stays frozen.
 const CHANGE_ORDER_CONFIG = {
@@ -26,6 +26,19 @@ const SERVICE_CONTRACT_CONFIG = {
   includeResponsibilityMatrix: false,
 };
 
+// Service Proposal — the client-facing service offer that precedes a Service
+// Contract (same family; mirrors the budget → proposal → LOI flow on the LED
+// side, per Natalia 2026-07-14). Intro + mirrored service fee table; no legal
+// exhibits, no signatures by default.
+const SERVICE_PROPOSAL_CONFIG = {
+  headerText: "SERVICE PROPOSAL",
+  includeSignatures: false,
+  includePaymentTerms: false,
+  includeLegalIntro: false,
+  includeProjectSummaryFirst: false,
+  includeResponsibilityMatrix: false,
+};
+
 // Legacy Service Agreement config retained for backward-compat resolution only;
 // legacy SERVICE_AGREEMENT values resolve to SERVICE_CONTRACT (see resolveDocumentMode).
 const SERVICE_AGREEMENT_CONFIG = {
@@ -40,6 +53,7 @@ const SERVICE_AGREEMENT_CONFIG = {
 export function getModeConfig(mode: DocumentMode) {
   if (mode === "CHANGE_ORDER") return CHANGE_ORDER_CONFIG;
   if (mode === "SERVICE_CONTRACT" || mode === "SERVICE_AGREEMENT") return SERVICE_CONTRACT_CONFIG;
+  if (mode === "SERVICE_PROPOSAL") return SERVICE_PROPOSAL_CONFIG;
   return DOCUMENT_MODES[mode.toLowerCase() as CatalogDocumentMode] || DOCUMENT_MODES.proposal;
 }
 
@@ -59,6 +73,7 @@ export function getDocumentTypeLabel(mode: DocumentMode | string | null | undefi
     case "CHANGE_ORDER": return "Change_Order";
     case "SERVICE_CONTRACT":
     case "SERVICE_AGREEMENT": return "Service_Contract";
+    case "SERVICE_PROPOSAL": return "Service_Proposal";
     case "PROPOSAL": return "Proposal";
     default: return "Budget_Estimate";
   }
@@ -72,7 +87,8 @@ export function resolveDocumentMode(details: any): DocumentMode {
     explicit === "LOI" ||
     explicit === "CONTRACT" ||
     explicit === "CHANGE_ORDER" ||
-    explicit === "SERVICE_CONTRACT"
+    explicit === "SERVICE_CONTRACT" ||
+    explicit === "SERVICE_PROPOSAL"
   ) return explicit;
   // Legacy SERVICE_AGREEMENT -> SERVICE_CONTRACT (the new system formalizes it).
   if (explicit === "SERVICE_AGREEMENT") return "SERVICE_CONTRACT";
@@ -82,6 +98,7 @@ export function resolveDocumentMode(details: any): DocumentMode {
   if (documentType === "CONTRACT") return "CONTRACT";
   if (documentType === "CHANGE_ORDER" || documentType === "Change Order") return "CHANGE_ORDER";
   if (documentType === "SERVICE_CONTRACT" || documentType === "Service Contract") return "SERVICE_CONTRACT";
+  if (documentType === "SERVICE_PROPOSAL" || documentType === "Service Proposal") return "SERVICE_PROPOSAL";
   if (documentType === "SERVICE_AGREEMENT" || documentType === "Service Agreement") return "SERVICE_CONTRACT";
 
   const pricingType = details?.pricingType;
@@ -133,6 +150,21 @@ export function applyDocumentModeDefaults(mode: DocumentMode, current: any) {
     if (base.showTermsAndConditions === undefined) base.showTermsAndConditions = false;
     base.showResponsibilityMatrix = false;
     if (base.showChangeOrderTotals === undefined) base.showChangeOrderTotals = true;
+    return base;
+  }
+
+  // SERVICE_PROPOSAL — client-facing service offer (intro + mirrored fee
+  // table). No exhibits, no responsibility matrix, no signatures; the document
+  // finalizes into a SERVICE_CONTRACT later, which brings the legal apparatus.
+  if (mode === "SERVICE_PROPOSAL") {
+    if (base.showSpecifications === undefined) base.showSpecifications = false;
+    if (base.showExhibitA === undefined) base.showExhibitA = false;
+    if (base.showExhibitB === undefined) base.showExhibitB = false;
+    if (base.showSubstantialCompletionDate === undefined) base.showSubstantialCompletionDate = false;
+    if (base.showTermsAndConditions === undefined) base.showTermsAndConditions = false;
+    base.showResponsibilityMatrix = false;
+    if (base.showScopeOfWork === undefined) base.showScopeOfWork = false;
+    if (base.showSignatureBlock === undefined) base.showSignatureBlock = false;
     return base;
   }
 

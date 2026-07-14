@@ -92,6 +92,22 @@ export function mapDbProposalToFormSchema(dbProject: any) {
             showIntroText: cfg.showIntroText ?? true,
             freeformTables: Array.isArray(cfg.freeformTables) ? cfg.freeformTables : [],
             showFreeformTables: cfg.showFreeformTables ?? true,
+            // Service Contract / Service Proposal per-instance state. Like the
+            // changeOrder* fields there are no dedicated columns — documentConfig
+            // is the storage; without these reads every service field (purchaser,
+            // venue, term, exhibit edits, imported fee table) died on reload.
+            serviceContractTemplateId: cfg.serviceContractTemplateId ?? undefined,
+            serviceContractProjectType: cfg.serviceContractProjectType ?? undefined,
+            serviceContractPurchaserName: cfg.serviceContractPurchaserName ?? "",
+            serviceContractVenueName: cfg.serviceContractVenueName ?? "",
+            serviceContractPurchaserAddress: cfg.serviceContractPurchaserAddress ?? "",
+            serviceContractAgreementDate: cfg.serviceContractAgreementDate ?? "",
+            serviceContractTermStart: cfg.serviceContractTermStart ?? "",
+            serviceContractTermEnd: cfg.serviceContractTermEnd ?? "",
+            serviceContractSignatureText: cfg.serviceContractSignatureText ?? "",
+            termExhibitOverrides: cfg.termExhibitOverrides ?? {},
+            serviceProposalIntro: cfg.serviceProposalIntro ?? "",
+            servicePricingDocument: cfg.servicePricingDocument ?? undefined,
             showBaseBidTable: cfg.showBaseBidTable ?? false,
             showSpecifications: manualTableMode ? false : (cfg.showSpecifications ?? true),
             showCompanyFooter: cfg.showCompanyFooter ?? true,

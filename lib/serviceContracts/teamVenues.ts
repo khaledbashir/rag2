@@ -16,12 +16,17 @@ export interface TeamVenue {
     venue: string;
     /** Full one-line venue address: "street, city, ST zip". */
     address: string;
+    /** League the team plays in (drives Service Proposal intro prose). */
+    league: string;
 }
+
+type TeamVenueSeed = Omit<TeamVenue, "league">;
+const withLeague = (league: string, teams: TeamVenueSeed[]): TeamVenue[] =>
+    teams.map((t) => ({ ...t, league }));
 
 // Curated for ANC's markets. NFL is complete (their core stadium business);
 // NBA / MLB / NHL / MLS / WNBA cover the teams ANC most commonly quotes.
-export const TEAM_VENUES: TeamVenue[] = [
-    // ---- NFL ----
+const NFL: TeamVenueSeed[] = [
     { team: "Arizona Cardinals", venue: "State Farm Stadium", address: "1 Cardinals Dr, Glendale, AZ 85305" },
     { team: "Atlanta Falcons", venue: "Mercedes-Benz Stadium", address: "1 AMB Dr NW, Atlanta, GA 30313" },
     { team: "Baltimore Ravens", venue: "M&T Bank Stadium", address: "1101 Russell St, Baltimore, MD 21230" },
@@ -55,7 +60,9 @@ export const TEAM_VENUES: TeamVenue[] = [
     { team: "Tennessee Titans", venue: "Nissan Stadium", address: "1 Titans Way, Nashville, TN 37213" },
     { team: "Washington Commanders", venue: "Northwest Stadium", address: "1600 Fedex Way, Landover, MD 20785" },
 
-    // ---- NBA ----
+];
+
+const NBA: TeamVenueSeed[] = [
     { team: "Atlanta Hawks", venue: "State Farm Arena", address: "1 State Farm Dr, Atlanta, GA 30303" },
     { team: "Boston Celtics", venue: "TD Garden", address: "100 Legends Way, Boston, MA 02114" },
     { team: "Brooklyn Nets", venue: "Barclays Center", address: "620 Atlantic Ave, Brooklyn, NY 11217" },
@@ -72,20 +79,37 @@ export const TEAM_VENUES: TeamVenue[] = [
     { team: "Philadelphia 76ers", venue: "Wells Fargo Center", address: "3601 S Broad St, Philadelphia, PA 19148" },
     { team: "Phoenix Suns", venue: "Footprint Center", address: "201 E Jefferson St, Phoenix, AZ 85004" },
 
-    // ---- WNBA ----
+];
+
+const WNBA: TeamVenueSeed[] = [
     { team: "Indiana Fever", venue: "Gainbridge Fieldhouse", address: "125 S Pennsylvania St, Indianapolis, IN 46204" },
 
-    // ---- MLB ----
+];
+
+const MLB: TeamVenueSeed[] = [
     { team: "New York Yankees", venue: "Yankee Stadium", address: "1 E 161 St, Bronx, NY 10451" },
     { team: "Los Angeles Dodgers", venue: "Dodger Stadium", address: "1000 Vin Scully Ave, Los Angeles, CA 90012" },
     { team: "Boston Red Sox", venue: "Fenway Park", address: "4 Jersey St, Boston, MA 02215" },
     { team: "Chicago Cubs", venue: "Wrigley Field", address: "1060 W Addison St, Chicago, IL 60613" },
 
-    // ---- NHL ----
+];
+
+const NHL: TeamVenueSeed[] = [
     { team: "Toronto Maple Leafs", venue: "Scotiabank Arena", address: "40 Bay St, Toronto, ON M5J 2X2" },
 
-    // ---- Soccer ----
+];
+
+const SOCCER: TeamVenueSeed[] = [
     { team: "Liverpool FC", venue: "Anfield Stadium", address: "Anfield Rd, Liverpool L4 0TH, United Kingdom" },
+];
+
+export const TEAM_VENUES: TeamVenue[] = [
+    ...withLeague("NFL", NFL),
+    ...withLeague("NBA", NBA),
+    ...withLeague("WNBA", WNBA),
+    ...withLeague("MLB", MLB),
+    ...withLeague("NHL", NHL),
+    ...withLeague("Premier League", SOCCER),
 ];
 
 const normalize = (s: string): string =>

@@ -19,8 +19,10 @@ import PdfTermExhibit from "./sections/PdfTermExhibit";
 import PdfFreeformTables from "./sections/PdfFreeformTables";
 import type { ServiceAgreementConfig, ServiceAgreementFeeRow } from "./sections/PdfServiceAgreement";
 import { RAVENS_SERVICE_AGREEMENT_DEFAULTS } from "./sections/PdfServiceAgreement";
-import { getDefaultTemplate, resolveExhibits } from "@/lib/serviceContracts/registry";
+import PdfServicePricingTable from "./sections/PdfServicePricingTable";
+import { getDefaultTemplate, resolveExhibits, applyTemplateTokens } from "@/lib/serviceContracts/registry";
 import { renderMarkdown } from "@/lib/serviceContracts/renderMarkdown";
+import type { ServicePricingDocument } from "@/types/servicePricing";
 
 interface PdfServiceContractProps {
   colors: PdfColors;
@@ -36,6 +38,20 @@ export default function PdfServiceContract({ colors, config, details }: PdfServi
 
   const overrides = (details?.termExhibitOverrides ?? {}) as Record<string, { enabled?: boolean; bodyMarkdown?: string }>;
   const resolved = resolveExhibits(template, overrides).filter((e) => e.enabled);
+
+  // Imported service-sheet fee schedule (Mirror rule: Excel values verbatim).
+  // When present it replaces the template's default compensation fee rows.
+  const svcDoc = (details?.servicePricingDocument ?? null) as ServicePricingDocument | null;
+
+  // Token values for exhibit-body substitution (Software EULA preamble etc.)
+  const tokenValues = {
+    purchaserName: c.purchaserName,
+    purchaserAddress: c.purchaserAddress,
+    venueName: c.venueName,
+    agreementDate: c.agreementDate,
+    termStart: c.termStart,
+    termEnd: c.termEnd,
+  };
 
   // Signature block: per-instance verbatim override wins; else template default.
   const signatureOverride = ((details?.serviceContractSignatureText || "").trim());
@@ -108,16 +124,25 @@ export default function PdfServiceContract({ colors, config, details }: PdfServi
         The first installment shall be due on {c.firstInstallmentDue} of the applicable Contract Year, with subsequent installments
         due on the first (1st) day of each month thereafter, and the final installment due on {c.finalInstallmentDue}.
       </p>
-      <table style={{ borderCollapse: "collapse", fontSize: "11px", margin: "6px 0 12px" }}>
-        <thead>
-          <tr><th style={{ textAlign: "left", padding: "3px 18px 3px 0", fontWeight: 700 }}>Contract Year</th><th style={{ textAlign: "left", padding: "3px 0", fontWeight: 700 }}>Monthly Service Fee</th></tr>
-        </thead>
-        <tbody>
-          {c.feeRows.map((r: ServiceAgreementFeeRow) => (
-            <tr key={r.contractYear}><td style={{ padding: "2px 18px 2px 0" }}>{r.contractYear}</td><td style={{ padding: "2px 0" }}>{r.monthlyFee}</td></tr>
-          ))}
-        </tbody>
-      </table>
+      {svcDoc ? (
+        // Mirrored fee schedule from the imported service sheet (per-year fee
+        // lines + yearly total) — the client's real numbers, never the
+        // template's default fee rows for a different venue.
+        <div style={{ margin: "6px 0 12px" }}>
+          <PdfServicePricingTable colors={colors} document={svcDoc} />
+        </div>
+      ) : (
+        <table style={{ borderCollapse: "collapse", fontSize: "11px", margin: "6px 0 12px" }}>
+          <thead>
+            <tr><th style={{ textAlign: "left", padding: "3px 18px 3px 0", fontWeight: 700 }}>Contract Year</th><th style={{ textAlign: "left", padding: "3px 0", fontWeight: 700 }}>Monthly Service Fee</th></tr>
+          </thead>
+          <tbody>
+            {c.feeRows.map((r: ServiceAgreementFeeRow) => (
+              <tr key={r.contractYear}><td style={{ padding: "2px 18px 2px 0" }}>{r.contractYear}</td><td style={{ padding: "2px 0" }}>{r.monthlyFee}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      )}
       <p className="mb-2">
         The fees described herein do not include any {c.taxJurisdiction} sales or use tax that may be due. ANC shall determine
         whether any such tax is payable on the fees, and, if such tax is due, ANC will bill Company for such tax and will be
@@ -164,7 +189,7 @@ export default function PdfServiceContract({ colors, config, details }: PdfServi
             colors={colors}
             exhibitLetter={ex.exhibitLetter}
             title={ex.title}
-            bodyMarkdown={ex.bodyMarkdown}
+            bodyMarkdown={applyTemplateTokens(ex.bodyMarkdown, tokenValues)}
           />
         </div>
       ))}

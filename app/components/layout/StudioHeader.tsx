@@ -208,6 +208,12 @@ export function StudioHeader({
                                     <span className="text-xs font-medium">Service Contract</span>
                                 </>
                             )}
+                            {headerType === "SERVICE_PROPOSAL" && (
+                                <>
+                                    <FileCheck className="w-3.5 h-3.5 text-cyan-600" />
+                                    <span className="text-xs font-medium">Service Proposal</span>
+                                </>
+                            )}
                             <ChevronDown className="w-3 h-3 text-muted-foreground" />
                         </Button>
                     </PopoverTrigger>
@@ -290,6 +296,22 @@ export function StudioHeader({
                             </div>
                             {headerType === "CHANGE_ORDER" && (
                                 <div className="w-2 h-2 rounded-full bg-rose-500" />
+                            )}
+                        </button>
+                        <button
+                            onClick={() => setHeaderType("SERVICE_PROPOSAL")}
+                            className={cn(
+                                "w-full flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors",
+                                headerType === "SERVICE_PROPOSAL" ? "bg-cyan-500/10" : "hover:bg-muted/50"
+                            )}
+                        >
+                            <FileCheck className="w-4 h-4 text-cyan-600" />
+                            <div className="flex-1 text-left">
+                                <div className="font-semibold text-sm">Service Proposal</div>
+                                <div className="text-xs text-muted-foreground">Service offer — precedes the contract</div>
+                            </div>
+                            {headerType === "SERVICE_PROPOSAL" && (
+                                <div className="w-2 h-2 rounded-full bg-cyan-600" />
                             )}
                         </button>
                         <button

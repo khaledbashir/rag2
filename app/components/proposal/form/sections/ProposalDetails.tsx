@@ -222,6 +222,7 @@ const ProposalDetails = () => {
                                 <SelectItem value="LOI" className="focus:bg-accent focus:text-accent-foreground">Short Form Agreement</SelectItem>
                                 <SelectItem value="CONTRACT" className="focus:bg-accent focus:text-accent-foreground">Short Form Contract</SelectItem>
                                 <SelectItem value="CHANGE_ORDER" className="focus:bg-accent focus:text-accent-foreground">Change Order</SelectItem>
+                                <SelectItem value="SERVICE_PROPOSAL" className="focus:bg-accent focus:text-accent-foreground">Service Proposal</SelectItem>
                                 <SelectItem value="SERVICE_CONTRACT" className="focus:bg-accent focus:text-accent-foreground">Service Contract</SelectItem>
                             </SelectContent>
                         </Select>
@@ -236,7 +237,18 @@ const ProposalDetails = () => {
                                 Promote to Proposal
                             </BaseButton>
                         )}
-                        {mode !== "LOI" && mode !== "CONTRACT" && (
+                        {/* Service family: the proposal finalizes into a Service
+                            Contract (same lifecycle idea as budget → proposal → LOI). */}
+                        {mode === "SERVICE_PROPOSAL" && (
+                            <BaseButton
+                                variant="default"
+                                size="sm"
+                                onClick={() => handleModeChange("SERVICE_CONTRACT")}
+                            >
+                                Promote to Service Contract
+                            </BaseButton>
+                        )}
+                        {mode !== "LOI" && mode !== "CONTRACT" && mode !== "SERVICE_PROPOSAL" && mode !== "SERVICE_CONTRACT" && (
                             <BaseButton
                                 variant="default"
                                 size="sm"
@@ -245,7 +257,7 @@ const ProposalDetails = () => {
                                 Promote to Short Form
                             </BaseButton>
                         )}
-                        {mode !== "CONTRACT" && (
+                        {mode !== "CONTRACT" && mode !== "SERVICE_PROPOSAL" && mode !== "SERVICE_CONTRACT" && (
                             <BaseButton
                                 variant="default"
                                 size="sm"
