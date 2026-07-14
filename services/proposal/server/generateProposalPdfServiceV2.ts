@@ -86,7 +86,12 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 	const audit = (body as any)?._audit;
 	const hasValidAudit = audit?.internalAudit?.totals?.finalClientTotal > 0;
 
-	if (isMirrorMode && !hasValidAudit && (!pricingDocument || !Array.isArray(pricingDocument?.tables) || pricingDocument.tables.length === 0)) {
+	// Service documents render from the mirrored service fee schedule (a service
+	// sheet has no Margin Analysis tab), so the LED pricing gates don't apply.
+	const isServiceDocument = !!(body.details as any)?.servicePricingDocument &&
+		(documentMode === "SERVICE_PROPOSAL" || documentMode === "SERVICE_CONTRACT" || documentMode === "SERVICE_AGREEMENT");
+
+	if (isMirrorMode && !hasValidAudit && !isServiceDocument && (!pricingDocument || !Array.isArray(pricingDocument?.tables) || pricingDocument.tables.length === 0)) {
 		return preflightError(
 			"We couldn't generate this PDF because pricing tables were not found in the uploaded Excel.",
 			[
@@ -95,7 +100,7 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 			]
 		);
 	}
-	if (isMirrorMode && !hasValidAudit && (!validation || validation.status !== "PASS")) {
+	if (isMirrorMode && !hasValidAudit && !isServiceDocument && (!validation || validation.status !== "PASS")) {
 		return preflightError(
 			"We couldn't generate this PDF because the Excel data is incomplete or formatted differently than expected.",
 			[
@@ -104,7 +109,7 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 			]
 		);
 	}
-	if (isMirrorMode && !hasValidAudit && parserStrictVersion !== PRICING_PARSER_STRICT_VERSION) {
+	if (isMirrorMode && !hasValidAudit && !isServiceDocument && parserStrictVersion !== PRICING_PARSER_STRICT_VERSION) {
 		return preflightError(
 			"This project needs a fresh Excel parse before export.",
 			[
