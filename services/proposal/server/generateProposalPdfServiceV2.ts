@@ -70,8 +70,14 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 
 	const pricingDocument = (body.details as any)?.pricingDocument || (body as any)?.pricingDocument;
 	const documentMode = (body.details as any)?.documentMode;
+	// Excel-mirror preflight applies only to documents that actually render from
+	// an uploaded workbook. `mirrorMode === false` is the explicit "built from
+	// scratch" flag (custom contracts, amendments with hand-entered content) —
+	// those must export even when calculationMode is MIRROR, because there is no
+	// workbook to validate and nothing to mirror.
 	const isMirrorMode = (body.details as any)?.mirrorMode === true
-		|| (body.details as any)?.calculationMode === "MIRROR";
+		|| ((body.details as any)?.mirrorMode !== false
+			&& (body.details as any)?.calculationMode === "MIRROR");
 	const validation = pricingDocument?.metadata?.validation || (body.details as any)?.parserValidationReport;
 	const parserStrictVersion = (body.details as any)?.parserStrictVersion || pricingDocument?.metadata?.parserStrictVersion;
 	const preflightError = (error: string, guidance: string[]) =>
