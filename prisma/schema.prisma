@@ -1012,6 +1012,7 @@ model RfpAnalysis {
   @@index([status])
   @@index([fileHash])
   @@index([twentySyncedAt])
+  @@index([twentyOpportunityId])
 }
 
 // SOW Generation History — tracks every SOW generated

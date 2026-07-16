@@ -49,6 +49,40 @@ async function downloadFromTwenty(serverUrl: string, fileId: string): Promise<Bu
   return Buffer.from(await res.arrayBuffer());
 }
 
+/**
+ * Resolve the Twenty opportunity this analysis belongs to.
+ *
+ * Prefers the explicit opportunityId the caller sent. When only an estimateId
+ * is available (the common case — the attachment.created logic function fires
+ * from the Estimate record), read the opportunity off the estimate itself.
+ *
+ * Persisting this is what makes RfpAnalysis reachable from an opportunity via
+ * /api/twenty-bridge/opportunity/{id}/estimate. Fail-soft: a null link only
+ * costs discoverability, so it must never fail the analysis itself.
+ */
+async function resolveOpportunityId(
+  serverUrl: string,
+  explicitOpportunityId: string | undefined,
+  estimateId: string | undefined,
+): Promise<string | null> {
+  if (explicitOpportunityId) return explicitOpportunityId;
+  if (!estimateId || !serverUrl) return null;
+  try {
+    const res = await fetch(
+      `${serverUrl}/rest/estimates/${encodeURIComponent(estimateId)}`,
+      { headers: { Authorization: `Bearer ${TWENTY_API_KEY}` } },
+    );
+    if (!res.ok) return null;
+    const json: any = await res.json().catch(() => ({}));
+    return json?.data?.estimate?.opportunityId || null;
+  } catch (err: any) {
+    log.warn(
+      `[twenty-bridge/analyze-attachment] opportunity resolve failed for estimate ${estimateId}: ${err?.message}`,
+    );
+    return null;
+  }
+}
+
 async function writeEstimateLines(
   serverUrl: string,
   estimateId: string,
@@ -93,6 +127,7 @@ export async function POST(req: NextRequest) {
     const body: RequestBody = await req.json();
     const {
       estimateId,
+      opportunityId,
       fileId,
       fileName = "attachment.pdf",
       serverUrl,
@@ -167,6 +202,27 @@ export async function POST(req: NextRequest) {
         ) / 100,
     }));
 
+    // `screens` must hold canonical ExtractedLEDSpec so the cost engine can read
+    // it back. The `displays` shape above is the Twenty EstimateLine payload
+    // (pitchMm/sqFt) and is NOT interchangeable — it lacks pixelPitchMm and
+    // environment, which computeDisplays() needs to resolve a rate.
+    const specs = screens.map((s: any) => ({
+      ...s,
+      name: s.name || s.location || s.description || "Display",
+      widthFt: s.widthFt || 0,
+      heightFt: s.heightFt || 0,
+      pixelPitchMm: s.pixelPitchMm || s.pitchMm || s.pitch || 0,
+      quantity: s.quantity || 1,
+      environment:
+        s.environment || (project.isOutdoor ? "outdoor" : "indoor"),
+    }));
+
+    const twentyOpportunityId = await resolveOpportunityId(
+      crmUrl,
+      opportunityId,
+      estimateId,
+    );
+
     const analysis = await prisma.rfpAnalysis.create({
       data: {
         filename: fileName,
@@ -178,7 +234,9 @@ export async function POST(req: NextRequest) {
         location: project.location || null,
         specsFound: displays.length,
         processingTimeMs: Date.now() - startTime,
-        screens: displays as any,
+        screens: specs as any,
+        twentyOpportunityId,
+        twentySyncedAt: twentyOpportunityId ? new Date() : null,
         project: project as any,
         requirements: requirements as any,
         status: "complete",
