@@ -321,37 +321,75 @@ export function buildProposedChanges(
 }
 
 // ---------------------------------------------------------------------------
-// AI extraction (provider config-only: EMAIL_CRM_AI_* → Z.AI → Ollama Cloud)
+// AI extraction — provider CHAIN, config-only:
+// EMAIL_CRM_AI_* → Z.AI → OpenRouter → OpenAI → Mercury → MiMo → Ollama Cloud.
+// Every configured provider is tried in order; a 429/5xx/network failure on
+// one falls through to the next. Z.AI's coding plan throttles with fair-usage
+// 429s (error code 1313), which used to kill the whole intake — never depend
+// on a single provider here.
 // ---------------------------------------------------------------------------
 
 type Provider = { name: string; baseUrl: string; apiKey: string; model: string };
 
-function pickProvider(): Provider | null {
+function providerChain(): Provider[] {
+  const chain: Provider[] = [];
   if (process.env.EMAIL_CRM_AI_API_KEY && process.env.EMAIL_CRM_AI_BASE_URL) {
-    return {
+    chain.push({
       name: "custom",
       baseUrl: process.env.EMAIL_CRM_AI_BASE_URL,
       apiKey: process.env.EMAIL_CRM_AI_API_KEY,
       model: process.env.EMAIL_CRM_AI_MODEL || "glm-5.2",
-    };
+    });
   }
   if (process.env.Z_AI_API_KEY) {
-    return {
+    chain.push({
       name: "z-ai",
       baseUrl: process.env.Z_AI_BASE_URL || "https://api.z.ai/api/coding/paas/v4",
       apiKey: process.env.Z_AI_API_KEY,
       model: process.env.EMAIL_CRM_AI_MODEL || "glm-5.2",
-    };
+    });
+  }
+  if (process.env.OPENROUTER_API_KEY) {
+    chain.push({
+      name: "openrouter",
+      baseUrl: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
+      apiKey: process.env.OPENROUTER_API_KEY,
+      model: process.env.EMAIL_CRM_AI_FALLBACK_MODEL || "google/gemini-3-flash-preview",
+    });
+  }
+  if (process.env.OPENAI_API_KEY) {
+    chain.push({
+      name: "openai",
+      baseUrl: process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
+      apiKey: process.env.OPENAI_API_KEY,
+      model: process.env.OPENAI_EXTRACTION_MODEL || "gpt-5.4-mini",
+    });
+  }
+  if (process.env.MERCURY_API_KEY) {
+    chain.push({
+      name: "mercury",
+      baseUrl: process.env.MERCURY_API_BASE || "https://api.inceptionlabs.ai/v1",
+      apiKey: process.env.MERCURY_API_KEY,
+      model: process.env.MERCURY_MODEL || "mercury-2",
+    });
+  }
+  if (process.env.MIMO_API_KEY) {
+    chain.push({
+      name: "mimo",
+      baseUrl: process.env.MIMO_API_BASE || "https://api.xiaomimimo.com/v1",
+      apiKey: process.env.MIMO_API_KEY,
+      model: process.env.MIMO_MODEL || "mimo-v2-pro",
+    });
   }
   if (process.env.OLLAMA_API_KEY) {
-    return {
+    chain.push({
       name: "ollama-cloud",
       baseUrl: process.env.OLLAMA_BASE_URL || "https://ollama.com/v1",
       apiKey: process.env.OLLAMA_API_KEY,
       model: process.env.EMAIL_CRM_AI_MODEL || "glm-5.2",
-    };
+    });
   }
-  return null;
+  return chain;
 }
 
 const EXTRACTION_SYSTEM_PROMPT =
@@ -367,12 +405,10 @@ const EXTRACTION_SYSTEM_PROMPT =
   "kind=proposal_due is the date the proposal/bid is due to the client; internal team deadlines are internal_deadline. " +
   "If a date is ambiguous, still include it with your best dateIso and a lower confidence. Never invent dates.";
 
-export async function extractEmailCrmFacts(input: EmailCrmInput): Promise<EmailCrmExtraction> {
-  const provider = pickProvider();
-  if (!provider) {
-    throw new Error("No AI provider configured for email extraction.");
-  }
-
+async function extractWithProvider(
+  provider: Provider,
+  input: EmailCrmInput,
+): Promise<EmailCrmExtraction> {
   const sentContext = input.receivedAt
     ? `Email sent date: ${new Date(input.receivedAt).toDateString()}`
     : "Email sent date: unknown";
@@ -388,8 +424,13 @@ export async function extractEmailCrmFacts(input: EmailCrmInput): Promise<EmailC
     },
     body: JSON.stringify({
       model: provider.model,
-      temperature: 0.1,
-      max_tokens: 2000,
+      // GLM models truncate JSON mid-object at low limits (glm-5.1 needed 4000
+      // in the leadership autobrief) — don't lower this. Newer OpenAI models
+      // reject `max_tokens` (want max_completion_tokens) and any non-default
+      // temperature, so shape params per provider.
+      ...(provider.name === "openai"
+        ? { max_completion_tokens: 4000 }
+        : { temperature: 0.1, max_tokens: 4000 }),
       messages: [
         { role: "system", content: EXTRACTION_SYSTEM_PROMPT },
         {
@@ -410,11 +451,36 @@ export async function extractEmailCrmFacts(input: EmailCrmInput): Promise<EmailC
   };
   const content = payload.choices?.[0]?.message?.content || "";
   const jsonText = content.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
-  let parsed: EmailCrmExtraction;
   try {
-    parsed = JSON.parse(jsonText) as EmailCrmExtraction;
+    return JSON.parse(jsonText) as EmailCrmExtraction;
   } catch {
     throw new Error(`AI extraction returned non-JSON output: ${content.slice(0, 200)}`);
+  }
+}
+
+export async function extractEmailCrmFacts(input: EmailCrmInput): Promise<EmailCrmExtraction> {
+  const chain = providerChain();
+  if (chain.length === 0) {
+    throw new Error("No AI provider configured for email extraction.");
+  }
+
+  let parsed: EmailCrmExtraction | null = null;
+  const failures: string[] = [];
+  for (const provider of chain) {
+    try {
+      parsed = await extractWithProvider(provider, input);
+      if (failures.length > 0) {
+        console.warn(
+          `[email-to-crm] extraction succeeded on fallback provider ${provider.name} after: ${failures.join(" | ")}`,
+        );
+      }
+      break;
+    } catch (err: any) {
+      failures.push(`${provider.name}: ${String(err?.message || err).slice(0, 160)}`);
+    }
+  }
+  if (!parsed) {
+    throw new Error(`AI extraction failed on all providers — ${failures.join(" | ")}`);
   }
 
   const extraction: EmailCrmExtraction = {
