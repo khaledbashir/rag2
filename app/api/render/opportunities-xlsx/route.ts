@@ -52,7 +52,33 @@ async function gql<T = any>(query: string, variables?: Record<string, unknown>):
   return body.data;
 }
 
-async function fetchOpps(filter: Record<string, unknown> | undefined): Promise<any[]> {
+// Parse a years param into a sorted number list. Accepts a range ("2026-2031")
+// or a comma list ("2026,2027,2028"). Returns [] when the param is absent so
+// callers can distinguish "not provided" from a default.
+function parseYears(s: string | null, fallback: number[]): number[] {
+  if (!s) return fallback;
+  const set = new Set<number>();
+  for (const part of s.split(",")) {
+    const t = part.trim();
+    const m = t.match(/^(\d{4})\s*-\s*(\d{4})$/);
+    if (m) {
+      const a = +m[1], b = +m[2];
+      for (let y = Math.min(a, b); y <= Math.max(a, b); y++) set.add(y);
+    } else if (/^\d{4}$/.test(t)) set.add(+t);
+  }
+  return set.size ? [...set].sort((a, b) => a - b) : fallback;
+}
+
+async function fetchOpps(
+  filter: Record<string, unknown> | undefined,
+  years: number[],
+): Promise<any[]> {
+  // Project revenue/margin for every requested year so the columns and the
+  // revenue-gate filter both have data to read. Default callers pass
+  // [2026, 2027] which matches the original fixed projection.
+  const proj = years
+    .map((y) => `revenue${y} { amountMicros }\n            margin${y}  { amountMicros }`)
+    .join("\n            ");
   const out: any[] = [];
   let cursor: string | null = null;
   while (true) {
@@ -66,10 +92,7 @@ async function fetchOpps(filter: Record<string, unknown> | undefined): Promise<a
             owner { name { firstName lastName } }
             totalProjectRevenue { amountMicros }
             totalProjectMargin  { amountMicros }
-            revenue2026 { amountMicros }
-            margin2026  { amountMicros }
-            revenue2027 { amountMicros }
-            margin2027  { amountMicros }
+            ${proj}
           } }
           pageInfo { hasNextPage endCursor }
         }
@@ -221,9 +244,26 @@ export async function GET(req: NextRequest) {
     }
     if (sp.get("status")) and.push({ bidStatus: { eq: sp.get("status") } });
     if (sp.get("bu")) and.push({ businessUnit: { eq: sp.get("bu") } });
+    // Revenue gate: keep only deals with non-zero revenue in ANY of the given
+    // years. Each year contributes two OR clauses (>= $1 and <= -$1) so signed
+    // credits/adjustments still qualify, matching the Service Forecast view
+    // precedent. CURRENCY comparisons target amountMicros (composite type).
+    const revYears = parseYears(sp.get("revYears"), []);
+    if (revYears.length) {
+      const ors: any[] = [];
+      for (const y of revYears) {
+        ors.push({ [`revenue${y}`]: { amountMicros: { gte: 1_000_000 } } });
+        ors.push({ [`revenue${y}`]: { amountMicros: { lte: -1_000_000 } } });
+      }
+      and.push({ or: ors });
+    }
     const filter = and.length ? { and } : undefined;
 
-    const opps = await fetchOpps(filter);
+    // years controls the per-year revenue/margin columns + projection. Default
+    // [2026, 2027] preserves the original column set for every existing
+    // viewId-based report (zero regression on the 7 shipped views).
+    const years = parseYears(sp.get("years"), [2026, 2027]);
+    const opps = await fetchOpps(filter, years);
     // Stable cursor pagination requires ordering by the unique id; present rows
     // newest-first by opportunity number for the reader.
     const byNumberDesc = (a: any, b: any) => {
@@ -277,10 +317,10 @@ export async function GET(req: NextRequest) {
       { header: "Contract Completion", key: "complete", width: 16 },
       { header: "Total Project Revenue", key: "rev", width: 18, money: true },
       { header: "Total Project Margin", key: "mar", width: 17, money: true },
-      { header: "Revenue FY2026", key: "rev26", width: 15, money: true },
-      { header: "Margin FY2026", key: "mar26", width: 14, money: true },
-      { header: "Revenue FY2027", key: "rev27", width: 15, money: true },
-      { header: "Margin FY2027", key: "mar27", width: 14, money: true },
+      ...years.flatMap((y) => [
+        { header: `Revenue FY${y}`, key: `rev${y}`, width: 15, money: true },
+        { header: `Margin FY${y}`, key: `mar${y}`, width: 14, money: true },
+      ]),
       { header: "Owner", key: "owner", width: 18 },
       { header: "Last Updated", key: "updated", width: 13 },
     ];
@@ -295,23 +335,22 @@ export async function GET(req: NextRequest) {
     const moneyNumFmt = '#,##0;[Red](#,##0)';
     const letterOf = (c: number) => ws.getColumn(c).letter;
     const moneyValueForCol = (o: any, c: number): number => {
-      switch (cols[c - COL1]?.key) {
-        case "rev": return dollars(o.totalProjectRevenue);
-        case "mar": return dollars(o.totalProjectMargin);
-        case "rev26": return dollars(o.revenue2026);
-        case "mar26": return dollars(o.margin2026);
-        case "rev27": return dollars(o.revenue2027);
-        case "mar27": return dollars(o.margin2027);
-        default: return 0;
-      }
+      const key = cols[c - COL1]?.key;
+      if (key === "rev") return dollars(o.totalProjectRevenue);
+      if (key === "mar") return dollars(o.totalProjectMargin);
+      const rm = key?.match(/^rev(\d{4})$/); if (rm) return dollars(o[`revenue${rm[1]}`]);
+      const mm = key?.match(/^mar(\d{4})$/); if (mm) return dollars(o[`margin${mm[1]}`]);
+      return 0;
     };
 
     // Title block
+    const yearSuffix = sp.get("years") ? ` (FY${years[0]}–${years[years.length - 1]})` : "";
     const reportTitle =
       viewName ||
       ((sp.get("bu") ? (BU_LABEL[sp.get("bu")!] || sp.get("bu")) : "ANC") +
       " Opportunities" +
-      (sp.get("status") ? ` — ${STATUS_LABEL[sp.get("status")!] || sp.get("status")}` : ""));
+      (sp.get("status") ? ` — ${STATUS_LABEL[sp.get("status")!] || sp.get("status")}` : "") +
+      yearSuffix);
     const asOf = new Date().toLocaleString("en-US", {
       year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
     });
@@ -441,8 +480,7 @@ export async function GET(req: NextRequest) {
           STATUS_LABEL[o.bidStatus] || o.bidStatus || "",
           fmtDate(o.closeDate), fmtDate(o.substantialCompletionDate),
           dollars(o.totalProjectRevenue), dollars(o.totalProjectMargin),
-          dollars(o.revenue2026), dollars(o.margin2026),
-          dollars(o.revenue2027), dollars(o.margin2027),
+          ...years.flatMap((y) => [dollars(o[`revenue${y}`]), dollars(o[`margin${y}`])]),
           ownerName(o), fmtDate(o.updatedAt),
         ];
         cols.forEach((c, ci) => {
