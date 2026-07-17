@@ -10,18 +10,23 @@
  *   2. The mirrored service fee table (ITEM × contract years + YEARLY TOTAL)
  *      from the imported service sheet — values exactly as Excel displays.
  *
- * No legal exhibits, no signatures — those arrive when the proposal finalizes
- * into a SERVICE_CONTRACT.
+ * Section toggles/body overrides are mode-scoped to Service Proposal and keep
+ * the ANC section chrome in the template instead of inside user-entered text.
  */
 import React from "react";
 
 import type { PdfColors } from "./sections/shared";
 import PdfServicePricingTable from "./sections/PdfServicePricingTable";
+import PdfManualServiceFeeTable, { normalizeManualServiceFeeRows } from "./sections/PdfManualServiceFeeTable";
 import {
   buildServiceProposalIntro,
   type ServiceProposalIntroValues,
 } from "@/lib/serviceContracts/serviceProposalIntro";
 import type { ServicePricingDocument } from "@/types/servicePricing";
+
+type ServiceProposalSectionId = "intro" | "compensation";
+
+type ServiceProposalSectionOverrides = Record<ServiceProposalSectionId, { enabled?: boolean; bodyText?: string }>;
 
 interface PdfServiceProposalProps {
   colors: PdfColors;
@@ -33,11 +38,29 @@ interface PdfServiceProposalProps {
 
 export default function PdfServiceProposal({ colors, intro, details }: PdfServiceProposalProps) {
   const svcDoc = (details?.servicePricingDocument ?? null) as ServicePricingDocument | null;
+  const manualFeeRows = normalizeManualServiceFeeRows(details?.serviceManualFeeRows);
+  const sectionOverrides = (details?.serviceSectionOverrides ?? {}) as Record<string, { enabled?: boolean; bodyText?: string }>;
+  const getSectionOverride = (id: ServiceProposalSectionId) =>
+    sectionOverrides[`SERVICE_PROPOSAL:${id}`] || sectionOverrides[id] || {};
+  const isSectionEnabled = (id: ServiceProposalSectionId) => getSectionOverride(id).enabled ?? true;
+  const getBodyOverride = (id: ServiceProposalSectionId) => (getSectionOverride(id).bodyText || "").trim();
 
-  const introOverride = ((details?.serviceProposalIntro || "") as string).trim();
+  const introOverride = (getBodyOverride("intro") || (details?.serviceProposalIntro || "") as string).trim();
   const paragraphs = introOverride ? null : buildServiceProposalIntro(intro);
 
   const venueName = (intro.venueName || "").trim();
+  const Header = ({ children }: { children: React.ReactNode }) => (
+    <div style={{ display: "flex", alignItems: "center", gap: "6px", margin: "14px 0 8px" }}>
+      <div style={{ width: "3px", height: "14px", borderRadius: "1px", background: colors.primary, flexShrink: 0 }} />
+      <span className="text-[14px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>
+        {children}
+      </span>
+    </div>
+  );
+
+  const EditedBody = ({ text }: { text: string }) => (
+    <div className="mb-3 whitespace-pre-wrap text-justify">{text}</div>
+  );
 
   return (
     <div data-preview-section="service-proposal" className="px-6 text-[12px] leading-relaxed" style={{ color: colors.text }}>
@@ -45,21 +68,33 @@ export default function PdfServiceProposal({ colors, intro, details }: PdfServic
         {venueName ? `${venueName} Service Proposal` : "Service Proposal"}
       </div>
 
-      {introOverride ? (
-        <p className="mb-3 text-justify whitespace-pre-wrap">{introOverride}</p>
-      ) : (
-        paragraphs!.map((p, i) => (
-          <p key={i} className="mb-3 text-justify">
-            {p}
-          </p>
-        ))
+      {isSectionEnabled("intro") && (
+        <section data-preview-section="service-section-intro">
+          <Header>Intro / Whereas</Header>
+          {introOverride ? (
+            <EditedBody text={introOverride} />
+          ) : (
+            paragraphs!.map((p, i) => (
+              <p key={i} className="mb-3 text-justify">
+                {p}
+              </p>
+            ))
+          )}
+        </section>
       )}
 
-      {svcDoc && (
-        <div className="mt-4">
-          <PdfServicePricingTable colors={colors} document={svcDoc} />
-        </div>
+      {isSectionEnabled("compensation") && (
+        <section data-preview-section="service-section-compensation" className="mt-4">
+          <Header>Compensation</Header>
+          {getBodyOverride("compensation") && <EditedBody text={getBodyOverride("compensation")} />}
+          {svcDoc ? (
+            <PdfServicePricingTable colors={colors} document={svcDoc} />
+          ) : (
+            <PdfManualServiceFeeTable colors={colors} rows={manualFeeRows} />
+          )}
+        </section>
       )}
+
     </div>
   );
 }

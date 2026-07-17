@@ -20,9 +20,13 @@ import PdfFreeformTables from "./sections/PdfFreeformTables";
 import type { ServiceAgreementConfig, ServiceAgreementFeeRow } from "./sections/PdfServiceAgreement";
 import { RAVENS_SERVICE_AGREEMENT_DEFAULTS } from "./sections/PdfServiceAgreement";
 import PdfServicePricingTable from "./sections/PdfServicePricingTable";
+import PdfManualServiceFeeTable, { normalizeManualServiceFeeRows } from "./sections/PdfManualServiceFeeTable";
 import { getDefaultTemplate, resolveExhibits, applyTemplateTokens } from "@/lib/serviceContracts/registry";
-import { renderMarkdown } from "@/lib/serviceContracts/renderMarkdown";
 import type { ServicePricingDocument } from "@/types/servicePricing";
+
+type ServiceSectionId = "intro" | "ancResponsibilities" | "purchaserResponsibilities" | "term" | "compensation" | "signature";
+
+type ServiceSectionOverrides = Record<ServiceSectionId, { enabled?: boolean; bodyText?: string }>;
 
 interface PdfServiceContractProps {
   colors: PdfColors;
@@ -38,10 +42,18 @@ export default function PdfServiceContract({ colors, config, details }: PdfServi
 
   const overrides = (details?.termExhibitOverrides ?? {}) as Record<string, { enabled?: boolean; bodyMarkdown?: string }>;
   const resolved = resolveExhibits(template, overrides).filter((e) => e.enabled);
+  const sectionOverrides = (details?.serviceSectionOverrides ?? {}) as Record<string, { enabled?: boolean; bodyText?: string }>;
+  const getSectionOverride = (id: ServiceSectionId) =>
+    sectionOverrides[`SERVICE_CONTRACT:${id}`] || sectionOverrides[id] || {};
 
   // Imported service-sheet fee schedule (Mirror rule: Excel values verbatim).
   // When present it replaces the template's default compensation fee rows.
   const svcDoc = (details?.servicePricingDocument ?? null) as ServicePricingDocument | null;
+  const manualFeeRows = normalizeManualServiceFeeRows(details?.serviceManualFeeRows);
+  const isRavensTemplatePurchaser = /ravens/i.test(c.purchaserName);
+  const fallbackFeeRows: ServiceAgreementFeeRow[] = manualFeeRows.length > 0
+    ? manualFeeRows
+    : (isRavensTemplatePurchaser ? c.feeRows : []);
 
   // Token values for exhibit-body substitution (Software EULA preamble etc.)
   const tokenValues = {
@@ -54,8 +66,43 @@ export default function PdfServiceContract({ colors, config, details }: PdfServi
   };
 
   // Signature block: per-instance verbatim override wins; else template default.
-  const signatureOverride = ((details?.serviceContractSignatureText || "").trim());
+  const signatureOverride = ((getSectionOverride("signature").bodyText || details?.serviceContractSignatureText || "").trim());
   const signatureText = signatureOverride || template.signatureBlockText;
+
+  const isSectionEnabled = (id: ServiceSectionId) => getSectionOverride(id).enabled ?? true;
+  const getBodyOverride = (id: ServiceSectionId) => (getSectionOverride(id).bodyText || "").trim();
+
+  const SignatureBlock = () => {
+    const signatureLines = signatureText.split(/\r?\n/).map((line: string) => line.trim()).filter(Boolean);
+    const heading = signatureLines[0] || "AGREED TO AND ACCEPTED:";
+    const ancLines = signatureLines
+      .slice(1)
+      .filter((line: string) => !(/^By:/i.test(line) || /^Date:/i.test(line)));
+    const byDateLine = signatureLines.find((line: string) => /^By:/i.test(line)) || "By: ____________________   Date: ______________";
+
+    return (
+      <div data-preview-section="service-contract-signature" className="break-inside-avoid" style={{ margin: "14px 0 16px" }}>
+        <div className="font-bold" style={{ color: colors.primaryDark, marginBottom: "8px" }}>{heading}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "42px", alignItems: "start" }}>
+          <div>
+            {(ancLines.length > 0 ? ancLines : [
+              'ANC SPORTS ENTERPRISES, LLC ("ANC")',
+              "2 Manhattanville Road, Suite 402",
+              "Purchase, NY 10577",
+            ]).map((line: string) => (
+              <div key={line}>{line}</div>
+            ))}
+            <div style={{ marginTop: "18px" }}>{byDateLine}</div>
+          </div>
+          <div>
+            <div>{c.purchaserName} (&ldquo;Purchaser&rdquo;)</div>
+            {c.purchaserAddress ? <div>{c.purchaserAddress}</div> : <div>&nbsp;</div>}
+            <div style={{ marginTop: "18px" }}>By: ____________________&nbsp;&nbsp;&nbsp;Date: ______________</div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const Header = ({ children }: { children: React.ReactNode }) => (
     <div style={{ display: "flex", alignItems: "center", gap: "6px", margin: "14px 0 8px" }}>
@@ -66,106 +113,139 @@ export default function PdfServiceContract({ colors, config, details }: PdfServi
     </div>
   );
 
+  const EditedBody = ({ text }: { text: string }) => (
+    <div className="mb-3 whitespace-pre-wrap text-justify">{text}</div>
+  );
+
   return (
     <div data-preview-section="service-contract" className="px-6 text-[12px] leading-relaxed" style={{ color: colors.text }}>
       <div className="text-[16px] font-bold" style={{ color: colors.primaryDark, marginBottom: "10px" }}>
         {c.venueName} Service Contract
       </div>
 
-      <p className="mb-3">
-        AGREEMENT (&ldquo;Agreement&rdquo;) dated {c.agreementDate} between ANC SPORTS ENTERPRISES, LLC, a Delaware
-        limited liability company located at 2 Manhattanville Road, Purchase, NY 10577 (&ldquo;ANC&rdquo;) and {c.purchaserName} with
-        office at {c.purchaserAddress}.
-      </p>
-      <p className="mb-3">
-        WHEREAS, ANC has expertise in the maintenance of video-based light-emitting diode (&ldquo;LED&rdquo;) modules (the &ldquo;LED Modules&rdquo;).
-      </p>
-      <p className="mb-3">
-        WHEREAS, Purchaser plays in the sports and entertainment facility currently known as {c.venueName} (the &ldquo;Stadium&rdquo;),
-        in which LED Modules and the necessary hardware, software, equipment and connections required to operate the Stadium
-        LED Modules (collectively, the &ldquo;LED System&rdquo;) have been installed for use at NFL Games and other events; and which
-        Purchaser wishes to have ANC maintain such LED System;
-      </p>
-      <p className="mb-3">NOW, THEREFORE, the parties hereto hereby agree as follows:</p>
-
-      <Header>ANC&rsquo;s Responsibilities</Header>
-      <p className="mb-2">
-        WHEREAS, ANC has expertise in the maintenance of video-based light-emitting diode (&ldquo;LED&rdquo;) modules (the &ldquo;LED Modules&rdquo;); and
-      </p>
-      <p className="mb-2">
-        WHEREAS, Purchaser operates the sports and entertainment facility currently known as {c.venueName} (the &quot;Stadium&quot;),
-        in which LED Modules and the necessary hardware, parts, equipment and connections required to service and maintain the
-        Stadium&rsquo;s LED Modules (collectively, the &ldquo;LED System&rdquo;) are provided by the Purchaser for their use in NFL games,
-        and additional events at the Stadium, and Purchaser wishes to have ANC service and maintain such LED System.
-      </p>
-      <ul className="list-disc pl-5 space-y-1 mb-3">
-        <li>ANC shall provide Maintenance Staff as defined in Exhibit A &ndash; Service Overview.</li>
-        <li>ANC shall provide service as defined in Exhibit A for Display List as defined in Exhibit B</li>
-        <li>ANC will also provide a trained and capable representative or representatives to work with Purchaser throughout the Term to service and maintain the LED System for the duration of the term.</li>
-        <li>ANC will provide 24/7 365 tech support at no additional cost to assist with any hardware issues that occur.</li>
-      </ul>
-
-      <Header>Purchaser&rsquo;s Responsibilities</Header>
-      <ul className="list-disc pl-5 space-y-1 mb-3">
-        <li>Purchaser shall supply, at its expense, the electricity required for the operation of the LED System.</li>
-        <li>Purchaser will provide at its cost the raw unencoded data feed from any sports information service for display on the LED Modules.</li>
-        <li>Purchaser shall provide at no cost to ANC or its technicians full access credentials and complimentary parking at The Stadium parking lot (as needed) for each NFL Game for the purposes of carrying out ANC&rsquo;s obligations hereunder. Such ANC personnel shall comply with all applicable Stadium rules and regulations in connection with their activities hereunder. The Purchaser shall use best efforts to ensure that ANC&rsquo;s technicians have easy physical access to the LED Modules. If lifts, cranes or other equipment are required to access any portion of the ANC LED displays, the Purchaser will be responsible for providing.</li>
-      </ul>
-
-      <Header>Term</Header>
-      <p className="mb-3">The term or this agreement (&ldquo;Term&rdquo;) shall begin on {c.termStart}, and end on {c.termEnd}</p>
-
-      <Header>Compensation</Header>
-      <p className="mb-2">
-        As compensation for the services described in Section 1, the Company shall pay ANC an annual service fee as follows:
-      </p>
-      <p className="mb-2">
-        Payment Schedule. The annual service fee for each Contract Year shall be payable in six (6) equal monthly installments.
-        The first installment shall be due on {c.firstInstallmentDue} of the applicable Contract Year, with subsequent installments
-        due on the first (1st) day of each month thereafter, and the final installment due on {c.finalInstallmentDue}.
-      </p>
-      {svcDoc ? (
-        // Mirrored fee schedule from the imported service sheet (per-year fee
-        // lines + yearly total) — the client's real numbers, never the
-        // template's default fee rows for a different venue.
-        <div style={{ margin: "6px 0 12px" }}>
-          <PdfServicePricingTable colors={colors} document={svcDoc} />
-        </div>
-      ) : (
-        <table style={{ borderCollapse: "collapse", fontSize: "11px", margin: "6px 0 12px" }}>
-          <thead>
-            <tr><th style={{ textAlign: "left", padding: "3px 18px 3px 0", fontWeight: 700 }}>Contract Year</th><th style={{ textAlign: "left", padding: "3px 0", fontWeight: 700 }}>Monthly Service Fee</th></tr>
-          </thead>
-          <tbody>
-            {c.feeRows.map((r: ServiceAgreementFeeRow) => (
-              <tr key={r.contractYear}><td style={{ padding: "2px 18px 2px 0" }}>{r.contractYear}</td><td style={{ padding: "2px 0" }}>{r.monthlyFee}</td></tr>
-            ))}
-          </tbody>
-        </table>
+      {isSectionEnabled("intro") && (
+        <section data-preview-section="service-section-intro">
+          <Header>Intro / Whereas</Header>
+          {getBodyOverride("intro") ? <EditedBody text={getBodyOverride("intro")} /> : (
+            <>
+              <p className="mb-3">
+                AGREEMENT (&ldquo;Agreement&rdquo;) dated {c.agreementDate} between ANC SPORTS ENTERPRISES, LLC, a Delaware
+                limited liability company located at 2 Manhattanville Road, Purchase, NY 10577 (&ldquo;ANC&rdquo;) and {c.purchaserName} with
+                office at {c.purchaserAddress}.
+              </p>
+              <p className="mb-3">
+                WHEREAS, ANC has expertise in the maintenance of video-based light-emitting diode (&ldquo;LED&rdquo;) modules (the &ldquo;LED Modules&rdquo;).
+              </p>
+              <p className="mb-3">
+                WHEREAS, Purchaser plays in the sports and entertainment facility currently known as {c.venueName} (the &ldquo;Stadium&rdquo;),
+                in which LED Modules and the necessary hardware, software, equipment and connections required to operate the Stadium
+                LED Modules (collectively, the &ldquo;LED System&rdquo;) have been installed for use at NFL Games and other events; and which
+                Purchaser wishes to have ANC maintain such LED System;
+              </p>
+              <p className="mb-3">NOW, THEREFORE, the parties hereto hereby agree as follows:</p>
+            </>
+          )}
+        </section>
       )}
-      <p className="mb-2">
-        The fees described herein do not include any {c.taxJurisdiction} sales or use tax that may be due. ANC shall determine
-        whether any such tax is payable on the fees, and, if such tax is due, ANC will bill Company for such tax and will be
-        responsible for remitting the tax, as paid by Company, to the appropriate taxing authorities.
-      </p>
-      <p className="mb-3">
-        Time is of the essence with regard to all payments. If Company is thirty (30) days late in any non-disputed payment due
-        hereunder, ANC shall 1) provide written notice of such delinquency to Company in accordance with paragraph 7(a) of the
-        General Terms. Provided that ANC has fully complied with its obligations hereunder as of the date of written notice, ANC
-        will have the right to terminate this Agreement immediately upon written notice to Company if Company has not cured such
-        payment default within thirty (30) days after Company&rsquo;s receipt of such delinquency notice.
-      </p>
-      <p className="mb-3">
-        Please sign to indicate Purchaser&rsquo;s agreement to purchase the Work as described herein and to authorize ANC to commence
-        production of the Work. If, for any reason, Purchaser terminates this Agreement prior to the completion of the Work, ANC
-        will immediately cease all work and Purchaser will pay ANC for any work performed, work in progress, and materials
-        purchased, if any. Tax is not included. Applicable sales tax will be included in ANC&rsquo;s invoice. Payment is due within
-        thirty (30) days of ANC&rsquo;s invoice(s).
-      </p>
-      <p className="mb-3 uppercase text-[11px]">
-        Unless otherwise noted in the following space, all terms and conditions on the general terms of this order are fully
-        accepted by purchaser.
-      </p>
+
+      {isSectionEnabled("ancResponsibilities") && (
+        <section data-preview-section="service-section-anc-responsibilities">
+          <Header>ANC&rsquo;s Responsibilities</Header>
+          {getBodyOverride("ancResponsibilities") ? <EditedBody text={getBodyOverride("ancResponsibilities")} /> : (
+            <>
+              <p className="mb-2">
+                WHEREAS, ANC has expertise in the maintenance of video-based light-emitting diode (&ldquo;LED&rdquo;) modules (the &ldquo;LED Modules&rdquo;); and
+              </p>
+              <p className="mb-2">
+                WHEREAS, Purchaser operates the sports and entertainment facility currently known as {c.venueName} (the &quot;Stadium&quot;),
+                in which LED Modules and the necessary hardware, parts, equipment and connections required to service and maintain the
+                Stadium&rsquo;s LED Modules (collectively, the &ldquo;LED System&rdquo;) are provided by the Purchaser for their use in NFL games,
+                and additional events at the Stadium, and Purchaser wishes to have ANC service and maintain such LED System.
+              </p>
+              <ul className="list-disc pl-5 space-y-1 mb-3">
+                <li>ANC shall provide Maintenance Staff as defined in Exhibit A &ndash; Service Overview.</li>
+                <li>ANC shall provide service as defined in Exhibit A for Display List as defined in Exhibit B</li>
+                <li>ANC will also provide a trained and capable representative or representatives to work with Purchaser throughout the Term to service and maintain the LED System for the duration of the term.</li>
+                <li>ANC will provide 24/7 365 tech support at no additional cost to assist with any hardware issues that occur.</li>
+              </ul>
+            </>
+          )}
+        </section>
+      )}
+
+      {isSectionEnabled("purchaserResponsibilities") && (
+        <section data-preview-section="service-section-purchaser-responsibilities">
+          <Header>Purchaser&rsquo;s Responsibilities</Header>
+          {getBodyOverride("purchaserResponsibilities") ? <EditedBody text={getBodyOverride("purchaserResponsibilities")} /> : (
+            <ul className="list-disc pl-5 space-y-1 mb-3">
+              <li>Purchaser shall supply, at its expense, the electricity required for the operation of the LED System.</li>
+              <li>Purchaser will provide at its cost the raw unencoded data feed from any sports information service for display on the LED Modules.</li>
+              <li>Purchaser shall provide at no cost to ANC or its technicians full access credentials and complimentary parking at The Stadium parking lot (as needed) for each NFL Game for the purposes of carrying out ANC&rsquo;s obligations hereunder. Such ANC personnel shall comply with all applicable Stadium rules and regulations in connection with their activities hereunder. The Purchaser shall use best efforts to ensure that ANC&rsquo;s technicians have easy physical access to the LED Modules. If lifts, cranes or other equipment are required to access any portion of the ANC LED displays, the Purchaser will be responsible for providing.</li>
+            </ul>
+          )}
+        </section>
+      )}
+
+      {isSectionEnabled("term") && (
+        <section data-preview-section="service-section-term">
+          <Header>Term</Header>
+          {getBodyOverride("term") ? <EditedBody text={getBodyOverride("term")} /> : (
+            <p className="mb-3">The term or this agreement (&ldquo;Term&rdquo;) shall begin on {c.termStart}, and end on {c.termEnd}</p>
+          )}
+        </section>
+      )}
+
+      {isSectionEnabled("compensation") && (
+        <section data-preview-section="service-section-compensation">
+          <Header>Compensation</Header>
+          {getBodyOverride("compensation") ? <EditedBody text={getBodyOverride("compensation")} /> : (
+            <>
+              <p className="mb-2">
+                As compensation for the services described in Section 1, the Company shall pay ANC an annual service fee as follows:
+              </p>
+              <p className="mb-2">
+                Payment Schedule. The annual service fee for each Contract Year shall be payable in six (6) equal monthly installments.
+                The first installment shall be due on {c.firstInstallmentDue} of the applicable Contract Year, with subsequent installments
+                due on the first (1st) day of each month thereafter, and the final installment due on {c.finalInstallmentDue}.
+              </p>
+            </>
+          )}
+          {svcDoc ? (
+            <div style={{ margin: "6px 0 12px" }}>
+              <PdfServicePricingTable colors={colors} document={svcDoc} />
+            </div>
+          ) : (
+            <PdfManualServiceFeeTable colors={colors} rows={fallbackFeeRows} />
+          )}
+          {!getBodyOverride("compensation") && (
+            <>
+              <p className="mb-2">
+                The fees described herein do not include any {c.taxJurisdiction} sales or use tax that may be due. ANC shall determine
+                whether any such tax is payable on the fees, and, if such tax is due, ANC will bill Company for such tax and will be
+                responsible for remitting the tax, as paid by Company, to the appropriate taxing authorities.
+              </p>
+              <p className="mb-3">
+                Time is of the essence with regard to all payments. If Company is thirty (30) days late in any non-disputed payment due
+                hereunder, ANC shall 1) provide written notice of such delinquency to Company in accordance with paragraph 7(a) of the
+                General Terms. Provided that ANC has fully complied with its obligations hereunder as of the date of written notice, ANC
+                will have the right to terminate this Agreement immediately upon written notice to Company if Company has not cured such
+                payment default within thirty (30) days after Company&rsquo;s receipt of such delinquency notice.
+              </p>
+              <p className="mb-3">
+                Please sign to indicate Purchaser&rsquo;s agreement to purchase the Work as described herein and to authorize ANC to commence
+                production of the Work. If, for any reason, Purchaser terminates this Agreement prior to the completion of the Work, ANC
+                will immediately cease all work and Purchaser will pay ANC for any work performed, work in progress, and materials
+                purchased, if any. Tax is not included. Applicable sales tax will be included in ANC&rsquo;s invoice. Payment is due within
+                thirty (30) days of ANC&rsquo;s invoice(s).
+              </p>
+              <p className="mb-3 uppercase text-[11px]">
+                Unless otherwise noted in the following space, all terms and conditions on the general terms of this order are fully
+                accepted by purchaser.
+              </p>
+            </>
+          )}
+        </section>
+      )}
 
       {/* Free-form pricing tables (Priority 1-tied) — user-built "from scratch"
           pricing. Renders before the signature block so the flow is pricing →
@@ -176,8 +256,12 @@ export default function PdfServiceContract({ colors, config, details }: PdfServi
         </div>
       )}
 
-      {/* Signature block — verbatim from template (or per-instance override). */}
-      {renderMarkdown(signatureText)}
+      {isSectionEnabled("signature") && (
+        <section data-preview-section="service-section-signature">
+          <Header>Signature Block</Header>
+          <SignatureBlock />
+        </section>
+      )}
 
       {/* Toggleable term exhibits, in template order, filtered by enabled. */}
       {resolved.map((ex) => (

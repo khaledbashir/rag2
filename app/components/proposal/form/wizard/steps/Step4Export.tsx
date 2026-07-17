@@ -766,6 +766,8 @@ const Step4Export = () => {
     // so a matrix is ALWAYS available (parsed sheet → manual override → master fallback) — the
     // toggle is therefore always enabled, mirroring the auto-generated LED Exhibit A specs page.
     const hasRespMatrixData = true;
+    const headerTypeValue = headerType as string;
+    const isServiceDocument = headerTypeValue === "SERVICE_CONTRACT" || headerTypeValue === "SERVICE_PROPOSAL";
     const documentTextSettingsTab = headerType === "BUDGET"
         ? "budget"
         : headerType === "LOI" || headerType === "CONTRACT"
@@ -1612,6 +1614,19 @@ const Step4Export = () => {
                                     )}
 
                                     {/* PDF Section Toggles */}
+                                    {isServiceDocument ? (
+                                        <div className="rounded-xl border border-border/60 p-4 space-y-3">
+                                            <div className="flex flex-col min-w-0">
+                                                <Label className="text-sm font-semibold text-foreground block">Service Document Sections</Label>
+                                                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                                    Use the setup panel below to toggle and edit Intro and Compensation. Service Contracts also expose responsibilities, term, signature, and exhibit sections. Compensation controls the imported schedule or manual Year/Fee table.
+                                                </p>
+                                            </div>
+                                            <p className="text-[11px] text-muted-foreground">
+                                                Service proposal/contract identity, term, manual pricing, exhibits, and signature controls are in the setup panel below.
+                                            </p>
+                                        </div>
+                                    ) : (<>
                                     <Tabs value={documentTextSettingsTab} className="w-full">
                                         {/* Budget Tab */}
                                         <TabsContent value="budget" className="space-y-1 mt-4">
@@ -1922,6 +1937,7 @@ const Step4Export = () => {
 
                                     {/* Text Editor Panel */}
                                     <TextEditorPanel />
+                                    </>)}
                                 </CardContent>
                             )}
                         </Card>
@@ -1929,7 +1945,7 @@ const Step4Export = () => {
                         {/* Service Contract term-exhibit system (Priority 1) — the manual
                             path is how a Service Contract gets built from scratch, so its
                             exhibits must be reachable there. */}
-                        {(headerType === "SERVICE_CONTRACT" || headerType === "SERVICE_PROPOSAL") && <ServiceContractTermsPanel />}
+                        {isServiceDocument && <ServiceContractTermsPanel />}
 
                         {!manualTableMode && <Card className="bg-card/40 border border-border/60 overflow-hidden">
                             <CardHeader

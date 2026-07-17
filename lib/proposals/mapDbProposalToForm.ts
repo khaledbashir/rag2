@@ -105,6 +105,8 @@ export function mapDbProposalToFormSchema(dbProject: any) {
             serviceContractTermStart: cfg.serviceContractTermStart ?? "",
             serviceContractTermEnd: cfg.serviceContractTermEnd ?? "",
             serviceContractSignatureText: cfg.serviceContractSignatureText ?? "",
+            serviceManualFeeRows: Array.isArray(cfg.serviceManualFeeRows) ? cfg.serviceManualFeeRows : [],
+            serviceSectionOverrides: cfg.serviceSectionOverrides ?? {},
             termExhibitOverrides: cfg.termExhibitOverrides ?? {},
             serviceProposalIntro: cfg.serviceProposalIntro ?? "",
             servicePricingDocument: cfg.servicePricingDocument ?? undefined,

@@ -404,6 +404,14 @@ const ProposalDetailsSchema = z.object({
         bodyMarkdown: z.string().optional(),
     })).optional().default({}),
     serviceContractSignatureText: z.string().optional(), // verbatim signature override
+    serviceManualFeeRows: z.array(z.object({
+        contractYear: z.string(),
+        monthlyFee: z.string(),
+    })).optional().default([]),
+    serviceSectionOverrides: z.record(z.object({
+        enabled: z.boolean().optional(),
+        bodyText: z.string().optional(),
+    })).optional().default({}),
     // CONTRACT path: editable General Terms override (seeded from contract-general-terms)
     generalTermsBodyOverride: z.string().optional(),
     // Manual table composer: exact text only, with visual-only row roles.

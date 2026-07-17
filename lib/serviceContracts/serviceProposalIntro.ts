@@ -9,10 +9,9 @@
  *   <Purchaser> ("Purchaser"), located at <address>, for the <Stadium> LED
  *   display network. …
  *
- * Values we can recognize from the workbook (client, stadium, city, league,
- * term years) are filled in; anything unknown renders as a visible
- * `{{token}}` — the same convention as the term-exhibit system — so the user
- * sees exactly what still needs filling instead of silently wrong prose.
+ * Values we can recognize from the workbook or setup panel (client, stadium,
+ * city, league, term years) are filled in. Unknown values render as neutral
+ * blanks so client-facing output never exposes template tokens.
  */
 
 export interface ServiceProposalIntroValues {
@@ -67,16 +66,31 @@ export function cityStateFromAddress(address: string | null | undefined): string
   return stateName ? `${city}, ${stateName}` : city;
 }
 
-const val = (v: string | null | undefined, token: string): string =>
-  v && v.trim() ? v.trim() : `{{${token}}}`;
+const INLINE_BLANK = "________";
+
+const val = (v: string | null | undefined): string =>
+  v && v.trim() ? v.trim() : INLINE_BLANK;
+
+export function extractYear(value: string | null | undefined): number | null {
+  const match = (value || "").match(/\b(19|20)\d{2}\b/);
+  return match ? Number(match[0]) : null;
+}
+
+export function deriveTermYears(values: Pick<ServiceProposalIntroValues, "termYears" | "termStart" | "termEnd">): number | null {
+  if (values.termYears && values.termYears > 0) return values.termYears;
+  const startYear = extractYear(values.termStart);
+  const endYear = extractYear(values.termEnd);
+  if (!startYear || !endYear || endYear < startYear) return null;
+  return Math.max(1, endYear - startYear);
+}
 
 /**
  * Build the default Service Proposal intro paragraphs. Unknown values render
- * as visible {{tokens}} the user fills in the setup panel or intro editor.
+ * as neutral blanks the user fills in the setup panel or intro editor.
  */
 export function buildServiceProposalIntro(values: ServiceProposalIntroValues): string[] {
-  const purchaser = val(values.purchaserName, "purchaserName");
-  const venue = val(values.venueName, "venueName");
+  const purchaser = val(values.purchaserName);
+  const venue = val(values.venueName);
   const team = (values.teamName && values.teamName.trim()) || purchaser;
 
   const purchaserLocated = values.purchaserAddress && values.purchaserAddress.trim()
@@ -99,10 +113,10 @@ export function buildServiceProposalIntro(values: ServiceProposalIntroValues): s
     `This proposal covers service work to be performed at ${venue} (the “Stadium”), ` +
     `the sports and entertainment facility${cityClause} ${franchiseClause}`;
 
-  const years = values.termYears && values.termYears > 0 ? values.termYears : null;
-  const yearsText = years ? `${numberWord(years)} (${years}) year` : `{{termYears}} year`;
-  const termStart = val(values.termStart, "termStart");
-  const termEnd = val(values.termEnd, "termEnd");
+  const years = deriveTermYears(values);
+  const yearsText = years ? `${numberWord(years)} (${years}) year` : `${INLINE_BLANK} year`;
+  const termStart = val(values.termStart);
+  const termEnd = val(values.termEnd);
 
   const p3 =
     `This proposal covers a ${yearsText} initial term commencing ${termStart} ` +

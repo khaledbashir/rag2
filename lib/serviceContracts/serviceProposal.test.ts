@@ -12,6 +12,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildServiceProposalIntro,
   cityStateFromAddress,
+  deriveTermYears,
   numberWord,
 } from "@/lib/serviceContracts/serviceProposalIntro";
 import {
@@ -45,12 +46,17 @@ describe("buildServiceProposalIntro", () => {
     expect(p3).toContain("a two (2) year initial term commencing 2026 through 2028");
   });
 
-  it("leaves visible {{tokens}} for unknown values instead of silently wrong prose", () => {
+  it("renders neutral blanks for unknown values instead of client-facing tokens", () => {
     const [p1, , p3] = buildServiceProposalIntro({});
-    expect(p1).toContain("{{purchaserName}}");
-    expect(p1).toContain("{{venueName}}");
-    expect(p3).toContain("{{termStart}}");
-    expect(p3).toContain("{{termYears}}");
+    expect(`${p1} ${p3}`).not.toContain("{{");
+    expect(p1).toContain("________");
+    expect(p3).toContain("________ year initial term commencing ________ through ________");
+  });
+
+  it("derives term years from panel start/end fields when no imported schedule exists", () => {
+    expect(deriveTermYears({ termYears: null, termStart: "August 1, 2026", termEnd: "July 31, 2029" })).toBe(3);
+    expect(deriveTermYears({ termYears: null, termStart: "2026", termEnd: "2028" })).toBe(2);
+    expect(deriveTermYears({ termYears: 5, termStart: "2026", termEnd: "2028" })).toBe(5);
   });
 
   it("omits league prose when the team is unknown", () => {
@@ -140,6 +146,11 @@ describe("documentConfig save ↔ load alignment", () => {
       serviceContractTermStart: "2026",
       serviceContractTermEnd: "2028",
       serviceContractSignatureText: "sig",
+      serviceManualFeeRows: [{ contractYear: "2026-2027", monthlyFee: "$1.00" }],
+      serviceSectionOverrides: {
+        "SERVICE_PROPOSAL:intro": { enabled: true, bodyText: "custom proposal intro" },
+        "SERVICE_CONTRACT:intro": { enabled: true, bodyText: "custom contract intro" },
+      },
       termExhibitOverrides: { "general-terms": { enabled: true } },
       serviceProposalIntro: "custom intro",
       servicePricingDocument: { sourceSheet: "26-28 w Break fix", yearLabels: ["26/27"], rows: [], totalRow: null },
@@ -167,6 +178,11 @@ describe("documentConfig save ↔ load alignment", () => {
     expect(d.serviceContractTermStart).toBe("2026");
     expect(d.serviceContractTermEnd).toBe("2028");
     expect(d.serviceContractSignatureText).toBe("sig");
+    expect(d.serviceManualFeeRows).toEqual([{ contractYear: "2026-2027", monthlyFee: "$1.00" }]);
+    expect(d.serviceSectionOverrides).toEqual({
+      "SERVICE_PROPOSAL:intro": { enabled: true, bodyText: "custom proposal intro" },
+      "SERVICE_CONTRACT:intro": { enabled: true, bodyText: "custom contract intro" },
+    });
     expect(d.termExhibitOverrides).toEqual({ "general-terms": { enabled: true } });
     expect(d.serviceProposalIntro).toBe("custom intro");
     expect(d.servicePricingDocument?.sourceSheet).toBe("26-28 w Break fix");

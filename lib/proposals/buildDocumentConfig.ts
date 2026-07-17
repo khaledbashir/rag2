@@ -56,6 +56,8 @@ export function buildDocumentConfig(d: any) {
     serviceContractTermStart: d.serviceContractTermStart,
     serviceContractTermEnd: d.serviceContractTermEnd,
     serviceContractSignatureText: d.serviceContractSignatureText,
+    serviceManualFeeRows: d.serviceManualFeeRows,
+    serviceSectionOverrides: d.serviceSectionOverrides,
     termExhibitOverrides: d.termExhibitOverrides,
     serviceProposalIntro: d.serviceProposalIntro,
     servicePricingDocument: d.servicePricingDocument,
