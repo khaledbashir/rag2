@@ -95,6 +95,8 @@ export default auth((req) => {
     // Email-to-quote intake can parse inbound request text without side
     // effects. Draft creation is still protected inside the route.
     pathname.startsWith("/api/intake") ||
+    // Weekly briefing cron — the route validates x-intake-token itself.
+    pathname.startsWith("/api/briefing/weekly/run") ||
     // Meeting capture intake accepts Read.ai/Otter/Zapier/webhook handoffs.
     pathname.startsWith("/api/integrations/meeting-capture/intake") ||
     // Recall status callbacks must be reachable by Recall's servers.
