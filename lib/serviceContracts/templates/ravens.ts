@@ -76,16 +76,20 @@ The e-mail should include the following:
 
 Once ANC receives this information, we will provide you with documentation and step-by-step shipping instructions regarding where to send the bad part(s) for repair/replacement or to set up an onsite visit. If you have any questions concerning if the part is actually faulty, please call ANC's Toll-Free Hotline`;
 
-// Verbatim "AGREED TO AND ACCEPTED" signature block (ANC side fixed; Purchaser
-// side filled from receiver config by the renderer). Source: lines 58-69 of
-// docs/service-agreements/ravens-service-agreement-source.md.
-const SIGNATURE_BLOCK_TEXT = `AGREED TO AND ACCEPTED:
+// Signature block: sign-here preamble + "AGREED TO AND ACCEPTED" heading + the
+// fixed ANC party block. The Purchaser side and the BY/TITLE/DATE lines for
+// both parties are rendered structurally by PdfServiceContract. Wording per
+// Natalia 2026-07-27 (49ers review): identical to the ANC purchase-order sign
+// block except "the Services" replaces "the Display System".
+const SIGNATURE_BLOCK_TEXT = `Please sign to indicate Purchaser's agreement to purchase the Services as described herein and to authorize ANC to commence production.
 
-ANC SPORTS ENTERPRISES, LLC ("ANC")
+If, for any reason, Purchaser terminates this Agreement prior to the completion of the work, ANC will immediately cease all work and Purchaser will pay ANC for any work performed, work in progress, and materials purchased, if any. This document will be considered binding on both parties; however, it will be followed by a formal agreement containing standard contract language, including terms of liability, indemnification, and warranty. Payment is due within thirty (30) days of ANC's invoice(s).
+
+AGREED TO AND ACCEPTED:
+
+ANC Sports Enterprises, LLC ("ANC")
 2 Manhattanville Road, Suite 402
-Purchase, NY 10577
-
-By: ____________________   Date: ______________`;
+Purchase, NY 10577`;
 
 export const RAVENS_TEMPLATE: ServiceContractTemplate = {
   id: "ravens",

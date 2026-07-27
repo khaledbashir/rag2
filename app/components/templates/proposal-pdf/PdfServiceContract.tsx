@@ -73,32 +73,66 @@ export default function PdfServiceContract({ colors, config, details }: PdfServi
   const getBodyOverride = (id: ServiceSectionId) => (getSectionOverride(id).bodyText || "").trim();
 
   const SignatureBlock = () => {
-    const signatureLines = signatureText.split(/\r?\n/).map((line: string) => line.trim()).filter(Boolean);
-    const heading = signatureLines[0] || "AGREED TO AND ACCEPTED:";
-    const ancLines = signatureLines
-      .slice(1)
-      .filter((line: string) => !(/^By:/i.test(line) || /^Date:/i.test(line)));
-    const byDateLine = signatureLines.find((line: string) => /^By:/i.test(line)) || "By: ____________________   Date: ______________";
+    // Signature text shape: optional sign-here preamble paragraphs, then the
+    // "AGREED TO AND ACCEPTED:" heading, then the ANC party lines. BY/TITLE/DATE
+    // fields are structural (never parsed from text). Legacy per-instance
+    // overrides that start at the heading (or carry "By:/Date:" lines) still
+    // parse: no preamble, By/Date lines dropped in favor of the field rows.
+    const rawLines = signatureText.split(/\r?\n/);
+    const headingIdx = rawLines.findIndex((line: string) => /agreed to and accepted/i.test(line));
+    const heading = headingIdx >= 0 ? rawLines[headingIdx].trim() : "AGREED TO AND ACCEPTED:";
+    const preambleParagraphs = (headingIdx > 0 ? rawLines.slice(0, headingIdx).join("\n") : "")
+      .split(/\n\s*\n/)
+      .map((p: string) => p.replace(/\s*\n\s*/g, " ").trim())
+      .filter(Boolean);
+    const ancLines = (headingIdx >= 0 ? rawLines.slice(headingIdx + 1) : rawLines)
+      .map((line: string) => line.trim())
+      .filter(Boolean)
+      .filter((line: string) => !(/^By:/i.test(line) || /^Title:/i.test(line) || /^Date:/i.test(line)));
+    const resolvedAncLines = ancLines.length > 0 ? ancLines : [
+      'ANC Sports Enterprises, LLC ("ANC")',
+      "2 Manhattanville Road, Suite 402",
+      "Purchase, NY 10577",
+    ];
+
+    const SignField = ({ label }: { label: string }) => (
+      <div style={{ marginTop: "20px" }}>
+        <div className="text-[11px] font-semibold" style={{ color: colors.textMuted, letterSpacing: "0.5px" }}>{label}</div>
+        <div style={{ borderBottom: `1px solid ${colors.text}`, height: "20px" }} />
+      </div>
+    );
+
+    const PartyColumn = ({ lines }: { lines: string[] }) => (
+      <div>
+        <div className="font-bold" style={{ color: colors.text }}>{lines[0]}</div>
+        {lines.slice(1).map((line: string) => (
+          <div key={line}>{line}</div>
+        ))}
+        <SignField label="BY:" />
+        <SignField label="TITLE:" />
+        <SignField label="DATE:" />
+      </div>
+    );
+
+    const purchaserLines = [
+      `${c.purchaserName} ("Purchaser")`,
+      ...(c.purchaserAddress ? c.purchaserAddress.split(/\s*\n\s*/).filter(Boolean) : []),
+    ];
 
     return (
       <div data-preview-section="service-contract-signature" className="break-inside-avoid" style={{ margin: "14px 0 16px" }}>
-        <div className="font-bold" style={{ color: colors.primaryDark, marginBottom: "8px" }}>{heading}</div>
+        {preambleParagraphs.map((p: string, i: number) => (
+          <p key={i} className="mb-3 text-justify" style={{ color: colors.textMuted }}>{p}</p>
+        ))}
+        <div
+          className="font-bold"
+          style={{ color: colors.text, borderBottom: `2px solid ${colors.text}`, paddingBottom: "4px", margin: "14px 0 12px" }}
+        >
+          {heading}
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "42px", alignItems: "start" }}>
-          <div>
-            {(ancLines.length > 0 ? ancLines : [
-              'ANC SPORTS ENTERPRISES, LLC ("ANC")',
-              "2 Manhattanville Road, Suite 402",
-              "Purchase, NY 10577",
-            ]).map((line: string) => (
-              <div key={line}>{line}</div>
-            ))}
-            <div style={{ marginTop: "18px" }}>{byDateLine}</div>
-          </div>
-          <div>
-            <div>{c.purchaserName} (&ldquo;Purchaser&rdquo;)</div>
-            {c.purchaserAddress ? <div>{c.purchaserAddress}</div> : <div>&nbsp;</div>}
-            <div style={{ marginTop: "18px" }}>By: ____________________&nbsp;&nbsp;&nbsp;Date: ______________</div>
-          </div>
+          <PartyColumn lines={resolvedAncLines} />
+          <PartyColumn lines={purchaserLines} />
         </div>
       </div>
     );
@@ -231,13 +265,8 @@ export default function PdfServiceContract({ colors, config, details }: PdfServi
                 will have the right to terminate this Agreement immediately upon written notice to Company if Company has not cured such
                 payment default within thirty (30) days after Company&rsquo;s receipt of such delinquency notice.
               </p>
-              <p className="mb-3">
-                Please sign to indicate Purchaser&rsquo;s agreement to purchase the Work as described herein and to authorize ANC to commence
-                production of the Work. If, for any reason, Purchaser terminates this Agreement prior to the completion of the Work, ANC
-                will immediately cease all work and Purchaser will pay ANC for any work performed, work in progress, and materials
-                purchased, if any. Tax is not included. Applicable sales tax will be included in ANC&rsquo;s invoice. Payment is due within
-                thirty (30) days of ANC&rsquo;s invoice(s).
-              </p>
+              {/* Sign-here preamble moved into the signature block (Natalia
+                  2026-07-27: "signature block text in wrong spot"). */}
               <p className="mb-3 uppercase text-[11px]">
                 Unless otherwise noted in the following space, all terms and conditions on the general terms of this order are fully
                 accepted by purchaser.
@@ -258,16 +287,17 @@ export default function PdfServiceContract({ colors, config, details }: PdfServi
 
       {isSectionEnabled("signature") && (
         <section data-preview-section="service-section-signature">
-          <Header>Signature Block</Header>
           <SignatureBlock />
         </section>
       )}
 
-      {/* Toggleable term exhibits, in template order, filtered by enabled. */}
+      {/* Toggleable term exhibits, in template order, filtered by enabled.
+          Every exhibit — General Terms included — starts on its own page
+          (Natalia 2026-07-27: "general terms need to start from its own page"). */}
       {resolved.map((ex) => (
         <div
           key={ex.id}
-          style={ex.exhibitLetter ? { breakBefore: "page", pageBreakBefore: "always" } : { marginTop: "16px" }}
+          style={{ breakBefore: "page", pageBreakBefore: "always" }}
         >
           <PdfTermExhibit
             colors={colors}

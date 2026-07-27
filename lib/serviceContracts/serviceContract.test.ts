@@ -69,9 +69,13 @@ describe("service contract registry", () => {
     expect(body).toContain("Parts Repair/Replacement");
   });
 
-  it("Ravens signature block text is verbatim", () => {
+  it("Ravens signature block text is verbatim (Natalia 2026-07-27 wording)", () => {
     expect(RAVENS_TEMPLATE.signatureBlockText).toContain("AGREED TO AND ACCEPTED:");
-    expect(RAVENS_TEMPLATE.signatureBlockText).toContain("ANC SPORTS ENTERPRISES, LLC");
+    expect(RAVENS_TEMPLATE.signatureBlockText).toContain('ANC Sports Enterprises, LLC ("ANC")');
+    // Sign-here preamble: "the Services", never "the Display System".
+    expect(RAVENS_TEMPLATE.signatureBlockText).toContain("purchase the Services as described herein");
+    expect(RAVENS_TEMPLATE.signatureBlockText).not.toMatch(/display system/i);
+    expect(RAVENS_TEMPLATE.signatureBlockText).toContain("thirty (30) days of ANC's invoice(s)");
   });
 
   it("resolveExhibits returns template defaults when no overrides are given", () => {

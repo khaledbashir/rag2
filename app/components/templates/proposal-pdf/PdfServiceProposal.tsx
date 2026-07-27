@@ -16,6 +16,7 @@
 import React from "react";
 
 import type { PdfColors } from "./sections/shared";
+import PdfFreeformTables from "./sections/PdfFreeformTables";
 import PdfServicePricingTable from "./sections/PdfServicePricingTable";
 import PdfManualServiceFeeTable, { normalizeManualServiceFeeRows } from "./sections/PdfManualServiceFeeTable";
 import {
@@ -93,6 +94,16 @@ export default function PdfServiceProposal({ colors, intro, details }: PdfServic
             <PdfManualServiceFeeTable colors={colors} rows={manualFeeRows} />
           )}
         </section>
+      )}
+
+      {/* Manual (Build from Scratch) tables — same recognition rule as the
+          Service Contract branch, so tables composed in the manual path render
+          in a Service Proposal too (Natalia 2026-07-27: "no manual table is
+          recognized in Service proposal"). */}
+      {((details?.showFreeformTables ?? true) && (details?.freeformTables?.length > 0)) && (
+        <div className="mt-4">
+          <PdfFreeformTables colors={colors} tables={details.freeformTables} />
+        </div>
       )}
 
     </div>

@@ -59,10 +59,60 @@ describe("service proposal and contract rendering", () => {
 
     expect(proposal).not.toContain("Intro / Whereas");
     expect(proposal).toContain("$45,000.00");
-    expect(proposal).not.toContain("Signature Block");
+    expect(proposal).not.toContain("AGREED TO AND ACCEPTED");
     expect(contract).toContain("Contract-only intro");
     expect(contract).toContain("$45,000.00");
-    expect(contract).toContain("Signature Block");
+    expect(contract).toContain("AGREED TO AND ACCEPTED");
+  });
+
+  it("renders the signature block as preamble + two-column BY/TITLE/DATE (Natalia 2026-07-27)", () => {
+    const contract = renderToStaticMarkup(
+      <PdfServiceContract
+        colors={colors}
+        details={{}}
+        config={{
+          purchaserName: "Forty Niners Stadium Management Company LLC",
+          purchaserAddress: "4900 Marie P. DeBartolo Way, Santa Clara 95054",
+          venueName: "Levi's Stadium",
+        }}
+      />,
+    );
+
+    // Sign-here preamble sits with the signature block, Services wording.
+    expect(contract).toContain("purchase the Services as described herein");
+    expect(contract).not.toContain("purchase the Work as described herein");
+    expect(contract).toContain("AGREED TO AND ACCEPTED:");
+    // Both parties, each with stacked BY / TITLE / DATE fields.
+    expect(contract).toContain("Forty Niners Stadium Management Company LLC (&quot;Purchaser&quot;)");
+    expect(contract).toContain("ANC Sports Enterprises, LLC (&quot;ANC&quot;)");
+    expect(contract.match(/BY:/g)?.length).toBe(2);
+    expect(contract.match(/TITLE:/g)?.length).toBe(2);
+    expect(contract.match(/DATE:/g)?.length).toBe(2);
+  });
+
+  it("renders manual (Build from Scratch) tables in BOTH service document types", () => {
+    const details = {
+      freeformTables: [
+        {
+          id: "t1",
+          name: "Service Fees",
+          columns: [{ id: "c1", label: "Item" }, { id: "c2", label: "26/27" }],
+          rows: [{ id: "r1", cells: { c1: "Game Day Support", c2: "$70,000" } }],
+        },
+      ],
+    };
+
+    const proposal = renderToStaticMarkup(
+      <PdfServiceProposal colors={colors} intro={intro} details={details} />,
+    );
+    const contract = renderToStaticMarkup(
+      <PdfServiceContract colors={colors} details={details} config={{ purchaserName: intro.purchaserName }} />,
+    );
+
+    for (const html of [proposal, contract]) {
+      expect(html).toContain("Game Day Support");
+      expect(html).toContain("$70,000");
+    }
   });
 
   it("renders the imported multi-year pricing table in both service document types", () => {
