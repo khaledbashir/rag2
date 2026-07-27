@@ -22,6 +22,7 @@
 
 import { Pool } from "pg";
 import { log } from "@/lib/logger";
+import { resolveAncWorkspaceSchema } from "@/services/twenty/workspaceSchema";
 import { getGraphToken, graphFetch } from "@/services/intake/emailCrmGraphSource";
 import { extractJsonWithProviderChain } from "@/services/briefing/briefingRank";
 import { renderBriefingEmail } from "@/services/briefing/briefingTemplate";
@@ -312,7 +313,6 @@ async function pullMailbox(
 // ---------------------------------------------------------------------------
 
 let pool: Pool | null = null;
-let schemaCache: string | null = null;
 
 function getPool(): Pool {
   if (!pool) {
@@ -324,16 +324,7 @@ function getPool(): Pool {
 }
 
 async function getWorkspaceSchema(): Promise<string> {
-  if (schemaCache) return schemaCache;
-  const result = await getPool().query<{ databaseSchema: string }>(
-    `select "databaseSchema" from core.workspace where "deletedAt" is null and "databaseSchema" is not null order by "createdAt" asc limit 1`,
-  );
-  const schema = result.rows[0]?.databaseSchema;
-  if (!schema || !/^workspace_[a-z0-9_]+$/i.test(schema)) {
-    throw new Error("Could not resolve Twenty workspace database schema");
-  }
-  schemaCache = schema;
-  return schema;
+  return resolveAncWorkspaceSchema(getPool());
 }
 
 async function pullCrmActivity(

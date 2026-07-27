@@ -1,7 +1,7 @@
 import { Pool } from "pg";
+import { resolveAncWorkspaceSchema } from "@/services/twenty/workspaceSchema";
 
 let twentyDbPool: Pool | null = null;
-let workspaceSchemaCache: string | null = null;
 
 export type ForecastExportScope = "all" | "forecast";
 
@@ -55,24 +55,7 @@ function getTwentyDbPool() {
 }
 
 async function getWorkspaceSchema(): Promise<string> {
-  if (workspaceSchemaCache) return workspaceSchemaCache;
-
-  const result = await getTwentyDbPool().query<{ databaseSchema: string }>(
-    `select "databaseSchema"
-     from core.workspace
-     where "deletedAt" is null
-       and "databaseSchema" is not null
-     order by "createdAt" asc
-     limit 1`,
-  );
-
-  const schema = result.rows[0]?.databaseSchema;
-  if (!schema || !/^workspace_[a-z0-9_]+$/i.test(schema)) {
-    throw new Error("Could not resolve CRM workspace schema");
-  }
-
-  workspaceSchemaCache = schema;
-  return schema;
+  return resolveAncWorkspaceSchema(getTwentyDbPool());
 }
 
 function centsFromMicros(value: string | number | null) {
