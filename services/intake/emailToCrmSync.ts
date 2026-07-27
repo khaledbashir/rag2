@@ -329,9 +329,9 @@ export function buildProposedChanges(
 // on a single provider here.
 // ---------------------------------------------------------------------------
 
-type Provider = { name: string; baseUrl: string; apiKey: string; model: string };
+export type Provider = { name: string; baseUrl: string; apiKey: string; model: string };
 
-function providerChain(): Provider[] {
+export function providerChain(): Provider[] {
   const chain: Provider[] = [];
   if (process.env.EMAIL_CRM_AI_API_KEY && process.env.EMAIL_CRM_AI_BASE_URL) {
     chain.push({

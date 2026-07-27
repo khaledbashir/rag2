@@ -31,7 +31,7 @@ export function graphConfigured(): boolean {
   );
 }
 
-async function getGraphToken(): Promise<string> {
+export async function getGraphToken(): Promise<string> {
   const tenant = process.env.MSGRAPH_TENANT_ID!;
   const res = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
     method: "POST",
@@ -52,7 +52,7 @@ async function getGraphToken(): Promise<string> {
   return data.access_token;
 }
 
-async function graphFetch<T>(token: string, path: string, init?: RequestInit): Promise<T> {
+export async function graphFetch<T>(token: string, path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${GRAPH}${path}`, {
     ...init,
     headers: {

@@ -76,4 +76,13 @@ export const FEATURES = {
    * mode (unmatched → pending_review) until this is explicitly enabled.
    */
   EMAIL_TO_CRM_DRAFT_OPP: false,
+  /**
+   * Weekly "Your Week in Focus" briefing (Jireh ask 2026-07-27, Joe opted in).
+   * Per-recipient Sunday 4 PM ET digest — Outlook + documents + CRM activity
+   * ranked into a personal Top 10 and injected into the recipient's inbox.
+   * Recipients via WEEKLY_BRIEFING_RECIPIENTS env; run endpoint
+   * /api/briefing/weekly/run (cron double-fires 20:00+21:00 UTC Sundays,
+   * the NY-time window guard lets exactly one through).
+   */
+  WEEKLY_BRIEFING: true,
 } as const;
