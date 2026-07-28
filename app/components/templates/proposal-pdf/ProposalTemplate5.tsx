@@ -16,6 +16,7 @@ import React from "react";
 
 // Components
 import { ProposalLayout } from "@/app/components";
+import { splitPaymentTermsLines } from "@/lib/proposals/paymentTerms";
 import PageBreak from "@/app/components/templates/proposal-pdf/PageBreak";
 
 // Section sub-components
@@ -380,7 +381,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         // FR-4.3: Use custom payment terms if provided, otherwise use default
         const defaultTerms = "50% on Deposit\n40% on Mobilization\n10% on Substantial Completion";
         const raw = (customPaymentTerms?.trim() || defaultTerms).toString();
-        const lines = raw.split(/\r?\n|,/g).map((l: string) => l.trim()).filter(Boolean);
+        const lines = splitPaymentTermsLines(raw);
         const completionLabel = showSubstantialCompletionDate ? formatShortFormDate(substantialCompletionDate) : "";
         if (lines.length === 0) return null;
         return (
@@ -392,7 +393,11 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                             <strong>Substantial Completion:</strong> {completionLabel}
                         </div>
                     )}
-                    {lines.map((line: string, idx: number) => <div key={idx}>{line}</div>)}
+                    {lines.map((line: string, idx: number) =>
+                        line === ""
+                            ? <div key={idx} style={{ height: "6px" }} />
+                            : <div key={idx}>{line}</div>
+                    )}
                 </div>
             </div>
         );
