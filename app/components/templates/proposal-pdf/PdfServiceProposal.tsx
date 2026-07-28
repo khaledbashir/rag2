@@ -102,7 +102,7 @@ export default function PdfServiceProposal({ colors, intro, details }: PdfServic
           recognized in Service proposal"). */}
       {((details?.showFreeformTables ?? true) && (details?.freeformTables?.length > 0)) && (
         <div className="mt-4">
-          <PdfFreeformTables colors={colors} tables={details.freeformTables} />
+          <PdfFreeformTables colors={colors} tables={details.freeformTables} padded={false} />
         </div>
       )}
 

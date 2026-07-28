@@ -7,6 +7,13 @@ import { normalizeTable } from "@/lib/freeformTables/resolve";
 interface PdfFreeformTablesProps {
   colors: PdfColors;
   tables: FreeformTable[];
+  /**
+   * ProposalTemplate5 renders sections bare, so this component supplies its own
+   * px-6 gutter. The service documents (PdfServiceContract/PdfServiceProposal)
+   * already pad the whole page — pass false there or tables double-indent and
+   * fall short of the text margin.
+   */
+  padded?: boolean;
 }
 
 function rowCellStyle(
@@ -71,14 +78,14 @@ function rowCellStyle(
   return base;
 }
 
-export default function PdfFreeformTables({ colors, tables }: PdfFreeformTablesProps) {
+export default function PdfFreeformTables({ colors, tables, padded = true }: PdfFreeformTablesProps) {
   const renderable = (tables || [])
     .map(normalizeTable)
     .filter((table) => table.columns.length > 0 && table.rows.length > 0);
   if (renderable.length === 0) return null;
 
   return (
-    <div data-preview-section="freeform-tables" className="px-6 space-y-6">
+    <div data-preview-section="freeform-tables" className={padded ? "px-6 space-y-6" : "space-y-6"}>
       {renderable.map((table) => (
         <div key={table.id} className="break-inside-avoid" style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>

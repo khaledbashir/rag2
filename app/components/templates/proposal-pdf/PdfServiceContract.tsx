@@ -281,7 +281,7 @@ export default function PdfServiceContract({ colors, config, details }: PdfServi
           signature → exhibits. Shown when present and toggled on. */}
       {((details?.showFreeformTables ?? true) && (details?.freeformTables?.length > 0)) && (
         <div className="mt-4">
-          <PdfFreeformTables colors={colors} tables={details.freeformTables} />
+          <PdfFreeformTables colors={colors} tables={details.freeformTables} padded={false} />
         </div>
       )}
 
