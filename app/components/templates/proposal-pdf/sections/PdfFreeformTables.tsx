@@ -80,7 +80,7 @@ export default function PdfFreeformTables({ colors, tables }: PdfFreeformTablesP
   return (
     <div data-preview-section="freeform-tables" className="px-6 space-y-6">
       {renderable.map((table) => (
-        <div key={table.id} className="break-inside-avoid">
+        <div key={table.id} className="break-inside-avoid" style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
             <div style={{ width: "3px", height: "14px", borderRadius: "1px", background: colors.primary, flexShrink: 0 }} />
             <span className="text-[14px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>

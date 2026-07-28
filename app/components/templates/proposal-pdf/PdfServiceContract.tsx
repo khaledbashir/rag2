@@ -120,7 +120,7 @@ export default function PdfServiceContract({ colors, config, details }: PdfServi
     ];
 
     return (
-      <div data-preview-section="service-contract-signature" className="break-inside-avoid" style={{ margin: "14px 0 16px" }}>
+      <div data-preview-section="service-contract-signature" className="break-inside-avoid" style={{ margin: "14px 0 16px", breakInside: "avoid", pageBreakInside: "avoid" }}>
         {preambleParagraphs.map((p: string, i: number) => (
           <p key={i} className="mb-3 text-justify" style={{ color: colors.textMuted }}>{p}</p>
         ))}
@@ -139,7 +139,7 @@ export default function PdfServiceContract({ colors, config, details }: PdfServi
   };
 
   const Header = ({ children }: { children: React.ReactNode }) => (
-    <div style={{ display: "flex", alignItems: "center", gap: "6px", margin: "14px 0 8px" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: "6px", margin: "14px 0 8px", breakAfter: "avoid", pageBreakAfter: "avoid", breakInside: "avoid" }}>
       <div style={{ width: "3px", height: "14px", borderRadius: "1px", background: colors.primary, flexShrink: 0 }} />
       <span className="text-[14px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>
         {children}

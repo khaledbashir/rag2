@@ -28,7 +28,7 @@ export default function PdfManualServiceFeeTable({ colors, rows }: PdfManualServ
   const displayRows = rows.length > 0 ? rows : blankRows;
 
   return (
-    <table style={{ borderCollapse: "collapse", fontSize: "11px", margin: "6px 0 12px", minWidth: "260px" }}>
+    <table style={{ borderCollapse: "collapse", fontSize: "11px", margin: "6px 0 12px", minWidth: "260px", breakInside: "avoid", pageBreakInside: "avoid" }}>
       <thead>
         <tr>
           <th style={{ textAlign: "left", padding: "3px 18px 3px 0", fontWeight: 700, borderBottom: `1px solid ${colors.text}` }}>

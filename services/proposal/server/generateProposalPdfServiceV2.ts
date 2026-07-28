@@ -302,8 +302,10 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 					<div style="font-size: 8px; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>
 				</div>
 			`,
+			// Top raised 20px→36px (Natalia 2026-07-28: page 2+ content sat too
+			// close to the top edge; Puppeteer applies one margin to all pages).
 			margin: {
-				top: "20px",
+				top: "36px",
 				bottom: "40px",
 				left: "20px",
 				right: "20px",

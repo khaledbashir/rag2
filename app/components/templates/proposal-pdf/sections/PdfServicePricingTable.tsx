@@ -29,8 +29,12 @@ export default function PdfServicePricingTable({ colors, document }: PdfServiceP
   const yearCell: React.CSSProperties = { ...cellBase, textAlign: "right", whiteSpace: "nowrap" };
 
   return (
-    <div data-preview-section="service-pricing" className="break-inside-avoid">
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+    <div
+      data-preview-section="service-pricing"
+      className="break-inside-avoid"
+      style={{ breakInside: "avoid", pageBreakInside: "avoid" }}
+    >
+      <table style={{ width: "100%", borderCollapse: "collapse", breakInside: "avoid", pageBreakInside: "avoid" }}>
         <thead>
           <tr>
             <th
