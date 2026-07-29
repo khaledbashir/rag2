@@ -360,8 +360,8 @@ export const DISPLAY_QUESTIONS: Question[] = [
         id: "altPitches",
         phase: "display",
         type: "multi-select",
-        label: "Alternate Pitches",
-        subtitle: "Pick additional pitch options — same display, only LED cost changes. Skip if no alternates needed.",
+        label: "Alternates",
+        subtitle: "Add alternate options — a different pitch, and its own size or quantity if the alternate is a different screen. Skip if none needed.",
         showIf: (answers) => !isAddonProduct(answers),
         options: [
             { value: "1.2", label: "1.2mm", description: "Ultra-fine — premium indoor", environment: "indoor" },
@@ -843,6 +843,30 @@ export interface EstimatorAnswers {
     miscEquipmentAllocation: number;
 }
 
+/**
+ * One alternate offered against a primary screen.
+ *
+ * Historically an alternate was only ever a different pixel pitch on the same
+ * physical screen, so it inherited the primary's build cost. Real bids often
+ * alternate a different SIZE as well — when that happens the alternate is a
+ * different screen and has to carry its own structure, install, electrical,
+ * data, shipping and PM rather than the primary's.
+ *
+ * Dimension/quantity fields are optional: omitted means "same as the primary",
+ * which keeps the cheap same-footprint path intact.
+ */
+export interface AlternateSpec {
+    pixelPitch: string;
+    /** Omit to inherit the primary's width. */
+    widthFt?: number;
+    /** Omit to inherit the primary's height. */
+    heightFt?: number;
+    /** Omit to inherit the primary's quantity. */
+    quantity?: number;
+    /** Optional label for the bid form; falls back to a generated one. */
+    label?: string;
+}
+
 export interface DisplayAnswers {
     displayType: string;       // Preset key or "custom"
     displayName: string;
@@ -867,8 +891,14 @@ export interface DisplayAnswers {
     dataRunDistance: string;    // "copper" | "fiber"
     // Smart Assembly Bundle — excluded accessory IDs
     excludedBundleItems: string[];
-    // Alt pitch — alternate pixel pitch options (only LED cost changes)
+    // Alt pitch — legacy alternate pixel-pitch options. These always share the
+    // primary's footprint, so only LED cost changes. Kept as-is so saved
+    // estimates keep pricing exactly as they did; new work uses `alternates`.
     altPitches: string[];
+    // Alternates that can carry their own dimensions and quantity rather than
+    // only a different pitch (Jack McCrossin, 2026-07-29). An alternate that
+    // changes the footprint is priced as its own screen — see resolveAlternates().
+    alternates?: AlternateSpec[];
     // Per-display cost overrides — from direct cell edits on LED Cost Sheet
     costOverrides?: Record<string, number>;
     // Fixed pixel dimensions — courtside/stanchion products have specs that don't follow the LED formula
@@ -956,6 +986,7 @@ export function getDefaultDisplayAnswers(): DisplayAnswers {
         dataRunDistance: "copper",
         excludedBundleItems: [],
         altPitches: [],
+        alternates: [],
     };
 }
 
@@ -985,6 +1016,40 @@ export function createNewDisplayAnswers(index: number): DisplayAnswers {
 
 function hasPositiveNumber(value: number | undefined): value is number {
     return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+/**
+ * The single source of truth for "what alternates does this screen have".
+ *
+ * Merges the legacy `altPitches` list with the richer `alternates` list so both
+ * saved and new estimates run through one code path. Legacy entries carry no
+ * dimensions, so they resolve to same-footprint alternates and keep pricing
+ * exactly as before. A pitch present in both is only emitted once.
+ */
+export function resolveAlternates(display: DisplayAnswers): AlternateSpec[] {
+    const rich = Array.isArray(display.alternates) ? display.alternates : [];
+    const seen = new Set(
+        rich
+            .filter((alt) => !hasPositiveNumber(alt.widthFt) && !hasPositiveNumber(alt.heightFt) && !hasPositiveNumber(alt.quantity))
+            .map((alt) => String(alt.pixelPitch)),
+    );
+
+    const legacy = (Array.isArray(display.altPitches) ? display.altPitches : [])
+        .filter((pitch) => pitch && !seen.has(String(pitch)))
+        .map((pitch) => ({ pixelPitch: String(pitch) } as AlternateSpec));
+
+    return [...legacy, ...rich.filter((alt) => Boolean(alt?.pixelPitch))];
+}
+
+/**
+ * True when the alternate keeps the primary's physical footprint, meaning only
+ * the LED hardware changes and the primary's build cost still applies.
+ */
+export function alternateSharesFootprint(display: DisplayAnswers, alt: AlternateSpec): boolean {
+    const width = hasPositiveNumber(alt.widthFt) ? alt.widthFt : display.widthFt;
+    const height = hasPositiveNumber(alt.heightFt) ? alt.heightFt : display.heightFt;
+    const quantity = hasPositiveNumber(alt.quantity) ? alt.quantity : display.quantity;
+    return width === display.widthFt && height === display.heightFt && quantity === display.quantity;
 }
 
 function ratiosDriftSeverely(display: DisplayAnswers): boolean {
@@ -1077,6 +1142,11 @@ export function normalizeEstimatorAnswers(answers: EstimatorAnswers): EstimatorA
                     : [],
                 altPitches: Array.isArray(display?.altPitches)
                     ? [...display.altPitches]
+                    : [],
+                alternates: Array.isArray(display?.alternates)
+                    ? display.alternates
+                        .filter((alt) => alt && alt.pixelPitch)
+                        .map((alt) => ({ ...alt, pixelPitch: String(alt.pixelPitch) }))
                     : [],
             }))
             : [],

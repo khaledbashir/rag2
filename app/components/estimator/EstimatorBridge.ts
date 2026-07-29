@@ -6,7 +6,8 @@
  *   QuestionFlow (answers) → Estimator (calculations) → ExcelPreview (sheet data)
  */
 
-import type { EstimatorAnswers, DisplayAnswers } from "./questions";
+import type { EstimatorAnswers, DisplayAnswers, AlternateSpec } from "./questions";
+import { resolveAlternates, alternateSharesFootprint } from "./questions";
 import { calculateBundle, type BundleItem, type BundleResult, CATEGORY_LABELS } from "@/services/estimator/bundleRules";
 
 // ============================================================================
@@ -247,6 +248,12 @@ export interface ScreenCalc {
     isAlt?: boolean;
     /** Index of the primary display this is an alternate of */
     altOfIndex?: number;
+    /**
+     * Short label for the alternate row on the cost sheets — "ALT 4mm", or
+     * "ALT 4mm 60x30ft" once the alternate carries its own size. Computed at
+     * calculation time so sheet builders never re-derive footprint changes.
+     */
+    altLabel?: string;
 }
 
 /** Courtside tables and stanchions use per-unit pricing, not per-sqft */
@@ -579,26 +586,73 @@ export function calculateDisplay(d: DisplayAnswers, answers: EstimatorAnswers, r
 }
 
 /**
- * Generate alt-pitch variants for a display.
- * Only LED hardware cost changes — services, labor, structure all stay the same.
- * Returns an array of ScreenCalc with isAlt=true for each alt pitch.
+ * Short label for an alternate row, e.g. "ALT 4mm" or "ALT 4mm 60x30ft".
+ * Dimensions are only spelled out when they actually differ from the primary,
+ * so existing same-footprint alternates keep the exact label they have today.
  */
-function calculateAltPitchVariants(
+function alternateShortLabel(d: DisplayAnswers, alt: AlternateSpec): string {
+    if (alt.label?.trim()) return alt.label.trim();
+
+    const width = alt.widthFt && alt.widthFt > 0 ? alt.widthFt : d.widthFt;
+    const height = alt.heightFt && alt.heightFt > 0 ? alt.heightFt : d.heightFt;
+    const resized = width !== d.widthFt || height !== d.heightFt;
+
+    return resized
+        ? `ALT ${alt.pixelPitch}mm ${width}x${height}ft`
+        : `ALT ${alt.pixelPitch}mm`;
+}
+
+/**
+ * Generate alternate variants for a display.
+ *
+ * Two shapes, deliberately priced differently:
+ *
+ *  - Same footprint (the historical case): only the LED hardware changes, so
+ *    the primary's structure/install/electrical/data/PM/shipping carry over
+ *    untouched. This path is byte-for-byte what it always was, so saved
+ *    estimates keep their numbers.
+ *
+ *  - Different size or quantity (Jack McCrossin, 2026-07-29): the alternate is
+ *    physically a different screen, so every service line is recalculated for
+ *    it. Inheriting the primary's build cost here would quietly under- or
+ *    over-price the alternate while looking perfectly plausible.
+ */
+function calculateAlternateVariants(
     d: DisplayAnswers,
     primaryCalc: ScreenCalc,
     primaryIndex: number,
     answers: EstimatorAnswers,
     rates?: RateCard,
 ): ScreenCalc[] {
-    const altPitches = d.altPitches || [];
-    if (altPitches.length === 0) return [];
+    const alternates = resolveAlternates(d);
+    if (alternates.length === 0) return [];
 
-    return altPitches.map((altPitch) => {
-        // Clone display with the alt pitch, recalculate just LED hardware
-        const altDisplay: DisplayAnswers = { ...d, pixelPitch: altPitch, altPitches: [] };
+    return alternates.map((alt) => {
+        const altDisplay: DisplayAnswers = {
+            ...d,
+            pixelPitch: alt.pixelPitch,
+            widthFt: alt.widthFt && alt.widthFt > 0 ? alt.widthFt : d.widthFt,
+            heightFt: alt.heightFt && alt.heightFt > 0 ? alt.heightFt : d.heightFt,
+            quantity: alt.quantity && alt.quantity > 0 ? alt.quantity : d.quantity,
+            altPitches: [],
+            alternates: [],
+        };
         const full = calculateDisplay(altDisplay, answers, rates);
+        const altLabel = alternateShortLabel(d, alt);
+        const name = `${primaryCalc.name} (${altLabel})`;
 
-        // Services cost stays identical to primary
+        // Different footprint → the fully recalculated screen IS the alternate.
+        if (!alternateSharesFootprint(d, alt)) {
+            return {
+                ...full,
+                name,
+                isAlt: true,
+                altOfIndex: primaryIndex,
+                altLabel,
+            };
+        }
+
+        // Same footprint → services cost stays identical to the primary.
         const svcCost = primaryCalc.structureCost + primaryCalc.installCost + primaryCalc.electricalCost
             + primaryCalc.equipmentCost + primaryCalc.dataCablingCost + primaryCalc.pmCost
             + primaryCalc.engineeringCost + primaryCalc.shippingCost + primaryCalc.demolitionCost
@@ -618,7 +672,7 @@ function calculateAltPitchVariants(
 
         return {
             ...primaryCalc,
-            name: `${primaryCalc.name} (ALT ${altPitch}mm)`,
+            name,
             pixelPitch: full.pixelPitch,
             pixelsW: full.pixelsW,
             pixelsH: full.pixelsH,
@@ -635,6 +689,7 @@ function calculateAltPitchVariants(
             cabinetLayout: null,
             isAlt: true,
             altOfIndex: primaryIndex,
+            altLabel,
         };
     });
 }
@@ -659,11 +714,25 @@ export function buildPreviewSheets(answers: EstimatorAnswers, rates?: RateCard):
     for (let i = 0; i < calcs.length; i++) {
         allCalcs.push(calcs[i]);
         allDisplays.push(answers.displays[i]);
-        const alts = calculateAltPitchVariants(answers.displays[i], calcs[i], i, answers, rates);
-        for (const alt of alts) {
+        const primaryDisplay = answers.displays[i];
+        const altSpecs = resolveAlternates(primaryDisplay);
+        const alts = calculateAlternateVariants(primaryDisplay, calcs[i], i, answers, rates);
+        for (let a = 0; a < alts.length; a++) {
+            const alt = alts[a];
+            const spec = altSpecs[a];
             allCalcs.push(alt);
-            // Alt display: same as primary but with the alt pitch
-            allDisplays.push({ ...answers.displays[i], pixelPitch: String(alt.pixelPitch), altPitches: [] });
+            // Alt display mirrors the primary but carries the alternate's own
+            // pitch and — when it has them — its own dimensions and quantity,
+            // so every downstream sheet reports the size actually being bid.
+            allDisplays.push({
+                ...primaryDisplay,
+                pixelPitch: String(alt.pixelPitch),
+                widthFt: spec?.widthFt && spec.widthFt > 0 ? spec.widthFt : primaryDisplay.widthFt,
+                heightFt: spec?.heightFt && spec.heightFt > 0 ? spec.heightFt : primaryDisplay.heightFt,
+                quantity: spec?.quantity && spec.quantity > 0 ? spec.quantity : primaryDisplay.quantity,
+                altPitches: [],
+                alternates: [],
+            });
         }
     }
 
@@ -875,7 +944,7 @@ function buildBudgetSummary(answers: EstimatorAnswers, calcs: ScreenCalc[]): She
             const isAlt = c.isAlt === true;
             // TVs: show model name (no pitch), LEDs: show name with pitch
             const desc = isAlt
-                ? `  ↳ ALT ${c.pixelPitch}mm`
+                ? `  ↳ ${c.altLabel ?? `ALT ${c.pixelPitch}mm`}`
                 : isTvDisplay(d)
                     ? displayDescription(d, c)
                     : `${c.name} — ${c.pixelPitch}mm`;
@@ -1251,7 +1320,7 @@ function buildDisplayDetails(answers: EstimatorAnswers, calcs: ScreenCalc[]): Sh
                 const marginDollar = hwSell - c.hardwareCost;
                 const isAlt = c.isAlt === true;
                 const displayLabel = isAlt
-                    ? `  ↳ ALT ${c.pixelPitch}mm`
+                    ? `  ↳ ${c.altLabel ?? `ALT ${c.pixelPitch}mm`}`
                     : displayDescription(d, c);
                 rows.push({
                     cells: [

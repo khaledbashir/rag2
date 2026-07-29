@@ -23,6 +23,8 @@ import {
     type Question,
     type EstimatorAnswers,
     type DisplayAnswers,
+    type AlternateSpec,
+    resolveAlternates,
     createNewDisplayAnswers,
     getDefaultAnswers,
     getDefaultDisplayAnswers,
@@ -1504,62 +1506,135 @@ function QuestionInput({
         }
 
         case "multi-select": {
-            // Filter options by environment + exclude the primary pitch
-            const primaryPitch = (phase === "display" && answers?.displays)
-                ? answers.displays[displayIndex ?? 0]?.pixelPitch || "4"
-                : "4";
+            // Alternates list. An alternate is a pitch, optionally at its own
+            // size/quantity — leaving the size blank means "same as primary",
+            // which keeps the cheap same-footprint pricing path.
+            const primaryDisplay = (phase === "display" && answers?.displays)
+                ? answers.displays[displayIndex ?? 0]
+                : undefined;
+            const primaryPitch = primaryDisplay?.pixelPitch || "4";
             const msFilteredOptions = question.options?.filter((opt) => {
-                if (opt.value === primaryPitch) return false; // Can't pick the primary as alt
                 if (!opt.environment) return true;
                 const isIndoor = answers?.isIndoor ?? true;
                 if (isIndoor) return opt.environment === "indoor" || opt.environment === "both";
                 return opt.environment === "outdoor" || opt.environment === "both";
             }) ?? [];
-            const selected: string[] = Array.isArray(value) ? value : [];
+
+            const alternates: AlternateSpec[] = primaryDisplay
+                ? resolveAlternates(primaryDisplay)
+                : [];
+
+            // Writes go to `alternates` and clear the legacy `altPitches`, so a
+            // touched screen has exactly one source of truth from then on.
+            const commit = (next: AlternateSpec[]) => {
+                if (setDisplayFields) setDisplayFields({ alternates: next, altPitches: [] });
+                else onChange(next.map((a) => a.pixelPitch));
+            };
+            const patch = (index: number, fields: Partial<AlternateSpec>) =>
+                commit(alternates.map((alt, i) => (i === index ? { ...alt, ...fields } : alt)));
+            const numeric = (raw: string): number | undefined => {
+                const n = parseFloat(raw);
+                return Number.isFinite(n) && n > 0 ? n : undefined;
+            };
+
+            const defaultPitch = msFilteredOptions.find((o) => o.value !== primaryPitch)?.value
+                || msFilteredOptions[0]?.value
+                || primaryPitch;
 
             return (
-                <div className="space-y-2 mt-2">
-                    <div className="text-xs text-muted-foreground mb-1">
-                        Primary: <span className="font-semibold text-foreground">{primaryPitch}mm</span> — select alternates below
+                <div className="space-y-3 mt-2">
+                    <div className="text-xs text-muted-foreground">
+                        Primary: <span className="font-semibold text-foreground">{primaryPitch}mm</span>
+                        {primaryDisplay ? ` · ${primaryDisplay.widthFt}×${primaryDisplay.heightFt} ft` : ""}
+                        {" — leave size blank to match the primary."}
                     </div>
-                    {msFilteredOptions.map((opt) => {
-                        const isChecked = selected.includes(opt.value);
+
+                    {alternates.map((alt, index) => {
+                        const resized = Boolean(alt.widthFt || alt.heightFt || alt.quantity);
                         return (
-                            <button
-                                key={opt.value}
-                                onClick={() => {
-                                    const next = isChecked
-                                        ? selected.filter((v) => v !== opt.value)
-                                        : [...selected, opt.value];
-                                    onChange(next);
-                                }}
-                                className={cn(
-                                    "w-full text-left px-4 py-3 rounded-lg border-2 transition-all",
-                                    isChecked
-                                        ? "border-[#0A52EF] bg-[#0A52EF]/5"
-                                        : "border-border hover:border-[#0A52EF]/40 hover:bg-accent/20"
-                                )}
+                            <div
+                                key={index}
+                                className="rounded-lg border-2 border-[#0A52EF]/40 bg-[#0A52EF]/5 p-3 space-y-3"
                             >
-                                <div className="flex items-center gap-3">
-                                    <div className={cn(
-                                        "w-5 h-5 rounded border-2 flex items-center justify-center shrink-0",
-                                        isChecked ? "border-[#0A52EF] bg-[#0A52EF]" : "border-border"
-                                    )}>
-                                        {isChecked && <Check className="w-3 h-3 text-white" />}
-                                    </div>
-                                    <div>
-                                        <div className="text-sm font-medium">{opt.label}</div>
-                                        {opt.description && (
-                                            <div className="text-xs text-muted-foreground mt-0.5">{opt.description}</div>
-                                        )}
-                                    </div>
+                                <div className="flex items-center gap-2">
+                                    <select
+                                        value={alt.pixelPitch}
+                                        onChange={(e) => patch(index, { pixelPitch: e.target.value })}
+                                        className="h-9 flex-1 rounded-md border border-border bg-background px-2 text-sm"
+                                    >
+                                        {msFilteredOptions.map((opt) => (
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                    </select>
+                                    <input
+                                        value={alt.label ?? ""}
+                                        onChange={(e) => patch(index, { label: e.target.value || undefined })}
+                                        placeholder="Label (optional)"
+                                        className="h-9 flex-1 rounded-md border border-border bg-background px-2 text-sm"
+                                    />
+                                    <button
+                                        onClick={() => commit(alternates.filter((_, i) => i !== index))}
+                                        className="h-9 px-3 rounded-md text-xs font-medium text-muted-foreground hover:bg-accent"
+                                    >
+                                        Remove
+                                    </button>
                                 </div>
-                            </button>
+
+                                <div className="grid grid-cols-3 gap-2">
+                                    <label className="text-xs text-muted-foreground">
+                                        Width (ft)
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            value={alt.widthFt ?? ""}
+                                            onChange={(e) => patch(index, { widthFt: numeric(e.target.value) })}
+                                            placeholder={String(primaryDisplay?.widthFt ?? "")}
+                                            className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                                        />
+                                    </label>
+                                    <label className="text-xs text-muted-foreground">
+                                        Height (ft)
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            value={alt.heightFt ?? ""}
+                                            onChange={(e) => patch(index, { heightFt: numeric(e.target.value) })}
+                                            placeholder={String(primaryDisplay?.heightFt ?? "")}
+                                            className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                                        />
+                                    </label>
+                                    <label className="text-xs text-muted-foreground">
+                                        Qty
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            value={alt.quantity ?? ""}
+                                            onChange={(e) => patch(index, { quantity: numeric(e.target.value) })}
+                                            placeholder={String(primaryDisplay?.quantity ?? 1)}
+                                            className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                                        />
+                                    </label>
+                                </div>
+
+                                <div className="text-[11px] text-muted-foreground">
+                                    {resized
+                                        ? "Different size — priced as its own screen, with its own structure, install, electrical and shipping."
+                                        : "Same size as the primary — only the LED cost changes."}
+                                </div>
+                            </div>
                         );
                     })}
-                    {selected.length === 0 && (
-                        <div className="text-xs text-muted-foreground pt-1">
-                            No alternates selected — press Next to skip
+
+                    <button
+                        onClick={() => commit([...alternates, { pixelPitch: defaultPitch }])}
+                        className="w-full rounded-lg border-2 border-dashed border-border px-4 py-3 text-sm font-medium text-muted-foreground transition-all hover:border-[#0A52EF]/40 hover:text-foreground"
+                    >
+                        + Add alternate
+                    </button>
+
+                    {alternates.length === 0 && (
+                        <div className="text-xs text-muted-foreground">
+                            No alternates — press Next to skip
                         </div>
                     )}
                 </div>
