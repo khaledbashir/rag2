@@ -4,7 +4,7 @@
  * One-click formatted Excel export of the CRM "Invoicing Report" (Krissy).
  * Pulls every auto-created "Invoice — …" task live from the CRM and renders
  * the same Salesforce-style branded workbook as the opportunities export:
- * Opp # / Opportunity / Invoiced / Date Invoiced / Invoiced By / Status,
+ * Opp # / Opportunity / Invoiced / Date Invoiced / Invoiced By / Status / Body,
  * grouped Awaiting Invoice → Invoiced with a running invoiced count on top.
  *
  * Auth-exempt via the /api/render/* allowlist — openable as a direct link.
@@ -53,6 +53,7 @@ async function fetchInvoiceTasks(): Promise<any[]> {
           edges { node {
             id title status createdAt
             invoiced dateInvoiced invoicedBy opportunityNumber
+            bodyV2 { markdown }
             assignee { name { firstName lastName } }
           } }
           pageInfo { hasNextPage endCursor }
@@ -79,6 +80,16 @@ const oppNameFromTitle = (title: string): string => {
   const m = String(title || "").match(/^Invoice\s+—\s+(.*?)(?:\s+\(#[^)]*\))?$/);
   return m ? m[1] : String(title || "");
 };
+
+// The Body field is rich text; the markdown side is what the notes were typed
+// as. Flatten it to plain lines so a cell reads exactly like the CRM shows it.
+const bodyText = (body: { markdown?: string | null } | null | undefined): string =>
+  String(body?.markdown || "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.replace(/^\s*[-*]\s+/, "• ").replace(/[*_`#]/g, "").trimEnd())
+    .join("\n")
+    .trim();
 
 export async function GET(_req: NextRequest) {
   try {
@@ -112,6 +123,7 @@ export async function GET(_req: NextRequest) {
       { header: "Date Invoiced", key: "date", width: 14 },
       { header: "Invoiced By", key: "by", width: 20 },
       { header: "Status", key: "status", width: 12 },
+      { header: "Body", key: "body", width: 46 },
       { header: "Created", key: "created", width: 12 },
     ];
     const NC = cols.length;
@@ -175,14 +187,19 @@ export async function GET(_req: NextRequest) {
           fmtDate(t.dateInvoiced),
           t.invoicedBy || "",
           TASK_STATUS_LABEL[t.status] || t.status || "",
+          bodyText(t.bodyV2),
           fmtDate(t.createdAt),
         ];
-        cols.forEach((_c, ci) => {
+        cols.forEach((c, ci) => {
           const cell = row.getCell(col(ci));
           cell.value = vals[ci] as any;
           cell.font = { name: FONT, size: 10, color: { argb: INK } };
           cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: i % 2 ? PAPER_ALT : PAPER } };
-          cell.alignment = { vertical: "middle", wrapText: false };
+          const isBody = c.key === "body";
+          cell.alignment = {
+            vertical: isBody ? "top" : "middle",
+            wrapText: isBody,
+          };
         });
       });
       ws.addRow({});
