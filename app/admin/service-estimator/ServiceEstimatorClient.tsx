@@ -16,7 +16,57 @@ import type {
   ServiceCapexInput,
   ServiceEstimatorInput,
   ServiceEventInput,
+  ServiceFlatAmount,
 } from "@/lib/serviceEstimator/types";
+import { DEFAULT_SECTION_LABELS } from "@/lib/serviceEstimator/types";
+
+/** A calculated service line — days x technicians x rate, the original model. */
+const calculatedLine = (
+  line: Pick<ServiceEventInput, "id" | "name" | "days" | "technicians" | "clientDayRate" | "technicianDayCost">,
+): ServiceEventInput => ({
+  ...line,
+  pricingMode: "calculated",
+  flatRevenue: [],
+  flatCost: [],
+  flatEscalates: false,
+});
+
+/**
+ * A typed line — Natalia, 2026-07-30: "I just want to put like a number".
+ * LiveSync licences, tech support and parts warranty are all priced this way.
+ */
+const flatLine = (id: string, name: string): ServiceEventInput => ({
+  id,
+  name,
+  pricingMode: "flat",
+  days: 0,
+  technicians: 0,
+  clientDayRate: 0,
+  technicianDayCost: 0,
+  flatRevenue: [],
+  flatCost: [],
+  flatEscalates: false,
+});
+
+/** Parse a typed cell: a number, or the word "Included". Blank reads as zero. */
+const parseFlatAmount = (raw: string): ServiceFlatAmount => {
+  const trimmed = raw.trim();
+  if (/^inc(luded)?$/i.test(trimmed)) return "included";
+  const cleaned = trimmed.replace(/[$,\s]/g, "");
+  if (cleaned === "") return 0;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+};
+
+const formatFlatAmount = (amount: ServiceFlatAmount | undefined): string => {
+  if (amount === undefined) return "";
+  if (amount === "included") return "Included";
+  return String(amount);
+};
+
+/** Grow or shrink a typed year list to match the contract term. */
+const sizeToTerm = (values: ServiceFlatAmount[], termYears: number): ServiceFlatAmount[] =>
+  Array.from({ length: termYears }, (_, index) => values[index] ?? 0);
 
 const STORAGE_KEY = "anc-service-estimator-draft-v1";
 
@@ -27,6 +77,7 @@ const createBlankInput = (): ServiceEstimatorInput => ({
   contractStart: "",
   contractEnd: "",
   paymentTerms: "Six equal monthly installments per Contract Year",
+  scopeOfServices: "",
   currency: "USD",
   termStartYear: 2026,
   termYears: 3,
@@ -35,33 +86,40 @@ const createBlankInput = (): ServiceEstimatorInput => ({
   bundleDiscountMode: "included-in-rates",
   bundleDiscountPct: 20,
   events: [
-    {
+    calculatedLine({
       id: "pre-event-support",
       name: "Pre Event Hardware Support",
       days: 0,
       technicians: 2,
       clientDayRate: 850,
       technicianDayCost: 280,
-    },
-    {
+    }),
+    calculatedLine({
       id: "event-support",
       name: "Event Hardware Support",
       days: 0,
       technicians: 2,
       clientDayRate: 850,
       technicianDayCost: 280,
-    },
+    }),
   ],
   breakFix: {
     enabled: true,
     label: "Break/Fix Hardware Maintenance",
+    pricingMode: "calculated",
     days: 0,
     technicians: 2,
     hoursPerDay: 8,
     technicianHourlyCost: 35,
     priceMultiplier: 1.62,
+    flatRevenue: [],
+    flatCost: [],
+    flatEscalates: false,
   },
+  options: [],
   capex: [],
+  partsWarranty: { enabled: false, title: "Parts Warranty", columns: [], rows: [] },
+  sectionLabels: { ...DEFAULT_SECTION_LABELS },
   marketingOpportunityValue: 0,
   marketingSharePct: 20,
 });
@@ -150,15 +208,47 @@ export default function ServiceEstimatorClient() {
       ...current,
       events: [
         ...current.events,
-        {
+        calculatedLine({
           id: crypto.randomUUID(),
           name: `Event Support ${current.events.length + 1}`,
           days: 0,
           technicians: 2,
           clientDayRate: current.events[0]?.clientDayRate || 850,
           technicianDayCost: current.events[0]?.technicianDayCost || 280,
-        },
+        }),
       ],
+    }));
+  };
+
+  /** A typed line: LiveSync licence, tech support, parts warranty, white glove. */
+  const addFlatEvent = () => {
+    setInput((current) => ({
+      ...current,
+      events: [...current.events, flatLine(crypto.randomUUID(), "New Charge")],
+    }));
+  };
+
+  const patchFlatValue = (
+    index: number,
+    field: "flatRevenue" | "flatCost",
+    yearIndex: number,
+    raw: string,
+  ) => {
+    setInput((current) => ({
+      ...current,
+      events: current.events.map((event, eventIndex) => {
+        if (eventIndex !== index) return event;
+        const values = sizeToTerm(event[field], current.termYears);
+        values[yearIndex] = parseFlatAmount(raw);
+        return { ...event, [field]: values };
+      }),
+    }));
+  };
+
+  const patchSectionLabel = (key: keyof typeof DEFAULT_SECTION_LABELS, value: string) => {
+    setInput((current) => ({
+      ...current,
+      sectionLabels: { ...current.sectionLabels, [key]: value },
     }));
   };
 
@@ -243,6 +333,7 @@ export default function ServiceEstimatorClient() {
   };
 
   const firstYear = result.years[0];
+  const yearHeadings = result.yearLabels;
 
   return (
     <div className="space-y-6">
@@ -313,6 +404,17 @@ export default function ServiceEstimatorClient() {
           <Field label="Payment Terms">
             <input className={inputClass} value={input.paymentTerms} onChange={(event) => patchInput("paymentTerms", event.target.value)} />
           </Field>
+          <Field
+            label="Scope of Services"
+            hint="Goes on the cover page. Leave blank to list the service lines you priced below."
+          >
+            <textarea
+              className={`${inputClass} h-24 py-2`}
+              value={input.scopeOfServices}
+              onChange={(event) => patchInput("scopeOfServices", event.target.value)}
+              placeholder="Attachment: scope of services"
+            />
+          </Field>
           <Field label="First Contract Year">
             <input type="number" min={2000} max={2100} className={numberInputClass} value={input.termStartYear} onChange={(event) => patchInput("termStartYear", numberValue(event.target.value))} />
           </Field>
@@ -334,44 +436,146 @@ export default function ServiceEstimatorClient() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <SectionTitle
             eyebrow="Step 2"
-            title="Event support coverage"
-            copy="Each line calculates annual client revenue and internal technician cost as days × technicians × rate."
+            title={input.sectionLabels.eventSupport}
+            copy="Calculated lines work out days × technicians × rate. Switch a line to Typed and enter the number yourself for each contract year — no calculation is applied. Enter a number, or the word Included when the project already covers that year."
           />
-          <button type="button" onClick={addEvent} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-border bg-background px-3 text-xs font-semibold hover:bg-muted">
-            <Plus className="h-4 w-4" /> Add Service Line
-          </button>
+          <div className="flex shrink-0 gap-2">
+            <button type="button" onClick={addEvent} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-border bg-background px-3 text-xs font-semibold hover:bg-muted">
+              <Plus className="h-4 w-4" /> Calculated Line
+            </button>
+            <button type="button" onClick={addFlatEvent} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-primary/40 bg-primary/5 px-3 text-xs font-semibold text-primary hover:bg-primary/10">
+              <Plus className="h-4 w-4" /> Typed Line
+            </button>
+          </div>
         </div>
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="min-w-[920px] w-full text-sm">
-            <thead className="bg-slate-950 text-white">
-              <tr>
-                {["Service Line", "Days", "Technicians", "Client Day Rate", "Tech Day Cost", "Year 1 Revenue", "Year 1 Cost", ""].map((heading) => (
-                  <th key={heading} className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wide">{heading}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {input.events.map((event, index) => {
-                const yearLine = firstYear?.eventLines[index];
-                return (
-                  <tr key={event.id} className="bg-background">
-                    <td className="p-2"><input className={inputClass} value={event.name} onChange={(e) => patchEvent(index, { name: e.target.value })} /></td>
-                    <td className="p-2"><input type="number" min={0} step="0.5" className={numberInputClass} value={event.days} onChange={(e) => patchEvent(index, { days: numberValue(e.target.value) })} /></td>
-                    <td className="p-2"><input type="number" min={0} step="1" className={numberInputClass} value={event.technicians} onChange={(e) => patchEvent(index, { technicians: numberValue(e.target.value) })} /></td>
-                    <td className="p-2"><input type="number" min={0} step="1" className={numberInputClass} value={event.clientDayRate} onChange={(e) => patchEvent(index, { clientDayRate: numberValue(e.target.value) })} /></td>
-                    <td className="p-2"><input type="number" min={0} step="1" className={numberInputClass} value={event.technicianDayCost} onChange={(e) => patchEvent(index, { technicianDayCost: numberValue(e.target.value) })} /></td>
-                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-foreground">{money(yearLine?.revenue || 0, input.currency)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{money(yearLine?.cost || 0, input.currency)}</td>
-                    <td className="p-2 text-right">
-                      <button type="button" onClick={() => removeEvent(index)} disabled={input.events.length === 1} className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-600 disabled:opacity-30" aria-label={`Remove ${event.name}`}>
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          {input.events.map((event, index) => {
+            const yearLine = firstYear?.eventLines[index];
+            const isFlat = event.pricingMode === "flat";
+            return (
+              <div key={event.id} className="rounded-lg border border-border bg-background p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <input
+                    className={`${inputClass} sm:flex-1`}
+                    value={event.name}
+                    onChange={(e) => patchEvent(index, { name: e.target.value })}
+                    placeholder="Service line name"
+                  />
+                  <div className="flex items-center gap-2">
+                    <div className="inline-flex overflow-hidden rounded-md border border-border">
+                      {(["calculated", "flat"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => patchEvent(index, { pricingMode: mode })}
+                          className={`h-9 px-3 text-xs font-semibold transition ${
+                            event.pricingMode === mode
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-background text-muted-foreground hover:bg-muted"
+                          }`}
+                        >
+                          {mode === "calculated" ? "Calculated" : "Type my number"}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeEvent(index)}
+                      disabled={input.events.length === 1}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-600 disabled:opacity-30"
+                      aria-label={`Remove ${event.name}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {isFlat ? (
+                  <div className="mt-3 space-y-2">
+                    <div className="grid gap-2" style={{ gridTemplateColumns: `7rem repeat(${input.termYears}, minmax(0,1fr))` }}>
+                      <div className="self-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Year</div>
+                      {yearHeadings.map((label) => (
+                        <div key={label} className="text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
+                      ))}
+                      <div className="self-center text-[11px] font-semibold text-foreground">Client</div>
+                      {Array.from({ length: input.termYears }, (_, yearIndex) => (
+                        <input
+                          key={`rev-${yearIndex}`}
+                          className={numberInputClass}
+                          value={formatFlatAmount(event.flatRevenue[yearIndex])}
+                          placeholder="0"
+                          onChange={(e) => patchFlatValue(index, "flatRevenue", yearIndex, e.target.value)}
+                        />
+                      ))}
+                      <div className="self-center text-[11px] font-semibold text-muted-foreground">ANC cost</div>
+                      {Array.from({ length: input.termYears }, (_, yearIndex) => (
+                        <input
+                          key={`cost-${yearIndex}`}
+                          className={numberInputClass}
+                          value={formatFlatAmount(event.flatCost[yearIndex])}
+                          placeholder="0"
+                          onChange={(e) => patchFlatValue(index, "flatCost", yearIndex, e.target.value)}
+                        />
+                      ))}
+                    </div>
+                    <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={event.flatEscalates}
+                        onChange={(e) => patchEvent(index, { flatEscalates: e.target.checked })}
+                      />
+                      Escalate any year left blank from the last number entered. Off means a typed number stays exactly as typed.
+                    </label>
+                  </div>
+                ) : (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                    <Field label="Days"><input type="number" min={0} step="0.5" className={numberInputClass} value={event.days} onChange={(e) => patchEvent(index, { days: numberValue(e.target.value) })} /></Field>
+                    <Field label="Technicians"><input type="number" min={0} step="1" className={numberInputClass} value={event.technicians} onChange={(e) => patchEvent(index, { technicians: numberValue(e.target.value) })} /></Field>
+                    <Field label="Client Day Rate"><input type="number" min={0} step="1" className={numberInputClass} value={event.clientDayRate} onChange={(e) => patchEvent(index, { clientDayRate: numberValue(e.target.value) })} /></Field>
+                    <Field label="Tech Day Cost"><input type="number" min={0} step="1" className={numberInputClass} value={event.technicianDayCost} onChange={(e) => patchEvent(index, { technicianDayCost: numberValue(e.target.value) })} /></Field>
+                  </div>
+                )}
+
+                <div className="mt-2 flex justify-end gap-6 text-xs tabular-nums">
+                  <span className="text-muted-foreground">
+                    {yearHeadings[0]} client:{" "}
+                    <span className="font-semibold text-foreground">
+                      {yearLine?.included ? "Included" : money(yearLine?.revenue || 0, input.currency)}
+                    </span>
+                  </span>
+                  <span className="text-muted-foreground">
+                    {yearHeadings[0]} cost: <span className="font-semibold">{money(yearLine?.cost || 0, input.currency)}</span>
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6">
+        <SectionTitle
+          eyebrow="Labels"
+          title="Section headings"
+          copy="Rename any heading to match how this deal is written up. These carry through to the exported workbook."
+        />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {([
+            ["eventSupport", "Service lines"],
+            ["breakFix", "Break/fix"],
+            ["capex", "Capital expenditure"],
+            ["clientSchedule", "Client fee schedule"],
+            ["internalModel", "Internal model"],
+            ["operatingExpenses", "Operating expenses divider"],
+          ] as const).map(([key, label]) => (
+            <Field key={key} label={label}>
+              <input
+                className={inputClass}
+                value={input.sectionLabels[key]}
+                onChange={(event) => patchSectionLabel(key, event.target.value)}
+              />
+            </Field>
+          ))}
         </div>
       </section>
 

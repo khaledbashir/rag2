@@ -1,12 +1,15 @@
 import ExcelJS from "exceljs";
 
-import { calculateServiceEstimate } from "./engine";
+import { calculateServiceEstimate, calculateServiceEstimateOptions, resolveFlatAmount } from "./engine";
 import type {
   BundleDiscountMode,
   ServiceEstimatorCurrency,
   ServiceEstimatorInput,
   ServiceEstimatorResult,
+  ServiceFlatAmount,
+  ServiceSectionLabels,
 } from "./types";
+import { DEFAULT_SECTION_LABELS } from "./types";
 
 const BRAND_BLUE = "FF0A52EF";
 const BRAND_NAVY = "FF071A3D";
@@ -61,6 +64,31 @@ function styleInputCell(cell: ExcelJS.Cell, source: string) {
 function styleLinkedCell(cell: ExcelJS.Cell) {
   cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: LINKED_GREEN } };
   cell.font = { color: { argb: BLACK } };
+}
+
+/**
+ * A typed "type my number" value. Written as a literal so it stays editable in
+ * Excel and is never recomputed. An "Included" year writes the word instead of
+ * a number — SUM ignores text, so the client is billed nothing for it while the
+ * coverage stays visible (Alexis, 2026-07-30).
+ */
+function writeFlatCell(cell: ExcelJS.Cell, amount: ServiceFlatAmount, numFmt: string) {
+  if (amount === "included") {
+    cell.value = "Included";
+    cell.alignment = { horizontal: "right" };
+  } else {
+    cell.value = amount;
+    cell.numFmt = numFmt;
+  }
+  cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: INPUT_BLUE } };
+  cell.font = { color: { argb: BRAND_BLUE } };
+  cell.protection = { locked: false };
+  cell.note = "Typed value — no calculation is applied. Enter a number or the word Included.";
+}
+
+/** Author-editable section headings, falling back to the platform defaults. */
+function resolveSectionLabels(input: ServiceEstimatorInput): ServiceSectionLabels {
+  return { ...DEFAULT_SECTION_LABELS, ...(input.sectionLabels || {}) };
 }
 
 function setFormula(
@@ -199,8 +227,9 @@ function buildCalculationSheet(
   sheet.getCell("A1").font = { bold: true, color: { argb: WHITE }, size: 16 };
   sheet.getRow(1).height = 30;
 
+  const labels = resolveSectionLabels(input);
   const eventHeader = sheet.getRow(3);
-  eventHeader.getCell(1).value = "EVENT SUPPORT INPUTS";
+  eventHeader.getCell(1).value = labels.eventSupport.toUpperCase();
   styleSectionHeader(eventHeader, 1, 7);
   const eventColumnHeader = sheet.getRow(4);
   ["Service Line", "Days", "Technicians", "Client Day Rate", "Technician Day Cost", "Base Revenue", "Base Cost"].forEach(
@@ -233,7 +262,7 @@ function buildCalculationSheet(
 
   const breakFixHeaderRow = 6 + input.events.length;
   const breakFixHeader = sheet.getRow(breakFixHeaderRow);
-  breakFixHeader.getCell(1).value = "BREAK/FIX INPUTS";
+  breakFixHeader.getCell(1).value = labels.breakFix.toUpperCase();
   styleSectionHeader(breakFixHeader, 1, 7);
   const breakFixColumns = sheet.getRow(breakFixHeaderRow + 1);
   ["Service Line", "Enabled", "Days", "Technicians", "Hours / Day", "Hourly Cost", "Price Multiplier"].forEach(
@@ -260,7 +289,7 @@ function buildCalculationSheet(
 
   const capexHeaderRow = breakFixInputRow + 2;
   const capexHeader = sheet.getRow(capexHeaderRow);
-  capexHeader.getCell(1).value = "CAPITAL EXPENDITURE INPUTS";
+  capexHeader.getCell(1).value = labels.capex.toUpperCase();
   styleSectionHeader(capexHeader, 1, 3);
   const capexColumns = sheet.getRow(capexHeaderRow + 1);
   ["Item", "Amount", "Useful Life (Years)"].forEach((label, index) => {
@@ -284,7 +313,7 @@ function buildCalculationSheet(
 
   const matrixHeaderRow = capexInputRows[capexInputRows.length - 1] + 3;
   const matrixHeader = sheet.getRow(matrixHeaderRow);
-  matrixHeader.getCell(1).value = "INTERNAL FINANCIAL MODEL";
+  matrixHeader.getCell(1).value = labels.internalModel.toUpperCase();
   styleSectionHeader(matrixHeader, 1, input.termYears + 1);
   const yearHeaderRow = matrixHeaderRow + 1;
   sheet.getCell(yearHeaderRow, 1).value = "Line Item";
@@ -300,16 +329,29 @@ function buildCalculationSheet(
     eventRevenueRows.push(rowNumber);
     sheet.getCell(rowNumber, 1).value = `${event.name} — Revenue`;
     result.years.forEach((year, yearIndex) => {
+      const cell = sheet.getCell(rowNumber, yearIndex + 2);
+      if (event.pricingMode === "flat") {
+        // "Type my number" — the typed value IS the cell, editable in Excel and
+        // never recomputed. SUM ignores the "Included" text, so an included
+        // year bills nothing while staying visible.
+        writeFlatCell(cell, resolveFlatAmount(event.flatRevenue, yearIndex, event.flatEscalates, input.revenueEscalationPct), moneyFormat);
+        return;
+      }
       const formula = `$B$${eventInputRows[eventIndex]}*$C$${eventInputRows[eventIndex]}*$D$${eventInputRows[eventIndex]}*(1+'Project Overview'!$C$18)^${yearIndex}`;
-      setFormula(sheet.getCell(rowNumber, yearIndex + 2), formula, year.eventLines[eventIndex].revenue, moneyFormat);
+      setFormula(cell, formula, year.eventLines[eventIndex].revenue, moneyFormat);
     });
   });
 
   const breakFixRevenueRow = matrixRow++;
   sheet.getCell(breakFixRevenueRow, 1).value = `${input.breakFix.label} — Revenue`;
   result.years.forEach((year, yearIndex) => {
+    const cell = sheet.getCell(breakFixRevenueRow, yearIndex + 2);
+    if (input.breakFix.pricingMode === "flat") {
+      writeFlatCell(cell, input.breakFix.enabled ? resolveFlatAmount(input.breakFix.flatRevenue, yearIndex, input.breakFix.flatEscalates, input.revenueEscalationPct) : 0, moneyFormat);
+      return;
+    }
     const formula = `IF($B$${breakFixInputRow},$C$${breakFixInputRow}*$D$${breakFixInputRow}*$E$${breakFixInputRow}*$F$${breakFixInputRow}*$G$${breakFixInputRow}*(1+'Project Overview'!$C$18)^${yearIndex},0)`;
-    setFormula(sheet.getCell(breakFixRevenueRow, yearIndex + 2), formula, year.breakFixRevenue, moneyFormat);
+    setFormula(cell, formula, year.breakFixRevenue, moneyFormat);
   });
 
   const grossIncomeRow = matrixRow++;
@@ -349,27 +391,43 @@ function buildCalculationSheet(
     setFormula(sheet.getCell(totalIncomeRow, yearIndex + 2), formula, year.totalIncome, moneyFormat);
   });
 
-  matrixRow += 1;
+  // Krissy, 2026-07-30: "Can you add a heading … like to say operating
+  // expenses or something, just so that everyone knows." Everything above this
+  // row is what the client sees; everything below is ANC's internal model.
+  const expenseHeaderRow = sheet.getRow(matrixRow++);
+  expenseHeaderRow.getCell(1).value = labels.operatingExpenses.toUpperCase();
+  styleSectionHeader(expenseHeaderRow, 1, input.termYears + 1);
+
   const eventCostRows: number[] = [];
   input.events.forEach((event, eventIndex) => {
     const rowNumber = matrixRow++;
     eventCostRows.push(rowNumber);
     sheet.getCell(rowNumber, 1).value = `${event.name} — Cost`;
     result.years.forEach((year, yearIndex) => {
+      const cell = sheet.getCell(rowNumber, yearIndex + 2);
+      if (event.pricingMode === "flat") {
+        writeFlatCell(cell, resolveFlatAmount(event.flatCost, yearIndex, event.flatEscalates, input.costEscalationPct), moneyFormat);
+        return;
+      }
       const formula = `$B$${eventInputRows[eventIndex]}*$C$${eventInputRows[eventIndex]}*$E$${eventInputRows[eventIndex]}*(1+'Project Overview'!$C$19)^${yearIndex}`;
-      setFormula(sheet.getCell(rowNumber, yearIndex + 2), formula, year.eventLines[eventIndex].cost, moneyFormat);
+      setFormula(cell, formula, year.eventLines[eventIndex].cost, moneyFormat);
     });
   });
 
   const breakFixCostRow = matrixRow++;
   sheet.getCell(breakFixCostRow, 1).value = `${input.breakFix.label} — Cost`;
   result.years.forEach((year, yearIndex) => {
+    const cell = sheet.getCell(breakFixCostRow, yearIndex + 2);
+    if (input.breakFix.pricingMode === "flat") {
+      writeFlatCell(cell, input.breakFix.enabled ? resolveFlatAmount(input.breakFix.flatCost, yearIndex, input.breakFix.flatEscalates, input.costEscalationPct) : 0, moneyFormat);
+      return;
+    }
     const formula = `IF($B$${breakFixInputRow},$C$${breakFixInputRow}*$D$${breakFixInputRow}*$E$${breakFixInputRow}*$F$${breakFixInputRow}*(1+'Project Overview'!$C$19)^${yearIndex},0)`;
-    setFormula(sheet.getCell(breakFixCostRow, yearIndex + 2), formula, year.breakFixCost, moneyFormat);
+    setFormula(cell, formula, year.breakFixCost, moneyFormat);
   });
 
   const operatingExpenseRow = matrixRow++;
-  sheet.getCell(operatingExpenseRow, 1).value = "OPERATING EXPENSES";
+  sheet.getCell(operatingExpenseRow, 1).value = labels.operatingExpenses.toUpperCase();
   result.years.forEach((year, yearIndex) => {
     const column = sheet.getColumn(yearIndex + 2).letter;
     setFormula(

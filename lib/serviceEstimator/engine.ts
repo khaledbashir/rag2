@@ -1,8 +1,14 @@
 import type {
+  ServiceBreakFixInput,
   ServiceEstimatorInput,
+  ServiceEstimatorOption,
+  ServiceEstimatorOptionResult,
   ServiceEstimatorResult,
   ServiceEstimatorYearResult,
+  ServiceEventInput,
+  ServiceFlatAmount,
 } from "./types";
+import { DEFAULT_SECTION_LABELS } from "./types";
 
 const roundMoney = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
 
@@ -15,7 +21,132 @@ export function buildContractYearLabel(startYear: number, yearIndex: number): st
   return `${first}/${second}`;
 }
 
-export function calculateServiceEstimate(input: ServiceEstimatorInput): ServiceEstimatorResult {
+/**
+ * Resolve a typed per-year amount for a flat line.
+ *
+ * Typed values are taken literally — "type my number" means that number, not
+ * that number with escalation quietly applied on top. Years beyond the typed
+ * list repeat the last value, or escalate from it when the line opts in.
+ * An empty list bills nothing.
+ */
+export function resolveFlatAmount(
+  values: ServiceFlatAmount[],
+  yearIndex: number,
+  escalates: boolean,
+  escalationPct: number,
+): ServiceFlatAmount {
+  if (values.length === 0) return 0;
+  if (yearIndex < values.length) return values[yearIndex];
+
+  const last = values[values.length - 1];
+  if (last === "included") return "included";
+  if (!escalates) return last;
+  return roundMoney(last * growthFactor(escalationPct, yearIndex - (values.length - 1)));
+}
+
+/** A resolved amount as money: "Included" bills the client nothing. */
+const amountToMoney = (amount: ServiceFlatAmount): number =>
+  amount === "included" ? 0 : amount;
+
+interface ResolvedLine {
+  revenue: number;
+  cost: number;
+  included: boolean;
+}
+
+function resolveEventLine(
+  event: ServiceEventInput,
+  yearIndex: number,
+  revenueFactor: number,
+  costFactor: number,
+  input: ServiceEstimatorInput,
+): ResolvedLine {
+  if (event.pricingMode === "flat") {
+    const revenue = resolveFlatAmount(
+      event.flatRevenue,
+      yearIndex,
+      event.flatEscalates,
+      input.revenueEscalationPct,
+    );
+    const cost = resolveFlatAmount(
+      event.flatCost,
+      yearIndex,
+      event.flatEscalates,
+      input.costEscalationPct,
+    );
+    return {
+      revenue: roundMoney(amountToMoney(revenue)),
+      cost: roundMoney(amountToMoney(cost)),
+      included: revenue === "included",
+    };
+  }
+
+  return {
+    revenue: roundMoney(event.days * event.technicians * event.clientDayRate * revenueFactor),
+    cost: roundMoney(event.days * event.technicians * event.technicianDayCost * costFactor),
+    included: false,
+  };
+}
+
+function resolveBreakFix(
+  breakFix: ServiceBreakFixInput,
+  yearIndex: number,
+  revenueFactor: number,
+  costFactor: number,
+  input: ServiceEstimatorInput,
+): ResolvedLine {
+  if (!breakFix.enabled) return { revenue: 0, cost: 0, included: false };
+
+  if (breakFix.pricingMode === "flat") {
+    const revenue = resolveFlatAmount(
+      breakFix.flatRevenue,
+      yearIndex,
+      breakFix.flatEscalates,
+      input.revenueEscalationPct,
+    );
+    const cost = resolveFlatAmount(
+      breakFix.flatCost,
+      yearIndex,
+      breakFix.flatEscalates,
+      input.costEscalationPct,
+    );
+    return {
+      revenue: roundMoney(amountToMoney(revenue)),
+      cost: roundMoney(amountToMoney(cost)),
+      included: revenue === "included",
+    };
+  }
+
+  const baseCost =
+    breakFix.days * breakFix.technicians * breakFix.hoursPerDay * breakFix.technicianHourlyCost;
+  return {
+    revenue: roundMoney(baseCost * breakFix.priceMultiplier * revenueFactor),
+    cost: roundMoney(baseCost * costFactor),
+    included: false,
+  };
+}
+
+/**
+ * The priced options on an estimate. An estimate with no explicit options has
+ * exactly one, built from the top-level service lines.
+ */
+export function listOptions(input: ServiceEstimatorInput): ServiceEstimatorOption[] {
+  if (input.options && input.options.length > 0) return input.options;
+  return [
+    {
+      id: "option-1",
+      name: "Option 1",
+      events: input.events,
+      breakFix: input.breakFix,
+    },
+  ];
+}
+
+function calculateForLines(
+  input: ServiceEstimatorInput,
+  events: ServiceEventInput[],
+  breakFix: ServiceBreakFixInput,
+): ServiceEstimatorResult {
   const totalCapex = roundMoney(input.capex.reduce((sum, item) => sum + item.amount, 0));
   let cumulativeCash = 0;
 
@@ -25,25 +156,20 @@ export function calculateServiceEstimate(input: ServiceEstimatorInput): ServiceE
       const revenueFactor = growthFactor(input.revenueEscalationPct, yearIndex);
       const costFactor = growthFactor(input.costEscalationPct, yearIndex);
 
-      const eventLines = input.events.map((event) => ({
-        id: event.id,
-        name: event.name,
-        revenue: roundMoney(event.days * event.technicians * event.clientDayRate * revenueFactor),
-        cost: roundMoney(event.days * event.technicians * event.technicianDayCost * costFactor),
-      }));
+      const eventLines = events.map((event) => {
+        const resolved = resolveEventLine(event, yearIndex, revenueFactor, costFactor, input);
+        return {
+          id: event.id,
+          name: event.name,
+          revenue: resolved.revenue,
+          cost: resolved.cost,
+          included: resolved.included,
+        };
+      });
 
-      const breakFixBaseCost = input.breakFix.enabled
-        ? input.breakFix.days *
-          input.breakFix.technicians *
-          input.breakFix.hoursPerDay *
-          input.breakFix.technicianHourlyCost
-        : 0;
-      const breakFixCost = roundMoney(breakFixBaseCost * costFactor);
-      const breakFixRevenue = roundMoney(
-        input.breakFix.enabled
-          ? breakFixBaseCost * input.breakFix.priceMultiplier * revenueFactor
-          : 0,
-      );
+      const bf = resolveBreakFix(breakFix, yearIndex, revenueFactor, costFactor, input);
+      const breakFixRevenue = bf.revenue;
+      const breakFixCost = bf.cost;
 
       const grossServiceIncome = roundMoney(
         eventLines.reduce((sum, line) => sum + line.revenue, 0) + breakFixRevenue,
@@ -82,6 +208,7 @@ export function calculateServiceEstimate(input: ServiceEstimatorInput): ServiceE
         eventLines,
         breakFixRevenue,
         breakFixCost,
+        breakFixIncluded: bf.included,
         grossServiceIncome,
         bundleDiscountAmount,
         totalIncome,
@@ -112,6 +239,36 @@ export function calculateServiceEstimate(input: ServiceEstimatorInput): ServiceE
   };
 }
 
+/** The primary option's numbers — what the cover page and totals report. */
+export function calculateServiceEstimate(input: ServiceEstimatorInput): ServiceEstimatorResult {
+  const [primary] = listOptions(input);
+  return calculateForLines(input, primary.events, primary.breakFix);
+}
+
+/** Every priced option, in author order. */
+export function calculateServiceEstimateOptions(
+  input: ServiceEstimatorInput,
+): ServiceEstimatorOptionResult[] {
+  return listOptions(input).map((option) => ({
+    id: option.id,
+    name: option.name,
+    result: calculateForLines(input, option.events, option.breakFix),
+  }));
+}
+
+/** A calculated service line with the flat fields left empty. */
+function calculatedLine(
+  line: Pick<ServiceEventInput, "id" | "name" | "days" | "technicians" | "clientDayRate" | "technicianDayCost">,
+): ServiceEventInput {
+  return {
+    ...line,
+    pricingMode: "calculated",
+    flatRevenue: [],
+    flatCost: [],
+    flatEscalates: false,
+  };
+}
+
 export const PANTHERS_SERVICE_REFERENCE: ServiceEstimatorInput = {
   clientName: "Carolina Panthers",
   venueName: "Bank of America Stadium",
@@ -119,6 +276,7 @@ export const PANTHERS_SERVICE_REFERENCE: ServiceEstimatorInput = {
   contractStart: "2026",
   contractEnd: "2028",
   paymentTerms: "Six equal monthly installments per Contract Year",
+  scopeOfServices: "",
   currency: "USD",
   termStartYear: 2026,
   termYears: 2,
@@ -127,41 +285,48 @@ export const PANTHERS_SERVICE_REFERENCE: ServiceEstimatorInput = {
   bundleDiscountMode: "included-in-rates",
   bundleDiscountPct: 20,
   events: [
-    {
+    calculatedLine({
       id: "pre-event-support",
       name: "Pre Event Hardware Support",
       days: 26.5,
       technicians: 2,
       clientDayRate: 850,
       technicianDayCost: 280,
-    },
-    {
+    }),
+    calculatedLine({
       id: "secondary-event-support",
       name: "MLS Event Hardware Support",
       days: 15.5,
       technicians: 2,
       clientDayRate: 850,
       technicianDayCost: 280,
-    },
-    {
+    }),
+    calculatedLine({
       id: "primary-event-support",
       name: "Panthers Event Hardware Support",
       days: 11,
       technicians: 3,
       clientDayRate: 850,
       technicianDayCost: 280,
-    },
+    }),
   ],
   breakFix: {
     enabled: true,
     label: "Break/Fix Hardware Maintenance",
+    pricingMode: "calculated",
     days: 104,
     technicians: 2,
     hoursPerDay: 8,
     technicianHourlyCost: 35,
     priceMultiplier: 1.62,
+    flatRevenue: [],
+    flatCost: [],
+    flatEscalates: false,
   },
+  options: [],
   capex: [],
+  partsWarranty: { enabled: false, title: "Parts Warranty", columns: [], rows: [] },
+  sectionLabels: { ...DEFAULT_SECTION_LABELS },
   marketingOpportunityValue: 0,
   marketingSharePct: 20,
 };

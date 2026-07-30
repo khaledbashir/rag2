@@ -71,3 +71,67 @@ describe("buildServiceEstimatorWorkbook", () => {
     );
   });
 });
+
+describe("workbook — typed lines, Included, and the operating-expenses divider", () => {
+  const flat = (id: string, name: string, rev: (number | "included")[], cost: (number | "included")[] = []) => ({
+    id, name, pricingMode: "flat" as const,
+    days: 0, technicians: 0, clientDayRate: 0, technicianDayCost: 0,
+    flatRevenue: rev, flatCost: cost, flatEscalates: false,
+  });
+
+  const input = {
+    ...PANTHERS_SERVICE_REFERENCE,
+    clientName: "Fifth Third Park",
+    termYears: 3,
+    termStartYear: 2026,
+    bundleDiscountMode: "none" as const,
+    events: [
+      flat("preseason", "Preseason Check", ["included", 7500, 7875], [3000, 3150, 3307.5]),
+      flat("vsb", "VSB License Fee", [13500, 13500, 13500]),
+    ],
+    breakFix: { ...PANTHERS_SERVICE_REFERENCE.breakFix, enabled: false },
+    sectionLabels: { ...PANTHERS_SERVICE_REFERENCE.sectionLabels, operatingExpenses: "Operating Expenses" },
+  };
+
+  it("writes typed values as literal editable cells, never formulas", async () => {
+    const wb = buildServiceEstimatorWorkbook(input as never);
+    const sheet = wb.getWorksheet("Calculation Detail")!;
+    const cells: unknown[] = [];
+    sheet.eachRow((row) => row.eachCell((cell) => cells.push(cell.value)));
+    // The typed 13,500 appears as a plain number, not { formula }.
+    const plain = cells.filter((v) => v === 13500);
+    expect(plain.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("writes 'Included' as text so SUM bills the client nothing for that year", async () => {
+    const wb = buildServiceEstimatorWorkbook(input as never);
+    const sheet = wb.getWorksheet("Calculation Detail")!;
+    let found = false;
+    sheet.eachRow((row) => row.eachCell((cell) => { if (cell.value === "Included") found = true; }));
+    expect(found).toBe(true);
+  });
+
+  it("carries Krissy's operating-expenses heading into the sheet", async () => {
+    const wb = buildServiceEstimatorWorkbook(input as never);
+    const sheet = wb.getWorksheet("Calculation Detail")!;
+    const headings: string[] = [];
+    sheet.eachRow((row) => {
+      const v = row.getCell(1).value;
+      if (typeof v === "string") headings.push(v);
+    });
+    expect(headings).toContain("OPERATING EXPENSES");
+  });
+
+  it("renames a section heading when the author edits it", async () => {
+    const renamed = { ...input, sectionLabels: { ...input.sectionLabels, operatingExpenses: "ANC Internal Costs" } };
+    const wb = buildServiceEstimatorWorkbook(renamed as never);
+    const sheet = wb.getWorksheet("Calculation Detail")!;
+    const headings: string[] = [];
+    sheet.eachRow((row) => {
+      const v = row.getCell(1).value;
+      if (typeof v === "string") headings.push(v);
+    });
+    expect(headings).toContain("ANC INTERNAL COSTS");
+    expect(headings).not.toContain("OPERATING EXPENSES");
+  });
+});
