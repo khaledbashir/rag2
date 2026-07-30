@@ -122,6 +122,7 @@ export function mapDbProposalToFormSchema(dbProject: any) {
             showExhibitB: cfg.showExhibitB ?? false,
             showNotes: cfg.showNotes ?? true,
             showScopeOfWork: manualTableMode ? false : (cfg.showScopeOfWork ?? false),
+            documentLabelOverride: cfg.documentLabelOverride ?? "",
             pageLayout: cfg.pageLayout ?? "portrait-letter",
             specsDisplayMode: dbProject.specsDisplayMode || cfg.specsDisplayMode || "extended",
             tableHeaderOverrides: (dbProject as any).tableHeaderOverrides || {},

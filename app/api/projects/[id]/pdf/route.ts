@@ -4,6 +4,7 @@ import { mapDbProposalToFormSchema } from "@/lib/proposals/mapDbProposalToForm";
 import { generateProposalPdfServiceV2 } from "@/services/proposal/server/generateProposalPdfServiceV2";
 import { universalCrmPush, saveCrmArtifact } from "@/services/integrations/twenty/crmAutomation";
 import { log } from "@/lib/logger";
+import { getDocumentFileLabel } from "@/lib/documentMode";
 
 function safeFilenamePart(value: string): string {
     return value
@@ -72,7 +73,11 @@ export async function POST(
         const now = new Date();
         const datePart = `${now.getMonth() + 1}-${now.getDate()}-${now.getFullYear()}`;
         const clientPart = safeFilenamePart(project.clientName || "Project");
-        const filename = `ANC_${clientPart}_${project.documentMode}_${datePart}.pdf`;
+        // Follow the header label, not the raw mode — a document titled "Amendment"
+        // downloading as "..._SERVICE_CONTRACT_..." is the same filename/label
+        // mismatch Natalia flagged on change orders (2026-07-09).
+        const docPart = getDocumentFileLabel(formPayload.details) || project.documentMode;
+        const filename = `ANC_${clientPart}_${docPart}_${datePart}.pdf`;
 
         saveCrmArtifact({
             buffer: Buffer.from(bytes),

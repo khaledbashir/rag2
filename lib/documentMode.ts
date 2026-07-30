@@ -79,6 +79,41 @@ export function getDocumentTypeLabel(mode: DocumentMode | string | null | undefi
   }
 }
 
+/**
+ * The document label printed in blue at the top-right of every document
+ * (PdfHeader) — "PROPOSAL", "SERVICE CONTRACT", "CHANGE ORDER · CO-01"…
+ *
+ * The per-mode headerText is the default, but the label is NOT the mode: the
+ * same Service Contract sometimes needs to go out titled "Amendment",
+ * "Addendum", "Renewal". Natalia used to retype it in Acrobat after every
+ * export, which meant nobody else could produce that document at all
+ * (Natalia 2026-07-30: "Currently I do it when I export a pdf but Krissy can't").
+ * `details.documentLabelOverride` makes it a real field on the proposal, so the
+ * preview, the exported PDF, and the filename all agree.
+ *
+ * The override is deliberately free text — it is a title, not an enum, and the
+ * whole point is that the list of things a document can be called is open.
+ *
+ * `suffix` carries the Change Order number so "· CO-01" survives an override.
+ */
+export function resolveDocumentLabel(details: any, suffix?: string): string {
+  const override = ((details?.documentLabelOverride ?? "") + "").trim();
+  const base = override || getModeConfig(resolveDocumentMode(details)).headerText;
+  const tail = ((suffix ?? "") + "").trim();
+  return tail ? `${base} · ${tail}` : base;
+}
+
+/**
+ * Filename-safe version of the same label, for export filenames and PDF
+ * metadata titles. Falls back to the per-mode label when there is no override
+ * so existing filenames are unchanged.
+ */
+export function getDocumentFileLabel(details: any): string {
+  const override = ((details?.documentLabelOverride ?? "") + "").trim();
+  if (!override) return getDocumentTypeLabel(resolveDocumentMode(details));
+  return override.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || getDocumentTypeLabel(resolveDocumentMode(details));
+}
+
 export function resolveDocumentMode(details: any): DocumentMode {
   const explicit = details?.documentMode;
   if (

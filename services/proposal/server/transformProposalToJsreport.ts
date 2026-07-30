@@ -1,7 +1,7 @@
 import { ProposalType } from "@/types";
 import { computeTableTotals, computeDocumentTotalFromTables, resolveExchangeRate } from "@/lib/pricingMath";
 import { normalizePitch } from "@/lib/helpers";
-import { resolveDocumentMode } from "@/lib/documentMode";
+import { resolveDocumentMode, resolveDocumentLabel } from "@/lib/documentMode";
 import { changeOrderIntroHtml } from "@/lib/changeOrderIntro";
 import { loiIntroHtml } from "@/lib/loiIntro";
 import { DOCUMENT_MODES, DocumentMode as CatalogDocumentMode } from "@/services/rfp/productCatalog";
@@ -144,7 +144,8 @@ export function transformProposalToJsreport(
         ? { headerText: CO_HEADER_BASE, includeSignatures: true, includePaymentTerms: true, includeLegalIntro: true, includeProjectSummaryFirst: false, includeResponsibilityMatrix: false }
         : (DOCUMENT_MODES[catalogMode] || DOCUMENT_MODES.proposal);
     const changeOrderNumberRaw = (((details as any)?.changeOrderNumber || "") + "").trim();
-    const docLabel = isCO && changeOrderNumberRaw ? `${CO_HEADER_BASE} · ${changeOrderNumberRaw}` : docModeConfig.headerText;
+    // details.documentLabelOverride wins over the mode's headerText (Amendment, Addendum…).
+    const docLabel = resolveDocumentLabel(details, isCO ? changeOrderNumberRaw : "");
     const isLOI = documentMode === "LOI" || documentMode === "CONTRACT";
 
     const pricingDocument = details?.pricingDocument || (data as any)?.pricingDocument;

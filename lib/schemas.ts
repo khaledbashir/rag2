@@ -335,6 +335,10 @@ const ProposalDetailsSchema = z.object({
     documentType: z.enum(["LOI", "First Round"]).default("First Round"),
     pricingType: z.enum(["Hard Quoted", "Budget"]).default("Budget"),
     documentMode: z.enum(["BUDGET", "PROPOSAL", "LOI", "CONTRACT", "CHANGE_ORDER"]).optional().default("BUDGET"),
+    // Free-text replacement for the blue document label in the header ("PROPOSAL",
+    // "SERVICE CONTRACT"…) when the document needs to go out as an Amendment,
+    // Addendum, Renewal, etc. Empty = use the document mode's own label.
+    documentLabelOverride: z.string().optional(),
     // Change Order fields — used when documentMode === "CHANGE_ORDER"
     changeOrderNumber: z.string().optional(), // e.g. "CO-01"
     changeOrderRequestedBy: z.string().optional(),

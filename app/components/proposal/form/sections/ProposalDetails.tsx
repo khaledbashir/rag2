@@ -26,7 +26,7 @@ import {
 import { useTranslationContext } from "@/contexts/TranslationContext";
 import { useFormContext, useWatch } from "react-hook-form";
 import type { ProposalType } from "@/types";
-import { applyDocumentModeDefaults, forceDocumentModeDefaults, resolveDocumentMode, type DocumentMode } from "@/lib/documentMode";
+import { applyDocumentModeDefaults, forceDocumentModeDefaults, resolveDocumentMode, getModeConfig, type DocumentMode } from "@/lib/documentMode";
 
 /**
  * Master Table Selector — Prompt 51
@@ -103,9 +103,16 @@ const ProposalDetails = () => {
     const rawMode = useWatch({ name: "details.documentMode", control }) as DocumentMode | undefined;
     const details = useWatch({ name: "details", control });
     const mode = rawMode || resolveDocumentMode(details);
+    // What the blue header label says when no override is set — shown as the
+    // Header Label placeholder so the default is always visible.
+    const defaultHeaderLabel = getModeConfig(mode).headerText;
 
     const handleModeChange = (newMode: DocumentMode) => {
         setValue("details.documentMode", newMode as any, { shouldDirty: true });
+        // A custom header label belongs to the document it was written for.
+        // Switching lifecycle deliberately resets it so a Service Contract
+        // re-cast as a Proposal can't keep printing "AMENDMENT".
+        setValue("details.documentLabelOverride", "" as any, { shouldDirty: true });
         const currentDetails = getValues("details") as any;
         const updated = forceDocumentModeDefaults(newMode, currentDetails);
         const desiredDocumentType = (newMode === "LOI" || newMode === "CONTRACT") ? "LOI" : "First Round";
@@ -227,6 +234,27 @@ const ProposalDetails = () => {
                             </SelectContent>
                         </Select>
                     </div>
+
+                    {/*
+                      * Header Label — the blue word at the top-right of the document.
+                      * The lifecycle mode sets the default ("PROPOSAL", "SERVICE
+                      * CONTRACT"), but the same document sometimes has to go out
+                      * titled "Amendment"/"Addendum"/"Renewal". This used to be a
+                      * post-export Acrobat edit only Natalia could do; as a field
+                      * anyone can produce the document (Natalia 2026-07-30).
+                      */}
+                    <div className="flex flex-col gap-1.5 w-full">
+                        <FormInput
+                            vertical
+                            name="details.documentLabelOverride"
+                            label="Header Label"
+                            placeholder={defaultHeaderLabel}
+                        />
+                        <span className="text-[10px] text-zinc-500">
+                            The word in blue at the top of the document. Leave blank to use &ldquo;{defaultHeaderLabel}&rdquo;, or type anything &mdash; e.g. Amendment, Addendum, Renewal.
+                        </span>
+                    </div>
+
                     <div className="flex flex-wrap gap-2">
                         {mode === "BUDGET" && (
                             <BaseButton

@@ -3,7 +3,7 @@ import * as Sentry from "@sentry/nextjs";
 
 import chromium from "@sparticuz/chromium";
 import { getProposalTemplate } from "@/lib/helpers";
-import { getDocumentTypeLabel } from "@/lib/documentMode";
+import { getDocumentFileLabel } from "@/lib/documentMode";
 import { ENV, TAILWIND_CDN } from "@/lib/variables";
 import { ProposalType } from "@/types";
 import { sanitizeForClient } from "@/lib/security/sanitizeForClient";
@@ -177,7 +177,8 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 		// Build a descriptive document title for PDF metadata (shows in browser tab & Properties)
 		const clientName = ((body.details as any)?.clientName || (body.details as any)?.proposalName || "Proposal").toString()
 			.replace(/[/\\:*?"<>|]/g, "").replace(/\s+/g, "_").trim().slice(0, 50) || "Proposal";
-		const docTypeLabel = getDocumentTypeLabel(documentMode);
+		// Honors details.documentLabelOverride, falling back to the mode's label.
+		const docTypeLabel = getDocumentFileLabel(body.details);
 		const dateStr = new Date().toISOString().slice(0, 10);
 		const pdfTitle = `ANC_${clientName}_${docTypeLabel}_${dateStr}`;
 

@@ -39,7 +39,7 @@ import type { PdfColors, PdfTemplateSpacing } from "./sections/shared";
 
 // Helpers
 import { formatCurrency } from "@/lib/helpers";
-import { resolveDocumentMode, getModeConfig } from "@/lib/documentMode";
+import { resolveDocumentMode, getModeConfig, resolveDocumentLabel } from "@/lib/documentMode";
 import { FEATURES } from "@/lib/featureFlags";
 import {
     DOCUMENT_MODES,
@@ -87,10 +87,11 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const changeOrderIntroText = (((details as any)?.changeOrderIntroText || "") + "").trim();
     const changeOrderOriginalAgreementDate = (((details as any)?.changeOrderOriginalAgreementDate || "") + "").trim();
 
-    // Header label — CO mode appends the CO number ("CHANGE ORDER · CO-01") so it shows in the header per the CO #4 spec.
-    const docLabel = isCO && changeOrderNumber
-        ? `${docModeConfig.headerText} · ${changeOrderNumber}`
-        : docModeConfig.headerText;
+    // Header label — the blue word top-right. Defaults to the mode's headerText,
+    // but details.documentLabelOverride wins when this document goes out as an
+    // "Amendment"/"Addendum"/etc. CO mode still appends the CO number
+    // ("CHANGE ORDER · CO-01") per the CO #4 spec, override or not.
+    const docLabel = resolveDocumentLabel(details, isCO ? changeOrderNumber : "");
 
     // T&C exhibit config — toggleable for both Short Form Agreement (LOI) and Short Form Contract.
     // Default off for SFA, on for CONTRACT — both can override via the toggle.

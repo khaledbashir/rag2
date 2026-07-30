@@ -32,6 +32,8 @@ export function buildDocumentConfig(d: any) {
     showResponsibilityMatrix: d.showResponsibilityMatrix,
     pageLayout: d.pageLayout,
     manualTableMode: d.manualTableMode,
+    // Free-text header label ("Amendment", "Addendum"…) replacing the mode's own.
+    documentLabelOverride: d.documentLabelOverride,
     freeformTables: d.freeformTables,
     showFreeformTables: d.showFreeformTables,
     // Change Order fields — no changeOrder* columns on Project; documentConfig
