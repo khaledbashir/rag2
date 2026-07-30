@@ -138,9 +138,22 @@ function mapAltPitchVariants(d: DisplayAnswers, env: "indoor" | "outdoor"): Extr
     const quantity = alt.quantity && alt.quantity > 0 ? alt.quantity : d.quantity;
     const resized = widthFt !== d.widthFt || heightFt !== d.heightFt;
 
-    // Clear base product — an alternate needs its own product resolution via pitch lookup
+    // Clear base product — an alternate needs its own product resolution via pitch lookup.
+    // A resized alternate must also replace the primary's RFP dimensions: mapDisplay
+    // reads `rfpWidthFt || widthFt`, so leaving the primary's RFP dims in place would
+    // publish the alternate at the primary's size in the workbook's RFP columns — and
+    // those columns drive the cabinet-snap formulas on the alternate's own row.
     const spec = mapDisplay(
-      { ...d, pixelPitch: alt.pixelPitch, widthFt, heightFt, quantity, productId: "", productName: "" },
+      {
+        ...d,
+        pixelPitch: alt.pixelPitch,
+        widthFt,
+        heightFt,
+        quantity,
+        ...(resized ? { rfpWidthFt: widthFt, rfpHeightFt: heightFt } : {}),
+        productId: "",
+        productName: "",
+      },
       env,
     );
     const suffix = alt.label?.trim()

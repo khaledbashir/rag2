@@ -691,15 +691,45 @@ export async function generateScopingWorkbook(
     }
   }
 
-  // Compute base bid display data (used by all budget sheets)
-  const displays = computeDisplays(baseSpecs, basePricedDisplays, installComplexity, resolveProduct, ov);
+  // `ov.perDisplayComplexity` / `ov.perDisplayCostOverrides` are parallel to the
+  // FULL specs array (base + alternates interleaved, in mapper order). Splitting
+  // base from alternates above shifts every index after the first alternate, so
+  // the arrays have to be re-indexed onto each subset — otherwise adding one
+  // alternate to screen 1 silently applies screen 1's install complexity and
+  // cost overrides to screen 2, screen 2's to screen 3, and so on.
+  const baseSpecIdx: number[] = [];
+  const altSpecIdx: number[] = [];
+  allSpecs.forEach((s, i) => {
+    if (includeAlternatesInBase || !s.isAlternate) baseSpecIdx.push(i);
+    else altSpecIdx.push(i);
+  });
+  const reindex = <T,>(arr: T[] | undefined, idxs: number[]): T[] | undefined =>
+    arr ? idxs.map((i) => arr[i]) : undefined;
+  const baseOv: FinancialOverrides | undefined = ov
+    ? {
+      ...ov,
+      perDisplayComplexity: reindex(ov.perDisplayComplexity, baseSpecIdx),
+      perDisplayCostOverrides: reindex(ov.perDisplayCostOverrides, baseSpecIdx),
+    }
+    : ov;
 
-  // Compute alternate display data (for reference sheet only)
+  // Compute base bid display data (used by all budget sheets)
+  const displays = computeDisplays(baseSpecs, basePricedDisplays, installComplexity, resolveProduct, baseOv);
+
+  // Compute alternate display data (reference only — never in the base bid totals).
+  // Only the per-display install settings carry over; project-level allocations
+  // (CMS, scoring, venue services…) stay out of alternate pricing as before.
   const altPricedDisplays = allPricedDisplays
     ? (includeAlternatesInBase ? [] : allPricedDisplays.filter((pd) => pd.spec.isAlternate))
     : undefined;
+  const altOv: FinancialOverrides | undefined = ov
+    ? {
+      perDisplayComplexity: reindex(ov.perDisplayComplexity, altSpecIdx),
+      perDisplayCostOverrides: reindex(ov.perDisplayCostOverrides, altSpecIdx),
+    }
+    : undefined;
   const altDisplays = altSpecs.length > 0
-    ? computeDisplays(altSpecs, altPricedDisplays, installComplexity, resolveProduct)
+    ? computeDisplays(altSpecs, altPricedDisplays, installComplexity, resolveProduct, altOv)
     : [];
 
   // Grand totals
@@ -731,16 +761,42 @@ export async function generateScopingWorkbook(
     ov,
   });
 
-  // Pre-compute Install tab names so MA can reference them in cross-sheet formulas
-  const preInstallNames = new Set<string>();
-  const installTabNames: string[] = displays.map((d, idx) => {
-    const baseName = d.spec.name.length > 25 ? d.spec.name.substring(0, 25) + "…" : d.spec.name;
-    let tn = `${baseName} - Install`;
-    if (preInstallNames.has(tn)) {
-      tn = `${baseName.substring(0, 22)}${idx + 1} - Install`;
+  // Pre-compute Install tab names so MA can reference them in cross-sheet formulas.
+  // One helper builds every name (base + alternates) so the names the formulas
+  // point at can never drift from the names the sheets are actually created with.
+  // Uniqueness is checked AFTER sanitizing: sanitizeSheetName truncates to Excel's
+  // 31-char limit, so two long screen names can collapse onto the same tab and
+  // ExcelJS throws on the duplicate.
+  // Excel caps a sheet name at 31 chars, so the screen name gets 21 and the
+  // " - Install" suffix always survives. Truncating the whole string instead
+  // produced tabs like "Upper Concourse Ribbon Bo… -" that never said Install.
+  const INSTALL_SUFFIX = " - Install";
+  const INSTALL_NAME_BUDGET = 31 - INSTALL_SUFFIX.length;
+  const usedInstallNames = new Set<string>();
+  const makeInstallTabName = (name: string, idx: number): string => {
+    const fit = (raw: string, budget: number) =>
+      raw.length > budget ? raw.substring(0, budget - 1) + "…" : raw;
+    let tn = sanitizeSheetName(`${fit(name, INSTALL_NAME_BUDGET)}${INSTALL_SUFFIX}`);
+    let dedupe = 2;
+    while (usedInstallNames.has(tn)) {
+      const tag = ` ${dedupe++}`;
+      tn = sanitizeSheetName(`${fit(name, INSTALL_NAME_BUDGET - tag.length)}${tag}${INSTALL_SUFFIX}`);
+      if (dedupe > displays.length + altDisplays.length + 2) {
+        tn = sanitizeSheetName(`Screen ${idx + 1}${INSTALL_SUFFIX}`);
+        break;
+      }
     }
-    preInstallNames.add(tn);
-    return sanitizeSheetName(tn);
+    usedInstallNames.add(tn);
+    return tn;
+  };
+  const installTabNames: string[] = displays.map((d, idx) => makeInstallTabName(d.spec.name, idx));
+  // Alternates are bid as real screens, so each one gets its own Install tab too.
+  // Named "ALT<n> <screen>" to match the "Alt <n>:" row labels on the LED Cost
+  // Sheet — the alternate's own suffix is dropped because it never survives the
+  // 21-char budget and would push the screen name out of the tab entirely.
+  const altInstallTabNames: string[] = altDisplays.map((d, idx) => {
+    const parentName = (d.spec.name || "").replace(/\s*—\s*.*$/, "").trim() || d.spec.name || "Alternate";
+    return makeInstallTabName(`ALT${idx + 1} ${parentName}`, displays.length + idx);
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -757,16 +813,15 @@ export async function generateScopingWorkbook(
   buildTechSpecsSheet(wb, projectName, displays, resolveProduct);
 
   // 6. Install sheets (one per screen) — uses per-display complexity
-  //    Deduplicate tab names: ExcelJS throws on duplicate worksheet names
-  const usedInstallNames = new Set<string>();
   displays.forEach((d, idx) => {
-    let baseName = d.spec.name.length > 25 ? d.spec.name.substring(0, 25) + "…" : d.spec.name;
-    let tabName = `${baseName} - Install`;
-    if (usedInstallNames.has(tabName)) {
-      tabName = `${baseName.substring(0, 22)}${idx + 1} - Install`;
-    }
-    usedInstallNames.add(tabName);
-    buildInstallSheet(wb, projectName, today, d, d.installComplexity, tabName, ov);
+    buildInstallSheet(wb, projectName, today, d, d.installComplexity, installTabNames[idx], ov);
+  });
+
+  // 6b. Install sheets for alternates — an alternate is a screen someone has to
+  //     actually install, so it needs the same labour breakdown as a base screen.
+  //     Amber tab colour marks it as an alternate, matching the LED Cost Sheet.
+  altDisplays.forEach((d, idx) => {
+    buildInstallSheet(wb, projectName, today, d, d.installComplexity, altInstallTabNames[idx], altOv, C.AMBER_TAB);
   });
 
   // 7. Processor Count
@@ -2507,10 +2562,11 @@ function buildInstallSheet(
   complexity: InstallComplexity,
   tabName?: string,
   ov?: FinancialOverrides,
+  tabColor: string = C.GREEN_TAB,
 ): InstallSheetInfo {
   const shortName = d.spec.name.length > 25 ? d.spec.name.substring(0, 25) + "…" : d.spec.name;
   const ws = wb.addWorksheet(sanitizeSheetName(tabName || `${shortName} - Install`), {
-    properties: { tabColor: { argb: C.GREEN_TAB } },
+    properties: { tabColor: { argb: tabColor } },
   });
 
   const colWidths = [4, 32, 14, 14, 14, 14, 14, 4, 14, 12, 14];

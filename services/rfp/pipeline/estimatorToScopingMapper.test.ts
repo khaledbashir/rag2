@@ -168,4 +168,83 @@ describe("mapEstimatorToScoping — alternates reach the workbook", () => {
     expect(joined).toContain("alternates");
     expect(joined).toContain("alt 4mm");
   });
+
+  it("publishes the alternate's own size, not the primary's, in the RFP columns", () => {
+    // mapDisplay reads `rfpWidthFt || widthFt`. A resized alternate that inherits
+    // the primary's rfp dims lands on the LED Cost Sheet at the primary's size and
+    // the cabinet-snap formulas on its row then compute against the wrong height.
+    const alt = mapEstimatorToScoping(
+      answersWith(primary({ rfpWidthFt: 40, rfpHeightFt: 20, alternates: [{ pixelPitch: "2.5", heightFt: 10 }] })),
+    ).specs.find((s) => s.isAlternate)!;
+
+    expect(alt.heightFt).toBe(10);
+    expect(alt.widthFt).toBe(40);
+  });
+
+  it("gives every alternate its own Install tab, like a base screen", async () => {
+    const opts = mapEstimatorToScoping(
+      answersWith(primary({ alternates: [{ pixelPitch: "4", label: "Alternate No. 1" }] })),
+    );
+
+    const { workbook } = await generateScopingWorkbook(opts);
+    const names = workbook.worksheets.map((w) => w.name);
+
+    expect(names).toContain("Main Scoreboard - Install");
+    expect(names).toContain("ALT1 Main Scoreboard - Install");
+  });
+
+  it("gives each alternate a distinct Install tab when a screen has several", async () => {
+    const opts = mapEstimatorToScoping(
+      answersWith(primary({ alternates: [{ pixelPitch: "4" }, { pixelPitch: "2.5" }] })),
+    );
+
+    const { workbook } = await generateScopingWorkbook(opts);
+    const installTabs = workbook.worksheets.map((w) => w.name).filter((n) => n.endsWith(" - Install"));
+
+    expect(installTabs).toEqual([
+      "Main Scoreboard - Install",
+      "ALT1 Main Scoreboard - Install",
+      "ALT2 Main Scoreboard - Install",
+    ]);
+  });
+
+  it("keeps per-display install complexity aligned when a screen has an alternate", () => {
+    // `perDisplayComplexity` is parallel to the full specs array (base + alternates
+    // interleaved). The workbook filters alternates out of the base bid, so without
+    // re-indexing, one alternate on screen 1 shifts screen 2 onto screen 1's setting.
+    const opts = mapEstimatorToScoping(
+      answersWith(
+        primary({ displayName: "Screen A", installComplexity: "simple", alternates: [{ pixelPitch: "4" }] }),
+        primary({ displayName: "Screen B", installComplexity: "heavy" }),
+      ),
+    );
+
+    expect(opts.overrides?.perDisplayComplexity).toEqual(["simple", "simple", "heavy"]);
+  });
+
+  it("keeps a typed cost override on the screen it was typed on", async () => {
+    // Same parallel-array problem, but this one moves money: `perDisplayCostOverrides`
+    // is indexed the same way, so an alternate on Screen A shifted Screen B's typed
+    // display cost off Screen B entirely.
+    const OVERRIDE = 876543;
+    const opts = mapEstimatorToScoping(
+      answersWith(
+        primary({ displayName: "Screen A", alternates: [{ pixelPitch: "4" }] }),
+        primary({ displayName: "Screen B", costOverrides: { shipping: OVERRIDE } }),
+      ),
+    );
+
+    const { workbook } = await generateScopingWorkbook(opts);
+    const ws = workbook.getWorksheet("LED Cost Sheet")!;
+    const numbers: number[] = [];
+    ws.eachRow((row) => {
+      row.eachCell({ includeEmpty: false }, (cell) => {
+        const v: any = cell.value;
+        if (typeof v === "number") numbers.push(v);
+        else if (v && typeof v === "object" && typeof v.result === "number") numbers.push(v.result);
+      });
+    });
+
+    expect(numbers).toContain(OVERRIDE);
+  });
 });
