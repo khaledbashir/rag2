@@ -23,9 +23,10 @@ import {
   buildServiceProposalIntro,
   type ServiceProposalIntroValues,
 } from "@/lib/serviceContracts/serviceProposalIntro";
+import { buildServiceScopeOfWork } from "@/lib/serviceContracts/serviceScopeOfWork";
 import type { ServicePricingDocument } from "@/types/servicePricing";
 
-type ServiceProposalSectionId = "intro" | "compensation";
+type ServiceProposalSectionId = "intro" | "sow" | "compensation" | "notes";
 
 type ServiceProposalSectionOverrides = Record<ServiceProposalSectionId, { enabled?: boolean; bodyText?: string }>;
 
@@ -50,6 +51,19 @@ export default function PdfServiceProposal({ colors, intro, details }: PdfServic
   const paragraphs = introOverride ? null : buildServiceProposalIntro(intro);
 
   const venueName = (intro.venueName || "").trim();
+
+  // Scope of services — derived from the priced service lines (Alexis: "scope
+  // of work is just based on what these line items are"). A hand-built fee
+  // schedule carries contract years, not services, so there is nothing to
+  // derive there: the author types the scope and their text wins.
+  const sowOverride = getBodyOverride("sow");
+  const scopeLineLabels = svcDoc ? svcDoc.rows.filter((r) => r.kind === "line").map((r) => r.label) : [];
+  const scope = sowOverride ? null : buildServiceScopeOfWork({ venueName, lineLabels: scopeLineLabels });
+
+  // Notes — ANC-authored, shared with the LED proposal's notes field so an
+  // author does not keep two lists. Hidden entirely when there is nothing.
+  const notesOverride = getBodyOverride("notes");
+  const notesBody = (notesOverride || details?.customProposalNotes || details?.additionalNotes || "").toString().trim();
   const Header = ({ children }: { children: React.ReactNode }) => (
     <div style={{ display: "flex", alignItems: "center", gap: "6px", margin: "14px 0 8px" }}>
       <div style={{ width: "3px", height: "14px", borderRadius: "1px", background: colors.primary, flexShrink: 0 }} />
@@ -84,6 +98,28 @@ export default function PdfServiceProposal({ colors, intro, details }: PdfServic
         </section>
       )}
 
+      {isSectionEnabled("sow") && (sowOverride || scope) && (
+        <section
+          data-preview-section="service-section-sow"
+          className="mt-4 break-inside-avoid"
+          style={{ breakInside: "avoid", pageBreakInside: "avoid" }}
+        >
+          <Header>Scope of Services</Header>
+          {sowOverride ? (
+            <EditedBody text={sowOverride} />
+          ) : (
+            <>
+              <p className="mb-2">{scope!.lead}</p>
+              <ul className="list-disc pl-5 space-y-1 mb-3">
+                {scope!.items.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+      )}
+
       {isSectionEnabled("compensation") && (
         <section data-preview-section="service-section-compensation" className="mt-4">
           <Header>Compensation</Header>
@@ -93,6 +129,17 @@ export default function PdfServiceProposal({ colors, intro, details }: PdfServic
           ) : (
             <PdfManualServiceFeeTable colors={colors} rows={manualFeeRows} />
           )}
+        </section>
+      )}
+
+      {isSectionEnabled("notes") && notesBody && (
+        <section
+          data-preview-section="service-section-notes"
+          className="mt-4 break-inside-avoid"
+          style={{ breakInside: "avoid", pageBreakInside: "avoid" }}
+        >
+          <Header>Notes</Header>
+          <EditedBody text={notesBody} />
         </section>
       )}
 

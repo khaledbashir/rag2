@@ -163,3 +163,108 @@ describe("service proposal and contract rendering", () => {
     }
   });
 });
+
+/**
+ * Natalia 2026-07-30: "service PROPOSAL need sow, notes". Scope is derived from
+ * the priced service lines (Alexis on the same call: "scope of work is just
+ * based on what these line items are"); notes are ANC-authored.
+ */
+describe("service proposal — scope of services and notes", () => {
+  const svcDoc = {
+    sourceSheet: "Option 1",
+    fileName: "Fifth Third Park 2026-2028 Service (1).xlsx",
+    clientName: "Fifth Third Park",
+    yearLabels: ["2026", "2027", "2028"],
+    rows: [
+      { label: "Preseason Check", cells: [{ raw: "Included", display: "Included" }], kind: "line", sourceRow: 9 },
+      { label: "VSB License Fee", cells: [{ raw: 13500, display: "$13,500.00" }], kind: "line", sourceRow: 11 },
+      { label: "*20% Bundle Discount Added", cells: [{ raw: null, display: "" }], kind: "note", sourceRow: 15 },
+    ],
+    totalRow: null,
+    termYears: 3,
+    termStartYear: 2026,
+    termEndYear: 2028,
+    currency: "USD" as const,
+    metadata: { importedAt: "2026-07-30T00:00:00.000Z", warnings: [] },
+  };
+
+  it("derives the scope from the priced service lines", () => {
+    const html = renderToStaticMarkup(
+      <PdfServiceProposal colors={colors} intro={intro} details={{ servicePricingDocument: svcDoc }} />,
+    );
+    expect(html).toContain("Scope of Services");
+    expect(html).toContain("ANC will provide the following services at Bank of America Stadium");
+    expect(html).toContain("<li>Preseason Check</li>");
+    expect(html).toContain("<li>VSB License Fee</li>");
+    // Sheet footnotes belong under the fee table, never in the scope list.
+    expect(html).not.toContain("<li>*20% Bundle Discount Added</li>");
+  });
+
+  it("never restates pricing inside the scope section", () => {
+    const html = renderToStaticMarkup(
+      <PdfServiceProposal colors={colors} intro={intro} details={{ servicePricingDocument: svcDoc }} />,
+    );
+    const scope = html.split("Scope of Services")[1].split("Compensation")[0];
+    expect(scope).not.toContain("$13,500.00");
+  });
+
+  it("hides the scope section when nothing is priced yet", () => {
+    const html = renderToStaticMarkup(
+      <PdfServiceProposal colors={colors} intro={intro} details={{}} />,
+    );
+    expect(html).not.toContain("Scope of Services");
+  });
+
+  it("lets a typed scope win over the derived one", () => {
+    const html = renderToStaticMarkup(
+      <PdfServiceProposal
+        colors={colors}
+        intro={intro}
+        details={{
+          servicePricingDocument: svcDoc,
+          serviceSectionOverrides: { "SERVICE_PROPOSAL:sow": { bodyText: "Full-time on-site technician, 40 hours per week." } },
+        }}
+      />,
+    );
+    expect(html).toContain("Full-time on-site technician, 40 hours per week.");
+    expect(html).not.toContain("<li>Preseason Check</li>");
+  });
+
+  it("renders ANC notes and hides the section when there are none", () => {
+    const withNotes = renderToStaticMarkup(
+      <PdfServiceProposal
+        colors={colors}
+        intro={intro}
+        details={{ servicePricingDocument: svcDoc, customProposalNotes: "Parts warranty carries over from the project." }}
+      />,
+    );
+    expect(withNotes).toContain("Notes");
+    expect(withNotes).toContain("Parts warranty carries over from the project.");
+
+    const without = renderToStaticMarkup(
+      <PdfServiceProposal colors={colors} intro={intro} details={{ servicePricingDocument: svcDoc }} />,
+    );
+    expect(without).not.toContain("service-section-notes");
+  });
+
+  it("keeps both new sections independently toggleable", () => {
+    const html = renderToStaticMarkup(
+      <PdfServiceProposal
+        colors={colors}
+        intro={intro}
+        details={{
+          servicePricingDocument: svcDoc,
+          customProposalNotes: "Parts warranty carries over from the project.",
+          serviceSectionOverrides: {
+            "SERVICE_PROPOSAL:sow": { enabled: false },
+            "SERVICE_PROPOSAL:notes": { enabled: false },
+          },
+        }}
+      />,
+    );
+    expect(html).not.toContain("Scope of Services");
+    expect(html).not.toContain("service-section-notes");
+    // The rest of the document is untouched.
+    expect(html).toContain("Compensation");
+  });
+});

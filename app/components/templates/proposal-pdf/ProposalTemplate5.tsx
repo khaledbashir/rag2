@@ -50,6 +50,7 @@ import { ProposalType } from "@/types";
 import { RespMatrix } from "@/types/pricing";
 import { getMasterRespMatrix } from "@/lib/respMatrixMaster";
 import { buildChangeOrderIntroSegments } from "@/lib/changeOrderIntro";
+import { buildLoiIntroSegments } from "@/lib/loiIntro";
 
 interface ProposalTemplate5Props extends ProposalType {
     forceWhiteLogo?: boolean;
@@ -883,6 +884,17 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                                     )}
                                 </p>
                             )
+                        ) : documentMode === "LOI" ? (
+                            /* Natalia 2026-07-30: Short Form Agreement opens with her
+                               Letter of Intent paragraph. Short Form Contract keeps
+                               its own wording in the branch below. */
+                            <p className="text-justify">
+                                {buildLoiIntroSegments({ purchaserLegalName, purchaserAddress }).map((seg, i) =>
+                                    seg.bold
+                                        ? <strong key={i} style={{ color: colors.text }}>{seg.text}</strong>
+                                        : <React.Fragment key={i}>{seg.text}</React.Fragment>
+                                )}
+                            </p>
                         ) : isLOI ? (
                             <p className="text-justify">
                                 This {shortFormDocumentName} sets forth the terms by which <strong style={{ color: colors.text }}>{purchaserLegalName}</strong> (&quot;Purchaser&quot;){purchaserAddress ? ` located at ${purchaserAddress}` : ""} and <strong style={{ color: colors.text }}>ANC Sports Enterprises, LLC</strong> (&quot;ANC&quot;) located at 2 Manhattanville Road, Suite 402, Purchase, NY 10577 (collectively, the &quot;Parties&quot;) agree that ANC will provide the display system and related services described below for the <strong style={{ color: colors.text }}>{details?.proposalName || (details as any)?.clientName || receiver?.name || "project"}</strong>{venueLabel ? <> at <strong style={{ color: colors.text }}>{venueLabel}</strong></> : null}.

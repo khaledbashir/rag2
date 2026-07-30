@@ -3,6 +3,7 @@ import { computeTableTotals, computeDocumentTotalFromTables, resolveExchangeRate
 import { normalizePitch } from "@/lib/helpers";
 import { resolveDocumentMode } from "@/lib/documentMode";
 import { changeOrderIntroHtml } from "@/lib/changeOrderIntro";
+import { loiIntroHtml } from "@/lib/loiIntro";
 import { DOCUMENT_MODES, DocumentMode as CatalogDocumentMode } from "@/services/rfp/productCatalog";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -272,9 +273,13 @@ export function transformProposalToJsreport(
         introText = details.loiHeaderText.trim();
     } else if (details?.introText?.trim()) {
         introText = details.introText.trim();
+    } else if (documentMode === "LOI") {
+        // Natalia 2026-07-30: Short Form Agreement opens with her Letter of
+        // Intent paragraph. Short Form Contract keeps its own wording below.
+        introText = loiIntroHtml({ purchaserLegalName, purchaserAddress });
     } else if (isLOI) {
         const venueClause = venueLabel ? ` at <strong style="color:black">${venueLabel}</strong>` : "";
-        introText = `This Short Form Agreement sets forth the terms by which <strong style="color:black">${purchaserLegalName}</strong> ("Purchaser")${purchaserAddress ? ` located at ${purchaserAddress}` : ""} and <strong style="color:black">ANC Sports Enterprises, LLC</strong> ("ANC") located at 2 Manhattanville Road, Suite 402, Purchase, NY 10577 (collectively, the "Parties") agree that ANC will provide the display system and related services described below for the <strong style="color:black">${details?.proposalName || "project"}</strong>${venueClause}.`;
+        introText = `This Short Form Contract sets forth the terms by which <strong style="color:black">${purchaserLegalName}</strong> ("Purchaser")${purchaserAddress ? ` located at ${purchaserAddress}` : ""} and <strong style="color:black">ANC Sports Enterprises, LLC</strong> ("ANC") located at 2 Manhattanville Road, Suite 402, Purchase, NY 10577 (collectively, the "Parties") agree that ANC will provide the display system and related services described below for the <strong style="color:black">${details?.proposalName || "project"}</strong>${venueClause}.`;
     } else {
         // Generic fallback
         introText = `ANC is pleased to present the following proposal for <strong style="color:black">${purchaserName}</strong> per the specifications and pricing below.`;

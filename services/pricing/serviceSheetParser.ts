@@ -37,7 +37,30 @@ const TEAM_RE = /^team:?\s*$/i;
 const TOTAL_RE = /^total\b/i;
 
 /** Year-column header: "26/27", "26-27", "2026/27", "2026-2027", "Year 1". */
-const YEAR_LABEL_RE = /^\s*(?:'?\d{2}|20\d{2})\s*[/\-–]\s*(?:'?\d{2}|20\d{2})\s*$|^\s*year\s*\d+\s*$/i;
+const YEAR_RANGE_LABEL_RE = /^\s*(?:'?\d{2}|20\d{2})\s*[/\-–]\s*(?:'?\d{2}|20\d{2})\s*$|^\s*year\s*\d+\s*$/i;
+
+/**
+ * Single-year column header: "2026" or "'26". Some ANC service sheets label the
+ * contract-year columns with a bare year instead of a season range (Fifth Third
+ * Park 2026-2028 uses 2026 | 2026 | 2026 on the "Team:" row). Bounded to a
+ * plausible contract window so stray numbers in helper columns can't pose as
+ * year headers.
+ */
+const SINGLE_YEAR_LABEL_RE = /^\s*'?(\d{2}|(?:19|20)\d{2})\s*$/;
+const MIN_YEAR = 1990;
+const MAX_YEAR = 2100;
+
+function isSingleYearLabel(text: string): boolean {
+  const match = text.match(SINGLE_YEAR_LABEL_RE);
+  if (!match) return false;
+  const digits = match[1];
+  const year = digits.length === 2 ? 2000 + Number(digits) : Number(digits);
+  return year >= MIN_YEAR && year <= MAX_YEAR;
+}
+
+function isYearLabel(text: string): boolean {
+  return YEAR_RANGE_LABEL_RE.test(text) || isSingleYearLabel(text);
+}
 
 /** How deep we scan a sheet for structure markers. */
 const MAX_SCAN_ROWS = 300;
@@ -46,6 +69,14 @@ const MARKER_COLS = [0, 1, 2];
 
 /** Sheets that should lose detection ties (superseded working copies). */
 const STALE_SHEET_RE = /\b(old|archive|copy|backup|draft)\b/i;
+
+/**
+ * Priced-variant label ("Option 1", "Scenario B", "Alt 2"). ANC service sheets
+ * put these on the "Team:" row when one workbook carries several priced options
+ * — Fifth Third Park has Option 1 / Option 2 tabs. A variant label is never the
+ * client name, so it must not reach the proposal intro as the Purchaser.
+ */
+const VARIANT_LABEL_RE = /^(option|opt|scenario|alt|alternate|alternative|version|choice|plan)\b[\s#]*[\w-]*$/i;
 
 interface SheetStructure {
   sheetName: string;
@@ -57,6 +88,8 @@ interface SheetStructure {
   yearLabels: string[];
   /** Raw "Team:" row client value, when the sheet carries one. */
   teamName: string | null;
+  /** Priced-variant label from the "Team:" row ("Option 1"), when present. */
+  variantLabel: string | null;
 }
 
 const cellText = (v: unknown): string => String(v ?? "").trim();
@@ -94,7 +127,7 @@ function findSheetStructure(sheetName: string, data: any[][]): SheetStructure | 
     const labels: string[] = [];
     for (let c = 2; c < row.length; c++) {
       const text = cellText(row[c]);
-      if (text && YEAR_LABEL_RE.test(text)) {
+      if (text && isYearLabel(text)) {
         cols.push(c);
         labels.push(text);
       }
@@ -108,23 +141,29 @@ function findSheetStructure(sheetName: string, data: any[][]): SheetStructure | 
   }
   if (yearCols.length === 0) return null;
 
-  // Optional "Team:" marker → client name from the same row.
+  // Optional "Team:" marker → client name from the same row. Variant labels
+  // ("Option 1") share this row on multi-option sheets; they are captured
+  // separately and never returned as the client.
   let teamName: string | null = null;
+  let variantLabel: string | null = null;
   for (let r = 0; r < rowCount; r++) {
     const row = data[r] || [];
     const markerCol = MARKER_COLS.find((c) => TEAM_RE.test(cellText(row[c])));
     if (markerCol === undefined) continue;
     for (let c = markerCol + 1; c < Math.min(row.length, yearCols[0]); c++) {
       const text = cellText(row[c]);
-      if (text) {
-        teamName = text;
-        break;
+      if (!text) continue;
+      if (VARIANT_LABEL_RE.test(text)) {
+        if (!variantLabel) variantLabel = text;
+        continue;
       }
+      teamName = text;
+      break;
     }
     break;
   }
 
-  return { sheetName, incomeRow, expenseRow, yearHeaderRow, yearCols, yearLabels, teamName };
+  return { sheetName, incomeRow, expenseRow, yearHeaderRow, yearCols, yearLabels, teamName, variantLabel };
 }
 
 /**
@@ -133,6 +172,16 @@ function findSheetStructure(sheetName: string, data: any[][]): SheetStructure | 
  * "archive", …) and earlier workbook order.
  */
 export function detectServiceSheet(workbook: any): SheetStructure | null {
+  return listServiceSheets(workbook)[0] ?? null;
+}
+
+/**
+ * Every service-sheet tab in the workbook, best candidate first. A workbook can
+ * carry several priced variants of the same deal — Fifth Third Park ships
+ * "Option 1" and "Option 2" — and the caller needs to know they exist rather
+ * than silently importing the first one.
+ */
+export function listServiceSheets(workbook: any): SheetStructure[] {
   const xlsx = require("xlsx");
   const candidates: Array<{ structure: SheetStructure; order: number; stale: boolean }> = [];
 
@@ -146,9 +195,8 @@ export function detectServiceSheet(workbook: any): SheetStructure | null {
     }
   });
 
-  if (candidates.length === 0) return null;
   candidates.sort((a, b) => Number(a.stale) - Number(b.stale) || a.order - b.order);
-  return candidates[0].structure;
+  return candidates.map((c) => c.structure);
 }
 
 /** Cheap boolean probe used by the import route. */
@@ -206,13 +254,59 @@ function termRange(fileName: string, sheetName: string): { start: number | null;
 }
 
 /**
+ * Contract-year column headers, mirrored from the sheet.
+ *
+ * Exception (disclosed, never silent): when every detected header is the same
+ * year — a fill-down slip we see in real ANC sheets, e.g. Fifth Third Park
+ * labels three columns "2026 | 2026 | 2026" — identical headers would ship to a
+ * client as three columns that look like the same year. When the workbook's own
+ * term range covers exactly that many years, the columns are numbered across
+ * that range and a warning records the substitution. Any other shape is carried
+ * through verbatim.
+ */
+function resolveYearLabels(
+  yearLabels: string[],
+  termStartYear: number | null,
+  termEndYear: number | null,
+  warnings: string[],
+): string[] {
+  const distinct = new Set(yearLabels.map((l) => l.trim().toLowerCase()));
+  if (distinct.size === yearLabels.length) return yearLabels;
+
+  const spansTerm =
+    termStartYear !== null &&
+    termEndYear !== null &&
+    termEndYear - termStartYear + 1 === yearLabels.length;
+
+  if (distinct.size === 1 && spansTerm) {
+    const derived = yearLabels.map((_, i) => String(termStartYear! + i));
+    warnings.push(
+      `Year columns all read "${yearLabels[0]}" in the sheet; numbered them ${derived.join(", ")} from the ${termStartYear}-${termEndYear} term. Edit the sheet header if a different labelling is intended.`,
+    );
+    return derived;
+  }
+
+  warnings.push(
+    `Year columns repeat the same header (${yearLabels.join(", ")}); carried through exactly as the sheet shows them.`,
+  );
+  return yearLabels;
+}
+
+/**
  * Parse a detected service sheet into a mirrored ServicePricingDocument plus
  * setup prefill (client, venue, term). Throws if the workbook is not a service
  * sheet — call detectServiceSheet()/isServiceSheetWorkbook() first.
  */
-export function parseServiceSheet(workbook: any, fileName: string = "import.xlsx"): ServiceSheetParseResult {
+export function parseServiceSheet(
+  workbook: any,
+  fileName: string = "import.xlsx",
+  selectedSheetName?: string,
+): ServiceSheetParseResult {
   const xlsx = require("xlsx");
-  const structure = detectServiceSheet(workbook);
+  const allSheets = listServiceSheets(workbook);
+  const structure = selectedSheetName
+    ? allSheets.find((s) => s.sheetName === selectedSheetName) ?? null
+    : allSheets[0] ?? null;
   if (!structure) {
     throw new Error("Workbook is not a recognized service sheet (no Income/Expenses budget structure found).");
   }
@@ -265,7 +359,17 @@ export function parseServiceSheet(workbook: any, fileName: string = "import.xlsx
     warnings.push("No total row found between Income and Expenses — the proposal table will render without a YEARLY TOTAL row.");
   }
 
+  // Priced variants in the same workbook (Option 1 / Option 2). Only the
+  // selected tab is imported — say so rather than letting the others vanish.
+  const siblingSheets = allSheets.filter((s) => s.sheetName !== sheetName).map((s) => s.sheetName);
+  if (siblingSheets.length > 0) {
+    warnings.push(
+      `This workbook carries ${allSheets.length} priced options (${allSheets.map((s) => s.sheetName).join(", ")}). Imported "${sheetName}" — switch tabs to import a different one.`,
+    );
+  }
+
   const { start: termStartYear, end: termEndYear } = termRange(fileName, sheetName);
+  const resolvedYearLabels = resolveYearLabels(yearLabels, termStartYear, termEndYear, warnings);
   const clientName = structure.teamName || clientNameFromFileName(fileName);
   if (!clientName) warnings.push("Could not determine the client name from the sheet or file name.");
 
@@ -275,10 +379,10 @@ export function parseServiceSheet(workbook: any, fileName: string = "import.xlsx
     sourceSheet: sheetName,
     fileName,
     clientName,
-    yearLabels,
+    yearLabels: resolvedYearLabels,
     rows,
     totalRow,
-    termYears: yearLabels.length,
+    termYears: resolvedYearLabels.length,
     termStartYear,
     termEndYear,
     currency,
@@ -293,7 +397,7 @@ export function parseServiceSheet(workbook: any, fileName: string = "import.xlsx
     venueName: teamVenue?.venue ?? null,
     venueAddress: teamVenue?.address ?? null,
     league: teamVenue?.league ?? null,
-    termYears: yearLabels.length,
+    termYears: resolvedYearLabels.length,
     termStartYear,
     termEndYear,
   };

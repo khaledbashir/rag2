@@ -14,6 +14,7 @@ import * as xlsx from "xlsx";
 import {
   detectServiceSheet,
   isServiceSheetWorkbook,
+  listServiceSheets,
   parseServiceSheet,
 } from "@/services/pricing/serviceSheetParser";
 
@@ -106,5 +107,104 @@ describe("parseServiceSheet — Panthers reference file", () => {
   it("throws a clear error for non-service workbooks", () => {
     const wb2 = loadWorkbook(LED_FIXTURE);
     expect(() => parseServiceSheet(wb2, "led.xlsx")).toThrow(/not a recognized service sheet/i);
+  });
+});
+
+/**
+ * Fifth Third Park 2026-2028 (Natalia 2026-07-30: "service excel format is not
+ * being recognized"). Same Property/Event Budget Overview shape as the Panthers
+ * file, but the contract-year columns are labelled with a bare year on the
+ * "Team:" row — 2026 | 2026 | 2026 — instead of a season range, so the
+ * range-only header regex found no year columns and the workbook fell through
+ * to the LED column-mapper path.
+ */
+const FIFTH_THIRD_FIXTURE = path.resolve(
+  process.cwd(),
+  "test-fixtures/service/Fifth Third Park 2026-2028 Service.xlsx",
+);
+const FIFTH_THIRD_FILENAME = "Fifth Third Park 2026-2028 Service (1).xlsx";
+
+describe("Fifth Third Park — bare-year column headers", () => {
+  const wb = loadWorkbook(FIFTH_THIRD_FIXTURE);
+
+  it("recognizes the workbook as a service sheet", () => {
+    expect(isServiceSheetWorkbook(wb)).toBe(true);
+    const structure = detectServiceSheet(wb);
+    expect(structure!.sheetName).toBe("Option 1");
+    expect(structure!.yearCols).toEqual([5, 6, 7]);
+  });
+
+  const { document, prefill } = parseServiceSheet(wb, FIFTH_THIRD_FILENAME);
+
+  it("extracts the client-facing fee lines between Income and Expenses", () => {
+    const lines = document.rows.filter((r) => r.kind === "line");
+    expect(lines.map((r) => r.label)).toEqual([
+      "Preseason Check",
+      "Graphics (up to 100 hours)",
+      "VSB License Fee",
+      "Tech Support",
+      "LiveSync License",
+      "Parts Waranty",
+    ]);
+  });
+
+  it("mirrors Excel values exactly, including 'Included' text cells", () => {
+    const byLabel = Object.fromEntries(
+      document.rows.filter((r) => r.kind === "line").map((r) => [r.label, r.cells]),
+    );
+    expect(byLabel["Preseason Check"].map((c) => c.raw)).toEqual(["Included", 7500, 7875]);
+    expect(byLabel["Preseason Check"][0].display).toBe("Included");
+    expect(byLabel["VSB License Fee"].map((c) => c.raw)).toEqual([13500, 13500, 13500]);
+  });
+
+  it("captures TOTAL INCOME as the yearly total", () => {
+    expect(document.totalRow!.label).toBe("TOTAL INCOME");
+    expect(document.totalRow!.cells.map((c) => c.raw)).toEqual([53500, 82188, 90308]);
+  });
+
+  it("numbers repeated year headers across the term and records the substitution", () => {
+    expect(document.yearLabels).toEqual(["2026", "2027", "2028"]);
+    expect(document.termYears).toBe(3);
+    expect(document.termStartYear).toBe(2026);
+    expect(document.termEndYear).toBe(2028);
+    expect(document.metadata.warnings.join(" ")).toMatch(/all read "2026".*numbered them 2026, 2027, 2028/i);
+  });
+
+  it("still prefills the client from the file name", () => {
+    expect(prefill.clientName).toBe("Fifth Third Park");
+    expect(prefill.termYears).toBe(3);
+  });
+});
+
+describe("Fifth Third Park — priced option tabs", () => {
+  const wb = loadWorkbook(FIFTH_THIRD_FIXTURE);
+
+  it("lists every priced option tab, best candidate first", () => {
+    expect(listServiceSheets(wb).map((s) => s.sheetName)).toEqual(["Option 1", "Option 2"]);
+  });
+
+  it("keeps the 'Option 1' variant label out of the client name", () => {
+    const structure = detectServiceSheet(wb)!;
+    expect(structure.variantLabel).toBe("Option 1");
+    expect(structure.teamName).toBeNull();
+    const { prefill } = parseServiceSheet(wb, FIFTH_THIRD_FILENAME);
+    expect(prefill.clientName).toBe("Fifth Third Park");
+  });
+
+  it("warns that other priced options exist rather than dropping them silently", () => {
+    const { document } = parseServiceSheet(wb, FIFTH_THIRD_FILENAME);
+    expect(document.metadata.warnings.join(" ")).toMatch(/2 priced options \(Option 1, Option 2\).*Imported "Option 1"/);
+  });
+
+  it("imports a named option tab on request", () => {
+    const { document } = parseServiceSheet(wb, FIFTH_THIRD_FILENAME, "Option 2");
+    expect(document.sourceSheet).toBe("Option 2");
+    expect(document.rows.filter((r) => r.kind === "line").map((r) => r.label)).toEqual([
+      "VSB License Fee",
+      "Tech Support",
+      "LiveSync License",
+      "Parts Waranty",
+    ]);
+    expect(document.totalRow!.cells.map((c) => c.raw)).toEqual([23500, 46688, 52855]);
   });
 });

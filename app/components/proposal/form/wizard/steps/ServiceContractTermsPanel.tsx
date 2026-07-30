@@ -21,11 +21,20 @@ import { getDefaultTemplate, resolveExhibits } from "@/lib/serviceContracts/regi
 import { getPreset } from "@/lib/serviceContracts/presets";
 import { matchTeamVenue } from "@/lib/serviceContracts/teamVenues";
 import { buildServiceProposalIntro, cityStateFromAddress } from "@/lib/serviceContracts/serviceProposalIntro";
+import { serviceScopeOfWorkText } from "@/lib/serviceContracts/serviceScopeOfWork";
 import type { ServicePricingDocument } from "@/types/servicePricing";
 import type { ProposalType } from "@/types";
 import type { ServiceAgreementFeeRow } from "@/app/components/templates/proposal-pdf/sections/PdfServiceAgreement";
 
-type StandardServiceSectionId = "intro" | "ancResponsibilities" | "purchaserResponsibilities" | "term" | "compensation" | "signature";
+type StandardServiceSectionId =
+    | "intro"
+    | "sow"
+    | "ancResponsibilities"
+    | "purchaserResponsibilities"
+    | "term"
+    | "compensation"
+    | "notes"
+    | "signature";
 
 type StandardSectionOverride = { enabled?: boolean; bodyText?: string };
 
@@ -53,6 +62,10 @@ export function ServiceContractTermsPanel() {
     const svcDoc = (watch("details.servicePricingDocument" as any) ?? null) as ServicePricingDocument | null;
     const manualFeeRows = ((watch("details.serviceManualFeeRows" as any) as ServiceAgreementFeeRow[]) || []);
     const serviceProposalIntro = (watch("details.serviceProposalIntro" as any) as string) || "";
+    // ANC-authored notes, shared with the LED proposal's notes field.
+    const customProposalNotes = ((watch("details.customProposalNotes" as any) as string)
+        || (watch("details.additionalNotes" as any) as string)
+        || "");
     const todayFormatted = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
     // Auto-detect the venue from the team so the placeholders show what the
     // contract will use before the user types anything.
@@ -169,10 +182,23 @@ export function ServiceContractTermsPanel() {
         `WHEREAS, Purchaser plays in the sports and entertainment facility currently known as ${scVenueName || detectedTeamVenue?.venue || "________"} (the “Stadium”), in which LED Modules and the necessary hardware, software, equipment and connections required to operate the Stadium LED Modules (collectively, the “LED System”) have been installed for use at NFL Games and other events; and which Purchaser wishes to have ANC maintain such LED System;\n\n` +
         `NOW, THEREFORE, the parties hereto hereby agree as follows:`;
 
+    // Scope of services, derived from the priced service lines — the same
+    // resolution the PDF uses, so the editor placeholder shows exactly what
+    // will render before anyone types (Natalia 2026-07-30: "service PROPOSAL
+    // need sow, notes").
+    const defaultSowText = isServiceProposal
+        ? serviceScopeOfWorkText({
+            venueName: scVenueName || introTeamVenue?.venue || scPurchaserName || svcDoc?.clientName || receiverName,
+            lineLabels: svcDoc ? svcDoc.rows.filter((r) => r.kind === "line").map((r) => r.label) : [],
+        })
+        : "";
+
     const standardSections = (isServiceProposal
         ? [
             { id: "intro" as const, label: "Intro / Whereas", defaultBody: defaultIntroText },
+            { id: "sow" as const, label: "Scope of Services", defaultBody: defaultSowText },
             { id: "compensation" as const, label: "Compensation", defaultBody: "" },
+            { id: "notes" as const, label: "Notes", defaultBody: customProposalNotes },
         ]
         : [
             { id: "intro" as const, label: "Intro / Whereas", defaultBody: contractIntroText },
@@ -221,6 +247,16 @@ export function ServiceContractTermsPanel() {
                         {svcDoc.termYears} contract year{svcDoc.termYears === 1 ? "" : "s"} ({svcDoc.yearLabels.join(", ")})
                         {svcDoc.clientName ? <> · client {svcDoc.clientName}</> : null}
                         {svcDoc.termStartYear && svcDoc.termEndYear ? <> · term {svcDoc.termStartYear}–{svcDoc.termEndYear}</> : null}
+                    </div>
+                )}
+                {/* What the import had to decide for you — repeated year headers,
+                    other priced option tabs left behind, a missing total row.
+                    Silent decisions on a client-facing document are not decisions. */}
+                {svcDoc && svcDoc.metadata?.warnings?.length > 0 && (
+                    <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400 space-y-1">
+                        {svcDoc.metadata.warnings.map((warning) => (
+                            <p key={warning}>{warning}</p>
+                        ))}
                     </div>
                 )}
                 {/* Contract details — purchaser, venue, address, date. These
