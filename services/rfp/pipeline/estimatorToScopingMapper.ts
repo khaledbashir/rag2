@@ -6,6 +6,7 @@
  */
 
 import type { EstimatorAnswers, DisplayAnswers } from "@/app/components/estimator/questions";
+import { resolveAlternates } from "@/app/components/estimator/questions";
 import type { ExtractedLEDSpec, ExtractedProjectInfo } from "@/services/rfp/unified/types";
 import type { ScopingWorkbookOptions, FinancialOverrides } from "./generateScopingWorkbook";
 import { type InstallComplexity, getProduct } from "@/services/rfp/productCatalog";
@@ -120,18 +121,35 @@ function mapDisplay(d: DisplayAnswers, env: "indoor" | "outdoor"): ExtractedLEDS
 }
 
 // ---------------------------------------------------------------------------
-// Alt pitch variants: DisplayAnswers with altPitches → additional ExtractedLEDSpec[]
+// Alternates: DisplayAnswers alternates → additional ExtractedLEDSpec[]
+// An alternate may carry its own dimensions/quantity, so the scoping spec has
+// to describe the size actually being bid, not the primary's.
 // ---------------------------------------------------------------------------
 
 function mapAltPitchVariants(d: DisplayAnswers, env: "indoor" | "outdoor"): ExtractedLEDSpec[] {
-  if (!d.altPitches || d.altPitches.length === 0) return [];
+  const alternates = resolveAlternates(d);
+  if (alternates.length === 0) return [];
 
-  return d.altPitches.map((altPitch) => {
-    // Clear base product — alt pitch needs its own product resolution via pitch lookup
-    const spec = mapDisplay({ ...d, pixelPitch: altPitch, productId: "", productName: "" }, env);
-    spec.name = `${d.displayName?.trim() || humanizeType(d.displayType) || "Unnamed Display"} — Alt ${altPitch}mm`;
+  const baseName = d.displayName?.trim() || humanizeType(d.displayType) || "Unnamed Display";
+
+  return alternates.map((alt) => {
+    const widthFt = alt.widthFt && alt.widthFt > 0 ? alt.widthFt : d.widthFt;
+    const heightFt = alt.heightFt && alt.heightFt > 0 ? alt.heightFt : d.heightFt;
+    const quantity = alt.quantity && alt.quantity > 0 ? alt.quantity : d.quantity;
+    const resized = widthFt !== d.widthFt || heightFt !== d.heightFt;
+
+    // Clear base product — an alternate needs its own product resolution via pitch lookup
+    const spec = mapDisplay(
+      { ...d, pixelPitch: alt.pixelPitch, widthFt, heightFt, quantity, productId: "", productName: "" },
+      env,
+    );
+    const suffix = alt.label?.trim()
+      || (resized ? `Alt ${alt.pixelPitch}mm ${widthFt}x${heightFt}ft` : `Alt ${alt.pixelPitch}mm`);
+    spec.name = `${baseName} — ${suffix}`;
     spec.isAlternate = true;
-    spec.alternateDescription = `Alternate pixel pitch: ${altPitch}mm (base: ${d.pixelPitch}mm)`;
+    spec.alternateDescription = resized
+      ? `Alternate: ${alt.pixelPitch}mm at ${widthFt}x${heightFt} ft (base: ${d.pixelPitch}mm at ${d.widthFt}x${d.heightFt} ft)`
+      : `Alternate pixel pitch: ${alt.pixelPitch}mm (base: ${d.pixelPitch}mm)`;
     return spec;
   });
 }

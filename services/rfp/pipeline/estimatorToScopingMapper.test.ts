@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { mapEstimatorToScoping } from "./estimatorToScopingMapper";
-import { getDefaultAnswers, getDefaultDisplayAnswers } from "@/app/components/estimator/questions";
+import { generateScopingWorkbook } from "./generateScopingWorkbook";
+import {
+  getDefaultAnswers,
+  getDefaultDisplayAnswers,
+  type DisplayAnswers,
+  type EstimatorAnswers,
+} from "@/app/components/estimator/questions";
 
 /**
  * Regression guard for the Sponsorship input wiring (Natalia 2026-07-07).
@@ -55,5 +61,111 @@ describe("mapEstimatorToScoping — rate linking (bond/tax/tariff)", () => {
   it("carries tariffRate (%) into overrides.tariffRate (0-1)", () => {
     expect(withRates({ tariffRate: 10 }).overrides?.tariffRate).toBeCloseTo(0.1, 6);
     expect(withRates({ tariffRate: 0 }).overrides?.tariffRate == null || withRates({ tariffRate: 0 }).overrides?.tariffRate === 0).toBe(true);
+  });
+});
+
+/**
+ * Regression guard for alternates reaching the workbook (Jack McCrossin
+ * 2026-07-29: "alternates are not showing up in the workbooks or populating
+ * anywhere").
+ *
+ * The estimator UI writes alternates to `alternates` and CLEARS the legacy
+ * `altPitches`. Any consumer still reading `altPitches` directly sees an empty
+ * list and silently drops every alternate. This mapper feeds both the scoping
+ * workbook and the bid-form filler, so a miss here makes alternates vanish from
+ * every downstream artifact at once — which is exactly what happened.
+ */
+describe("mapEstimatorToScoping — alternates reach the workbook", () => {
+  const primary = (overrides: Partial<DisplayAnswers> = {}): DisplayAnswers => ({
+    ...getDefaultDisplayAnswers(),
+    displayName: "Main Scoreboard",
+    displayType: "main-scoreboard",
+    widthFt: 40,
+    heightFt: 20,
+    quantity: 1,
+    pixelPitch: "6",
+    ...overrides,
+  });
+
+  const answersWith = (...displays: DisplayAnswers[]): EstimatorAnswers => ({
+    ...getDefaultAnswers(),
+    clientName: "Test Client",
+    projectName: "Alternates Regression",
+    displays,
+  });
+
+  it("maps a same-footprint alternate into an alternate spec", () => {
+    const opts = mapEstimatorToScoping(answersWith(primary({ alternates: [{ pixelPitch: "4" }] })));
+
+    expect(opts.specs).toHaveLength(2);
+    const alts = opts.specs.filter((s) => s.isAlternate);
+    expect(alts).toHaveLength(1);
+    expect(alts[0].pixelPitchMm).toBe(4);
+    expect(alts[0].widthFt).toBe(40);
+    expect(alts[0].heightFt).toBe(20);
+    expect(alts[0].name).toContain("Alt 4mm");
+  });
+
+  it("carries the alternate's own dimensions and quantity when it is resized", () => {
+    const opts = mapEstimatorToScoping(
+      answersWith(primary({ alternates: [{ pixelPitch: "4", widthFt: 60, heightFt: 30, quantity: 2 }] })),
+    );
+
+    const alt = opts.specs.find((s) => s.isAlternate)!;
+    expect(alt.widthFt).toBe(60);
+    expect(alt.heightFt).toBe(30);
+    expect(alt.quantity).toBe(2);
+    expect(alt.name).toContain("60x30ft");
+    expect(alt.alternateDescription).toContain("base: 6mm at 40x20 ft");
+  });
+
+  it("still maps a legacy altPitches entry so saved estimates keep working", () => {
+    const opts = mapEstimatorToScoping(answersWith(primary({ altPitches: ["4"] })));
+
+    const alts = opts.specs.filter((s) => s.isAlternate);
+    expect(alts).toHaveLength(1);
+    expect(alts[0].pixelPitchMm).toBe(4);
+  });
+
+  it("does not emit the same pitch twice when legacy and new lists overlap", () => {
+    const opts = mapEstimatorToScoping(
+      answersWith(primary({ altPitches: ["4"], alternates: [{ pixelPitch: "4" }] })),
+    );
+
+    expect(opts.specs.filter((s) => s.isAlternate)).toHaveLength(1);
+  });
+
+  it("honours a custom alternate label", () => {
+    const opts = mapEstimatorToScoping(
+      answersWith(primary({ alternates: [{ pixelPitch: "4", label: "Alternate No. 1" }] })),
+    );
+
+    expect(opts.specs.find((s) => s.isAlternate)!.name).toContain("Alternate No. 1");
+  });
+
+  it("keeps alternates out of the base bid", () => {
+    const opts = mapEstimatorToScoping(answersWith(primary({ alternates: [{ pixelPitch: "4" }] })));
+    expect(opts.includeAlternatesInBase).toBe(false);
+  });
+
+  it("renders the alternate on the LED Cost Sheet of a generated workbook", async () => {
+    const opts = mapEstimatorToScoping(
+      answersWith(primary({ alternates: [{ pixelPitch: "4", widthFt: 60, heightFt: 30 }] })),
+    );
+
+    const { workbook } = await generateScopingWorkbook(opts);
+    const ws = workbook.getWorksheet("LED Cost Sheet");
+    expect(ws).toBeTruthy();
+
+    const text: string[] = [];
+    ws!.eachRow((row) => {
+      row.eachCell({ includeEmpty: false }, (cell) => {
+        if (typeof cell.value === "string") text.push(cell.value);
+      });
+    });
+
+    const joined = text.join(" | ").toLowerCase();
+    expect(joined).toContain("alternates");
+    expect(joined).toContain("alt 4mm");
   });
 });
