@@ -147,6 +147,45 @@ const inputClass =
 
 const numberInputClass = `${inputClass} text-right tabular-nums`;
 
+/**
+ * A typed year cell — a number, or the word "Included".
+ *
+ * This has to hold the user's raw keystrokes while they are mid-word. The cell
+ * is a controlled input whose value is re-derived from the parsed model, so
+ * formatting it on every keystroke made the word impossible to type: "I" does
+ * not parse, becomes 0, and the field rewrites itself to "0" before the second
+ * letter lands. Only a paste ever worked.
+ *
+ * So the draft text wins while the field is focused, and the cell snaps to the
+ * canonical value on blur. The model still updates on every keystroke, so the
+ * totals below stay live.
+ */
+export function FlatAmountInput({
+  value,
+  onRawChange,
+  className,
+}: {
+  value: ServiceFlatAmount | undefined;
+  onRawChange: (raw: string) => void;
+  className?: string;
+}) {
+  const canonical = formatFlatAmount(value);
+  const [draft, setDraft] = useState<string | null>(null);
+
+  return (
+    <input
+      className={className}
+      value={draft ?? canonical}
+      placeholder="0"
+      onChange={(e) => {
+        setDraft(e.target.value);
+        onRawChange(e.target.value);
+      }}
+      onBlur={() => setDraft(null)}
+    />
+  );
+}
+
 function SectionTitle({ eyebrow, title, copy }: { eyebrow: string; title: string; copy: string }) {
   return (
     <div className="mb-5">
@@ -499,22 +538,20 @@ export default function ServiceEstimatorClient() {
                       ))}
                       <div className="self-center text-[11px] font-semibold text-foreground">Client</div>
                       {Array.from({ length: input.termYears }, (_, yearIndex) => (
-                        <input
+                        <FlatAmountInput
                           key={`rev-${yearIndex}`}
                           className={numberInputClass}
-                          value={formatFlatAmount(event.flatRevenue[yearIndex])}
-                          placeholder="0"
-                          onChange={(e) => patchFlatValue(index, "flatRevenue", yearIndex, e.target.value)}
+                          value={event.flatRevenue[yearIndex]}
+                          onRawChange={(raw) => patchFlatValue(index, "flatRevenue", yearIndex, raw)}
                         />
                       ))}
                       <div className="self-center text-[11px] font-semibold text-muted-foreground">ANC cost</div>
                       {Array.from({ length: input.termYears }, (_, yearIndex) => (
-                        <input
+                        <FlatAmountInput
                           key={`cost-${yearIndex}`}
                           className={numberInputClass}
-                          value={formatFlatAmount(event.flatCost[yearIndex])}
-                          placeholder="0"
-                          onChange={(e) => patchFlatValue(index, "flatCost", yearIndex, e.target.value)}
+                          value={event.flatCost[yearIndex]}
+                          onRawChange={(raw) => patchFlatValue(index, "flatCost", yearIndex, raw)}
                         />
                       ))}
                     </div>
