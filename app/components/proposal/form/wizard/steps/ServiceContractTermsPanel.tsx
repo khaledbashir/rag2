@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { RichTextarea } from "@/components/ui/rich-textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { getDefaultTemplate, resolveExhibits } from "@/lib/serviceContracts/registry";
@@ -417,15 +418,17 @@ export function ServiceContractTermsPanel() {
                                 {isOpen && (
                                     <div className="px-3 pb-3 pt-1 border-t border-border/30">
                                         <Label className="text-[11px] text-muted-foreground mb-1.5 block">Body text</Label>
-                                        <Textarea
+                                        <RichTextarea
                                             className="min-h-[120px] text-[12px]"
                                             value={bodyValue}
-                                            onChange={(e) => setSectionBody(section.id, e.target.value)}
+                                            onValueChange={(next) => setSectionBody(section.id, next)}
                                             placeholder={section.defaultBody || "This section uses the pricing table below. Add supporting text here only if needed."}
+                                            hint={
+                                                <p className="text-[10px] text-muted-foreground">
+                                                    Leave empty to use the template default. The blue section header is not editable here.
+                                                </p>
+                                            }
                                         />
-                                        <p className="text-[10px] text-muted-foreground mt-1">
-                                            Leave empty to use the template default. The blue section header is not editable here.
-                                        </p>
                                     </div>
                                 )}
                             </div>
@@ -479,16 +482,18 @@ export function ServiceContractTermsPanel() {
                                 </div>
                                 {isOpen && (
                                     <div className="px-3 pb-3 pt-1 border-t border-border/30">
-                                        <Label className="text-[11px] text-muted-foreground mb-1.5 block">Exhibit body (Markdown)</Label>
-                                        <Textarea
+                                        <Label className="text-[11px] text-muted-foreground mb-1.5 block">Exhibit body</Label>
+                                        <RichTextarea
                                             className="min-h-[140px] text-[12px] font-mono"
                                             value={ex.bodyMarkdown}
-                                            onChange={(e) => setExhibitBody(ex.id, e.target.value)}
+                                            onValueChange={(next) => setExhibitBody(ex.id, next)}
                                             placeholder={template.exhibits.find((t) => t.id === ex.id)?.bodyMarkdown ? "Clear to restore template default" : "Enter the verbatim exhibit text…"}
+                                            hint={
+                                                <p className="text-[10px] text-muted-foreground">
+                                                    Edits are saved per-instance and override the template default. Leave empty to use the verbatim template text.
+                                                </p>
+                                            }
                                         />
-                                        <p className="text-[10px] text-muted-foreground mt-1">
-                                            Edits are saved per-instance and override the template default. Leave empty to use the verbatim template text.
-                                        </p>
                                     </div>
                                 )}
                             </div>

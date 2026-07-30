@@ -17,6 +17,7 @@ import React from "react";
 
 import type { PdfColors } from "./sections/shared";
 import PdfFreeformTables from "./sections/PdfFreeformTables";
+import PdfRichBody from "./PdfRichBody";
 import PdfServicePricingTable from "./sections/PdfServicePricingTable";
 import PdfManualServiceFeeTable, { normalizeManualServiceFeeRows } from "./sections/PdfManualServiceFeeTable";
 import {
@@ -73,9 +74,9 @@ export default function PdfServiceProposal({ colors, intro, details }: PdfServic
     </div>
   );
 
-  const EditedBody = ({ text }: { text: string }) => (
-    <div className="mb-3 whitespace-pre-wrap text-justify">{text}</div>
-  );
+  // Bullets / numbering / bold in the editable bodies (Natalia 2026-07-30).
+  // Plain text still renders exactly as it did — see PdfRichBody.
+  const EditedBody = ({ text }: { text: string }) => <PdfRichBody text={text} />;
 
   return (
     <div data-preview-section="service-proposal" className="px-6 text-[12px] leading-relaxed" style={{ color: colors.text }}>

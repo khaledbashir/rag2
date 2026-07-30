@@ -17,6 +17,7 @@ import React from "react";
 import type { PdfColors } from "./sections/shared";
 import PdfTermExhibit from "./sections/PdfTermExhibit";
 import PdfFreeformTables from "./sections/PdfFreeformTables";
+import PdfRichBody from "./PdfRichBody";
 import type { ServiceAgreementConfig, ServiceAgreementFeeRow } from "./sections/PdfServiceAgreement";
 import { RAVENS_SERVICE_AGREEMENT_DEFAULTS } from "./sections/PdfServiceAgreement";
 import PdfServicePricingTable from "./sections/PdfServicePricingTable";
@@ -147,9 +148,9 @@ export default function PdfServiceContract({ colors, config, details }: PdfServi
     </div>
   );
 
-  const EditedBody = ({ text }: { text: string }) => (
-    <div className="mb-3 whitespace-pre-wrap text-justify">{text}</div>
-  );
+  // Bullets / numbering / bold in the editable bodies (Natalia 2026-07-30).
+  // Plain text still renders exactly as it did — see PdfRichBody.
+  const EditedBody = ({ text }: { text: string }) => <PdfRichBody text={text} />;
 
   return (
     <div data-preview-section="service-contract" className="px-6 text-[12px] leading-relaxed" style={{ color: colors.text }}>

@@ -23,6 +23,7 @@ import PageBreak from "@/app/components/templates/proposal-pdf/PageBreak";
 import PdfHeader from "./sections/PdfHeader";
 import PdfPricingTables from "./sections/PdfPricingTables";
 import PdfFreeformTables from "./sections/PdfFreeformTables";
+import PdfRichBody from "./PdfRichBody";
 import PdfSpecsTable from "./sections/PdfSpecsTable";
 import PdfResponsibilityMatrix from "./sections/PdfResponsibilityMatrix";
 import PdfSignatureBlock from "./sections/PdfSignatureBlock";
@@ -412,8 +413,11 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         return (
             <div data-preview-section="notes" className="mt-2">
                 <SectionHeader title="Notes" />
-                <div className="rounded-lg p-3 text-[14px] leading-snug whitespace-pre-wrap" style={{ background: colors.surface, color: colors.text }}>
-                    {notesText}
+                {/* Same notes field the Service Proposal renders, so it must
+                    format the same way — bullets/bold, plain text unchanged
+                    (Natalia 2026-07-30). */}
+                <div className="rounded-lg p-3 text-[14px] leading-snug" style={{ background: colors.surface, color: colors.text }}>
+                    <PdfRichBody text={notesText} className="" />
                 </div>
             </div>
         );
