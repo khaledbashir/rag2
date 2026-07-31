@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { useRbac } from "@/hooks/useRbac";
 import type { UserRole } from "@/lib/rbac";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ThemeToggle } from "@/app/components/ThemeToggle";
 
 // ─── Navigation Data ────────────────────────────────────────────────────────
 
@@ -243,6 +244,10 @@ export default function DashboardSidebar() {
                             <PanelLeftOpen className="w-5 h-5" />
                         </button>
                     )}
+
+                    {/* Theme — lives in the global rail so every page has it,
+                        not just the proposal editor. */}
+                    <ThemeToggle variant="row" expanded={expanded} />
 
                     {/* Settings */}
                     <button
