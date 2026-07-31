@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { intakeLabel } from "./intakeLabel";
+
 interface IntakeAttachment {
   name: string;
   sizeBytes?: number;
@@ -159,8 +161,12 @@ export default function EmailToCrmClient() {
         body: JSON.stringify(payload),
       });
       const data = await res.json();
+      // A failed re-read still writes the new error onto the row, so refresh
+      // whenever the server returned one — otherwise the list shows the
+      // previous attempt's message.
+      if (data.intake) await refresh();
       if (!res.ok) throw new Error(data.error || `Action failed (${res.status})`);
-      await refresh();
+      if (!data.intake) await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
     } finally {
@@ -259,7 +265,7 @@ export default function EmailToCrmClient() {
                     {STATUS_LABELS[row.status] || row.status}
                   </span>
                   <span className="text-sm text-foreground truncate">
-                    {row.subject || "(no subject)"}
+                    {intakeLabel(row)}
                   </span>
                   <span className="ml-auto text-xs text-muted-foreground shrink-0">
                     {row.fromName || row.fromEmail || row.source} · {fmtDay(row.receivedAt || row.createdAt)}
@@ -269,6 +275,21 @@ export default function EmailToCrmClient() {
                 {open && (
                   <div className="px-4 pb-4 space-y-4 border-t border-border pt-4">
                     {row.error && <p className="text-sm text-red-500">{row.error}</p>}
+
+                    {row.status === "failed" && (
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => act(row.id, { action: "retry" })}
+                          disabled={busyId === row.id}
+                          className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+                        >
+                          {busyId === row.id ? "Reading again…" : "Read this email again"}
+                        </button>
+                        <span className="text-xs text-muted-foreground">
+                          The email is still on file — this re-reads it and matches it again.
+                        </span>
+                      </div>
+                    )}
 
                     {extraction && (
                       <div className="space-y-2">

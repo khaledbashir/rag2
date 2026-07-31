@@ -2,13 +2,14 @@
  * PATCH /api/intake/email-to-crm/[id]
  * Body: { action: "apply", opportunityId, applyProposalDueDate? }
  *     | { action: "dismiss" }
+ *     | { action: "retry" }   — re-run extraction/matching on the stored body
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/apiAuth";
 import type { UserRole } from "@/lib/rbac";
 import { FEATURES } from "@/lib/featureFlags";
-import { applyStoredIntake } from "@/services/intake/emailToCrmProcess";
+import { applyStoredIntake, reprocessStoredIntake } from "@/services/intake/emailToCrmProcess";
 
 const ALLOWED_ROLES: UserRole[] = ["ADMIN", "PRODUCT_EXPERT"];
 
@@ -37,6 +38,27 @@ export async function PATCH(
       data: { status: "dismissed", appliedBy: user.email || "admin" },
     });
     return NextResponse.json({ intake });
+  }
+
+  if (body?.action === "retry") {
+    try {
+      // Review-only: a re-run never auto-writes to the CRM. Whoever pressed
+      // Retry sees the match and decides, as with any other queued email.
+      const result = await reprocessStoredIntake(id, {
+        autoApply: false,
+        appliedBy: user.email || "admin",
+      });
+      if (result.intake.status === "failed") {
+        return NextResponse.json(
+          { intake: result.intake, error: result.intake.error || "Processing failed again." },
+          { status: 502 },
+        );
+      }
+      return NextResponse.json({ intake: result.intake });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Retry failed.";
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
   }
 
   if (body?.action === "apply") {

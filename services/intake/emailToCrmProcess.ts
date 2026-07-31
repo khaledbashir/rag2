@@ -41,6 +41,53 @@ export async function processEmailCrmIntake(input: EmailCrmInput, options?: Proc
     },
   });
 
+  return runIntakePipeline(intake.id, input, options);
+}
+
+/**
+ * Re-run extraction + matching for an intake already on file, in place.
+ *
+ * Extraction talks to an AI provider, so it fails for reasons that have nothing
+ * to do with the email — a provider rate limit is the one that actually bit us.
+ * Those rows landed on status "failed" with no extraction, which meant no
+ * candidates to apply and nothing to do but dismiss: a real proposal email
+ * dropped on the floor because an upstream API was busy for a minute. The body
+ * was stored all along, so the work is recoverable — this re-runs it against
+ * the same row rather than asking anyone to find and paste the email again.
+ */
+export async function reprocessStoredIntake(intakeId: string, options?: ProcessOptions) {
+  const intake = await prisma.emailCrmIntake.findUnique({ where: { id: intakeId } });
+  if (!intake) throw new Error("Intake not found.");
+  return runIntakePipeline(intakeId, storedIntakeToInput(intake), options);
+}
+
+/** The stored row, back in the shape the extraction pipeline expects. */
+function storedIntakeToInput(intake: {
+  subject: string | null;
+  fromEmail: string | null;
+  fromName: string | null;
+  receivedAt: Date | null;
+  rawBody: string;
+  attachments: unknown;
+  source: string;
+}): EmailCrmInput {
+  return {
+    subject: intake.subject || undefined,
+    fromEmail: intake.fromEmail || undefined,
+    fromName: intake.fromName || undefined,
+    receivedAt: intake.receivedAt?.toISOString(),
+    body: intake.rawBody,
+    attachments: (intake.attachments as EmailCrmInput["attachments"]) || [],
+    source: intake.source,
+  };
+}
+
+/** Extraction → matching → auto-apply or queue, writing results onto an existing row. */
+async function runIntakePipeline(
+  intakeId: string,
+  input: EmailCrmInput,
+  options?: ProcessOptions,
+) {
   try {
     const extraction = await extractEmailCrmFacts(input);
     const candidates = await findOpportunityCandidates(extraction);
@@ -52,6 +99,8 @@ export async function processEmailCrmIntake(input: EmailCrmInput, options?: Proc
       matchedOpportunityId: decision.top?.id ?? null,
       matchedOpportunityName: decision.top?.name ?? null,
       matchReason: decision.reason,
+      // A successful re-run clears the previous failure.
+      error: null,
     };
 
     const shouldAutoApply = options?.autoApply !== false && decision.autoApply && decision.top;
@@ -78,7 +127,7 @@ export async function processEmailCrmIntake(input: EmailCrmInput, options?: Proc
             },
           });
           const updated = await prisma.emailCrmIntake.update({
-            where: { id: intake.id },
+            where: { id: intakeId },
             data: {
               ...baseUpdate,
               status: "draft_created",
@@ -96,13 +145,13 @@ export async function processEmailCrmIntake(input: EmailCrmInput, options?: Proc
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           log.error("[email-to-crm] draft opp creation failed; falling back to review", {
-            intakeId: intake.id,
+            intakeId,
             error: message,
           });
         }
       }
       const updated = await prisma.emailCrmIntake.update({
-        where: { id: intake.id },
+        where: { id: intakeId },
         data: { ...baseUpdate, status: "pending_review" },
       });
       return { intake: updated, extraction, candidates, decision, applied: null };
@@ -110,7 +159,7 @@ export async function processEmailCrmIntake(input: EmailCrmInput, options?: Proc
 
     const applied = await applyEmailCrmToOpportunity(input, extraction, decision.top!.id);
     const updated = await prisma.emailCrmIntake.update({
-      where: { id: intake.id },
+      where: { id: intakeId },
       data: {
         ...baseUpdate,
         status: "applied",
@@ -122,9 +171,9 @@ export async function processEmailCrmIntake(input: EmailCrmInput, options?: Proc
     return { intake: updated, extraction, candidates, decision, applied };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    log.error("[email-to-crm] processing failed", { intakeId: intake.id, error: message });
+    log.error("[email-to-crm] processing failed", { intakeId, error: message });
     const updated = await prisma.emailCrmIntake.update({
-      where: { id: intake.id },
+      where: { id: intakeId },
       data: { status: "failed", error: message },
     });
     return { intake: updated, extraction: null, candidates: [], decision: null, applied: null };
@@ -141,15 +190,7 @@ export async function applyStoredIntake(
   if (!intake) throw new Error("Intake not found.");
   if (!intake.extraction) throw new Error("Intake has no extraction to apply.");
 
-  const input: EmailCrmInput = {
-    subject: intake.subject || undefined,
-    fromEmail: intake.fromEmail || undefined,
-    fromName: intake.fromName || undefined,
-    receivedAt: intake.receivedAt?.toISOString(),
-    body: intake.rawBody,
-    attachments: (intake.attachments as EmailCrmInput["attachments"]) || [],
-    source: intake.source,
-  };
+  const input = storedIntakeToInput(intake);
   const extraction = intake.extraction as unknown as EmailCrmExtraction;
 
   const applied = await applyEmailCrmToOpportunity(input, extraction, opportunityId, {
