@@ -1,6 +1,7 @@
 import React from "react";
 import type { PdfColors } from "./shared";
 import { DEFAULT_SIGNATURE_BLOCK_TEXT } from "./shared";
+import PdfRichBody from "../PdfRichBody";
 
 interface PdfSignatureBlockProps {
     colors: PdfColors;
@@ -13,9 +14,11 @@ const ANC_ADDRESS = "2 Manhattanville Road, Suite 402\nPurchase, NY 10577";
 
 const PdfSignatureBlock = ({ colors, receiverName, receiverAddress, signatureBlockText }: PdfSignatureBlockProps) => (
     <div data-preview-section="signature" className="mt-4 break-inside-avoid" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
-        <div className="text-[14px] leading-snug text-justify mb-3 break-inside-avoid whitespace-pre-wrap" style={{ color: colors.textMuted }}>
-            {(signatureBlockText || "").trim() || DEFAULT_SIGNATURE_BLOCK_TEXT}
-        </div>
+        <PdfRichBody
+            text={(signatureBlockText || "").trim() || DEFAULT_SIGNATURE_BLOCK_TEXT}
+            className="text-[14px] leading-snug text-justify mb-3 break-inside-avoid"
+            style={{ color: colors.textMuted }}
+        />
         <h4 className="font-bold text-[14px] uppercase mb-3 border-b-2 pb-0.5 break-inside-avoid" style={{ borderColor: colors.text, color: colors.text }}>
             Agreed To And Accepted:
         </h4>

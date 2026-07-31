@@ -8,7 +8,7 @@ import { useFieldArray, useFormContext, useWatch } from "react-hook-form";
 // Components
 import { BaseButton, Subheading } from "@/app/components";
 import SingleScreen from "../SingleScreen";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextarea } from "@/components/ui/rich-textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 // Contexts
@@ -354,10 +354,10 @@ const Screens = () => {
                                     <p className="text-[11px] text-muted-foreground">
                                         Legal paragraph that appears before the signature lines. Leave blank for default.
                                     </p>
-                                    <Textarea
+                                    <RichTextarea
                                         placeholder="This Sales Quotation will set forth the terms by which..."
                                         value={loiHeaderText}
-                                        onChange={(e) => setValue("details.loiHeaderText", e.target.value, { shouldDirty: true })}
+                                        onValueChange={(next) => setValue("details.loiHeaderText", next, { shouldDirty: true, shouldTouch: true })}
                                         className="min-h-[100px] text-sm bg-background border-border resize-none"
                                     />
                                 </div>
@@ -367,10 +367,10 @@ const Screens = () => {
                                     <Label className="text-xs font-medium text-muted-foreground">
                                         Payment Terms
                                     </Label>
-                                    <Textarea
+                                    <RichTextarea
                                         placeholder="50% on Deposit, 40% on Mobilization, 10% on Substantial Completion"
                                         value={paymentTerms}
-                                        onChange={(e) => setValue("details.paymentTerms", e.target.value, { shouldDirty: true })}
+                                        onValueChange={(next) => setValue("details.paymentTerms", next, { shouldDirty: true, shouldTouch: true })}
                                         className="min-h-[60px] text-sm bg-background border-border resize-none"
                                     />
                                 </div>
@@ -380,10 +380,10 @@ const Screens = () => {
                                     <Label className="text-xs font-medium text-muted-foreground">
                                         Additional Notes
                                     </Label>
-                                    <Textarea
+                                    <RichTextarea
                                         placeholder="Any additional notes or terms..."
                                         value={additionalNotes}
-                                        onChange={(e) => setValue("details.additionalNotes", e.target.value, { shouldDirty: true })}
+                                        onValueChange={(next) => setValue("details.additionalNotes", next, { shouldDirty: true, shouldTouch: true })}
                                         className="min-h-[60px] text-sm bg-background border-border resize-none"
                                     />
                                 </div>
@@ -393,10 +393,10 @@ const Screens = () => {
                                     <Label className="text-xs font-medium text-muted-foreground">
                                         Scope of Work <span className="text-[10px] opacity-70">(Exhibit B - optional)</span>
                                     </Label>
-                                    <Textarea
+                                    <RichTextarea
                                         placeholder="Custom scope of work text... Leave empty to hide Exhibit B."
                                         value={scopeOfWorkText}
-                                        onChange={(e) => setValue("details.scopeOfWorkText", e.target.value, { shouldDirty: true })}
+                                        onValueChange={(next) => setValue("details.scopeOfWorkText", next, { shouldDirty: true, shouldTouch: true })}
                                         className="min-h-[80px] text-sm bg-background border-border resize-none font-mono"
                                     />
                                 </div>
@@ -417,10 +417,10 @@ const Screens = () => {
                                             </button>
                                         )}
                                     </div>
-                                    <Textarea
+                                    <RichTextarea
                                         placeholder="Please sign below to indicate Purchaser's agreement..."
                                         value={signatureBlockText}
-                                        onChange={(e) => setValue("details.signatureBlockText", e.target.value, { shouldDirty: true })}
+                                        onValueChange={(next) => setValue("details.signatureBlockText", next, { shouldDirty: true, shouldTouch: true })}
                                         className="min-h-[80px] text-sm bg-background border-border resize-none"
                                     />
                                 </div>

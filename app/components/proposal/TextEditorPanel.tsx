@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useFormContext } from "react-hook-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { RichTextarea } from "@/components/ui/rich-textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { FileText, ChevronRight, DollarSign, MessageSquare, Scale, ShieldCheck, CalendarDays } from "lucide-react";
@@ -79,15 +80,18 @@ export function TextEditorPanel() {
                                 ({introText.length} characters)
                             </span>
                         </Label>
-                        <Textarea
+                        <RichTextarea
                             id="additionalNotes"
-                            {...register("details.additionalNotes")}
+                            value={introText}
+                            onValueChange={(next) => setValue("details.additionalNotes", next, { shouldDirty: true, shouldTouch: true })}
                             placeholder="ANC is pleased to present the following LED Display proposal... (Leave blank for default)"
                             className="min-h-[100px] text-xs resize-y"
+                            hint={(
+                                <p className="text-[10px] text-muted-foreground">
+                                    Customize the opening paragraph. Add currency disclaimers like "All pricing in CAD" if needed.
+                                </p>
+                            )}
                         />
-                        <p className="text-[10px] text-muted-foreground">
-                            Customize the opening paragraph. Add currency disclaimers like "All pricing in CAD" if needed.
-                        </p>
                     </div>
 
                     {/* Payment Terms */}
@@ -99,15 +103,18 @@ export function TextEditorPanel() {
                                 ({paymentTerms.length} characters)
                             </span>
                         </Label>
-                        <Textarea
+                        <RichTextarea
                             id="paymentTerms"
-                            {...register("details.paymentTerms")}
+                            value={paymentTerms}
+                            onValueChange={(next) => setValue("details.paymentTerms", next, { shouldDirty: true, shouldTouch: true })}
                             placeholder="50% on Deposit, 40% on Mobilization, 10% on Substantial Completion"
                             className="min-h-[80px] text-xs resize-y"
+                            hint={(
+                                <p className="text-[10px] text-muted-foreground">
+                                    Edit payment schedule. Default: 50/40/10 split. Toggle visibility in PDF Section Toggles.
+                                </p>
+                            )}
                         />
-                        <p className="text-[10px] text-muted-foreground">
-                            Edit payment schedule. Default: 50/40/10 split. Toggle visibility in PDF Section Toggles.
-                        </p>
                     </div>
 
                     {/* Additional Notes (renders after pricing tables in PDF) */}
@@ -119,15 +126,18 @@ export function TextEditorPanel() {
                                 ({additionalNotes.length} characters)
                             </span>
                         </Label>
-                        <Textarea
+                        <RichTextarea
                             id="customProposalNotes"
-                            {...register("details.customProposalNotes")}
+                            value={additionalNotes}
+                            onValueChange={(next) => setValue("details.customProposalNotes", next, { shouldDirty: true, shouldTouch: true })}
                             placeholder="Project-specific notes, constraints, or disclaimers... (Optional - only shows if text is entered)"
                             className="min-h-[100px] text-xs resize-y"
+                            hint={(
+                                <p className="text-[10px] text-muted-foreground">
+                                    Optional field. Only renders in PDF if you type text. Use for project-specific constraints.
+                                </p>
+                            )}
                         />
-                        <p className="text-[10px] text-muted-foreground">
-                            Optional field. Only renders in PDF if you type text. Use for project-specific constraints.
-                        </p>
                     </div>
 
                     {/* Signature Legal Text (renders before signature lines in PDF) */}
@@ -139,15 +149,18 @@ export function TextEditorPanel() {
                                 ({signatureLegalText.length} characters)
                             </span>
                         </Label>
-                        <Textarea
+                        <RichTextarea
                             id="signatureBlockText"
-                            {...register("details.signatureBlockText")}
+                            value={signatureLegalText}
+                            onValueChange={(next) => setValue("details.signatureBlockText", next, { shouldDirty: true, shouldTouch: true })}
                             placeholder="Please sign below to indicate Purchaser's agreement... (Leave blank for default)"
                             className="min-h-[80px] text-xs resize-y"
+                            hint={(
+                                <p className="text-[10px] text-muted-foreground">
+                                    Legal paragraph that appears right before the signature lines. Leave blank for default.
+                                </p>
+                            )}
                         />
-                        <p className="text-[10px] text-muted-foreground">
-                            Legal paragraph that appears right before the signature lines. Leave blank for default.
-                        </p>
                     </div>
 
                     {/* Purchaser Legal Name (Short Form only) - Prompt 42 */}

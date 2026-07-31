@@ -16,7 +16,6 @@ import React from "react";
 
 // Components
 import { ProposalLayout } from "@/app/components";
-import { splitPaymentTermsLines } from "@/lib/proposals/paymentTerms";
 import PageBreak from "@/app/components/templates/proposal-pdf/PageBreak";
 
 // Section sub-components
@@ -384,9 +383,8 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         // FR-4.3: Use custom payment terms if provided, otherwise use default
         const defaultTerms = "50% on Deposit\n40% on Mobilization\n10% on Substantial Completion";
         const raw = (customPaymentTerms?.trim() || defaultTerms).toString();
-        const lines = splitPaymentTermsLines(raw);
         const completionLabel = showSubstantialCompletionDate ? formatShortFormDate(substantialCompletionDate) : "";
-        if (lines.length === 0) return null;
+        if (!raw.trim()) return null;
         return (
             <div data-preview-section="payment-terms" className="mt-2">
                 <SectionHeader title="Payment Terms" />
@@ -396,11 +394,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                             <strong>Substantial Completion:</strong> {completionLabel}
                         </div>
                     )}
-                    {lines.map((line: string, idx: number) =>
-                        line === ""
-                            ? <div key={idx} style={{ height: "6px" }} />
-                            : <div key={idx}>{line}</div>
-                    )}
+                    <PdfRichBody text={raw} className="" />
                 </div>
             </div>
         );
@@ -564,8 +558,8 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
         const raw = ((details as any)?.scopeOfWorkText || "").toString().trim();
         if (!raw) return null;
         return (
-            <div className="rounded-lg p-3 text-[14px] leading-snug whitespace-pre-wrap" style={{ background: colors.surface, color: colors.text }}>
-                {raw}
+            <div className="rounded-lg p-3 text-[14px] leading-snug" style={{ background: colors.surface, color: colors.text }}>
+                <PdfRichBody text={raw} className="" />
             </div>
         );
     };
@@ -870,7 +864,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                 <div data-preview-section="intro" className="break-inside-avoid" style={{ marginBottom: `${introToBodyGap}px`, paddingLeft: `${contentPaddingX}px`, paddingRight: `${contentPaddingX}px` }}>
                     <div className="text-[14px] leading-snug" style={{ color: colors.textMuted }}>
                         {customIntroText?.trim() ? (
-                            <p className="text-justify whitespace-pre-wrap">{customIntroText.trim()}</p>
+                            <PdfRichBody text={customIntroText} className="" />
                         ) : isCO ? (
                             changeOrderIntroText ? (
                                 <p className="text-justify whitespace-pre-wrap">{changeOrderIntroText}</p>

@@ -72,7 +72,15 @@ const components: Components = {
  * Renders an editable section body. Plain text renders exactly as before;
  * Markdown adds bullets, numbering and bold.
  */
-export function PdfRichBody({ text, className }: { text: string; className?: string }) {
+export function PdfRichBody({
+  text,
+  className,
+  style,
+}: {
+  text: string;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
   const src = (text ?? "").trim();
   if (!src) return null;
 
@@ -82,7 +90,7 @@ export function PdfRichBody({ text, className }: { text: string; className?: str
     return (
       <div
         className={className ?? "mb-3 whitespace-pre-wrap text-justify"}
-        style={{ whiteSpace: "pre-wrap", textAlign: "justify" }}
+        style={{ whiteSpace: "pre-wrap", textAlign: "justify", ...style }}
       >
         {text}
       </div>
@@ -90,7 +98,10 @@ export function PdfRichBody({ text, className }: { text: string; className?: str
   }
 
   return (
-    <div className={className ?? "mb-3"} style={{ marginBottom: "12px" }}>
+    <div
+      className={className ?? "mb-3"}
+      style={{ ...(className === undefined ? { marginBottom: "12px" } : {}), ...style }}
+    >
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {src}
       </ReactMarkdown>

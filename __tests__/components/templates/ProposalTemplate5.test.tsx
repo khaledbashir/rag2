@@ -568,6 +568,35 @@ describe("Additional Regression", () => {
     expect(container.textContent).toContain("All prices are valid for 30 days");
   });
 
+  it("renders editor formatting in intro, notes, payment terms, scope, and signature text", () => {
+    const props = baseProps({
+      documentMode: "CONTRACT",
+      additionalNotes: "- First intro point\n- Second intro point",
+      customProposalNotes: "**Important:** read the project notes.",
+      paymentTerms: "1. Deposit\n2. Delivery\n3. Completion",
+      scopeOfWorkText: "- Install displays\n- Commission system",
+      signatureBlockText: "Please **approve** the terms below.",
+      showNotes: true,
+      showPaymentTerms: true,
+      showScopeOfWork: true,
+      showSignatureBlock: true,
+      showSpecifications: false,
+    });
+
+    const { container } = render(<ProposalTemplate5 {...props} />);
+    const intro = container.querySelector('[data-preview-section="intro"]');
+    const notes = container.querySelector('[data-preview-section="notes"]');
+    const paymentTerms = container.querySelector('[data-preview-section="payment-terms"]');
+    const signature = container.querySelector('[data-preview-section="signature"]');
+
+    expect(intro?.querySelectorAll("ul > li")).toHaveLength(2);
+    expect(notes?.querySelector("strong")?.textContent).toBe("Important:");
+    expect(paymentTerms?.querySelectorAll("ol > li")).toHaveLength(3);
+    expect(container.textContent).toContain("Install displays");
+    expect(container.textContent).toContain("Commission system");
+    expect(signature?.querySelector("strong")?.textContent).toBe("approve");
+  });
+
   it.each(["BUDGET", "PROPOSAL"] as const)(
     "%s mode hides populated notes when showNotes is false",
     (documentMode) => {
