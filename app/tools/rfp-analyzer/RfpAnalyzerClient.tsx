@@ -18,6 +18,7 @@ import { buildEstimatorWorkbook } from "@/app/components/estimator/buildEstimato
 const LuxWidget = dynamic(() => import("./_components/LuxWidget"), { ssr: false });
 const ProductMatchPanel = dynamic(() => import("./_components/ProductMatchPanel"), { ssr: false });
 import type { ExtractedLEDSpec, ExtractedRequirement } from "@/services/rfp/unified/types";
+import type { PricingData } from "@/services/rfp/pipeline/bidFormFiller";
 import { useRfpServerPreview } from "@/hooks/useRfpServerPreview";
 import { isPlatformOwner } from "@/lib/platformOwner";
 import {
@@ -55,6 +56,8 @@ import {
 // ==========================================================================
 // Types
 // ==========================================================================
+
+type AjpPricingFields = Omit<Partial<PricingData>, "matchedProduct" | "name">;
 
 interface PageData {
   pageNumber: number;
@@ -118,7 +121,7 @@ interface AnalysisResult {
     sellingPrice: number;
     cost: number | null;
     section: string;
-  }>;
+  } & AjpPricingFields>;
   // Internal audit data for weight/power/btu calculations
   internalAudit?: {
     perScreen?: Array<{
@@ -153,13 +156,14 @@ interface PricingPreview {
     totalSellingPrice: number;
     blendedMarginPct: number;
     costSource: string;
-    rateCardEstimate: number | null;
-    matchedProduct: {
+    rateCardEstimate?: number | null;
+    matchedProduct?: {
       manufacturer: string; model: string; pitch: number; fitScore: number;
       activeWidthFt?: number; activeHeightFt?: number;
       resolutionX?: number; resolutionY?: number;
     } | null;
     isCustom?: boolean;
+    [key: string]: unknown;
   }>;
   summary: {
     totalCost: number;
@@ -1069,13 +1073,16 @@ export default function RfpAnalyzerClient() {
           const sellPrice = pricingItem?.sellingPrice ?? 0;
           const margin = sellPrice > 0 ? (sellPrice - cost) / sellPrice : 0;
           return {
+            ...pricingItem,
             name: spec.name,
             location: spec.location,
             pixelPitch: spec.pixelPitchMm,
             areaSqFt: (spec.widthFt ?? 0) * (spec.heightFt ?? 0),
             quantity: spec.quantity || 1,
-            hardwareCost: cost,
-            installCost: 0,
+            hardwareCost: pricingItem?.hardwareCost ?? cost,
+            processorCost: pricingItem?.processingCost ?? 0,
+            shippingCost: pricingItem?.shippingCost ?? 0,
+            installCost: pricingItem?.installCost ?? 0,
             pmCost: 0,
             engCost: 0,
             totalCost: cost,
@@ -1992,9 +1999,10 @@ export default function RfpAnalyzerClient() {
       // Send pricing data + matched product specs if available
       if (pricingPreview?.displays) {
         const pricingData = pricingPreview.displays.map((d: any) => ({
+          ...d,
           name: d.name,
           hardwareCost: d.hardwareCost,
-          processingCost: d.processorCost ?? 0,
+          processingCost: d.processingCost ?? d.processorCost ?? 0,
           shippingCost: d.shippingCost ?? 0,
           installCost: d.installCost,
           pmCost: d.pmCost ?? 0,

@@ -16,7 +16,7 @@ import type { ExtractedLEDSpec, ExtractedProjectInfo } from "@/services/rfp/unif
 import { parsePricingTablesWithValidation } from "@/services/pricing/pricingTableParser";
 import { log } from "@/lib/logger";
 import { auth } from "@/auth";
-import type { PricingData } from "@/services/rfp/pipeline/bidFormFiller";
+import { parseAjpPricingWorkbook } from "@/services/rfp/pipeline/ajpPricingWorkbookParser";
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -119,21 +119,16 @@ export async function POST(request: NextRequest) {
         .trim();
     }
 
-    const bidFormPricing = ledSheet ? parseBidFormPricingFromLedCostSheet(ledSheet) : [];
-
-    // Merge Margin-Analysis service/soft-cost pricing (installation, general
-    // conditions, control-system/CMS, tax, alternates) onto the base LED
-    // display so the AJP bid-form summary lines can be populated. The LED Cost
-    // Sheet alone only carries hardware/processing/shipping.
-    if (marginSheet && bidFormPricing.length > 0) {
-      const svc = parseMarginAnalysisServicePricing(marginSheet);
-      const base = bidFormPricing[0];
-      if (svc.installSellingPrice > 0) base.bidFormInstallSellingPrice = svc.installSellingPrice;
-      if (svc.cablingSellingPrice > 0) base.bidFormCablingSellingPrice = svc.cablingSellingPrice;
-      if (svc.gcSellingPrice > 0) base.bidFormGcSellingPrice = svc.gcSellingPrice;
-      if (svc.operatingSystemPrice > 0) base.bidFormOperatingSystemPrice = svc.operatingSystemPrice;
-      if (svc.taxAmount > 0) base.bidFormTaxAmount = svc.taxAmount;
-      if (svc.alternates.length > 0) base.bidFormAlternates = svc.alternates;
+    const bidFormPricing = parseAjpPricingWorkbook(workbook);
+    if (bidFormPricing.length > 0) {
+      // Persist the complete AJP payload through the existing JSON pricing field
+      // so it survives the redirect to analysis history and reaches the filler.
+      mirrorModePricing = bidFormPricing.map((item) => ({
+        ...item,
+        cost: item.totalCost,
+        sellingPrice: item.totalSellingPrice,
+        section: "LED Cost Sheet",
+      }));
     }
 
     // Create analysis record (persist pricing data for reload survival)
@@ -226,197 +221,6 @@ function parseNum(value: unknown): number | null {
 
 function readNumericCell(sheet: ExcelJS.Worksheet, row: number, col: number): number | null {
   return parseNum(sheet.getRow(row).getCell(col).value);
-}
-
-/** Extract plain text from a cell, handling rich-text / formula-result objects. */
-function cellString(value: unknown): string {
-  if (value == null) return "";
-  if (typeof value === "string") return value;
-  if (typeof value === "number") return String(value);
-  if (typeof value === "object") {
-    const v = value as Record<string, unknown>;
-    if (Array.isArray(v.richText)) {
-      return (v.richText as { text?: string }[]).map((t) => t.text ?? "").join("");
-    }
-    if ("text" in v) return String(v.text ?? "");
-    if ("result" in v) return String(v.result ?? "");
-  }
-  return String(value);
-}
-
-/**
- * Derive LED chip model + manufacturer from the LED Cost Sheet PRODUCT string,
- * e.g. "U1.6 (NS MIP1010+GOB)" → model "NS MIP1010+GOB", manufacturer "Nationstar".
- * Chip diode prefixes map to their maker (NS/NationStar, RS/Nationstar series, etc.).
- */
-function parseChipFromProduct(product: string): { model: string | null; manufacturer: string | null } {
-  const paren = product.match(/\(([^)]+)\)/);
-  const model = paren ? paren[1].trim() : null;
-  if (!model) return { model: null, manufacturer: null };
-  let manufacturer: string | null = null;
-  if (/^ns\b|nationstar/i.test(model)) manufacturer = "Nationstar";
-  else if (/kinglight/i.test(model)) manufacturer = "Kinglight";
-  else if (/cree/i.test(model)) manufacturer = "Cree";
-  return { model, manufacturer };
-}
-
-function parseBidFormPricingFromLedCostSheet(sheet: ExcelJS.Worksheet): PricingData[] {
-  const pricing: PricingData[] = [];
-
-  for (let rowNumber = 1; rowNumber <= sheet.rowCount; rowNumber++) {
-    const row = sheet.getRow(rowNumber);
-    const name = String(row.getCell(1).value || "").trim();
-    if (!name || /^option$/i.test(name) || /^total/i.test(name) || name.startsWith("+")) continue;
-
-    const hardwareCost = readNumericCell(sheet, rowNumber, 17); // Q: Display Cost
-    const processingCost = readNumericCell(sheet, rowNumber, 19); // S: Processor
-    const shippingCost = readNumericCell(sheet, rowNumber, 20); // T: Shipping
-    const totalCost = readNumericCell(sheet, rowNumber, 21); // U: Total Cost
-    const totalSellingPrice = readNumericCell(sheet, rowNumber, 23); // W: Price
-
-    if (hardwareCost == null && totalSellingPrice == null) continue;
-
-    const splitRowNumber = rowNumber + 1;
-    const bidFormDisplaySellingPrice = readNumericCell(sheet, splitRowNumber, 17);
-    const bidFormProcessingSellingPrice = readNumericCell(sheet, splitRowNumber, 19);
-    const bidFormShippingSellingPrice = readNumericCell(sheet, splitRowNumber, 20);
-
-    // Chip model/manufacturer live in the PRODUCT column (D), e.g. "U1.6 (NS MIP1010+GOB)"
-    const productStr = cellString(sheet.getRow(rowNumber).getCell(4).value);
-    const chip = parseChipFromProduct(productStr);
-
-    pricing.push({
-      name,
-      hardwareCost: hardwareCost ?? 0,
-      processingCost: processingCost ?? 0,
-      shippingCost: shippingCost ?? 0,
-      totalCost: totalCost ?? hardwareCost ?? 0,
-      hardwareSellingPrice: bidFormDisplaySellingPrice ?? totalSellingPrice ?? hardwareCost ?? 0,
-      servicesSellingPrice: (bidFormProcessingSellingPrice ?? 0) + (bidFormShippingSellingPrice ?? 0),
-      totalSellingPrice:
-        totalSellingPrice ??
-        (bidFormDisplaySellingPrice ?? 0) +
-          (bidFormProcessingSellingPrice ?? 0) +
-          (bidFormShippingSellingPrice ?? 0),
-      bidFormDisplaySellingPrice: bidFormDisplaySellingPrice ?? undefined,
-      bidFormProcessingSellingPrice: bidFormProcessingSellingPrice ?? undefined,
-      bidFormShippingSellingPrice: bidFormShippingSellingPrice ?? undefined,
-      bidFormChipModel: chip.model ?? undefined,
-      bidFormChipManufacturer: chip.manufacturer ?? undefined,
-    });
-  }
-
-  return pricing;
-}
-
-/**
- * Service / soft-cost pricing from the ANC Margin Analysis sheet.
- *
- * The LED Cost Sheet only carries hardware/processing/shipping. Everything else
- * on the bid form — installation, general conditions, control-system/CMS,
- * warranty/parts, tax, and voluntary alternates — lives in the Margin Analysis
- * as labelled rows (col B = label, col D = selling price). This reads those
- * rows and buckets them into the AJP bid-form summary lines.
- *
- * Buckets are chosen so the bid-form GRAND TOTAL ties exactly to the source
- * Margin Analysis bid-form subtotal regardless of internal categorization:
- *  - install    → structural / labor / hoist / steel / electrical / data / cabling
- *  - operating  → control system / CMS / LiveSync / integration
- *  - gc         → PM / general conditions / graphics / submittals / engineering /
- *                 permits / warranty / parts (every other soft service)
- * The LED display line itself (already captured from the LED Cost Sheet) and
- * bond/subtotal rows are excluded.
- */
-interface MarginAnalysisServicePricing {
-  installSellingPrice: number;
-  cablingSellingPrice: number;
-  gcSellingPrice: number;
-  operatingSystemPrice: number;
-  taxAmount: number;
-  alternates: { label: string; price: number }[];
-}
-
-function parseMarginAnalysisServicePricing(
-  sheet: ExcelJS.Worksheet,
-): MarginAnalysisServicePricing {
-  const result: MarginAnalysisServicePricing = {
-    installSellingPrice: 0,
-    cablingSellingPrice: 0,
-    gcSellingPrice: 0,
-    operatingSystemPrice: 0,
-    taxAmount: 0,
-    alternates: [],
-  };
-
-  // The Margin Analysis has a base section, then an "Alternates" section, then
-  // an LCD section. Track which section we're in so alternates/LCD don't get
-  // folded into the base bid-form summary lines.
-  let section: "base" | "alternates" | "lcd" | "other" = "base";
-  let seenBaseDisplay = false;
-
-  for (let rowNumber = 1; rowNumber <= sheet.rowCount; rowNumber++) {
-    // Labels in the Margin Analysis are rich-text cells — String() would yield
-    // "[object Object]", so use the rich-text-aware extractor.
-    const label = cellString(sheet.getRow(rowNumber).getCell(2).value).trim();
-    if (!label) continue;
-    const low = label.toLowerCase();
-
-    // Section switches
-    if (/^alternates?\b/i.test(label) || /alternates?\s*-\s*add/i.test(label)) {
-      section = "alternates";
-      continue;
-    }
-    if (/\blcd/i.test(label) && /(display|total|rose bowl lcd)/i.test(label)) {
-      section = "lcd";
-      // fall through — an LCD total row may still carry a value we ignore here
-    }
-
-    const sellingPrice = readNumericCell(sheet, rowNumber, 4); // D: Selling Price
-
-    // TAX is expressed as (C = rate, D = amount). Capture the base-section amount.
-    if (/^tax\b/i.test(label)) {
-      if (section === "base" && sellingPrice != null) result.taxAmount = sellingPrice;
-      continue;
-    }
-    if (/^bond\b/i.test(label) || /sub\s*total/i.test(label) || /^total\b/i.test(low)) {
-      continue;
-    }
-
-    if (sellingPrice == null) continue;
-
-    if (section === "alternates") {
-      // Skip the alternate's own tax/bond/subtotal helper rows
-      if (!/^tax\b|^bond\b|sub\s*total/i.test(label)) {
-        result.alternates.push({ label, price: sellingPrice });
-      }
-      continue;
-    }
-
-    if (section !== "base") continue;
-
-    // First base data row is the LED display itself — already captured from the
-    // LED Cost Sheet as the display/processing/shipping line. Skip it.
-    if (!seenBaseDisplay && /(led|display|tunnel|ribbon|board|screen)/i.test(low)) {
-      seenBaseDisplay = true;
-      continue;
-    }
-
-    // Bucket the soft-cost line
-    if (/control\s*system|content\s*management|\bcms\b|livesync|integration|operating\s*system|show\s*control/i.test(low)) {
-      result.operatingSystemPrice += sellingPrice;
-    } else if (/electrical|(^|\W)data(\W|$)|cabling|conduit|low\s*voltage/i.test(low)) {
-      result.cablingSellingPrice += sellingPrice;
-      result.installSellingPrice += sellingPrice;
-    } else if (/structural|installation|labor|hoist|steel|removal|rigging|mount|equipment\s*rental/i.test(low)) {
-      result.installSellingPrice += sellingPrice;
-    } else {
-      // PM, general conditions, graphics, submittals, engineering, permits,
-      // warranty, parts, training, travel — all general-conditions soft costs.
-      result.gcSellingPrice += sellingPrice;
-    }
-  }
-
-  return result;
 }
 
 function extractProjectInfo(sheet: ExcelJS.Worksheet, project: ExtractedProjectInfo) {

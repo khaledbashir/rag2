@@ -43,6 +43,7 @@ interface SpecBlock {
     structuralSteel: number | null;
     heavyEquipment: number | null;
     componentInstallation: number | null;
+    namingSignage: number | null;
     removalDisposal: number | null;
     hoistInstallation: number | null;
     claddingTrim: number | null;
@@ -150,6 +151,12 @@ export interface PricingData {
   bidFormOperatingSystemPrice?: number;     // Control system / CMS integration (feeds OPERATING SYSTEM line)
   bidFormTaxAmount?: number;                // Sales tax (feeds TAXES line)
   bidFormAlternates?: { label: string; price: number }[]; // Voluntary alternates
+  bidFormInstallation?: BidFormInstallationBreakdown;
+  bidFormProjectSummary?: BidFormProjectSummary;
+  bidFormBrightnessNits?: number;
+  bidFormMaxPowerW?: number;
+  bidFormProductManufacturer?: string;
+  bidFormProductModel?: string;
   /** LED chip specs read from the LED Cost Sheet PRODUCT column (spec block). */
   bidFormChipModel?: string;
   bidFormChipManufacturer?: string;
@@ -165,6 +172,27 @@ export interface PricingData {
     resolutionX?: number;
     resolutionY?: number;
   } | null;
+}
+
+export interface BidFormInstallationBreakdown {
+  structuralSteel: number;
+  heavyEquipment: number;
+  componentInstallation: number;
+  namingSignage: number;
+  claddingTrim: number;
+  electricalData: number;
+  total?: number;
+}
+
+export interface BidFormProjectSummary {
+  taxAmount: number;
+  projectManagement: number;
+  generalConditions: number;
+  engineeringPermitsFees: number;
+  trainingEventSupport: number;
+  travelExpenses: number;
+  warrantyPartsAndLabor: number[];
+  warrantyPartsOnly: number[];
 }
 
 /**
@@ -204,6 +232,13 @@ export async function fillBidForm(
 
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(bidFormBuffer);
+  workbook.calcProperties.fullCalcOnLoad = true;
+  const extendedCalcProperties = workbook.calcProperties as ExcelJS.CalculationProperties & {
+    forceFullCalc?: boolean;
+    calcMode?: string;
+  };
+  extendedCalcProperties.forceFullCalc = true;
+  extendedCalcProperties.calcMode = "auto";
 
   // Step 1: Detect all spec blocks across all sheets
   const blocks = detectSpecBlocks(workbook);
@@ -274,6 +309,7 @@ export async function fillBidForm(
   // alternates) — only when that service pricing is present.
   const servicePricing = pricing?.find(
     (p) =>
+      p.bidFormProjectSummary != null ||
       p.bidFormInstallSellingPrice != null ||
       p.bidFormGcSellingPrice != null ||
       p.bidFormOperatingSystemPrice != null ||
@@ -349,6 +385,7 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
           structuralSteel: null as number | null,
           heavyEquipment: null as number | null,
           componentInstallation: null as number | null,
+          namingSignage: null as number | null,
           removalDisposal: null as number | null,
           hoistInstallation: null as number | null,
           claddingTrim: null as number | null,
@@ -422,6 +459,8 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
             cells.heavyEquipment = r;
           } else if (/component\s*installation/i.test(label) || /led\s*install/i.test(label)) {
             cells.componentInstallation = r;
+          } else if (/naming\s*signage|header\s*signage/i.test(label)) {
+            cells.namingSignage = r;
           } else if (/removal.*disposal/i.test(label)) {
             cells.removalDisposal = r;
           } else if (/hoist.*install/i.test(label) || /install.*hoist/i.test(label)) {
@@ -436,7 +475,7 @@ function detectSpecBlocks(workbook: ExcelJS.Workbook): SpecBlock[] {
             cells.secondarySteel = r;
           }
           // Manufacturer fields
-          else if (/chip\s*model/i.test(label)) {
+          else if (/chip\s*(?:model|grade)|grade.*ref/i.test(label)) {
             cells.chipModel = r;
           } else if (/led\s*chip\s*manufacturer/i.test(label) || /chip\s*manufacturer/i.test(label)) {
             cells.chipManufacturer = r;
@@ -910,7 +949,7 @@ function assignBlocksToScreens(
   for (let b = 0; b < blocks.length; b++) {
     for (let s = 0; s < screens.length; s++) {
       const score = scoreBlockScreen(blocks[b], screens[s], isSingleSheet, screens.length);
-      if (score > MATCH_THRESHOLD) {
+      if (score >= MATCH_THRESHOLD) {
         pairs.push({ blockIndex: b, screenIndex: s, score });
       }
     }
@@ -1009,6 +1048,10 @@ function screenIsAlternate(screen: ExtractedLEDSpec): boolean {
   return screen.isAlternate === true || /\balternate\b|\balt\s*#?\s*\d/i.test(screen.name || "");
 }
 
+function alternateIdentifier(value: string): string | null {
+  return value.match(/\balt(?:ernate)?\s*#?\s*(\d+[a-z]?)/i)?.[1]?.toLowerCase() ?? null;
+}
+
 /** Relative difference between two positive measurements, 0 = identical. */
 function relativeDiff(a: number, b: number): number {
   const larger = Math.max(Math.abs(a), Math.abs(b));
@@ -1063,6 +1106,9 @@ function computeSingleSheetMatchScore(block: SpecBlock, screen: ExtractedLEDSpec
 
   const isBlockAlternate = /alternate|alt\s*\d/i.test(block.displayName);
   const isScreenAlternate = screenIsAlternate(screen);
+  const blockAlternateId = alternateIdentifier(block.displayName);
+  const screenAlternateId = alternateIdentifier(screen.name);
+  const hasMatchingAlternateId = blockAlternateId != null && blockAlternateId === screenAlternateId;
 
   // An alternate screen must never fill a base-bid block, or vice versa.
   if (isBlockAlternate !== isScreenAlternate) return 0;
@@ -1070,7 +1116,7 @@ function computeSingleSheetMatchScore(block: SpecBlock, screen: ExtractedLEDSpec
   // 1. Physical size from Column B — decisive when the form provides it.
   const dimScore = dimensionSimilarity(block, screen);
   if (dimScore != null) {
-    if (dimScore === 0) return 0; // different display, whatever the name says
+    if (dimScore === 0 && !hasMatchingAlternateId) return 0; // different display, whatever the name says
     score += dimScore * 50;
   }
 
@@ -1088,9 +1134,15 @@ function computeSingleSheetMatchScore(block: SpecBlock, screen: ExtractedLEDSpec
     score += 5;
   }
 
+  // 5. AJP alternate numbers are authoritative identifiers. They rescue a
+  // legitimate match when cabinet sizing moves one requested dimension enough
+  // to put an otherwise exact alternate just below the generic threshold.
+  if (hasMatchingAlternateId) score += 10;
+
   // Blocks with no Column B size fall back to the name, which alone can carry a match.
-  const maxScore = dimScore != null ? 95 : 45;
-  return score / maxScore;
+  const maxScore = (dimScore != null ? 95 : 45) + (blockAlternateId ? 10 : 0);
+  const normalizedScore = score / maxScore;
+  return hasMatchingAlternateId ? Math.max(normalizedScore, 0.9) : normalizedScore;
 }
 
 function fuzzyVenueMatch(sheetName: string, screenLocation: string, screenName: string): number {
@@ -1286,24 +1338,7 @@ function fillHeaderFields(
   }
 }
 
-/**
- * Fill AJP LED-tunnel bid-form summary + detail lines that the block/header
- * passes don't reach:
- *   - installation detail rows (COMPONENT INSTALLATION, CABLING) → feed the
- *     INSTALLATION SUB-TOTAL formula → feed the INSTALLATION summary line
- *   - general-conditions detail row (PROJECT MANAGEMENT) → feeds the GENERAL
- *     CONDITIONS sub-total formula → feeds the GENERAL CONDITIONS summary line
- *   - OPERATING SYSTEM, TAXES (direct value lines)
- *   - voluntary ALTERNATES (label + ADD/DEDUCT placeholder rows)
- *
- * Scans column A across the whole sheet — the GC detail rows sit ABOVE the spec
- * block anchor, so the downward block scan never reaches them. Writes only to
- * blank / zero / "ADD/DEDUCT"-placeholder cells and never to formula cells, so
- * template roll-up formulas and any manual entries are preserved.
- *
- * Guarded by the caller on the presence of Margin-Analysis service pricing, so
- * non-AJP / RFP forms are never touched.
- */
+/** Fill project-level AJP values that sit outside individual display blocks. */
 function fillAjpSummaryAndDetail(
   workbook: ExcelJS.Workbook,
   sheetName: string,
@@ -1326,17 +1361,18 @@ function fillAjpSummaryAndDetail(
     filled.push(field);
   };
 
+  const summary = pricing.bidFormProjectSummary;
   const sp = computeSellingPrices(pricing);
-  const cabling = pricing.bidFormCablingSellingPrice ?? 0;
-  const installTotal = pricing.bidFormInstallSellingPrice ?? 0;
-  const componentInstall = Math.max(0, installTotal - cabling);
   const gc = pricing.bidFormGcSellingPrice ?? sp.gcPrice;
   const operating = pricing.bidFormOperatingSystemPrice ?? 0;
-  const tax = pricing.bidFormTaxAmount ?? 0;
+  const tax = summary?.taxAmount ?? pricing.bidFormTaxAmount ?? 0;
   const alternates = pricing.bidFormAlternates ?? [];
 
   let inAlternatesSection = false;
   let alternateIdx = 0;
+  let warrantyMode: "partsAndLabor" | "partsOnly" | null = null;
+  let warrantyYearIndex = 0;
+  let baseSummaryStartRow: number | null = null;
 
   for (let r = 1; r <= sheet.rowCount; r++) {
     const aCell = sheet.getRow(r).getCell(1);
@@ -1344,6 +1380,32 @@ function fillAjpSummaryAndDetail(
     const low = label.toLowerCase().trim();
     const cCell = sheet.getRow(r).getCell(C);
     const cText = getCellText(cCell);
+
+    if (/led\s*displays?\s*and\s*installation/i.test(low)) {
+      baseSummaryStartRow = r + 1;
+    }
+
+    if (/extended\s*warranty.*parts\s*and\s*labor/i.test(low)) {
+      warrantyMode = "partsAndLabor";
+      warrantyYearIndex = 0;
+      continue;
+    }
+    if (/extended\s*warranty.*parts\s*only/i.test(low)) {
+      warrantyMode = "partsOnly";
+      warrantyYearIndex = 0;
+      continue;
+    }
+    if (warrantyMode && /^year\s*\d+/i.test(low)) {
+      const values = warrantyMode === "partsAndLabor"
+        ? summary?.warrantyPartsAndLabor
+        : summary?.warrantyPartsOnly;
+      if (values && warrantyYearIndex < values.length) {
+        write(r, values[warrantyYearIndex], `Warranty ${warrantyMode} year ${warrantyYearIndex + 3}`);
+      }
+      warrantyYearIndex += 1;
+      continue;
+    }
+    if (warrantyMode && /^(total|note:)/i.test(low)) warrantyMode = null;
 
     // Track the voluntary-alternates region
     if (/voluntary\s*alternate/i.test(low)) {
@@ -1371,17 +1433,31 @@ function fillAjpSummaryAndDetail(
       continue;
     }
 
-    // Summary + detail value lines
+    // Summary + project detail value lines. Installation detail is filled from
+    // each display's own installation sheet inside fillBlockCells().
     if (/operating\s*system/i.test(low) && operating > 0) {
       write(r, operating, "Operating System");
     } else if (/^taxes?$/i.test(low) && tax > 0) {
       write(r, tax, "Taxes");
-    } else if (/project\s*management/i.test(low) && gc > 0) {
-      write(r, gc, "General Conditions (PM)");
-    } else if (/component\s*installation/i.test(low) && componentInstall > 0) {
-      write(r, componentInstall, "Component Installation");
-    } else if (/^cabling$/i.test(low) && cabling > 0) {
-      write(r, cabling, "Cabling");
+    } else if (/^project\s*management$/i.test(low)) {
+      write(r, summary?.projectManagement ?? gc, "Project Management");
+    } else if (/^general\s*conditions$/i.test(low) && summary) {
+      write(r, summary.generalConditions, "General Conditions");
+    } else if (/engineering.*permits?.*fees?/i.test(low) && summary) {
+      write(r, summary.engineeringPermitsFees, "Engineering, Permits, Fees");
+    } else if (/training.*event\s*support/i.test(low) && summary) {
+      write(r, summary.trainingEventSupport, "Training and Event Support");
+    } else if (/travel.*expenses?/i.test(low) && summary) {
+      write(r, summary.travelExpenses, "Travel and Expenses");
+    } else if (/grand\s*total\s*base\s*bid/i.test(low) && baseSummaryStartRow != null) {
+      const value = cCell.value;
+      if (isFormulaCell(cCell) && typeof value === "object" && value && "formula" in value) {
+        cCell.value = {
+          formula: `SUM(C${baseSummaryStartRow}:C${r - 1})`,
+          result: (value as { result?: number }).result,
+        };
+        filled.push("Grand Total Base Bid formula");
+      }
     }
   }
 
@@ -1458,10 +1534,10 @@ function fillBlockCells(
   const ancHeightFt = mp?.activeHeightFt ?? screen.heightFt;
   const ancWidthFt = mp?.activeWidthFt ?? screen.widthFt;
   if (ancHeightFt != null) {
-    setCell(block.cells.systemHeight, fillCol, Math.round(ancHeightFt * 100) / 100, "System Height (ft)");
+    setCell(block.cells.systemHeight, fillCol, ancHeightFt, "System Height (ft)");
   }
   if (ancWidthFt != null) {
-    setCell(block.cells.systemLength, fillCol, Math.round(ancWidthFt * 100) / 100, "System Length (ft)");
+    setCell(block.cells.systemLength, fillCol, ancWidthFt, "System Length (ft)");
   }
 
   // Computed derived fields from ANC specs
@@ -1481,16 +1557,17 @@ function fillBlockCells(
 
   // Extended spec fields — prefer matched product data, fall back to RFP data
   if (block.cells.brightness) {
-    const nits = mp?.nits ?? screen.brightnessNits;
+    const nits = pricing?.bidFormBrightnessNits ?? mp?.nits ?? screen.brightnessNits;
     if (nits != null) {
       setCell(block.cells.brightness, fillCol, nits, "Brightness (nits)");
     }
   }
 
   if (block.cells.powerDraw) {
-    const power = mp?.totalMaxPowerW ?? screen.maxPowerW;
+    const power = pricing?.bidFormMaxPowerW ?? mp?.totalMaxPowerW ?? screen.maxPowerW;
     if (power != null) {
-      setCell(block.cells.powerDraw, fillCol, Math.round(power), "Power Draw");
+      const maxAmps = Math.ceil(power / (208 * Math.sqrt(3)));
+      setCell(block.cells.powerDraw, fillCol, `${maxAmps} Amps 208V 3PH`, "Power Draw");
     }
   }
 
@@ -1535,10 +1612,10 @@ function fillBlockCells(
     if (block.cells.totalDisplayPrice) {
       setCell(block.cells.totalDisplayPrice, fillCol, sp.displayPrice, "Total Display Price");
     }
-    if (block.cells.processingController && sp.processingPrice) {
+    if (block.cells.processingController && pricing.bidFormProcessingSellingPrice != null) {
       setCell(block.cells.processingController, fillCol, sp.processingPrice, "Processing/Controller");
     }
-    if (block.cells.shippingHandling && sp.shippingPrice) {
+    if (block.cells.shippingHandling && pricing.bidFormShippingSellingPrice != null) {
       setCell(block.cells.shippingHandling, fillCol, sp.shippingPrice, "Shipping & Handling");
     }
     if (block.cells.totalSystemPrice) {
@@ -1546,6 +1623,28 @@ function fillBlockCells(
     }
     if (block.cells.installationSubtotal && sp.installPrice) {
       setCell(block.cells.installationSubtotal, fillCol, sp.installPrice, "Installation Sub-Total");
+    }
+
+    const installation = pricing.bidFormInstallation;
+    if (installation) {
+      if (block.cells.structuralSteel) {
+        setCell(block.cells.structuralSteel, fillCol, installation.structuralSteel, "Structural Steel");
+      }
+      if (block.cells.heavyEquipment) {
+        setCell(block.cells.heavyEquipment, fillCol, installation.heavyEquipment, "Heavy Equipment");
+      }
+      if (block.cells.componentInstallation) {
+        setCell(block.cells.componentInstallation, fillCol, installation.componentInstallation, "Component Installation");
+      }
+      if (block.cells.namingSignage) {
+        setCell(block.cells.namingSignage, fillCol, installation.namingSignage, "Naming Signage");
+      }
+      if (block.cells.claddingTrim) {
+        setCell(block.cells.claddingTrim, fillCol, installation.claddingTrim, "Cladding and Trim");
+      }
+      if (block.cells.electricalData) {
+        setCell(block.cells.electricalData, fillCol, installation.electricalData, "Electrical and Data");
+      }
     }
   }
 

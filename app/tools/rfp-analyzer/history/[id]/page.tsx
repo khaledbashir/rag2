@@ -34,6 +34,7 @@ import { snapDimension } from "@/services/catalog/productMatcher";
 import WorkbookShell from "@/app/components/reusables/WorkbookShell";
 import { buildEstimatorWorkbook } from "@/app/components/estimator/buildEstimatorWorkbook";
 import type { ExtractedLEDSpec, ExtractedRequirement } from "@/services/rfp/unified/types";
+import type { PricingData } from "@/services/rfp/pipeline/bidFormFiller";
 
 // ============================================================================
 // Types
@@ -90,6 +91,13 @@ interface FullAnalysis {
   aiWorkspaceSlug: string | null;
   status: string;
   createdAt: string;
+  pricingDocument?: unknown;
+  mirrorModePricing?: Array<{
+    name: string;
+    sellingPrice: number;
+    cost: number | null;
+    section: string;
+  } & Partial<PricingData>>;
 }
 
 // ============================================================================
@@ -213,6 +221,51 @@ export default function AnalysisDetailPage() {
     if (!analysisData.screens?.length) return;
     setLoadingPricing(true);
     try {
+      if (analysisData.mirrorModePricing?.length) {
+        const displays = analysisData.screens.map((spec) => {
+          const pricingItem = analysisData.mirrorModePricing!.find(
+            (item) => item.name.toLowerCase().includes(spec.name.toLowerCase()) ||
+              spec.name.toLowerCase().includes(item.name.toLowerCase()),
+          );
+          const cost = pricingItem?.cost ?? 0;
+          const sellingPrice = pricingItem?.sellingPrice ?? 0;
+          return {
+            ...pricingItem,
+            name: spec.name,
+            location: spec.location,
+            pixelPitch: spec.pixelPitchMm,
+            areaSqFt: (spec.widthFt ?? 0) * (spec.heightFt ?? 0),
+            quantity: spec.quantity || 1,
+            hardwareCost: pricingItem?.hardwareCost ?? cost,
+            processorCost: pricingItem?.processingCost ?? 0,
+            shippingCost: pricingItem?.shippingCost ?? 0,
+            installCost: pricingItem?.installCost ?? 0,
+            pmCost: 0,
+            engCost: 0,
+            totalCost: pricingItem?.totalCost ?? cost,
+            totalSellingPrice: pricingItem?.totalSellingPrice ?? sellingPrice,
+            blendedMarginPct: sellingPrice > 0 ? (sellingPrice - cost) / sellingPrice : 0,
+            costSource: "mirror_mode",
+          };
+        });
+        const totalCost = displays.reduce((sum, display) => sum + display.totalCost, 0);
+        const totalSellingPrice = displays.reduce((sum, display) => sum + display.totalSellingPrice, 0);
+        setPricingPreview({
+          displays,
+          summary: {
+            totalCost,
+            totalSellingPrice,
+            totalMargin: totalSellingPrice - totalCost,
+            blendedMarginPct: totalSellingPrice > 0
+              ? Math.round(((totalSellingPrice - totalCost) / totalSellingPrice) * 1000) / 10
+              : 0,
+            displayCount: displays.length,
+            quotedCount: displays.length,
+            rateCardCount: 0,
+          },
+        });
+        return;
+      }
       const res = await fetch("/api/rfp/pipeline/pricing-preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -589,9 +642,10 @@ export default function AnalysisDetailPage() {
       // Pass pricing data so bid form gets cost/price/manufacturer fields
       if (pricingPreview?.displays) {
         const pricingData = pricingPreview.displays.map((d: any) => ({
+          ...d,
           name: d.name,
           hardwareCost: d.hardwareCost,
-          processingCost: d.processorCost ?? 0,
+          processingCost: d.processingCost ?? d.processorCost ?? 0,
           shippingCost: d.shippingCost ?? 0,
           installCost: d.installCost,
           pmCost: d.pmCost ?? 0,
