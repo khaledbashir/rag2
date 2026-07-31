@@ -10,6 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { normalizeEstimatorDraft } from "@/lib/serviceEstimator/draft";
 import { calculateServiceEstimate, PANTHERS_SERVICE_REFERENCE } from "@/lib/serviceEstimator/engine";
 import type {
   BundleDiscountMode,
@@ -216,7 +217,12 @@ export default function ServiceEstimatorClient() {
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(STORAGE_KEY);
-      if (saved) setInput(JSON.parse(saved) as ServiceEstimatorInput);
+      // A saved draft was written by whichever build of this page last ran, so
+      // it is missing every field added since. It is restored through the
+      // normalizer, never cast — a draft from an older build used to take the
+      // whole page down on load, and stayed down because it was read back on
+      // every reload.
+      if (saved) setInput(normalizeEstimatorDraft(JSON.parse(saved), createBlankInput()));
     } catch {
       // A malformed browser draft should not block a fresh estimate.
     } finally {
