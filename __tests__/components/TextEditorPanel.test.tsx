@@ -3,6 +3,7 @@
  */
 import React from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import "@testing-library/jest-dom";
 import { FormProvider, useForm, type UseFormReturn } from "react-hook-form";
 import { describe, expect, it } from "vitest";
 
@@ -53,6 +54,10 @@ describe("TextEditorPanel rich-text controls", () => {
     expect(screen.getAllByRole("button", { name: "Bold" })).toHaveLength(4);
     expect(screen.getAllByRole("button", { name: "Bulleted list" })).toHaveLength(4);
     expect(screen.getAllByRole("button", { name: "Numbered list" })).toHaveLength(4);
+    expect(screen.getByLabelText(/Introduction Text/)).toHaveAttribute("data-rich-editor", "proposal-introduction");
+    expect(screen.getByLabelText(/Payment Terms/)).toHaveAttribute("data-rich-editor", "proposal-payment-terms");
+    expect(screen.getByLabelText(/Additional Notes/)).toHaveAttribute("data-rich-editor", "proposal-additional-notes");
+    expect(screen.getByLabelText(/Signature Legal Text/)).toHaveAttribute("data-rich-editor", "proposal-signature-text");
   });
 
   it("writes a selected bulleted list back to the proposal form", () => {

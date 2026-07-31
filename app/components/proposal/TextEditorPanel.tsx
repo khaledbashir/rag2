@@ -82,6 +82,7 @@ export function TextEditorPanel() {
                         </Label>
                         <RichTextarea
                             id="additionalNotes"
+                            data-rich-editor="proposal-introduction"
                             value={introText}
                             onValueChange={(next) => setValue("details.additionalNotes", next, { shouldDirty: true, shouldTouch: true })}
                             placeholder="ANC is pleased to present the following LED Display proposal... (Leave blank for default)"
@@ -105,6 +106,7 @@ export function TextEditorPanel() {
                         </Label>
                         <RichTextarea
                             id="paymentTerms"
+                            data-rich-editor="proposal-payment-terms"
                             value={paymentTerms}
                             onValueChange={(next) => setValue("details.paymentTerms", next, { shouldDirty: true, shouldTouch: true })}
                             placeholder="50% on Deposit, 40% on Mobilization, 10% on Substantial Completion"
@@ -128,6 +130,7 @@ export function TextEditorPanel() {
                         </Label>
                         <RichTextarea
                             id="customProposalNotes"
+                            data-rich-editor="proposal-additional-notes"
                             value={additionalNotes}
                             onValueChange={(next) => setValue("details.customProposalNotes", next, { shouldDirty: true, shouldTouch: true })}
                             placeholder="Project-specific notes, constraints, or disclaimers... (Optional - only shows if text is entered)"
@@ -151,6 +154,7 @@ export function TextEditorPanel() {
                         </Label>
                         <RichTextarea
                             id="signatureBlockText"
+                            data-rich-editor="proposal-signature-text"
                             value={signatureLegalText}
                             onValueChange={(next) => setValue("details.signatureBlockText", next, { shouldDirty: true, shouldTouch: true })}
                             placeholder="Please sign below to indicate Purchaser's agreement... (Leave blank for default)"
