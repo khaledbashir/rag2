@@ -1,22 +1,21 @@
 import { Pool } from "pg";
 import { hkdfSync, createDecipheriv } from "crypto";
 import { resolveAncWorkspaceSchema } from "@/services/twenty/workspaceSchema";
+import { resolveWonFilter, type CompiledFilter } from "@/services/crmReports/dashboardParity";
 
 const TWENTY_BASE = "https://abc-twenty.izcgmb.easypanel.host";
 const DASHBOARD_URL =
   "https://crm.ancsports.net/object/dashboard/e6459a59-3e4e-4810-a34a-5ef15142e69d";
 
-// The "Closed Won" section must count WON and nothing else.
+// The "Closed Won" section used to carry its own blocklist of non-won statuses
+// ("not in (pipeline…, LOST, NO_BID)"), so every status nobody thought to
+// exclude counted as a win. On 2026-08-01 that reported $266.1M / 450 deals
+// against a true WON figure of $100.2M / 422: 27 ON_HOLD deals added $162.8M
+// (one of them, BILT In Residence Phase 1, was $124.7M alone) plus one
+// NO_OPPORTUNITY_STATUS deal at $3.1M.
 //
-// This used to be a blocklist ("bidStatus not in (pipeline… , LOST, NO_BID)"),
-// which silently counted every status the blocklist did not enumerate — most
-// damagingly ON_HOLD, but also NO_OPPORTUNITY_STATUS and any status added to
-// the CRM later. On 2026-08-01 that inflated the 2026 Closed Won total to
-// $266.1M / 450 deals when the real WON figure was $100.2M / 422 deals: 27
-// ON_HOLD deals contributed $162.8M (a single ON_HOLD deal, BILT In Residence
-// Phase 1, was $124.7M on its own) and one NO_OPPORTUNITY_STATUS deal $3.1M.
-// An allowlist cannot drift as CRM statuses evolve; a blocklist always does.
-export const WON_BID_STATUS = "WON" as const;
+// The section now reads its definition from the dashboard widget instead of
+// keeping a second copy — see services/crmReports/dashboardParity.ts.
 
 type ConnectedEmailAccount = {
   id: string;
@@ -118,6 +117,11 @@ export type ClosedWonReport = {
   // vertical", so the window leads with a vertical summary; the account
   // executive breakdown below it is kept for Salesforce parity.
   recentByVertical: SectionData;
+  // Which definition of "Closed Won" produced won2026 — the dashboard widget
+  // (normal) or the built-in fallback (dashboard unreadable). Surfaced in the
+  // email footer so a silent fallback can never be mistaken for parity.
+  wonFilterSource: CompiledFilter["source"];
+  wonFilterDescription: string;
   revertedFromWon: RevertedFromWonRow[];
 };
 
@@ -407,18 +411,12 @@ function buildOpportunityQuery(schema: string, whereClause: string) {
   `;
 }
 
-// Exported so the allowlist is asserted by test rather than by reading SQL.
-export function buildWon2026WhereClause() {
-  return `o."bidStatus" = $1
-       and (o."revenue2026AmountMicros" is not null and o."revenue2026AmountMicros" <> 0
-         or o."margin2026AmountMicros" is not null and o."margin2026AmountMicros" <> 0)`;
-}
-
-async function fetchWon2026Opportunities(): Promise<OpportunityDbRow[]> {
-  const schema = await getWorkspaceSchema();
-  const query = buildOpportunityQuery(schema, buildWon2026WhereClause());
-  const result = await getTwentyDbPool().query<OpportunityDbRow>(query, [WON_BID_STATUS]);
-  return result.rows;
+async function fetchWon2026Opportunities(): Promise<{ rows: OpportunityDbRow[]; filter: CompiledFilter }> {
+  const pool = getTwentyDbPool();
+  const [schema, filter] = await Promise.all([getWorkspaceSchema(), resolveWonFilter(pool)]);
+  const query = buildOpportunityQuery(schema, filter.sql);
+  const result = await pool.query<OpportunityDbRow>(query, filter.params);
+  return { rows: result.rows, filter };
 }
 
 type RevertedDbRow = OpportunityDbRow & {
@@ -620,13 +618,13 @@ export async function buildClosedWonReport(period: ClosedWonReportPeriod = "last
   const fyYear = now.getUTCFullYear();
   const { start, end, title: recentTitle } = periodRange(period, now);
 
-  const [wonRaw, recentRaw, revertedRaw] = await Promise.all([
+  const [won, recentRaw, revertedRaw] = await Promise.all([
     fetchWon2026Opportunities(),
     fetchRecentClosedWonOpportunities(start, end),
     fetchRevertedFromWonOpportunities(start, end),
   ]);
 
-  const wonRows = wonRaw.map(toReportRow);
+  const wonRows = won.rows.map(toReportRow);
   const recentRows = recentRaw.map(toReportRow);
   const revertedFromWon = revertedRaw.map(toRevertedRow);
 
@@ -656,6 +654,8 @@ export async function buildClosedWonReport(period: ClosedWonReportPeriod = "last
       ...buildSectionByOwner(recentRows),
     },
     recentByVertical: buildSection(recentRows),
+    wonFilterSource: won.filter.source,
+    wonFilterDescription: won.filter.description,
     revertedFromWon,
   };
 }
@@ -811,6 +811,28 @@ function summaryByBusinessUnit(year: number, label: string, accent: string, sect
   `;
 }
 
+// Reading the definition off the dashboard is the whole guarantee, so when the
+// report has to fall back it says so on the face of the email rather than
+// quietly publishing numbers that may not match what Jireh is looking at.
+export function filterSourceNote(report: ClosedWonReport) {
+  if (report.wonFilterSource === "dashboard") {
+    return `
+      <div style="font-size:11px;color:#64748b;border-top:1px solid #e5e7eb;padding-top:10px;">
+        Closed Won figures use the same filter as the
+        <a href="${esc(report.dashboardUrl)}" style="color:#2563eb;text-decoration:none;">CRM dashboard</a>,
+        read from the dashboard itself when this report was generated — the two cannot disagree.
+      </div>
+    `;
+  }
+  return `
+    <div style="font-size:12px;color:#991b1b;border:1px solid #fecaca;background:#fef2f2;padding:10px;border-radius:6px;">
+      <strong>Heads up:</strong> the dashboard filter could not be read when this report was generated, so
+      Closed Won figures use the built-in ${esc(report.wonFilterDescription)} instead. Check them against the
+      <a href="${esc(report.dashboardUrl)}" style="color:#2563eb;">CRM dashboard</a> before relying on them.
+    </div>
+  `;
+}
+
 export function verticalSummaryLabel(period: ClosedWonReportPeriod) {
   return period === "monthToDate" ? "Wins Month-to-Date by Vertical" : "Wins This Week by Vertical";
 }
@@ -942,6 +964,8 @@ export function renderClosedWonReportHtml(report: ClosedWonReport) {
           ${summaryByBusinessUnit(year, `${esc(verticalSummaryLabel(report.period))} (${report.recentByVertical.totals.records} ${report.recentByVertical.totals.records === 1 ? "deal" : "deals"})`, recentAccent, report.recentByVertical)}
 
           ${sectionTable(year, `${esc(report.recent.title)} — grouped by Account Executive (${report.recent.totals.records} ${report.recent.totals.records === 1 ? "deal" : "deals"})`, recentAccent, report.recent, "No closed-won activity in this window.")}
+
+          ${filterSourceNote(report)}
         </div>
       </div>
     </div>

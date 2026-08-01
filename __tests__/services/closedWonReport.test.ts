@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  WON_BID_STATUS,
-  buildWon2026WhereClause,
   renderClosedWonReportHtml,
   verticalSummaryLabel,
   type ClosedWonReport,
@@ -79,29 +77,11 @@ function fixture(period: ClosedWonReport["period"] = "last7"): ClosedWonReport {
       ...section(recentRows, (r) => r.owner),
     },
     recentByVertical: section(recentRows, (r) => r.department),
+    wonFilterSource: "dashboard" as const,
+    wonFilterDescription: 'dashboard widget "Closed Won Revenue 2026 by Business Unit"',
     revertedFromWon: [],
   };
 }
-
-describe("Closed Won section counts WON and nothing else", () => {
-  // Regression guard for the 2026-08-01 defect: the section was built from a
-  // blocklist of non-won statuses, so ON_HOLD ($162.8M across 27 deals) and
-  // NO_OPPORTUNITY_STATUS ($3.1M) were reported to leadership as Closed Won,
-  // inflating the 2026 total from $100.2M to $266.1M.
-  it("filters on equality with WON, not a blocklist", () => {
-    const clause = buildWon2026WhereClause();
-    expect(WON_BID_STATUS).toBe("WON");
-    expect(clause).toContain(`o."bidStatus" = $1`);
-    expect(clause).not.toContain("not in");
-  });
-
-  it("never enumerates statuses that a new CRM status could slip past", () => {
-    const clause = buildWon2026WhereClause();
-    for (const leaked of ["ON_HOLD", "NO_OPPORTUNITY_STATUS", "LOST", "NO_BID", "SCOPING"]) {
-      expect(clause).not.toContain(leaked);
-    }
-  });
-});
 
 describe("wins for the week by vertical", () => {
   it("labels the summary per period", () => {
@@ -134,5 +114,24 @@ describe("wins for the week by vertical", () => {
     const html = renderClosedWonReportHtml(empty);
     expect(html).toContain("Wins This Week by Vertical");
     expect(html).toContain("No closed-won activity in this window.");
+  });
+});
+
+describe("the email declares which definition produced its numbers", () => {
+  it("states dashboard parity on a normal send", () => {
+    const html = renderClosedWonReportHtml(fixture());
+    expect(html).toContain("same filter as the");
+    expect(html).toContain("the two cannot disagree");
+    expect(html).not.toContain("Heads up:");
+  });
+
+  it("warns loudly rather than passing off fallback numbers as parity", () => {
+    const degraded = fixture();
+    degraded.wonFilterSource = "fallback";
+    degraded.wonFilterDescription = "fallback allowlist (bidStatus = WON, 2026 revenue or margin non-zero)";
+    const html = renderClosedWonReportHtml(degraded);
+    expect(html).toContain("Heads up:");
+    expect(html).toContain("could not be read");
+    expect(html).not.toContain("the two cannot disagree");
   });
 });
