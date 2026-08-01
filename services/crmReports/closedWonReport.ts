@@ -6,20 +6,17 @@ const TWENTY_BASE = "https://abc-twenty.izcgmb.easypanel.host";
 const DASHBOARD_URL =
   "https://crm.ancsports.net/object/dashboard/e6459a59-3e4e-4810-a34a-5ef15142e69d";
 
-const PIPELINE_BID_STATUSES = [
-  "VERBAL_AGREEMENT",
-  "PROSPECTING",
-  "RFP_RECEIVED",
-  "SCOPING",
-  "BID_SUBMITTED",
-  "SHORTLISTED",
-] as const;
-
-const NON_WON_BID_STATUSES = [
-  ...PIPELINE_BID_STATUSES,
-  "LOST",
-  "NO_BID",
-] as const;
+// The "Closed Won" section must count WON and nothing else.
+//
+// This used to be a blocklist ("bidStatus not in (pipeline… , LOST, NO_BID)"),
+// which silently counted every status the blocklist did not enumerate — most
+// damagingly ON_HOLD, but also NO_OPPORTUNITY_STATUS and any status added to
+// the CRM later. On 2026-08-01 that inflated the 2026 Closed Won total to
+// $266.1M / 450 deals when the real WON figure was $100.2M / 422 deals: 27
+// ON_HOLD deals contributed $162.8M (a single ON_HOLD deal, BILT In Residence
+// Phase 1, was $124.7M on its own) and one NO_OPPORTUNITY_STATUS deal $3.1M.
+// An allowlist cannot drift as CRM statuses evolve; a blocklist always does.
+export const WON_BID_STATUS = "WON" as const;
 
 type ConnectedEmailAccount = {
   id: string;
@@ -116,6 +113,11 @@ export type ClosedWonReport = {
     rangeStart: string;
     rangeEnd: string;
   };
+  // Same rows as `recent`, grouped by business unit instead of account
+  // executive. Jireh asks for the Friday email as "wins for the week by
+  // vertical", so the window leads with a vertical summary; the account
+  // executive breakdown below it is kept for Salesforce parity.
+  recentByVertical: SectionData;
   revertedFromWon: RevertedFromWonRow[];
 };
 
@@ -405,16 +407,17 @@ function buildOpportunityQuery(schema: string, whereClause: string) {
   `;
 }
 
+// Exported so the allowlist is asserted by test rather than by reading SQL.
+export function buildWon2026WhereClause() {
+  return `o."bidStatus" = $1
+       and (o."revenue2026AmountMicros" is not null and o."revenue2026AmountMicros" <> 0
+         or o."margin2026AmountMicros" is not null and o."margin2026AmountMicros" <> 0)`;
+}
+
 async function fetchWon2026Opportunities(): Promise<OpportunityDbRow[]> {
   const schema = await getWorkspaceSchema();
-  const query = buildOpportunityQuery(
-    schema,
-    `o."bidStatus" is not null
-       and o."bidStatus" not in (${NON_WON_BID_STATUSES.map((_, i) => `$${i + 1}`).join(",")})
-       and (o."revenue2026AmountMicros" is not null and o."revenue2026AmountMicros" <> 0
-         or o."margin2026AmountMicros" is not null and o."margin2026AmountMicros" <> 0)`,
-  );
-  const result = await getTwentyDbPool().query<OpportunityDbRow>(query, [...NON_WON_BID_STATUSES]);
+  const query = buildOpportunityQuery(schema, buildWon2026WhereClause());
+  const result = await getTwentyDbPool().query<OpportunityDbRow>(query, [WON_BID_STATUS]);
   return result.rows;
 }
 
@@ -652,6 +655,7 @@ export async function buildClosedWonReport(period: ClosedWonReportPeriod = "last
       rangeEnd: end.toISOString(),
       ...buildSectionByOwner(recentRows),
     },
+    recentByVertical: buildSection(recentRows),
     revertedFromWon,
   };
 }
@@ -807,6 +811,10 @@ function summaryByBusinessUnit(year: number, label: string, accent: string, sect
   `;
 }
 
+export function verticalSummaryLabel(period: ClosedWonReportPeriod) {
+  return period === "monthToDate" ? "Wins Month-to-Date by Vertical" : "Wins This Week by Vertical";
+}
+
 function topWinsSection(year: number, rows: ClosedWonReportRow[]) {
   if (!rows.length) return "";
 
@@ -930,6 +938,8 @@ export function renderClosedWonReportHtml(report: ClosedWonReport) {
 
         <div style="padding:18px 24px;">
           ${summaryByBusinessUnit(year, `${year} Closed Won by Business Unit`, wonAccent, report.won2026)}
+
+          ${summaryByBusinessUnit(year, `${esc(verticalSummaryLabel(report.period))} (${report.recentByVertical.totals.records} ${report.recentByVertical.totals.records === 1 ? "deal" : "deals"})`, recentAccent, report.recentByVertical)}
 
           ${sectionTable(year, `${esc(report.recent.title)} — grouped by Account Executive (${report.recent.totals.records} ${report.recent.totals.records === 1 ? "deal" : "deals"})`, recentAccent, report.recent, "No closed-won activity in this window.")}
         </div>
