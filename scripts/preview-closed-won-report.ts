@@ -7,9 +7,8 @@
  *
  *   npx tsx scripts/preview-closed-won-report.ts [monthToDate|last7]
  *
- * "filter source" is the line to read: `dashboard` means the numbers came from
- * the widget on Jireh's dashboard; `fallback` means the dashboard could not be
- * read and the report used its own rule, which is the drift this guards against.
+ * "filter source" is the line to read. It must be `dashboard`; if the widget
+ * cannot be read, report generation now fails instead of inventing a fallback.
  */
 import { buildClosedWonReport, type ClosedWonReportPeriod } from "@/services/crmReports/closedWonReport";
 
@@ -46,10 +45,6 @@ const usd = (n: number) =>
   console.log(`\n=== ${report.recent.title} ===`);
   console.log(`  ${report.recent.rows.length} deals · rev=${usd(report.recent.totals.revenue)} · margin=${usd(report.recent.totals.margin)}`);
 
-  if (report.wonFilterSource !== "dashboard") {
-    console.log(`\n!! NOT dashboard-backed — do not send until this reads "dashboard".`);
-    process.exit(2);
-  }
   process.exit(0);
 })().catch((error) => {
   console.error("FAILED", error);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   compileWidgetFilter,
-  fallbackWonFilter,
+  resolveWonFilter,
   type FieldMeta,
   type WidgetFilter,
 } from "@/services/crmReports/dashboardParity";
@@ -96,16 +96,15 @@ describe("the report inherits the dashboard's definition of Closed Won", () => {
   });
 });
 
-describe("fallback when the dashboard cannot be read", () => {
-  it("is an allowlist, never a blocklist", () => {
-    const fallback = fallbackWonFilter();
-    expect(fallback.source).toBe("fallback");
-    expect(fallback.params).toEqual(["WON"]);
-    expect(fallback.sql).toContain(`o."bidStatus" = $1`);
-    expect(fallback.sql).not.toContain("not in");
-    for (const leaked of ["ON_HOLD", "NO_OPPORTUNITY_STATUS", "LOST", "NO_BID"]) {
-      expect(fallback.sql).not.toContain(leaked);
-    }
+describe("fail-closed dashboard parity", () => {
+  it("rejects the report when the dashboard cannot be read", async () => {
+    const brokenPool = {
+      query: async () => {
+        throw new Error("dashboard unavailable");
+      },
+    } as never;
+
+    await expect(resolveWonFilter(brokenPool)).rejects.toThrow("dashboard unavailable");
   });
 });
 

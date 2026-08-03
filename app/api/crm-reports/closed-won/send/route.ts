@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   buildClosedWonReport,
+  getClosedWonGroupApproval,
+  getClosedWonReviewRecipients,
   getDefaultClosedWonRecipients,
   renderClosedWonReportHtml,
   sendClosedWonReportEmail,
+  sendClosedWonReportFailureAlert,
+  type ClosedWonDelivery,
   type ClosedWonReportPeriod,
 } from "@/services/crmReports/closedWonReport";
 
@@ -48,26 +52,72 @@ function isLastDayOfMonth() {
   return day === new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
-async function recipientsFromRequest(request: NextRequest) {
-  const body = await request.json().catch(() => null);
-  if (Array.isArray(body?.recipients)) {
-    return body.recipients.map((entry: unknown) => String(entry).trim()).filter(Boolean);
-  }
-  return getDefaultClosedWonRecipients();
+function deliveryFromRequest(request: NextRequest): ClosedWonDelivery {
+  const raw = request.nextUrl.searchParams.get("delivery") || "group";
+  if (raw === "review" || raw === "group") return raw;
+  throw new Error("Invalid delivery mode");
 }
 
 export async function POST(request: NextRequest) {
+  let authorized = false;
+  let period: ClosedWonReportPeriod = "last7";
+  let delivery: ClosedWonDelivery = "group";
   try {
     requireReportSecret(request);
-    const period = periodFromRequest(request);
+    authorized = true;
+    period = periodFromRequest(request);
+    delivery = deliveryFromRequest(request);
     if (request.nextUrl.searchParams.get("onlyLastDay") === "1" && !isLastDayOfMonth()) {
       return NextResponse.json({ ok: true, skipped: true, reason: "Not the last day of the month", period });
     }
 
+    const approval = getClosedWonGroupApproval();
+    if (delivery === "group" && !approval.approved) {
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        locked: true,
+        reason: "Wider distribution is locked pending Jireh's approval",
+        delivery,
+        period,
+      });
+    }
+    if (delivery === "review" && approval.approved) {
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        reason: "Private review is complete; wider distribution is approved",
+        delivery,
+        period,
+        approval,
+      });
+    }
+
     const report = await buildClosedWonReport(period);
-    const html = renderClosedWonReportHtml(report);
-    const recipients = await recipientsFromRequest(request);
-    const result = await sendClosedWonReportEmail({ report, html, recipients });
+    const recipients = delivery === "review"
+      ? getClosedWonReviewRecipients()
+      : getDefaultClosedWonRecipients();
+    const dryRun = request.nextUrl.searchParams.get("dryRun") === "1";
+    if (dryRun) {
+      return NextResponse.json({
+        ok: true,
+        dryRun: true,
+        delivery,
+        recipients,
+        period: report.period,
+        fyYear: report.fyYear,
+        wonFilterSource: report.wonFilterSource,
+        wonFilterDescription: report.wonFilterDescription,
+        won2026: report.won2026.totals,
+        byBusinessUnit: report.won2026.departmentGroups.map((group) => ({
+          department: group.department,
+          totals: group.totals,
+        })),
+      });
+    }
+
+    const html = renderClosedWonReportHtml(report, { reviewCopy: delivery === "review" });
+    const result = await sendClosedWonReportEmail({ report, html, recipients, delivery });
 
     return NextResponse.json({
       ok: true,
@@ -75,6 +125,7 @@ export async function POST(request: NextRequest) {
       provider: result.provider,
       from: result.from,
       recipients,
+      delivery,
       period: report.period,
       fyYear: report.fyYear,
       won2026: report.won2026.totals,
@@ -82,7 +133,17 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to send report";
-    const status = message === "Unauthorized" ? 401 : 500;
+    if (authorized && message !== "Invalid delivery mode") {
+      let alerted = false;
+      try {
+        await sendClosedWonReportFailureAlert({ period, delivery, error: message });
+        alerted = true;
+      } catch (alertError) {
+        console.error("[closed-won-report] failure alert could not be sent", alertError);
+      }
+      return NextResponse.json({ ok: false, stopped: true, alerted, error: message }, { status: 500 });
+    }
+    const status = message === "Unauthorized" ? 401 : message === "Invalid delivery mode" ? 400 : 500;
     return NextResponse.json({ ok: false, error: message }, { status });
   }
 }

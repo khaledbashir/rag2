@@ -28,11 +28,11 @@ function getTwentyDbPool() {
   return twentyDbPool;
 }
 
-async function getWorkspaceSchema(): Promise<string> {
-  return resolveAncWorkspaceSchema(getTwentyDbPool());
-}
-
 export type ClosedWonReportPeriod = "last7" | "monthToDate";
+export type ClosedWonDelivery = "review" | "group";
+
+export const CLOSED_WON_REVIEWER = "jbillings@anc.com";
+export const CLOSED_WON_FAILURE_RECIPIENT = "ahmad.basheer@anc.com";
 
 export type ClosedWonReportRow = {
   id: string;
@@ -107,9 +107,8 @@ export type ClosedWonReport = {
   // vertical", so the window leads with a vertical summary; the account
   // executive breakdown below it is kept for Salesforce parity.
   recentByVertical: SectionData;
-  // Which definition of "Closed Won" produced won2026 — the dashboard widget
-  // (normal) or the built-in fallback (dashboard unreadable). Surfaced in the
-  // email footer so a silent fallback can never be mistaken for parity.
+  // The report only exists when the dashboard definition was read successfully.
+  // There is no fallback definition.
   wonFilterSource: CompiledFilter["source"];
   wonFilterDescription: string;
   revertedFromWon: RevertedFromWonRow[];
@@ -265,12 +264,13 @@ function buildOpportunityQuery(schema: string, whereClause: string) {
   `;
 }
 
-async function fetchWon2026Opportunities(): Promise<{ rows: OpportunityDbRow[]; filter: CompiledFilter }> {
-  const pool = getTwentyDbPool();
-  const [schema, filter] = await Promise.all([getWorkspaceSchema(), resolveWonFilter(pool)]);
+async function fetchWon2026Opportunities(
+  schema: string,
+  filter: CompiledFilter,
+): Promise<OpportunityDbRow[]> {
   const query = buildOpportunityQuery(schema, filter.sql);
-  const result = await pool.query<OpportunityDbRow>(query, filter.params);
-  return { rows: result.rows, filter };
+  const result = await getTwentyDbPool().query<OpportunityDbRow>(query, filter.params);
+  return result.rows;
 }
 
 type RevertedDbRow = OpportunityDbRow & {
@@ -279,8 +279,11 @@ type RevertedDbRow = OpportunityDbRow & {
   revertedTo: string;
 };
 
-async function fetchRevertedFromWonOpportunities(start: Date, end: Date): Promise<RevertedDbRow[]> {
-  const schema = await getWorkspaceSchema();
+async function fetchRevertedFromWonOpportunities(
+  schema: string,
+  start: Date,
+  end: Date,
+): Promise<RevertedDbRow[]> {
   const query = `
     with reverted as (
       select distinct on (t."targetOpportunityId")
@@ -357,27 +360,46 @@ function toRevertedRow(opp: RevertedDbRow): RevertedFromWonRow {
   };
 }
 
-async function fetchRecentClosedWonOpportunities(start: Date, end: Date): Promise<OpportunityDbRow[]> {
-  const schema = await getWorkspaceSchema();
-  const query = buildOpportunityQuery(
-    schema,
-    `o."bidStatus" = 'WON'
+export function buildRecentClosedWonFilter(
+  filter: CompiledFilter,
+  start: Date,
+  end: Date,
+) {
+  const startParameter = `$${filter.params.length + 1}`;
+  const endParameter = `$${filter.params.length + 2}`;
+  return {
+    whereClause: `${filter.sql}
        and (
-         (o."closeDate" is not null and o."closeDate" >= $1::timestamptz and o."closeDate" <= $2::timestamptz)
+         (o."closeDate" is not null and o."closeDate" >= ${startParameter}::timestamptz and o."closeDate" <= ${endParameter}::timestamptz)
          or
-         (o."createdAt" >= $1::timestamptz and o."createdAt" <= $2::timestamptz)
+         (o."createdAt" >= ${startParameter}::timestamptz and o."createdAt" <= ${endParameter}::timestamptz)
          or
          exists (
-           select 1 from "${schema}"."timelineActivity" t
+           select 1 from __WORKSPACE_SCHEMA__."timelineActivity" t
            where t."targetOpportunityId" = o.id
-             and t."happensAt" >= $1::timestamptz
-             and t."happensAt" <= $2::timestamptz
+             and t."happensAt" >= ${startParameter}::timestamptz
+             and t."happensAt" <= ${endParameter}::timestamptz
              and t.name = 'opportunity.updated'
              and t.properties->'diff'->'bidStatus'->>'after' = 'WON'
          )
        )`,
+    params: [...filter.params, start.toISOString(), end.toISOString()],
+  };
+}
+
+async function fetchRecentClosedWonOpportunities(
+  schema: string,
+  filter: CompiledFilter,
+  start: Date,
+  end: Date,
+): Promise<OpportunityDbRow[]> {
+  const recentFilter = buildRecentClosedWonFilter(filter, start, end);
+  const whereClause = recentFilter.whereClause.replace(
+    "__WORKSPACE_SCHEMA__",
+    `"${schema.replace(/"/g, '""')}"`,
   );
-  const result = await getTwentyDbPool().query<OpportunityDbRow>(query, [start.toISOString(), end.toISOString()]);
+  const query = buildOpportunityQuery(schema, whereClause);
+  const result = await getTwentyDbPool().query<OpportunityDbRow>(query, recentFilter.params);
   return result.rows;
 }
 
@@ -472,13 +494,17 @@ export async function buildClosedWonReport(period: ClosedWonReportPeriod = "last
   const fyYear = now.getUTCFullYear();
   const { start, end, title: recentTitle } = periodRange(period, now);
 
-  const [won, recentRaw, revertedRaw] = await Promise.all([
-    fetchWon2026Opportunities(),
-    fetchRecentClosedWonOpportunities(start, end),
-    fetchRevertedFromWonOpportunities(start, end),
+  const pool = getTwentyDbPool();
+  const schema = await resolveAncWorkspaceSchema(pool);
+  const filter = await resolveWonFilter(pool);
+
+  const [wonRaw, recentRaw, revertedRaw] = await Promise.all([
+    fetchWon2026Opportunities(schema, filter),
+    fetchRecentClosedWonOpportunities(schema, filter, start, end),
+    fetchRevertedFromWonOpportunities(schema, start, end),
   ]);
 
-  const wonRows = won.rows.map(toReportRow);
+  const wonRows = wonRaw.map(toReportRow);
   const recentRows = recentRaw.map(toReportRow);
   const revertedFromWon = revertedRaw.map(toRevertedRow);
 
@@ -508,8 +534,8 @@ export async function buildClosedWonReport(period: ClosedWonReportPeriod = "last
       ...buildSectionByOwner(recentRows),
     },
     recentByVertical: buildSection(recentRows),
-    wonFilterSource: won.filter.source,
-    wonFilterDescription: won.filter.description,
+    wonFilterSource: filter.source,
+    wonFilterDescription: filter.description,
     revertedFromWon,
   };
 }
@@ -665,24 +691,12 @@ function summaryByBusinessUnit(year: number, label: string, accent: string, sect
   `;
 }
 
-// Reading the definition off the dashboard is the whole guarantee, so when the
-// report has to fall back it says so on the face of the email rather than
-// quietly publishing numbers that may not match what Jireh is looking at.
 export function filterSourceNote(report: ClosedWonReport) {
-  if (report.wonFilterSource === "dashboard") {
-    return `
-      <div style="font-size:11px;color:#64748b;border-top:1px solid #e5e7eb;padding-top:10px;">
-        Closed Won figures use the same filter as the
-        <a href="${esc(report.dashboardUrl)}" style="color:#2563eb;text-decoration:none;">CRM dashboard</a>,
-        read from the dashboard itself when this report was generated — the two cannot disagree.
-      </div>
-    `;
-  }
   return `
-    <div style="font-size:12px;color:#991b1b;border:1px solid #fecaca;background:#fef2f2;padding:10px;border-radius:6px;">
-      <strong>Heads up:</strong> the dashboard filter could not be read when this report was generated, so
-      Closed Won figures use the built-in ${esc(report.wonFilterDescription)} instead. Check them against the
-      <a href="${esc(report.dashboardUrl)}" style="color:#2563eb;">CRM dashboard</a> before relying on them.
+    <div style="font-size:11px;color:#64748b;border-top:1px solid #e5e7eb;padding-top:10px;">
+      Closed Won figures use the same filter as the
+      <a href="${esc(report.dashboardUrl)}" style="color:#2563eb;text-decoration:none;">CRM dashboard</a>,
+      read from the dashboard itself when this report was generated — the two cannot disagree.
     </div>
   `;
 }
@@ -796,7 +810,10 @@ function revertedFromWonSection(rows: RevertedFromWonRow[]) {
   `;
 }
 
-export function renderClosedWonReportHtml(report: ClosedWonReport) {
+export function renderClosedWonReportHtml(
+  report: ClosedWonReport,
+  options: { reviewCopy?: boolean } = {},
+) {
   const year = report.fyYear;
 
   const wonAccent = "#eef2ff";
@@ -813,6 +830,11 @@ export function renderClosedWonReportHtml(report: ClosedWonReport) {
         </div>
 
         <div style="padding:18px 24px;">
+          ${
+            options.reviewCopy
+              ? `<div style="font-size:13px;color:#1e3a8a;border:1px solid #bfdbfe;background:#eff6ff;padding:11px 12px;border-radius:6px;margin-bottom:18px;"><strong>Private review copy.</strong> This report has not been distributed to the wider group.</div>`
+              : ""
+          }
           ${summaryByBusinessUnit(year, `${year} Closed Won by Business Unit`, wonAccent, report.won2026)}
 
           ${summaryByBusinessUnit(year, `${esc(verticalSummaryLabel(report.period))} (${report.recentByVertical.totals.records} ${report.recentByVertical.totals.records === 1 ? "deal" : "deals"})`, recentAccent, report.recentByVertical)}
@@ -834,19 +856,70 @@ export function getDefaultClosedWonRecipients() {
     .filter(Boolean);
 }
 
+export function getClosedWonReviewRecipients() {
+  return [CLOSED_WON_REVIEWER];
+}
+
+type ClosedWonApprovalEnvironment = {
+  CRM_CLOSED_WON_GROUP_APPROVED_AT?: string;
+  CRM_CLOSED_WON_GROUP_APPROVED_BY?: string;
+};
+
+export function getClosedWonGroupApproval(
+  env?: ClosedWonApprovalEnvironment,
+) {
+  const source = env ?? {
+    CRM_CLOSED_WON_GROUP_APPROVED_AT: process.env.CRM_CLOSED_WON_GROUP_APPROVED_AT,
+    CRM_CLOSED_WON_GROUP_APPROVED_BY: process.env.CRM_CLOSED_WON_GROUP_APPROVED_BY,
+  };
+  const approvedAt = source.CRM_CLOSED_WON_GROUP_APPROVED_AT?.trim() || "";
+  const approvedBy = source.CRM_CLOSED_WON_GROUP_APPROVED_BY?.trim().toLowerCase() || "";
+  const validTimestamp = approvedAt !== "" && !Number.isNaN(new Date(approvedAt).getTime());
+  const approved = validTimestamp && approvedBy === CLOSED_WON_REVIEWER;
+  return { approved, approvedAt: approved ? approvedAt : null, approvedBy: approved ? approvedBy : null };
+}
+
 export async function sendClosedWonReportEmail(input: {
   report: ClosedWonReport;
   html: string;
   recipients: string[];
+  delivery?: ClosedWonDelivery;
 }) {
   if (!input.recipients.length) throw new Error("No report recipients configured");
 
+  const delivery = input.delivery || "group";
+  if (
+    delivery === "review" &&
+    (input.recipients.length !== 1 || input.recipients[0].toLowerCase() !== CLOSED_WON_REVIEWER)
+  ) {
+    throw new Error("Private review delivery must go only to Jireh");
+  }
+
   const periodLabel = input.report.period === "monthToDate" ? "Month-to-Date" : "Last 7 Days";
-  const subject = `Report results (${input.report.fyYear} Closed Won by Business Unit — ${periodLabel})`;
+  const prefix = delivery === "review" ? "PRIVATE REVIEW — " : "";
+  const subject = `${prefix}Report results (${input.report.fyYear} Closed Won by Business Unit — ${periodLabel})`;
 
   return sendMicrosoftGraphMail({
     subject,
     html: input.html,
     recipients: input.recipients,
+  });
+}
+
+export async function sendClosedWonReportFailureAlert(input: {
+  period: ClosedWonReportPeriod;
+  delivery: ClosedWonDelivery;
+  error: string;
+}) {
+  const subject = `Closed Won report stopped — ${input.delivery} delivery not sent`;
+  const html = `
+    <p>The ${esc(input.period)} Closed Won report stopped before delivery.</p>
+    <p><strong>No report was sent.</strong></p>
+    <p>${esc(input.error)}</p>
+  `;
+  return sendMicrosoftGraphMail({
+    subject,
+    html,
+    recipients: [CLOSED_WON_FAILURE_RECIPIENT],
   });
 }

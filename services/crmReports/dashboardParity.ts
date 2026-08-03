@@ -51,7 +51,7 @@ export type FieldMeta = { id: string; name: string; type: string };
 export type CompiledFilter = {
   sql: string;
   params: unknown[];
-  source: "dashboard" | "fallback";
+  source: "dashboard";
   description: string;
 };
 
@@ -145,19 +145,6 @@ export function compileWidgetFilter(
   return { sql: compileGroup(roots[0].id, new Set()), params };
 }
 
-// Used when the dashboard widget cannot be read. Deliberately an allowlist:
-// a blocklist is what caused the drift this module exists to prevent.
-export function fallbackWonFilter(alias = "o"): CompiledFilter {
-  return {
-    sql: `(${alias}."bidStatus" = $1
-      and (${alias}."revenue2026AmountMicros" is not null and ${alias}."revenue2026AmountMicros" <> 0
-        or ${alias}."margin2026AmountMicros" is not null and ${alias}."margin2026AmountMicros" <> 0))`,
-    params: ["WON"],
-    source: "fallback",
-    description: 'fallback allowlist (bidStatus = WON, 2026 revenue or margin non-zero)',
-  };
-}
-
 export async function loadDashboardWonFilter(pool: Pool, alias = "o"): Promise<CompiledFilter> {
   // Dashboards are workspace records, so they live in the workspace schema —
   // core."dashboard" does not exist. Reading the wrong schema threw, which
@@ -203,14 +190,9 @@ export async function loadDashboardWonFilter(pool: Pool, alias = "o"): Promise<C
   };
 }
 
-// Never lets a read failure stop the Friday email: falls back to the allowlist
-// and reports which definition was used so the send can say so out loud.
+// Fail closed. There is intentionally no backup interpretation of "Closed
+// Won": if the dashboard cannot be read or translated, report generation
+// throws and the send route stops before addressing any recipient.
 export async function resolveWonFilter(pool: Pool, alias = "o"): Promise<CompiledFilter> {
-  try {
-    return await loadDashboardWonFilter(pool, alias);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    console.error("[closed-won-report] dashboard filter unavailable, using fallback:", reason);
-    return fallbackWonFilter(alias);
-  }
+  return loadDashboardWonFilter(pool, alias);
 }

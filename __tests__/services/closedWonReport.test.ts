@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildRecentClosedWonFilter,
+  CLOSED_WON_REVIEWER,
+  getClosedWonGroupApproval,
+  getClosedWonReviewRecipients,
   renderClosedWonReportHtml,
+  sendClosedWonReportEmail,
   verticalSummaryLabel,
   type ClosedWonReport,
   type ClosedWonReportRow,
@@ -117,21 +122,83 @@ describe("wins for the week by vertical", () => {
   });
 });
 
-describe("the email declares which definition produced its numbers", () => {
+describe("the recent window reuses the dashboard definition", () => {
+  it("adds date parameters after the compiled dashboard parameters", () => {
+    const start = new Date("2026-07-27T00:00:00.000Z");
+    const end = new Date("2026-08-03T00:00:00.000Z");
+    const result = buildRecentClosedWonFilter(
+      {
+        sql: `(o."bidStatus" in ($1) AND o."revenue2026AmountMicros" >= $2)`,
+        params: ["WON", 10_000],
+        source: "dashboard",
+        description: "live dashboard widget",
+      },
+      start,
+      end,
+    );
+
+    expect(result.whereClause).toContain(`o."bidStatus" in ($1)`);
+    expect(result.whereClause).toContain(`o."closeDate" >= $3::timestamptz`);
+    expect(result.whereClause).toContain(`o."closeDate" <= $4::timestamptz`);
+    expect(result.params).toEqual(["WON", 10_000, start.toISOString(), end.toISOString()]);
+  });
+});
+
+describe("the email is dashboard-backed and review-safe", () => {
   it("states dashboard parity on a normal send", () => {
     const html = renderClosedWonReportHtml(fixture());
     expect(html).toContain("same filter as the");
     expect(html).toContain("the two cannot disagree");
-    expect(html).not.toContain("Heads up:");
+    expect(html).not.toContain("Private review copy");
   });
 
-  it("warns loudly rather than passing off fallback numbers as parity", () => {
-    const degraded = fixture();
-    degraded.wonFilterSource = "fallback";
-    degraded.wonFilterDescription = "fallback allowlist (bidStatus = WON, 2026 revenue or margin non-zero)";
-    const html = renderClosedWonReportHtml(degraded);
-    expect(html).toContain("Heads up:");
-    expect(html).toContain("could not be read");
-    expect(html).not.toContain("the two cannot disagree");
+  it("labels Jireh's copy as private and undistributed", () => {
+    const html = renderClosedWonReportHtml(fixture(), { reviewCopy: true });
+    expect(html).toContain("Private review copy");
+    expect(html).toContain("has not been distributed to the wider group");
+  });
+});
+
+describe("wider-distribution approval gate", () => {
+  it("is locked when approval is absent or incomplete", () => {
+    expect(getClosedWonGroupApproval({})).toEqual({
+      approved: false,
+      approvedAt: null,
+      approvedBy: null,
+    });
+    expect(
+      getClosedWonGroupApproval({
+        CRM_CLOSED_WON_GROUP_APPROVED_AT: "2026-08-06T13:00:00Z",
+        CRM_CLOSED_WON_GROUP_APPROVED_BY: "someone-else@anc.com",
+      }),
+    ).toEqual({ approved: false, approvedAt: null, approvedBy: null });
+  });
+
+  it("unlocks only with a valid timestamp and Jireh as approver", () => {
+    expect(
+      getClosedWonGroupApproval({
+        CRM_CLOSED_WON_GROUP_APPROVED_AT: "2026-08-06T13:00:00Z",
+        CRM_CLOSED_WON_GROUP_APPROVED_BY: CLOSED_WON_REVIEWER,
+      }),
+    ).toEqual({
+      approved: true,
+      approvedAt: "2026-08-06T13:00:00Z",
+      approvedBy: CLOSED_WON_REVIEWER,
+    });
+  });
+
+  it("hard-codes the private review audience to Jireh only", () => {
+    expect(getClosedWonReviewRecipients()).toEqual([CLOSED_WON_REVIEWER]);
+  });
+
+  it("refuses a review delivery addressed to anyone else", async () => {
+    await expect(
+      sendClosedWonReportEmail({
+        report: fixture(),
+        html: "<p>Private review</p>",
+        recipients: ["someone-else@anc.com"],
+        delivery: "review",
+      }),
+    ).rejects.toThrow("Private review delivery must go only to Jireh");
   });
 });
