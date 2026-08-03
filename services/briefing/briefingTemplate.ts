@@ -30,7 +30,19 @@ function sectionLabel(text: string): string {
   </td></tr>`;
 }
 
-function tagPill(text: string, kind: "bd" | "org" | "extra"): string {
+/** CRM stage values arrive as raw enum tokens (RFP_RECEIVED, VERBAL_AGREEMENT).
+ *  Executives read this email — no internal token shapes reach the page. */
+export function humanizeTag(text: string): string {
+  if (!/_/.test(text) || text !== text.toUpperCase()) return text;
+  return text
+    .split("_")
+    .filter(Boolean)
+    .map((w) => (w.length <= 3 ? w : w[0] + w.slice(1).toLowerCase()))
+    .join(" ");
+}
+
+function tagPill(raw: string, kind: "bd" | "org" | "extra"): string {
+  const text = humanizeTag(raw);
   const styles =
     kind === "bd"
       ? `background:#EAF0FE;border:1px solid #C3D4FB;color:${BLUE};`

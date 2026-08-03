@@ -9,7 +9,7 @@ import {
   summarizeThreads,
   type WeekMessage,
 } from "@/services/briefing/weeklyBriefing";
-import { renderBriefingEmail } from "@/services/briefing/briefingTemplate";
+import { humanizeTag, renderBriefingEmail } from "@/services/briefing/briefingTemplate";
 
 function msg(partial: Partial<WeekMessage>): WeekMessage {
   return {
@@ -77,6 +77,14 @@ describe("computeWeekWindow", () => {
     const { startIso, endIso } = computeWeekWindow(new Date("2026-08-02T20:30:00Z"));
     expect(startIso).toBe("2026-07-27T04:00:00Z");
     expect(endIso).toBe("2026-08-02T20:30:00.000Z");
+  });
+  it("repeats the month when the week straddles two", () => {
+    const { label } = computeWeekWindow(new Date("2026-08-02T20:30:00Z"));
+    expect(label).toBe("Week of July 27 – August 2, 2026");
+  });
+  it("omits the repeated month within a single month", () => {
+    const { label } = computeWeekWindow(new Date("2026-07-26T20:30:00Z"));
+    expect(label).toBe("Week of July 20 – 26, 2026");
   });
 });
 
@@ -155,5 +163,19 @@ describe("renderBriefingEmail", () => {
     expect(html).toContain("$25.0M");
     expect(html).not.toMatch(/display:\s*(flex|grid)/);
     expect(html).toContain("Delivered automatically every Sunday at 4:00 PM ET");
+  });
+});
+
+describe("humanizeTag", () => {
+  it("turns raw CRM stage tokens into reader-facing labels", () => {
+    expect(humanizeTag("RFP_RECEIVED")).toBe("RFP Received");
+    expect(humanizeTag("VERBAL_AGREEMENT")).toBe("Verbal Agreement");
+    expect(humanizeTag("DESIGN_CREATIVE")).toBe("Design Creative");
+  });
+  it("leaves already-readable tags alone", () => {
+    expect(humanizeTag("Business Development")).toBe("Business Development");
+    expect(humanizeTag("Service Ops")).toBe("Service Ops");
+    expect(humanizeTag("LG")).toBe("LG");
+    expect(humanizeTag("Won")).toBe("Won");
   });
 });

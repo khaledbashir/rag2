@@ -16,11 +16,16 @@ async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dry-run");
   const outDir = args.find((a) => a.startsWith("--out="))?.slice("--out=".length);
+  // --now lets a catch-up run reproduce the edition a missed Sunday would have
+  // sent, instead of the Monday-to-today sliver a plain re-run would produce.
+  const nowArg = args.find((a) => a.startsWith("--now="))?.slice("--now=".length);
+  const now = nowArg ? new Date(nowArg) : undefined;
+  if (nowArg && Number.isNaN(now!.getTime())) throw new Error(`Bad --now: ${nowArg}`);
   const recipients = args.filter((a) => a.includes("@") && !a.startsWith("--"));
   const targets = recipients.length ? recipients : briefingRecipients();
 
-  console.log(`[briefing] ${dryRun ? "DRY RUN" : "DELIVERING"} → ${targets.join(", ")}`);
-  const results = await runWeeklyBriefing({ recipients: targets, dryRun });
+  console.log(`[briefing] ${dryRun ? "DRY RUN" : "DELIVERING"} → ${targets.join(", ")}${nowArg ? ` (as of ${nowArg})` : ""}`);
+  const results = await runWeeklyBriefing({ recipients: targets, dryRun, now });
   for (const r of results) {
     if (outDir && r.html) {
       const path = `${outDir}/briefing-${r.recipient.replace(/[^a-z0-9]/gi, "_")}.html`;

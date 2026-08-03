@@ -149,11 +149,19 @@ export function computeWeekWindow(now: Date = new Date()): {
   // NY midnight ≤ UTC-4/5 — use 04:00Z as a safe "start of NY day" boundary.
   const startIso = `${startYmd}T04:00:00Z`;
   const endIso = now.toISOString();
-  const fmt = new Intl.DateTimeFormat("en-US", { timeZone: NY_TZ, month: "long", day: "numeric" });
-  const label = `Week of ${fmt.format(new Date(startIso))}–${new Intl.DateTimeFormat("en-US", {
+  // "Week of July 27 – August 2, 2026" — the end day repeats its month whenever
+  // the week straddles one, so the subject line never reads "July 27–2".
+  const monthDay = new Intl.DateTimeFormat("en-US", {
     timeZone: NY_TZ,
+    month: "long",
     day: "numeric",
-  }).format(now)}, ${startYmd.slice(0, 4)}`;
+  });
+  const dayOnly = new Intl.DateTimeFormat("en-US", { timeZone: NY_TZ, day: "numeric" });
+  const monthOnly = new Intl.DateTimeFormat("en-US", { timeZone: NY_TZ, month: "long" });
+  const start = new Date(startIso);
+  const sameMonth = monthOnly.format(start) === monthOnly.format(now);
+  const end = sameMonth ? dayOnly.format(now) : monthDay.format(now);
+  const label = `Week of ${monthDay.format(start)} – ${end}, ${startYmd.slice(0, 4)}`;
   return { startIso, endIso, label };
 }
 
