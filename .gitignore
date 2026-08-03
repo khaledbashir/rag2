@@ -123,7 +123,9 @@ services/rfp/pipeline/*.xlsx
 
 # Local context files (credentials, reference docs)
 contexts/
-run
+# Root-level scratch dir only — a bare "run" pattern also matches nested route
+# segments (it silently swallowed app/api/briefing/weekly/run/ once).
+/run
 natexcel/
 playwright-mcp/
 image*.png

@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
+  DEFAULT_RECIPIENTS,
+  briefingRecipients,
   computeWeekWindow,
   findWaitingOnReply,
   isInSendWindow,
@@ -21,6 +23,29 @@ function msg(partial: Partial<WeekMessage>): WeekMessage {
     ...partial,
   };
 }
+
+describe("briefingRecipients", () => {
+  const original = process.env.WEEKLY_BRIEFING_RECIPIENTS;
+  afterEach(() => {
+    if (original === undefined) delete process.env.WEEKLY_BRIEFING_RECIPIENTS;
+    else process.env.WEEKLY_BRIEFING_RECIPIENTS = original;
+  });
+
+  it("falls back to the opted-in execs when the env var is unset", () => {
+    delete process.env.WEEKLY_BRIEFING_RECIPIENTS;
+    expect(briefingRecipients()).toEqual(DEFAULT_RECIPIENTS);
+  });
+
+  it("falls back when the env var is set but empty or junk", () => {
+    process.env.WEEKLY_BRIEFING_RECIPIENTS = " , ";
+    expect(briefingRecipients()).toEqual(DEFAULT_RECIPIENTS);
+  });
+
+  it("lets an explicit env list win, normalized", () => {
+    process.env.WEEKLY_BRIEFING_RECIPIENTS = " Jireh@ANC.com , joeo@anc.com ";
+    expect(briefingRecipients()).toEqual(["jireh@anc.com", "joeo@anc.com"]);
+  });
+});
 
 describe("isInSendWindow", () => {
   // July = EDT (UTC-4): Sunday 20:xx UTC is 16:xx New York.

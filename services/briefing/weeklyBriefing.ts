@@ -14,8 +14,10 @@
  * Env:
  *   MSGRAPH_TENANT_ID / MSGRAPH_CLIENT_ID / MSGRAPH_CLIENT_SECRET  (existing)
  *   TWENTY_CORE_DATABASE_URL                                        (existing)
- *   WEEKLY_BRIEFING_RECIPIENTS   comma-separated mailboxes, e.g.
- *                                "jbillings@anc.com,joeo@anc.com"
+ *   WEEKLY_BRIEFING_RECIPIENTS   comma-separated mailboxes — OPTIONAL override.
+ *                                Unset falls back to DEFAULT_RECIPIENTS below,
+ *                                so the schedule never depends on an env var
+ *                                being remembered at deploy time.
  *   WEEKLY_BRIEFING_FROM         display mailbox the digest appears from
  *                                (default deals@anc.com)
  */
@@ -482,11 +484,18 @@ export async function deliverBriefing(
   });
 }
 
+/** Execs who have opted in to the weekly digest. Kept in the repo rather than
+ *  env-only: on 2026-08-02 the first scheduled send produced nothing because
+ *  WEEKLY_BRIEFING_RECIPIENTS had never been set on the deployed service.
+ *  WEEKLY_BRIEFING_RECIPIENTS still wins when present, for rollout waves. */
+export const DEFAULT_RECIPIENTS = ["jbillings@anc.com", "joeo@anc.com"];
+
 export function briefingRecipients(): string[] {
-  return (process.env.WEEKLY_BRIEFING_RECIPIENTS || "")
+  const configured = (process.env.WEEKLY_BRIEFING_RECIPIENTS || "")
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter((s) => s.includes("@"));
+  return configured.length > 0 ? configured : [...DEFAULT_RECIPIENTS];
 }
 
 export interface RunResult {
@@ -494,6 +503,8 @@ export interface RunResult {
   delivered: boolean;
   error?: string;
   htmlBytes?: number;
+  /** Populated on dry runs so the edition can be inspected before it ships. */
+  html?: string;
 }
 
 export async function runWeeklyBriefing(options: {
@@ -519,7 +530,12 @@ export async function runWeeklyBriefing(options: {
       if (!options.dryRun) {
         await deliverBriefing(recipient, `Your Week in Focus — ${data.weekLabel}`, html);
       }
-      results.push({ recipient, delivered: !options.dryRun, htmlBytes: html.length });
+      results.push({
+        recipient,
+        delivered: !options.dryRun,
+        htmlBytes: html.length,
+        ...(options.dryRun ? { html } : {}),
+      });
       log.info("[weekly-briefing] generated", {
         recipient,
         dryRun: Boolean(options.dryRun),
