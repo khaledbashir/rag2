@@ -1,4 +1,12 @@
 import type { Pool } from "pg";
+import { resolveAncWorkspaceSchema } from "@/services/twenty/workspaceSchema";
+
+/** Schema names come from the workspace resolver, not user input, but they are
+ *  interpolated rather than bound — quote them so they can never be anything
+ *  but an identifier. */
+function quoteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
 
 // The Closed-Won report and the CRM dashboard drifted because each carried its
 // own idea of what "Closed Won" means. The report's copy said "not LOST, not
@@ -151,6 +159,11 @@ export function fallbackWonFilter(alias = "o"): CompiledFilter {
 }
 
 export async function loadDashboardWonFilter(pool: Pool, alias = "o"): Promise<CompiledFilter> {
+  // Dashboards are workspace records, so they live in the workspace schema —
+  // core."dashboard" does not exist. Reading the wrong schema threw, which
+  // resolveWonFilter caught and quietly answered with the fallback, so the
+  // report claimed dashboard parity while never once reading the dashboard.
+  const schema = await resolveAncWorkspaceSchema(pool);
   const widget = await pool.query<{ configuration: { filter?: WidgetFilter } | null }>(
     `
       select w.configuration
@@ -160,7 +173,7 @@ export async function loadDashboardWonFilter(pool: Pool, alias = "o"): Promise<C
       where w.title = $1
         and w."deletedAt" is null
         and pl.id = (
-          select "pageLayoutId" from core."dashboard" where id = $2
+          select "pageLayoutId" from ${quoteIdent(schema)}."dashboard" where id = $2
           union all
           select "pageLayoutId" from core."pageLayout" where id = $2
           limit 1

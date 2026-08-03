@@ -108,3 +108,37 @@ describe("fallback when the dashboard cannot be read", () => {
     }
   });
 });
+
+// Regression: the lookup used to hardcode core."dashboard", which does not
+// exist — dashboards are workspace records. The query threw, resolveWonFilter
+// caught it, and the report answered with the fallback while still describing
+// itself as dashboard-backed. It ran that way for its whole life.
+describe("loadDashboardWonFilter reads the workspace schema", () => {
+  function fakePool(captured: string[]) {
+    return {
+      query: async (sql: string) => {
+        captured.push(sql);
+        if (sql.includes("core.workspace")) {
+          return { rows: [{ databaseSchema: "workspace_cjspnkm8glh7iooo1gep8c1qo" }] };
+        }
+        if (sql.includes("pageLayoutWidget")) {
+          return { rows: [{ configuration: { filter: LIVE_WIDGET_FILTER } }] };
+        }
+        if (sql.includes("fieldMetadata")) {
+          return { rows: Array.from(FIELDS.values()) };
+        }
+        return { rows: [] };
+      },
+    } as never;
+  }
+
+  it("never queries core.\"dashboard\", and quotes the schema it does use", async () => {
+    const captured: string[] = [];
+    const { loadDashboardWonFilter } = await import("@/services/crmReports/dashboardParity");
+    await loadDashboardWonFilter(fakePool(captured)).catch(() => undefined);
+
+    const widgetSql = captured.find((s) => s.includes("pageLayoutWidget")) || "";
+    expect(widgetSql).not.toContain('core."dashboard"');
+    expect(widgetSql).toMatch(/"workspace_[a-z0-9]+"\."dashboard"/);
+  });
+});
