@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  DEFAULT_OBSERVERS,
   DEFAULT_RECIPIENTS,
+  briefingObservers,
   briefingRecipients,
   computeWeekWindow,
   findWaitingOnReply,
@@ -9,7 +11,7 @@ import {
   summarizeThreads,
   type WeekMessage,
 } from "@/services/briefing/weeklyBriefing";
-import { humanizeTag, renderBriefingEmail } from "@/services/briefing/briefingTemplate";
+import { humanizeEnums, humanizeTag, renderBriefingEmail } from "@/services/briefing/briefingTemplate";
 
 function msg(partial: Partial<WeekMessage>): WeekMessage {
   return {
@@ -44,6 +46,24 @@ describe("briefingRecipients", () => {
   it("lets an explicit env list win, normalized", () => {
     process.env.WEEKLY_BRIEFING_RECIPIENTS = " Jireh@ANC.com , joeo@anc.com ";
     expect(briefingRecipients()).toEqual(["jireh@anc.com", "joeo@anc.com"]);
+  });
+});
+
+describe("briefingObservers", () => {
+  const original = process.env.WEEKLY_BRIEFING_OBSERVERS;
+  afterEach(() => {
+    if (original === undefined) delete process.env.WEEKLY_BRIEFING_OBSERVERS;
+    else process.env.WEEKLY_BRIEFING_OBSERVERS = original;
+  });
+
+  it("defaults to the standing observer when unset", () => {
+    delete process.env.WEEKLY_BRIEFING_OBSERVERS;
+    expect(briefingObservers()).toEqual(DEFAULT_OBSERVERS);
+  });
+
+  it("lets an explicit env list win, normalized", () => {
+    process.env.WEEKLY_BRIEFING_OBSERVERS = " Ahmad.Basheer@ANC.com , joeo@anc.com ";
+    expect(briefingObservers()).toEqual(["ahmad.basheer@anc.com", "joeo@anc.com"]);
   });
 });
 
@@ -177,5 +197,21 @@ describe("humanizeTag", () => {
     expect(humanizeTag("Service Ops")).toBe("Service Ops");
     expect(humanizeTag("LG")).toBe("LG");
     expect(humanizeTag("Won")).toBe("Won");
+  });
+});
+
+describe("humanizeEnums", () => {
+  it("cleans enum tokens inside free text and CRM diffs", () => {
+    expect(humanizeEnums("Proposal stage moved to DESIGN_CREATIVE.")).toBe(
+      "Proposal stage moved to Design Creative.",
+    );
+    expect(humanizeEnums('{"bidStatus":{"after":"VERBAL_AGREEMENT"}}')).toBe(
+      '{"bidStatus":{"after":"Verbal Agreement"}}',
+    );
+  });
+  it("leaves ordinary prose and single words untouched", () => {
+    expect(humanizeEnums("Due Aug 5; ANC sent the RFP response.")).toBe(
+      "Due Aug 5; ANC sent the RFP response.",
+    );
   });
 });

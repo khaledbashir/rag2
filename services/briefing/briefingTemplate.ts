@@ -41,6 +41,13 @@ export function humanizeTag(text: string): string {
     .join(" ");
 }
 
+/** Same treatment applied inside free text, so raw enums can't reach the AI
+ *  ranker and get echoed into a bullet ("Proposal stage moved to
+ *  DESIGN_CREATIVE."). Safe on prose — it only touches SCREAMING_SNAKE runs. */
+export function humanizeEnums(text: string): string {
+  return text.replace(/[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+/g, (m) => humanizeTag(m));
+}
+
 function tagPill(raw: string, kind: "bd" | "org" | "extra"): string {
   const text = humanizeTag(raw);
   const styles =

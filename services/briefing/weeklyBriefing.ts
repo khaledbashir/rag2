@@ -18,6 +18,10 @@
  *                                Unset falls back to DEFAULT_RECIPIENTS below,
  *                                so the schedule never depends on an env var
  *                                being remembered at deploy time.
+ *   WEEKLY_BRIEFING_OBSERVERS    comma-separated mailboxes that receive a copy
+ *                                of EVERY recipient's edition, subject-tagged
+ *                                with whose week it is. Defaults to
+ *                                DEFAULT_OBSERVERS.
  *   WEEKLY_BRIEFING_FROM         display mailbox the digest appears from
  *                                (default deals@anc.com)
  */
@@ -27,7 +31,7 @@ import { log } from "@/lib/logger";
 import { resolveAncWorkspaceSchema } from "@/services/twenty/workspaceSchema";
 import { getGraphToken, graphFetch } from "@/services/intake/emailCrmGraphSource";
 import { extractJsonWithProviderChain } from "@/services/briefing/briefingRank";
-import { renderBriefingEmail } from "@/services/briefing/briefingTemplate";
+import { humanizeEnums, renderBriefingEmail } from "@/services/briefing/briefingTemplate";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -378,9 +382,9 @@ async function pullCrmActivity(
       event: r.name,
       day: r.day,
       record: r.record || "",
-      bidStatus: r.bidStatus,
+      bidStatus: r.bidStatus ? humanizeEnums(r.bidStatus) : null,
       amountMillions: r.amt ? Number(r.amt) : null,
-      diff: r.props || "",
+      diff: humanizeEnums(r.props || ""),
     }));
   }
 
@@ -498,12 +502,26 @@ export async function deliverBriefing(
  *  WEEKLY_BRIEFING_RECIPIENTS still wins when present, for rollout waves. */
 export const DEFAULT_RECIPIENTS = ["jbillings@anc.com", "joeo@anc.com"];
 
-export function briefingRecipients(): string[] {
-  const configured = (process.env.WEEKLY_BRIEFING_RECIPIENTS || "")
+/** Observers receive a copy of every recipient's edition, subject-tagged with
+ *  whose week it is. Not the same as a recipient: an observer never has an
+ *  edition generated for their own mailbox. */
+export const DEFAULT_OBSERVERS = ["ahmad.basheer@anc.com"];
+
+function parseMailboxList(raw: string | undefined): string[] {
+  return (raw || "")
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter((s) => s.includes("@"));
+}
+
+export function briefingRecipients(): string[] {
+  const configured = parseMailboxList(process.env.WEEKLY_BRIEFING_RECIPIENTS);
   return configured.length > 0 ? configured : [...DEFAULT_RECIPIENTS];
+}
+
+export function briefingObservers(): string[] {
+  const configured = parseMailboxList(process.env.WEEKLY_BRIEFING_OBSERVERS);
+  return configured.length > 0 ? configured : [...DEFAULT_OBSERVERS];
 }
 
 export interface RunResult {
@@ -511,12 +529,15 @@ export interface RunResult {
   delivered: boolean;
   error?: string;
   htmlBytes?: number;
+  /** Observer mailboxes that received a tagged copy of this edition. */
+  copiedTo?: string[];
   /** Populated on dry runs so the edition can be inspected before it ships. */
   html?: string;
 }
 
 export async function runWeeklyBriefing(options: {
   recipients?: string[];
+  observers?: string[];
   dryRun?: boolean;
   now?: Date;
 }): Promise<RunResult[]> {
@@ -524,6 +545,7 @@ export async function runWeeklyBriefing(options: {
   if (recipients.length === 0) {
     throw new Error("No briefing recipients configured (WEEKLY_BRIEFING_RECIPIENTS).");
   }
+  const observers = options.observers ?? briefingObservers();
   const results: RunResult[] = [];
   for (const recipient of recipients) {
     try {
@@ -535,19 +557,38 @@ export async function runWeeklyBriefing(options: {
         weekLabel: data.weekLabel,
         content,
       });
+      const subject = `Your Week in Focus — ${data.weekLabel}`;
+      const copiedTo: string[] = [];
       if (!options.dryRun) {
-        await deliverBriefing(recipient, `Your Week in Focus — ${data.weekLabel}`, html);
+        await deliverBriefing(recipient, subject, html);
+        // Observer copies are best-effort: a failure here must not mark the
+        // recipient's own edition as undelivered.
+        for (const observer of observers) {
+          if (observer.toLowerCase() === recipient.toLowerCase()) continue;
+          try {
+            await deliverBriefing(observer, `[${recipient}] ${subject}`, html);
+            copiedTo.push(observer);
+          } catch (error) {
+            log.error("[weekly-briefing] observer copy failed", {
+              observer,
+              recipient,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
       }
       results.push({
         recipient,
         delivered: !options.dryRun,
         htmlBytes: html.length,
+        ...(copiedTo.length ? { copiedTo } : {}),
         ...(options.dryRun ? { html } : {}),
       });
       log.info("[weekly-briefing] generated", {
         recipient,
         dryRun: Boolean(options.dryRun),
         items: content.top10.length,
+        copiedTo: copiedTo.length,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

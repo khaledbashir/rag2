@@ -10,10 +10,24 @@
  *   npx tsx scripts/run-weekly-briefing.ts jbillings@anc.com joeo@anc.com
  */
 import { writeFileSync } from "node:fs";
-import { runWeeklyBriefing, briefingRecipients } from "@/services/briefing/weeklyBriefing";
+import {
+  runWeeklyBriefing,
+  briefingRecipients,
+  briefingObservers,
+} from "@/services/briefing/weeklyBriefing";
+
+const KNOWN_FLAGS = ["--dry-run", "--out=", "--now=", "--observers="];
 
 async function main() {
   const args = process.argv.slice(2);
+  // A typo'd flag must never fall through to a live send. This script delivers
+  // real mail to real executives; an unrecognised argument is a hard stop.
+  const unknown = args.filter(
+    (a) => a.startsWith("--") && !KNOWN_FLAGS.some((f) => a === f || a.startsWith(f)),
+  );
+  if (unknown.length) {
+    throw new Error(`Unknown flag(s): ${unknown.join(", ")}. Known: ${KNOWN_FLAGS.join(" ")}`);
+  }
   const dryRun = args.includes("--dry-run");
   const outDir = args.find((a) => a.startsWith("--out="))?.slice("--out=".length);
   // --now lets a catch-up run reproduce the edition a missed Sunday would have
@@ -23,9 +37,13 @@ async function main() {
   if (nowArg && Number.isNaN(now!.getTime())) throw new Error(`Bad --now: ${nowArg}`);
   const recipients = args.filter((a) => a.includes("@") && !a.startsWith("--"));
   const targets = recipients.length ? recipients : briefingRecipients();
+  const observerArg = args.find((a) => a.startsWith("--observers="))?.slice("--observers=".length);
+  const observers = observerArg
+    ? observerArg.split(",").map((s) => s.trim()).filter(Boolean)
+    : briefingObservers();
 
   console.log(`[briefing] ${dryRun ? "DRY RUN" : "DELIVERING"} → ${targets.join(", ")}${nowArg ? ` (as of ${nowArg})` : ""}`);
-  const results = await runWeeklyBriefing({ recipients: targets, dryRun, now });
+  const results = await runWeeklyBriefing({ recipients: targets, observers, dryRun, now });
   for (const r of results) {
     if (outDir && r.html) {
       const path = `${outDir}/briefing-${r.recipient.replace(/[^a-z0-9]/gi, "_")}.html`;
@@ -34,6 +52,8 @@ async function main() {
     }
     console.log(
       `[briefing] ${r.recipient}: delivered=${r.delivered} bytes=${r.htmlBytes ?? "-"}${
+        r.copiedTo?.length ? ` copiedTo=${r.copiedTo.join(",")}` : ""
+      }${
         r.error ? ` error=${r.error}` : ""
       }`,
     );
