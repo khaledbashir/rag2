@@ -43,7 +43,7 @@ describe("briefingRecipients", () => {
     expect(briefingRecipients()).toEqual(DEFAULT_RECIPIENTS);
   });
 
-  it("lets an explicit env list win, normalized", () => {
+  it("lets an explicit recipient list win, normalized", () => {
     process.env.WEEKLY_BRIEFING_RECIPIENTS = " Jireh@ANC.com , joeo@anc.com ";
     expect(briefingRecipients()).toEqual(["jireh@anc.com", "joeo@anc.com"]);
   });
@@ -61,9 +61,13 @@ describe("briefingObservers", () => {
     expect(briefingObservers()).toEqual(DEFAULT_OBSERVERS);
   });
 
-  it("lets an explicit env list win, normalized", () => {
-    process.env.WEEKLY_BRIEFING_OBSERVERS = " Ahmad.Basheer@ANC.com , joeo@anc.com ";
-    expect(briefingObservers()).toEqual(["ahmad.basheer@anc.com", "joeo@anc.com"]);
+  it("keeps Ahmad and adds configured observers, normalized", () => {
+    process.env.WEEKLY_BRIEFING_OBSERVERS = " Audit@ANC.com , joeo@anc.com ";
+    expect(briefingObservers()).toEqual([
+      "ahmad.basheer@anc.com",
+      "audit@anc.com",
+      "joeo@anc.com",
+    ]);
   });
 });
 

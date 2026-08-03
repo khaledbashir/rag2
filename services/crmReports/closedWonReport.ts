@@ -1,7 +1,7 @@
 import { Pool } from "pg";
-import { hkdfSync, createDecipheriv } from "crypto";
 import { resolveAncWorkspaceSchema } from "@/services/twenty/workspaceSchema";
 import { resolveWonFilter, type CompiledFilter } from "@/services/crmReports/dashboardParity";
+import { sendMicrosoftGraphMail } from "@/services/email/microsoftGraphMailer";
 
 const TWENTY_BASE = "https://abc-twenty.izcgmb.easypanel.host";
 const DASHBOARD_URL =
@@ -16,16 +16,6 @@ const DASHBOARD_URL =
 //
 // The section now reads its definition from the dashboard widget instead of
 // keeping a second copy — see services/crmReports/dashboardParity.ts.
-
-type ConnectedEmailAccount = {
-  id: string;
-  handle: string | null;
-  provider: string;
-  authFailedAt: string | null;
-  accessToken: string | null;
-  refreshToken: string | null;
-  workspaceId: string | null;
-};
 
 let twentyDbPool: Pool | null = null;
 
@@ -124,142 +114,6 @@ export type ClosedWonReport = {
   wonFilterDescription: string;
   revertedFromWon: RevertedFromWonRow[];
 };
-
-let reportEmailAccountPool: Pool | null = null;
-
-function getReportEmailAccountPool() {
-  if (!reportEmailAccountPool) {
-    const url = process.env.TWENTY_CORE_DATABASE_URL?.trim();
-    if (!url) throw new Error("TWENTY_CORE_DATABASE_URL is not configured");
-    reportEmailAccountPool = new Pool({ connectionString: url });
-  }
-  return reportEmailAccountPool;
-}
-
-// Twenty v2.5+ stores connectedAccount tokens encrypted at rest (enc:v2 envelope:
-// AES-256-GCM, HKDF-SHA256 key derived from the instance key + workspace context —
-// mirrors twenty-server's secret-encryption module). This lets the report read the
-// mailbox refresh token. Legacy/plaintext values (no enc: prefix) pass through.
-function decryptConnectedAccountSecret(value: string | null, workspaceId: string | null): string | null {
-  if (!value || !value.startsWith("enc:v2:")) return value;
-  const rawKey =
-    process.env.TWENTY_TOKEN_ENCRYPTION_KEY?.trim() ||
-    process.env.ENCRYPTION_KEY?.trim() ||
-    process.env.APP_SECRET?.trim();
-  if (!rawKey) throw new Error("TWENTY_TOKEN_ENCRYPTION_KEY (or APP_SECRET) is not configured for token decryption");
-  const rest = value.slice("enc:v2:".length);
-  const separatorIndex = rest.indexOf(":");
-  if (separatorIndex <= 0) throw new Error("Malformed enc:v2 token envelope");
-  const payload = rest.slice(separatorIndex + 1);
-  const info = `twenty:enc:v2:${workspaceId ?? "instance"}`;
-  const key = Buffer.from(hkdfSync("sha256", Buffer.from(rawKey), Buffer.alloc(32), Buffer.from(info), 32));
-  const buffer = Buffer.from(payload, "base64");
-  const iv = buffer.subarray(0, 12);
-  const authTag = buffer.subarray(buffer.length - 16);
-  const ciphertext = buffer.subarray(12, buffer.length - 16);
-  const decipher = createDecipheriv("aes-256-gcm", key, iv);
-  decipher.setAuthTag(authTag);
-  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
-}
-
-async function getReportEmailAccount() {
-  const handle = process.env.CRM_REPORT_MICROSOFT_HANDLE?.trim() || "support@anc.com";
-  const accountId = process.env.CRM_REPORT_MICROSOFT_CONNECTED_ACCOUNT_ID?.trim();
-  const result = await getReportEmailAccountPool().query<ConnectedEmailAccount>(
-    `
-      select id, handle, provider, "authFailedAt", "accessToken", "refreshToken", "workspaceId"
-      from core."connectedAccount"
-      where ${accountId ? `id = $1` : `lower(handle) = lower($1) and provider = 'microsoft'`}
-        and "accessToken" is not null
-        and "refreshToken" is not null
-      order by "lastCredentialsRefreshedAt" desc nulls last, "updatedAt" desc
-      limit 1
-    `,
-    [accountId || handle],
-  );
-
-  const account = result.rows[0];
-  if (!account) throw new Error(`No connected Microsoft report mailbox found for ${handle}`);
-  if (account.authFailedAt) throw new Error(`CRM email account ${account.handle} has an auth failure`);
-  if (!account.accessToken || !account.refreshToken) throw new Error(`CRM email account ${account.handle} is missing Microsoft tokens`);
-  account.accessToken = decryptConnectedAccountSecret(account.accessToken, account.workspaceId);
-  account.refreshToken = decryptConnectedAccountSecret(account.refreshToken, account.workspaceId);
-  return account;
-}
-
-async function refreshMicrosoftAccountToken(account: ConnectedEmailAccount) {
-  const clientId =
-    process.env.CRM_MICROSOFT_CLIENT_ID?.trim() ||
-    process.env.AUTH_MICROSOFT_CLIENT_ID?.trim();
-  const clientSecret =
-    process.env.CRM_MICROSOFT_CLIENT_SECRET?.trim() ||
-    process.env.AUTH_MICROSOFT_CLIENT_SECRET?.trim();
-
-  if (!clientId || !clientSecret || !account.refreshToken) {
-    throw new Error("Microsoft token refresh is not configured");
-  }
-
-  const body = new URLSearchParams({
-    client_id: clientId,
-    client_secret: clientSecret,
-    refresh_token: account.refreshToken,
-    grant_type: "refresh_token",
-    scope: "offline_access Mail.Send Mail.Read Mail.ReadWrite User.Read email openid profile",
-  });
-
-  const res = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
-  const token = await res.json().catch(() => ({}));
-  if (!res.ok || !token.access_token) {
-    throw new Error(token.error_description || token.error || `Microsoft token refresh ${res.status}`);
-  }
-
-  const accessToken = String(token.access_token);
-  const refreshToken = token.refresh_token ? String(token.refresh_token) : account.refreshToken;
-  // Do NOT persist tokens back to core."connectedAccount": Twenty stores them
-  // encrypted (enc:v2) and manages its own rotation. Writing plaintext here would
-  // corrupt Twenty's own mail sync for this mailbox. Keep the refreshed token in
-  // memory for this send only.
-  return { ...account, accessToken, refreshToken };
-}
-
-async function sendMicrosoftGraphMail(account: ConnectedEmailAccount, subject: string, html: string, recipients: string[]) {
-  const send = (accessToken: string) =>
-    fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        message: {
-          subject,
-          body: { contentType: "HTML", content: html },
-          toRecipients: recipients.map((address) => ({ emailAddress: { address } })),
-        },
-        saveToSentItems: true,
-      }),
-    });
-
-  let res = await send(account.accessToken || "");
-  if (res.status === 401 || res.status === 403) {
-    account = await refreshMicrosoftAccountToken(account);
-    res = await send(account.accessToken || "");
-  }
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body?.error?.message || `Microsoft Graph sendMail ${res.status}`);
-  }
-
-  return {
-    id: `${account.handle || account.id}:${Date.now()}`,
-    provider: "microsoft-graph",
-    from: account.handle || "support@anc.com",
-  };
-}
 
 function microsToDollars(value: string | number | null | undefined) {
   return Number(value || 0) / 1_000_000;
@@ -990,6 +844,9 @@ export async function sendClosedWonReportEmail(input: {
   const periodLabel = input.report.period === "monthToDate" ? "Month-to-Date" : "Last 7 Days";
   const subject = `Report results (${input.report.fyYear} Closed Won by Business Unit — ${periodLabel})`;
 
-  const account = await getReportEmailAccount();
-  return sendMicrosoftGraphMail(account, subject, input.html, input.recipients);
+  return sendMicrosoftGraphMail({
+    subject,
+    html: input.html,
+    recipients: input.recipients,
+  });
 }

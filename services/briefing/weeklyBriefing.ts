@@ -4,8 +4,9 @@
  * Per-recipient personal digest of the prior week — Outlook mail + documents
  * in motion + CRM activity — ranked into a Top 10 (Business Development vs
  * Department/Org) by the AI provider chain, rendered as an email-safe HTML
- * message and delivered straight into the recipient's inbox via the same
- * Graph app the email → CRM intake uses (Mail.ReadWrite, tenant-wide).
+ * message and delivered through ANC's connected Microsoft mailbox. Real
+ * Mail.Send transport is required: direct Mail.ReadWrite inbox injection was
+ * automatically moved to Deleted Items by Joe's mailbox on 2026-08-03.
  *
  * Schedule: Sundays 4:00 PM America/New_York. Cron fires 20:00 AND 21:00 UTC
  * on Sundays; isInSendWindow() lets exactly one of the two through year-round
@@ -18,12 +19,8 @@
  *                                Unset falls back to DEFAULT_RECIPIENTS below,
  *                                so the schedule never depends on an env var
  *                                being remembered at deploy time.
- *   WEEKLY_BRIEFING_OBSERVERS    comma-separated mailboxes that receive a copy
- *                                of EVERY recipient's edition, subject-tagged
- *                                with whose week it is. Defaults to
- *                                DEFAULT_OBSERVERS.
- *   WEEKLY_BRIEFING_FROM         display mailbox the digest appears from
- *                                (default deals@anc.com)
+ *   WEEKLY_BRIEFING_OBSERVERS    comma-separated mailboxes BCC'd on every
+ *                                recipient's edition. Defaults to Ahmad.
  */
 
 import { Pool } from "pg";
@@ -32,6 +29,7 @@ import { resolveAncWorkspaceSchema } from "@/services/twenty/workspaceSchema";
 import { getGraphToken, graphFetch } from "@/services/intake/emailCrmGraphSource";
 import { extractJsonWithProviderChain } from "@/services/briefing/briefingRank";
 import { humanizeEnums, renderBriefingEmail } from "@/services/briefing/briefingTemplate";
+import { sendMicrosoftGraphMail } from "@/services/email/microsoftGraphMailer";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -473,26 +471,19 @@ export async function rankWeek(data: WeekData): Promise<BriefingContent> {
   return content;
 }
 
-/** Injects the rendered briefing directly into the recipient's inbox using
- *  Mail.ReadWrite (no Mail.Send needed). PR_MESSAGE_FLAGS=4 marks the message
- *  as delivered rather than draft — same mechanism the email→CRM E2E used. */
+/** Sends through ANC's connected Microsoft mailbox using normal Mail.Send
+ *  transport so mailbox delivery rules and message trace work as expected. */
 export async function deliverBriefing(
   mailbox: string,
   subject: string,
   html: string,
+  bccRecipients: string[] = briefingObservers(),
 ): Promise<void> {
-  const token = await getGraphToken();
-  const from = process.env.WEEKLY_BRIEFING_FROM || "deals@anc.com";
-  await graphFetch(token, `/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/messages`, {
-    method: "POST",
-    body: JSON.stringify({
-      subject,
-      body: { contentType: "html", content: html },
-      from: { emailAddress: { name: "ANC Weekly Briefing", address: from } },
-      sender: { emailAddress: { name: "ANC Weekly Briefing", address: from } },
-      toRecipients: [{ emailAddress: { address: mailbox } }],
-      singleValueExtendedProperties: [{ id: "Integer 0x0E07", value: "4" }],
-    }),
+  await sendMicrosoftGraphMail({
+    subject,
+    html,
+    recipients: [mailbox],
+    bccRecipients,
   });
 }
 
@@ -502,9 +493,8 @@ export async function deliverBriefing(
  *  WEEKLY_BRIEFING_RECIPIENTS still wins when present, for rollout waves. */
 export const DEFAULT_RECIPIENTS = ["jbillings@anc.com", "joeo@anc.com"];
 
-/** Observers receive a copy of every recipient's edition, subject-tagged with
- *  whose week it is. Not the same as a recipient: an observer never has an
- *  edition generated for their own mailbox. */
+/** Observers are BCC'd on every recipient's edition. They are not recipients:
+ *  an observer never has a personal edition generated for their own mailbox. */
 export const DEFAULT_OBSERVERS = ["ahmad.basheer@anc.com"];
 
 function parseMailboxList(raw: string | undefined): string[] {
@@ -521,7 +511,7 @@ export function briefingRecipients(): string[] {
 
 export function briefingObservers(): string[] {
   const configured = parseMailboxList(process.env.WEEKLY_BRIEFING_OBSERVERS);
-  return configured.length > 0 ? configured : [...DEFAULT_OBSERVERS];
+  return Array.from(new Set([...DEFAULT_OBSERVERS, ...configured]));
 }
 
 export interface RunResult {
@@ -529,7 +519,7 @@ export interface RunResult {
   delivered: boolean;
   error?: string;
   htmlBytes?: number;
-  /** Observer mailboxes that received a tagged copy of this edition. */
+  /** Observer mailboxes BCC'd on this edition. */
   copiedTo?: string[];
   /** Populated on dry runs so the edition can be inspected before it ships. */
   html?: string;
@@ -558,24 +548,13 @@ export async function runWeeklyBriefing(options: {
         content,
       });
       const subject = `Your Week in Focus — ${data.weekLabel}`;
+      const observerBcc = observers.filter(
+        (observer) => observer.toLowerCase() !== recipient.toLowerCase(),
+      );
       const copiedTo: string[] = [];
       if (!options.dryRun) {
-        await deliverBriefing(recipient, subject, html);
-        // Observer copies are best-effort: a failure here must not mark the
-        // recipient's own edition as undelivered.
-        for (const observer of observers) {
-          if (observer.toLowerCase() === recipient.toLowerCase()) continue;
-          try {
-            await deliverBriefing(observer, `[${recipient}] ${subject}`, html);
-            copiedTo.push(observer);
-          } catch (error) {
-            log.error("[weekly-briefing] observer copy failed", {
-              observer,
-              recipient,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
-        }
+        await deliverBriefing(recipient, subject, html, observerBcc);
+        copiedTo.push(...observerBcc);
       }
       results.push({
         recipient,
