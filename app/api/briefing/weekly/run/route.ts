@@ -5,9 +5,9 @@
  *
  * Body (all optional):
  *   { "scheduled": true }            — cron mode: only proceeds inside the
- *                                      Sunday 4 PM America/New_York window,
- *                                      so the 20:00+21:00 UTC double-fire
- *                                      sends exactly once year-round.
+ *                                      Sunday 4 PM America/New_York window;
+ *                                      the host may call hourly and exactly
+ *                                      one weekly run proceeds.
  *   { "dryRun": true }               — generate, don't deliver (returns sizes).
  *   { "recipients": ["a@anc.com"] } — override the configured recipient list.
  *

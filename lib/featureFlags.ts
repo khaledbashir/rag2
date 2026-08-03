@@ -79,10 +79,10 @@ export const FEATURES = {
   /**
    * Weekly "Your Week in Focus" briefing (Jireh ask 2026-07-27, Joe opted in).
    * Per-recipient Sunday 4 PM ET digest — Outlook + documents + CRM activity
-   * ranked into a personal Top 10 and injected into the recipient's inbox.
+   * ranked into a personal Top 10 and delivered through connected email.
    * Recipients via WEEKLY_BRIEFING_RECIPIENTS env; run endpoint
-   * /api/briefing/weekly/run (cron double-fires 20:00+21:00 UTC Sundays,
-   * the NY-time window guard lets exactly one through).
+   * /api/briefing/weekly/run (cron checks hourly; the NY-time window guard
+   * permits exactly one Sunday 4 PM ET delivery).
    */
   WEEKLY_BRIEFING: true,
 } as const;

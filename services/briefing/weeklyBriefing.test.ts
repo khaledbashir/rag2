@@ -76,7 +76,7 @@ describe("isInSendWindow", () => {
   it("passes Sunday 20:30 UTC in July (4:30 PM EDT)", () => {
     expect(isInSendWindow(new Date("2026-08-02T20:30:00Z"))).toBe(true);
   });
-  it("rejects Sunday 21:30 UTC in July (5:30 PM EDT — the double-fire twin)", () => {
+  it("rejects Sunday 21:30 UTC in July (5:30 PM EDT — neighboring hourly check)", () => {
     expect(isInSendWindow(new Date("2026-08-02T21:30:00Z"))).toBe(false);
   });
   // January = EST (UTC-5): the 21:xx UTC firing is the one that lands at 4 PM.

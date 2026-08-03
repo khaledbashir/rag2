@@ -8,9 +8,9 @@
  * Mail.Send transport is required: direct Mail.ReadWrite inbox injection was
  * automatically moved to Deleted Items by Joe's mailbox on 2026-08-03.
  *
- * Schedule: Sundays 4:00 PM America/New_York. Cron fires 20:00 AND 21:00 UTC
- * on Sundays; isInSendWindow() lets exactly one of the two through year-round
- * (DST-safe without needing CRON_TZ support).
+ * Schedule: Sundays 4:00 PM America/New_York. The host cron checks this route
+ * hourly; isInSendWindow() is the authoritative gate so delivery does not
+ * depend on the host timezone or EST/EDT changes.
  *
  * Env:
  *   MSGRAPH_TENANT_ID / MSGRAPH_CLIENT_ID / MSGRAPH_CLIENT_SECRET  (existing)
@@ -131,8 +131,8 @@ function nyParts(date: Date): { weekday: string; hour: number; ymd: string } {
   };
 }
 
-/** True only during the Sunday 4 PM hour in New York — the cron double-fire
- *  (20:00 + 21:00 UTC) passes through here so exactly one run sends. */
+/** True only during the Sunday 4 PM hour in New York. The host scheduler may
+ *  call hourly; this gate lets exactly one weekly run through. */
 export function isInSendWindow(now: Date = new Date()): boolean {
   const p = nyParts(now);
   return p.weekday === "Sun" && p.hour === 16;
