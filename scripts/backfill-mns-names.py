@@ -165,8 +165,14 @@ def backfill_placements():
         ptype = r.get("placementType") or ""
         ptag = PLACEMENT_LABELS.get(ptype, "")
         matchup = f"{home} vs {away}" if home and away else (home or away or "")
-        parts = [p for p in [date, matchup, sponsor and f"— {sponsor}", ptag and f"({ptag})"] if p]
-        name = " ".join(parts).strip()
+        # A record missing date/teams/sponsor must not become a bare
+        # parenthetical like "(HP Full #1)". When the placement tag is all we
+        # have, lead with it and say plainly that it isn't scheduled yet.
+        if not date and not matchup and not sponsor:
+            name = f"{ptag} — unscheduled" if ptag else ""
+        else:
+            parts = [p for p in [date, matchup, sponsor and f"— {sponsor}", ptag and f"({ptag})"] if p]
+            name = " ".join(parts).strip()
         if not name:
             continue
         try:
@@ -226,7 +232,14 @@ def backfill_contracts():
         label = r.get("contractedLabel") or ""
         suffix = f"{games} games" if games else label
         suffix = f" — {suffix}" if suffix else ""
-        name = f"{sponsor} × {team} ({league} {season}){suffix}".strip()
+        # Only join the two sides when both exist, otherwise a missing sponsor
+        # leaves a dangling "× Red Sox (MLB 2026)".
+        pairing = f"{sponsor} × {team}" if sponsor and team else (sponsor or team or "")
+        season_tag = " ".join(p for p in [league, str(season) if season else ""] if p)
+        name = " ".join(p for p in [pairing, f"({season_tag})" if season_tag else ""] if p) + suffix
+        name = name.strip()
+        if not name:
+            continue
         try:
             update_record("updateSponsorTeamContract", r["id"], name)
             updated += 1
