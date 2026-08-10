@@ -21,6 +21,32 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const MAX_MARKDOWN_CHARS = 400_000;
+const ALLOWED_BROWSER_ORIGINS = new Set([
+  "https://crm.ancsports.net",
+]);
+
+function browserHeaders(req: NextRequest): HeadersInit {
+  const origin = req.headers.get("origin");
+  if (!origin || !ALLOWED_BROWSER_ORIGINS.has(origin)) {
+    return { Vary: "Origin" };
+  }
+
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Expose-Headers": "Content-Disposition",
+    Vary: "Origin",
+  };
+}
+
+function addBrowserHeaders(response: NextResponse, req: NextRequest): NextResponse {
+  const headers = browserHeaders(req);
+  for (const [name, value] of Object.entries(headers)) {
+    if (value !== undefined) response.headers.set(name, String(value));
+  }
+  return response;
+}
 
 async function render(
   markdown: string,
@@ -56,19 +82,32 @@ async function render(
   });
 }
 
+export async function OPTIONS(req: NextRequest) {
+  return new NextResponse(null, {
+    status: 204,
+    headers: browserHeaders(req),
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    return await render(
-      String(body?.markdown ?? body?.content ?? body?.text ?? ""),
-      body?.title ? String(body.title) : null,
-      body?.subtitle ? String(body.subtitle) : null,
-      body?.fileName ? String(body.fileName) : null,
+    return addBrowserHeaders(
+      await render(
+        String(body?.markdown ?? body?.content ?? body?.text ?? ""),
+        body?.title ? String(body.title) : null,
+        body?.subtitle ? String(body.subtitle) : null,
+        body?.fileName ? String(body.fileName) : null,
+      ),
+      req,
     );
   } catch (error: any) {
-    return NextResponse.json(
-      { error: "Could not build the Word document.", message: error?.message ?? String(error) },
-      { status: 500 },
+    return addBrowserHeaders(
+      NextResponse.json(
+        { error: "Could not build the Word document.", message: error?.message ?? String(error) },
+        { status: 500 },
+      ),
+      req,
     );
   }
 }
@@ -76,16 +115,22 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   try {
-    return await render(
-      params.get("markdown") ?? "",
-      params.get("title"),
-      params.get("subtitle"),
-      params.get("fileName"),
+    return addBrowserHeaders(
+      await render(
+        params.get("markdown") ?? "",
+        params.get("title"),
+        params.get("subtitle"),
+        params.get("fileName"),
+      ),
+      req,
     );
   } catch (error: any) {
-    return NextResponse.json(
-      { error: "Could not build the Word document.", message: error?.message ?? String(error) },
-      { status: 500 },
+    return addBrowserHeaders(
+      NextResponse.json(
+        { error: "Could not build the Word document.", message: error?.message ?? String(error) },
+        { status: 500 },
+      ),
+      req,
     );
   }
 }
