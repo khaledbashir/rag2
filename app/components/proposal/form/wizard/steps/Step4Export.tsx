@@ -39,6 +39,7 @@ import { Label } from "@/components/ui/label";
 import { TextEditorPanel } from "@/app/components";
 import SchedulePreview from "@/app/components/proposal/form/sections/SchedulePreview";
 import { ServiceContractTermsPanel } from "./ServiceContractTermsPanel";
+import { ScopeOfWorkControl } from "./ScopeOfWorkControl";
 import { formatCurrency } from "@/lib/helpers";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -1674,13 +1675,7 @@ const Step4Export = () => {
                                                 </div>
                                                 <Switch id="showNotes" checked={watch("details.showNotes") ?? true} onCheckedChange={(checked) => setValue("details.showNotes", checked, { shouldDirty: true, shouldTouch: true })} className="data-[state=checked]:bg-brand-blue shrink-0 mt-0.5" />
                                             </div>
-                                            <div className="flex items-start justify-between py-3 border-b border-border/30 gap-4">
-                                                <div className="flex flex-col min-w-0">
-                                                    <Label htmlFor="showScopeOfWork-budget" className="text-sm font-semibold text-foreground block">Scope of Work</Label>
-                                                    <p className="text-[11px] text-muted-foreground leading-relaxed">Include Scope of Work text (Exhibit B)</p>
-                                                </div>
-                                                <Switch id="showScopeOfWork-budget" checked={watch("details.showScopeOfWork") || false} onCheckedChange={(checked) => setValue("details.showScopeOfWork", checked)} className="data-[state=checked]:bg-brand-blue shrink-0 mt-0.5" />
-                                            </div>
+                                            <ScopeOfWorkControl idSuffix="budget" />
                                             <div className={cn("flex flex-col gap-2 py-3", !FEATURES.RESPONSIBILITY_MATRIX && "hidden")}>
                                                 <div className="flex items-start justify-between gap-4">
                                                     <div className="flex flex-col min-w-0">
@@ -1783,13 +1778,7 @@ const Step4Export = () => {
                                                 </div>
                                                 <Switch id="showNotes-proposal" checked={watch("details.showNotes") ?? true} onCheckedChange={(checked) => setValue("details.showNotes", checked, { shouldDirty: true, shouldTouch: true })} className="data-[state=checked]:bg-brand-blue" />
                                             </div>
-                                            <div className="flex items-center justify-between py-3 border-b border-border/30">
-                                                <div className="flex flex-col">
-                                                    <Label htmlFor="showScopeOfWork-proposal" className="text-sm font-semibold text-foreground">Scope of Work</Label>
-                                                    <p className="text-[11px] text-muted-foreground">Include Scope of Work text (Exhibit B)</p>
-                                                </div>
-                                                <Switch id="showScopeOfWork-proposal" checked={watch("details.showScopeOfWork") || false} onCheckedChange={(checked) => setValue("details.showScopeOfWork", checked)} className="data-[state=checked]:bg-brand-blue" />
-                                            </div>
+                                            <ScopeOfWorkControl idSuffix="proposal" />
                                             <div className={cn("flex flex-col gap-2 py-3", !FEATURES.RESPONSIBILITY_MATRIX && "hidden")}>
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex flex-col">
@@ -1880,13 +1869,7 @@ const Step4Export = () => {
                                                 </div>
                                                 <Switch id="showSignatureBlock" checked={watch("details.showSignatureBlock") ?? true} onCheckedChange={(checked) => setValue("details.showSignatureBlock", checked)} className="data-[state=checked]:bg-brand-blue" />
                                             </div>
-                                            <div className="flex items-center justify-between py-3 border-b border-border/30">
-                                                <div className="flex flex-col">
-                                                    <Label htmlFor="showScopeOfWork" className="text-sm font-semibold text-foreground">Scope of Work</Label>
-                                                    <p className="text-[11px] text-muted-foreground">Include custom Scope of Work text (Exhibit B)</p>
-                                                </div>
-                                                <Switch id="showScopeOfWork" checked={watch("details.showScopeOfWork") || false} onCheckedChange={(checked) => setValue("details.showScopeOfWork", checked)} className="data-[state=checked]:bg-brand-blue" />
-                                            </div>
+                                            <ScopeOfWorkControl idSuffix="loi" />
                                             <div className={cn("flex flex-col gap-2 py-3 border-b border-border/30", !FEATURES.RESPONSIBILITY_MATRIX && "hidden")}>
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex flex-col">

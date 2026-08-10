@@ -29,6 +29,11 @@ export function buildDocumentConfig(d: any) {
     showExhibitB: d.showExhibitB,
     showNotes: d.showNotes,
     showScopeOfWork: d.showScopeOfWork,
+    // The Scope of Work body and the specs heading had no Prisma column and no
+    // place here, so everything typed into them died on reload (Natalia
+    // 2026-08-10 — the toggle was visible but the text never survived).
+    scopeOfWorkText: d.scopeOfWorkText,
+    specsSectionTitle: d.specsSectionTitle,
     showResponsibilityMatrix: d.showResponsibilityMatrix,
     pageLayout: d.pageLayout,
     manualTableMode: d.manualTableMode,

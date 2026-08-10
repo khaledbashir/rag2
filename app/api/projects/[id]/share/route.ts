@@ -193,6 +193,8 @@ export async function POST(
                 // Universal toggles for Hybrid Template
                 showNotes: cfg.showNotes ?? true,
                 showScopeOfWork: cfg.showScopeOfWork ?? false,
+                scopeOfWorkText: cfg.scopeOfWorkText || "",
+                specsSectionTitle: cfg.specsSectionTitle || "",
                 pageLayout: cfg.pageLayout ?? "portrait-letter",
                 specsDisplayMode: (project as any).specsDisplayMode || "extended",
                 includeResponsibilityMatrix: (project as any).includeResponsibilityMatrix ?? false,

@@ -1161,8 +1161,9 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                             </div>
                         </>
                     )}
-                    {/* SOW on own page with Exhibit B header */}
-                    {showScopeOfWork && (
+                    {/* SOW on own page with Exhibit B header — text required, or the
+                        toggle alone emitted a page carrying nothing but the heading. */}
+                    {showScopeOfWork && (details as any)?.scopeOfWorkText?.trim() && (
                         <>
                             <PageBreak />
                             <ContinuationPageHeader />

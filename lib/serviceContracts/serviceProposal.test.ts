@@ -122,6 +122,8 @@ describe("documentConfig save ↔ load alignment", () => {
       showExhibitB: false,
       showNotes: true,
       showScopeOfWork: false,
+      scopeOfWorkText: "- Furnish and install the displays",
+      specsSectionTitle: "DISPLAY SPECIFICATIONS",
       showResponsibilityMatrix: false,
       pageLayout: "portrait-letter",
       manualTableMode: false,
@@ -188,6 +190,10 @@ describe("documentConfig save ↔ load alignment", () => {
     expect(d.servicePricingDocument?.sourceSheet).toBe("26-28 w Break fix");
     expect(d.freeformTables).toEqual([{ id: "t1" }]);
     expect(d.changeOrderNumber).toBe("CO-01");
+    // Scope of Work body + specs heading: authored in Step 4, previously dropped
+    // on save so a reload lost them entirely.
+    expect(d.scopeOfWorkText).toBe("- Furnish and install the displays");
+    expect(d.specsSectionTitle).toBe("DISPLAY SPECIFICATIONS");
   });
 });
 

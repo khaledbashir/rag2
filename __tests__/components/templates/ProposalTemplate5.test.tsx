@@ -597,6 +597,39 @@ describe("Additional Regression", () => {
     expect(signature?.querySelector("strong")?.textContent).toBe("approve");
   });
 
+  it.each(["LOI", "CONTRACT", "BUDGET", "PROPOSAL"] as const)(
+    "%s mode emits no Exhibit B when Scope of Work is on but empty",
+    (documentMode) => {
+      const props = baseProps({
+        documentMode,
+        showScopeOfWork: true,
+        scopeOfWorkText: "",
+        showSpecifications: false,
+        // The responsibility matrix reuses the same Exhibit B heading — off, so
+        // the assertion can only be answered by the Scope of Work section.
+        showResponsibilityMatrix: false,
+      });
+      const { container } = render(<ProposalTemplate5 {...props} />);
+      expect(container.textContent).not.toContain("Statement of Work");
+    },
+  );
+
+  it.each(["LOI", "CONTRACT"] as const)(
+    "%s mode renders the Scope of Work an author typed",
+    (documentMode) => {
+      const props = baseProps({
+        documentMode,
+        showScopeOfWork: true,
+        scopeOfWorkText: "- Furnish and install the displays",
+        showSpecifications: false,
+        showResponsibilityMatrix: false,
+      });
+      const { container } = render(<ProposalTemplate5 {...props} />);
+      expect(container.textContent).toContain("Statement of Work");
+      expect(container.textContent).toContain("Furnish and install the displays");
+    },
+  );
+
   it.each(["BUDGET", "PROPOSAL"] as const)(
     "%s mode hides populated notes when showNotes is false",
     (documentMode) => {
