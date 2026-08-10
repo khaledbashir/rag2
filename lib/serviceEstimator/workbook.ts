@@ -1,10 +1,12 @@
 import ExcelJS from "exceljs";
 
-import { calculateServiceEstimate, calculateServiceEstimateOptions, resolveFlatAmount } from "./engine";
+import { calculateServiceEstimateOptions, listOptions, resolveFlatAmount } from "./engine";
 import type {
   BundleDiscountMode,
   ServiceEstimatorCurrency,
   ServiceEstimatorInput,
+  ServiceEstimatorOption,
+  ServiceEstimatorOptionResult,
   ServiceEstimatorResult,
   ServiceFlatAmount,
   ServiceSectionLabels,
@@ -217,8 +219,14 @@ function buildCalculationSheet(
   workbook: ExcelJS.Workbook,
   input: ServiceEstimatorInput,
   result: ServiceEstimatorResult,
+  option: ServiceEstimatorOption,
+  sheetName: string,
 ): CalculationMatrixRows {
-  const sheet = workbook.addWorksheet("Calculation Detail");
+  const sheet = workbook.addWorksheet(sheetName);
+  // The estimate's shared facts (term, escalation, capex, marketing) live on the
+  // Project Overview; only the service lines vary between options.
+  const events = option.events;
+  const breakFix = option.breakFix;
   const moneyFormat = currencyFormat(input.currency);
   sheet.views = [{ showGridLines: false, state: "frozen", ySplit: 4 }];
   sheet.mergeCells("A1:G1");
@@ -240,7 +248,7 @@ function buildCalculationSheet(
   styleColumnHeader(eventColumnHeader, 1, 7);
 
   const eventInputRows: number[] = [];
-  input.events.forEach((event, index) => {
+  events.forEach((event, index) => {
     const rowNumber = 5 + index;
     eventInputRows.push(rowNumber);
     const row = sheet.getRow(rowNumber);
@@ -260,7 +268,7 @@ function buildCalculationSheet(
     row.getCell(5).numFmt = moneyFormat;
   });
 
-  const breakFixHeaderRow = 6 + input.events.length;
+  const breakFixHeaderRow = 6 + events.length;
   const breakFixHeader = sheet.getRow(breakFixHeaderRow);
   breakFixHeader.getCell(1).value = labels.breakFix.toUpperCase();
   styleSectionHeader(breakFixHeader, 1, 7);
@@ -274,13 +282,13 @@ function buildCalculationSheet(
   const breakFixInputRow = breakFixHeaderRow + 2;
   const breakFixRow = sheet.getRow(breakFixInputRow);
   breakFixRow.values = [
-    input.breakFix.label,
-    input.breakFix.enabled,
-    input.breakFix.days,
-    input.breakFix.technicians,
-    input.breakFix.hoursPerDay,
-    input.breakFix.technicianHourlyCost,
-    input.breakFix.priceMultiplier,
+    breakFix.label,
+    breakFix.enabled,
+    breakFix.days,
+    breakFix.technicians,
+    breakFix.hoursPerDay,
+    breakFix.technicianHourlyCost,
+    breakFix.priceMultiplier,
   ];
   for (let column = 1; column <= 7; column += 1) {
     styleInputCell(breakFixRow.getCell(column), "Panthers workbook reference; editable per deal");
@@ -324,7 +332,7 @@ function buildCalculationSheet(
 
   let matrixRow = yearHeaderRow + 1;
   const eventRevenueRows: number[] = [];
-  input.events.forEach((event, eventIndex) => {
+  events.forEach((event, eventIndex) => {
     const rowNumber = matrixRow++;
     eventRevenueRows.push(rowNumber);
     sheet.getCell(rowNumber, 1).value = `${event.name} — Revenue`;
@@ -343,11 +351,11 @@ function buildCalculationSheet(
   });
 
   const breakFixRevenueRow = matrixRow++;
-  sheet.getCell(breakFixRevenueRow, 1).value = `${input.breakFix.label} — Revenue`;
+  sheet.getCell(breakFixRevenueRow, 1).value = `${breakFix.label} — Revenue`;
   result.years.forEach((year, yearIndex) => {
     const cell = sheet.getCell(breakFixRevenueRow, yearIndex + 2);
-    if (input.breakFix.pricingMode === "flat") {
-      writeFlatCell(cell, input.breakFix.enabled ? resolveFlatAmount(input.breakFix.flatRevenue, yearIndex, input.breakFix.flatEscalates, input.revenueEscalationPct) : 0, moneyFormat);
+    if (breakFix.pricingMode === "flat") {
+      writeFlatCell(cell, breakFix.enabled ? resolveFlatAmount(breakFix.flatRevenue, yearIndex, breakFix.flatEscalates, input.revenueEscalationPct) : 0, moneyFormat);
       return;
     }
     const formula = `IF($B$${breakFixInputRow},$C$${breakFixInputRow}*$D$${breakFixInputRow}*$E$${breakFixInputRow}*$F$${breakFixInputRow}*$G$${breakFixInputRow}*(1+'Project Overview'!$C$18)^${yearIndex},0)`;
@@ -399,7 +407,7 @@ function buildCalculationSheet(
   styleSectionHeader(expenseHeaderRow, 1, input.termYears + 1);
 
   const eventCostRows: number[] = [];
-  input.events.forEach((event, eventIndex) => {
+  events.forEach((event, eventIndex) => {
     const rowNumber = matrixRow++;
     eventCostRows.push(rowNumber);
     sheet.getCell(rowNumber, 1).value = `${event.name} — Cost`;
@@ -415,11 +423,11 @@ function buildCalculationSheet(
   });
 
   const breakFixCostRow = matrixRow++;
-  sheet.getCell(breakFixCostRow, 1).value = `${input.breakFix.label} — Cost`;
+  sheet.getCell(breakFixCostRow, 1).value = `${breakFix.label} — Cost`;
   result.years.forEach((year, yearIndex) => {
     const cell = sheet.getCell(breakFixCostRow, yearIndex + 2);
-    if (input.breakFix.pricingMode === "flat") {
-      writeFlatCell(cell, input.breakFix.enabled ? resolveFlatAmount(input.breakFix.flatCost, yearIndex, input.breakFix.flatEscalates, input.costEscalationPct) : 0, moneyFormat);
+    if (breakFix.pricingMode === "flat") {
+      writeFlatCell(cell, breakFix.enabled ? resolveFlatAmount(breakFix.flatCost, yearIndex, breakFix.flatEscalates, input.costEscalationPct) : 0, moneyFormat);
       return;
     }
     const formula = `IF($B$${breakFixInputRow},$C$${breakFixInputRow}*$D$${breakFixInputRow}*$E$${breakFixInputRow}*$F$${breakFixInputRow}*(1+'Project Overview'!$C$19)^${yearIndex},0)`;
@@ -560,9 +568,10 @@ function linkOverviewSummary(
   input: ServiceEstimatorInput,
   result: ServiceEstimatorResult,
   calculationRows: CalculationMatrixRows,
+  calculationSheetName: string,
 ) {
   const overviewSheet = workbook.getWorksheet("Project Overview")!;
-  const calculationSheet = workbook.getWorksheet("Calculation Detail")!;
+  const calculationSheet = workbook.getWorksheet(calculationSheetName)!;
   const firstYearColumn = calculationSheet.getColumn(2).letter;
   const lastYearColumn = calculationSheet.getColumn(input.termYears + 1).letter;
   const moneyFormat = currencyFormat(input.currency);
@@ -577,7 +586,7 @@ function linkOverviewSummary(
   for (const [overviewRow, calculationRow, cachedResult] of summaryLinks) {
     setFormula(
       overviewSheet.getCell(overviewRow, 3),
-      `SUM('Calculation Detail'!${firstYearColumn}${calculationRow}:${lastYearColumn}${calculationRow})`,
+      `SUM('${calculationSheetName}'!${firstYearColumn}${calculationRow}:${lastYearColumn}${calculationRow})`,
       cachedResult,
       moneyFormat,
     );
@@ -590,9 +599,15 @@ function buildClientFeeSchedule(
   input: ServiceEstimatorInput,
   result: ServiceEstimatorResult,
   calculationRows: CalculationMatrixRows,
+  option: ServiceEstimatorOption,
+  sheetName: string,
+  calculationSheetName: string,
 ) {
-  const sheet = workbook.getWorksheet("Service Fee Schedule")
-    ?? workbook.addWorksheet("Service Fee Schedule", { properties: { tabColor: { argb: BRAND_BLUE } } });
+  const sheet = workbook.getWorksheet(sheetName)
+    ?? workbook.addWorksheet(sheetName, { properties: { tabColor: { argb: BRAND_BLUE } } });
+  const events = option.events;
+  const breakFix = option.breakFix;
+  const calculationRef = `'${calculationSheetName}'`;
   const moneyFormat = currencyFormat(input.currency);
   sheet.views = [{ showGridLines: false, state: "frozen", ySplit: 6 }];
   sheet.mergeCells("A1:D1");
@@ -627,13 +642,13 @@ function buildClientFeeSchedule(
   let rowNumber = 10;
   calculationRows.eventRevenueRows.forEach((calculationRow, eventIndex) => {
     const clientRow = rowNumber++;
-    sheet.getCell(clientRow, 2).value = input.events[eventIndex].name;
+    sheet.getCell(clientRow, 2).value = events[eventIndex].name;
     result.years.forEach((year, yearIndex) => {
       const column = 6 + yearIndex;
-      const calculationColumn = workbook.getWorksheet("Calculation Detail")!.getColumn(yearIndex + 2).letter;
+      const calculationColumn = workbook.getWorksheet(calculationSheetName)!.getColumn(yearIndex + 2).letter;
       setFormula(
         sheet.getCell(clientRow, column),
-        `'Calculation Detail'!${calculationColumn}${calculationRow}`,
+        `${calculationRef}!${calculationColumn}${calculationRow}`,
         year.eventLines[eventIndex].revenue,
         moneyFormat,
       );
@@ -649,15 +664,15 @@ function buildClientFeeSchedule(
     );
   });
 
-  if (input.breakFix.enabled) {
+  if (breakFix.enabled) {
     const breakFixClientRow = rowNumber++;
-    sheet.getCell(breakFixClientRow, 2).value = input.breakFix.label;
+    sheet.getCell(breakFixClientRow, 2).value = breakFix.label;
     result.years.forEach((year, yearIndex) => {
       const column = 6 + yearIndex;
-      const calculationColumn = workbook.getWorksheet("Calculation Detail")!.getColumn(yearIndex + 2).letter;
+      const calculationColumn = workbook.getWorksheet(calculationSheetName)!.getColumn(yearIndex + 2).letter;
       setFormula(
         sheet.getCell(breakFixClientRow, column),
-        `'Calculation Detail'!${calculationColumn}${calculationRows.breakFixRevenueRow}`,
+        `${calculationRef}!${calculationColumn}${calculationRows.breakFixRevenueRow}`,
         year.breakFixRevenue,
         moneyFormat,
       );
@@ -676,10 +691,10 @@ function buildClientFeeSchedule(
     sheet.getCell(discountClientRow, 2).value = "Bundle Discount";
     result.years.forEach((year, yearIndex) => {
       const column = 6 + yearIndex;
-      const calculationColumn = workbook.getWorksheet("Calculation Detail")!.getColumn(yearIndex + 2).letter;
+      const calculationColumn = workbook.getWorksheet(calculationSheetName)!.getColumn(yearIndex + 2).letter;
       setFormula(
         sheet.getCell(discountClientRow, column),
-        `-'Calculation Detail'!${calculationColumn}${calculationRows.bundleDiscountRow}`,
+        `-${calculationRef}!${calculationColumn}${calculationRows.bundleDiscountRow}`,
         -year.bundleDiscountAmount,
         moneyFormat,
       );
@@ -696,10 +711,10 @@ function buildClientFeeSchedule(
   sheet.getCell(totalRow, 2).value = "TOTAL INCOME";
   result.years.forEach((year, yearIndex) => {
     const column = 6 + yearIndex;
-    const calculationColumn = workbook.getWorksheet("Calculation Detail")!.getColumn(yearIndex + 2).letter;
+    const calculationColumn = workbook.getWorksheet(calculationSheetName)!.getColumn(yearIndex + 2).letter;
     setFormula(
       sheet.getCell(totalRow, column),
-      `'Calculation Detail'!${calculationColumn}${calculationRows.totalIncomeRow}`,
+      `${calculationRef}!${calculationColumn}${calculationRows.totalIncomeRow}`,
       year.totalIncome,
       moneyFormat,
     );
@@ -737,8 +752,119 @@ function buildClientFeeSchedule(
   sheet.getColumn("B").alignment = { wrapText: true, vertical: "top" };
 }
 
+/**
+ * A side-by-side read of what each option costs the client — the question
+ * "three cost sheets for one thing" was really being asked to answer. Every
+ * figure links to that option's own calculation sheet, so editing an input in
+ * Excel moves the comparison with it.
+ */
+function buildOptionComparison(
+  workbook: ExcelJS.Workbook,
+  input: ServiceEstimatorInput,
+  pricedOptions: ServiceEstimatorOptionResult[],
+  sheetNames: Array<{ fees: string; detail: string }>,
+  optionRows: CalculationMatrixRows[],
+) {
+  const sheet = workbook.addWorksheet("Options Summary", {
+    properties: { tabColor: { argb: BRAND_NAVY } },
+  });
+  const moneyFormat = currencyFormat(input.currency);
+  sheet.views = [{ showGridLines: false, state: "frozen", ySplit: 4 }];
+
+  sheet.mergeCells("A1:F1");
+  sheet.getCell("A1").value = "OPTIONS — CLIENT TOTALS";
+  sheet.getCell("A1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_BLUE } };
+  sheet.getCell("A1").font = { bold: true, color: { argb: WHITE }, size: 16 };
+  sheet.getRow(1).height = 30;
+  sheet.getCell("A2").value = `${input.clientName}${input.venueName ? ` — ${input.venueName}` : ""}`;
+  sheet.getCell("A2").font = { bold: true, color: { argb: BRAND_NAVY }, size: 11 };
+
+  const headerRow = sheet.getRow(4);
+  headerRow.getCell(1).value = "Option";
+  pricedOptions[0].result.yearLabels.forEach((label, yearIndex) => {
+    headerRow.getCell(yearIndex + 2).value = label;
+  });
+  const totalColumn = input.termYears + 2;
+  headerRow.getCell(totalColumn).value = "CONTRACT TOTAL";
+  styleColumnHeader(headerRow, 1, totalColumn);
+
+  pricedOptions.forEach((priced, index) => {
+    const rowNumber = 5 + index;
+    const row = sheet.getRow(rowNumber);
+    row.getCell(1).value = priced.name;
+    const detailRef = `'${sheetNames[index].detail}'`;
+    const detailSheet = workbook.getWorksheet(sheetNames[index].detail)!;
+    priced.result.years.forEach((year, yearIndex) => {
+      const detailColumn = detailSheet.getColumn(yearIndex + 2).letter;
+      setFormula(
+        row.getCell(yearIndex + 2),
+        `${detailRef}!${detailColumn}${optionRows[index].totalIncomeRow}`,
+        year.totalIncome,
+        moneyFormat,
+      );
+      styleLinkedCell(row.getCell(yearIndex + 2));
+    });
+    setFormula(
+      row.getCell(totalColumn),
+      `SUM(${sheet.getColumn(2).letter}${rowNumber}:${sheet.getColumn(totalColumn - 1).letter}${rowNumber})`,
+      priced.result.totalContractIncome,
+      moneyFormat,
+    );
+    row.getCell(totalColumn).font = { bold: true, color: { argb: BRAND_NAVY } };
+  });
+
+  const noteRow = 6 + pricedOptions.length;
+  sheet.mergeCells(noteRow, 1, noteRow, totalColumn);
+  sheet.getCell(noteRow, 1).value =
+    "Each option is priced on its own tab. Client-facing figures only — technician cost, capital expenditure and profit stay on the matching detail sheet.";
+  sheet.getCell(noteRow, 1).font = { italic: true, color: { argb: "FF6B7280" }, size: 9 };
+  sheet.getCell(noteRow, 1).alignment = { wrapText: true, vertical: "top" };
+
+  sheet.getColumn(1).width = 34;
+  for (let column = 2; column <= totalColumn; column += 1) sheet.getColumn(column).width = 17;
+}
+
+/**
+ * Excel rejects : \ / ? * [ ] in a tab name and truncates past 31 characters,
+ * so an author-typed option name is cleaned before it becomes one. Duplicates
+ * are numbered rather than silently dropped by ExcelJS.
+ */
+function toSheetName(
+  rawName: string,
+  taken: Set<string>,
+  fallback: string,
+  /** Kept whole when the name has to be shortened — a tab reading "…Support D" helps nobody. */
+  suffix = "",
+): string {
+  const cleaned = rawName.replace(/[:\\/?*[\]]/g, " ").replace(/\s+/g, " ").trim();
+  const base = `${(cleaned || fallback).slice(0, 31 - suffix.length).trim()}${suffix}`;
+  let name = base;
+  let attempt = 2;
+  while (taken.has(name.toLowerCase())) {
+    const tail = ` ${attempt}`;
+    name = `${base.slice(0, 31 - tail.length).trim()}${tail}`;
+    attempt += 1;
+  }
+  taken.add(name.toLowerCase());
+  return name;
+}
+
+/**
+ * One workbook, one tab per option — Natalia, 2026-08-11: "all within one
+ * project aka excel."
+ *
+ * An estimate with a single option keeps the sheet names it has always had, so
+ * existing workbooks and the Service Proposal import path are unaffected. Add a
+ * second option and each one gets its own client fee schedule and its own
+ * calculation detail, with the Project Overview reporting the first.
+ */
 export function buildServiceEstimatorWorkbook(input: ServiceEstimatorInput): ExcelJS.Workbook {
-  const result = calculateServiceEstimate(input);
+  const pricedOptions = calculateServiceEstimateOptions(input);
+  const options = listOptions(input);
+  const [primary] = pricedOptions;
+  const result = primary.result;
+  const multiple = pricedOptions.length > 1;
+
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ANC Proposal Engine";
   workbook.company = "ANC Sports Enterprises, LLC";
@@ -747,10 +873,35 @@ export function buildServiceEstimatorWorkbook(input: ServiceEstimatorInput): Exc
   workbook.calcProperties.fullCalcOnLoad = true;
 
   buildOverviewSheet(workbook, input, result);
-  workbook.addWorksheet("Service Fee Schedule", { properties: { tabColor: { argb: BRAND_BLUE } } });
-  const calculationRows = buildCalculationSheet(workbook, input, result);
-  linkOverviewSummary(workbook, input, result, calculationRows);
-  buildClientFeeSchedule(workbook, input, result, calculationRows);
+
+  const taken = new Set<string>(["project overview"]);
+  const sheetNames = pricedOptions.map((option, index) => {
+    if (!multiple) {
+      taken.add("service fee schedule");
+      taken.add("calculation detail");
+      return { fees: "Service Fee Schedule", detail: "Calculation Detail" };
+    }
+    const fees = toSheetName(option.name, taken, `Option ${index + 1}`);
+    const detail = toSheetName(option.name, taken, `Option ${index + 1}`, " Detail");
+    return { fees, detail };
+  });
+
+  // Client schedules first so the option tabs sit together, left to right, in
+  // author order — the reading order Alexis works in.
+  sheetNames.forEach(({ fees }) => {
+    workbook.addWorksheet(fees, { properties: { tabColor: { argb: BRAND_BLUE } } });
+  });
+
+  const optionRows = pricedOptions.map((priced, index) => {
+    const option = options[index];
+    const { fees, detail } = sheetNames[index];
+    const calculationRows = buildCalculationSheet(workbook, input, priced.result, option, detail);
+    if (index === 0) linkOverviewSummary(workbook, input, priced.result, calculationRows, detail);
+    buildClientFeeSchedule(workbook, input, priced.result, calculationRows, option, fees, detail);
+    return calculationRows;
+  });
+
+  if (multiple) buildOptionComparison(workbook, input, pricedOptions, sheetNames, optionRows);
 
   workbook.eachSheet((sheet) => {
     sheet.pageSetup = {

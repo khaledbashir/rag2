@@ -3,19 +3,31 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Calculator,
+  Copy,
   Download,
   FileSpreadsheet,
   Plus,
   RotateCcw,
   Trash2,
+  X,
 } from "lucide-react";
 
 import { normalizeEstimatorDraft } from "@/lib/serviceEstimator/draft";
-import { calculateServiceEstimate, PANTHERS_SERVICE_REFERENCE } from "@/lib/serviceEstimator/engine";
+import { calculateServiceEstimateOptions, PANTHERS_SERVICE_REFERENCE } from "@/lib/serviceEstimator/engine";
+import {
+  addOption,
+  hasMultipleOptions,
+  materializeOptions,
+  patchOption,
+  removeOption,
+  renameOption,
+  resolveSelectedOption,
+} from "@/lib/serviceEstimator/options";
 import type {
   BundleDiscountMode,
   ServiceCapexInput,
   ServiceEstimatorInput,
+  ServiceEstimatorOption,
   ServiceEventInput,
   ServiceFlatAmount,
 } from "@/lib/serviceEstimator/types";
@@ -212,7 +224,25 @@ export default function ServiceEstimatorClient() {
   const [hydrated, setHydrated] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const result = useMemo(() => calculateServiceEstimate(input), [input]);
+  /**
+   * Which option the service-line editor is pointed at. An estimate with one
+   * option behaves exactly as it did before options existed — the tab strip
+   * only appears once an author asks for alternatives.
+   */
+  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
+
+  const options = useMemo(() => materializeOptions(input), [input]);
+  const selectedOption = useMemo(
+    () => resolveSelectedOption(input, selectedOptionId),
+    [input, selectedOptionId],
+  );
+  const pricedOptions = useMemo(() => calculateServiceEstimateOptions(input), [input]);
+  const selectedIndex = Math.max(
+    0,
+    options.findIndex((option) => option.id === selectedOption.id),
+  );
+  /** The preview always shows the option being edited, not just the first. */
+  const result = pricedOptions[selectedIndex].result;
 
   useEffect(() => {
     try {
@@ -239,38 +269,61 @@ export default function ServiceEstimatorClient() {
     setInput((current) => ({ ...current, [key]: value }));
   };
 
+  /**
+   * Every service-line write lands on the option currently being edited. The
+   * helpers mirror option one back onto the top-level lines, so a single-option
+   * estimate is untouched by any of this.
+   */
+  const patchSelectedOption = (patch: Partial<Omit<ServiceEstimatorOption, "id">>) => {
+    setInput((current) =>
+      patchOption(current, resolveSelectedOption(current, selectedOptionId).id, patch),
+    );
+  };
+
+  const patchSelectedLines = (
+    updater: (events: ServiceEventInput[], current: ServiceEstimatorInput) => ServiceEventInput[],
+  ) => {
+    setInput((current) => {
+      const option = resolveSelectedOption(current, selectedOptionId);
+      return patchOption(current, option.id, { events: updater(option.events, current) });
+    });
+  };
+
   const patchEvent = (index: number, patch: Partial<ServiceEventInput>) => {
-    setInput((current) => ({
-      ...current,
-      events: current.events.map((event, eventIndex) =>
-        eventIndex === index ? { ...event, ...patch } : event,
-      ),
-    }));
+    patchSelectedLines((events) =>
+      events.map((event, eventIndex) => (eventIndex === index ? { ...event, ...patch } : event)),
+    );
   };
 
   const addEvent = () => {
-    setInput((current) => ({
-      ...current,
-      events: [
-        ...current.events,
-        calculatedLine({
-          id: crypto.randomUUID(),
-          name: `Event Support ${current.events.length + 1}`,
-          days: 0,
-          technicians: 2,
-          clientDayRate: current.events[0]?.clientDayRate || 850,
-          technicianDayCost: current.events[0]?.technicianDayCost || 280,
-        }),
-      ],
-    }));
+    patchSelectedLines((events) => [
+      ...events,
+      calculatedLine({
+        id: crypto.randomUUID(),
+        name: `Event Support ${events.length + 1}`,
+        days: 0,
+        technicians: 2,
+        clientDayRate: events[0]?.clientDayRate || 850,
+        technicianDayCost: events[0]?.technicianDayCost || 280,
+      }),
+    ]);
   };
 
   /** A typed line: LiveSync licence, tech support, parts warranty, white glove. */
   const addFlatEvent = () => {
-    setInput((current) => ({
-      ...current,
-      events: [...current.events, flatLine(crypto.randomUUID(), "New Charge")],
-    }));
+    patchSelectedLines((events) => [...events, flatLine(crypto.randomUUID(), "New Charge")]);
+  };
+
+  /**
+   * An add-on service. Natalia, 2026-08-11: "we need an option to say optional
+   * add on and add as many services as needed" — the same line as any other,
+   * named so it reads as an add-on wherever it lands.
+   */
+  const addAddOnEvent = () => {
+    patchSelectedLines((events) => [
+      ...events,
+      flatLine(crypto.randomUUID(), `Optional Add-On ${events.filter((event) => event.name.startsWith("Optional Add-On")).length + 1}`),
+    ]);
   };
 
   const patchFlatValue = (
@@ -279,15 +332,37 @@ export default function ServiceEstimatorClient() {
     yearIndex: number,
     raw: string,
   ) => {
-    setInput((current) => ({
-      ...current,
-      events: current.events.map((event, eventIndex) => {
+    patchSelectedLines((events, current) =>
+      events.map((event, eventIndex) => {
         if (eventIndex !== index) return event;
         const values = sizeToTerm(event[field], current.termYears);
         values[yearIndex] = parseFlatAmount(raw);
         return { ...event, [field]: values };
       }),
-    }));
+    );
+  };
+
+  const patchBreakFix = (patch: Partial<ServiceEstimatorOption["breakFix"]>) => {
+    setInput((current) => {
+      const option = resolveSelectedOption(current, selectedOptionId);
+      return patchOption(current, option.id, { breakFix: { ...option.breakFix, ...patch } });
+    });
+  };
+
+  const handleAddOption = () => {
+    setInput((current) => {
+      const { input: next, addedId } = addOption(current, resolveSelectedOption(current, selectedOptionId).id);
+      setSelectedOptionId(addedId);
+      return next;
+    });
+  };
+
+  const handleRemoveOption = (id: string) => {
+    setInput((current) => {
+      const next = removeOption(current, id);
+      if (id === selectedOptionId) setSelectedOptionId(materializeOptions(next)[0].id);
+      return next;
+    });
   };
 
   const patchSectionLabel = (key: keyof typeof DEFAULT_SECTION_LABELS, value: string) => {
@@ -298,10 +373,7 @@ export default function ServiceEstimatorClient() {
   };
 
   const removeEvent = (index: number) => {
-    setInput((current) => ({
-      ...current,
-      events: current.events.filter((_, eventIndex) => eventIndex !== index),
-    }));
+    patchSelectedLines((events) => events.filter((_, eventIndex) => eventIndex !== index));
   };
 
   const patchCapex = (index: number, patch: Partial<ServiceCapexInput>) => {
@@ -341,8 +413,13 @@ export default function ServiceEstimatorClient() {
       setExportError("Add the client or team name before exporting.");
       return;
     }
-    if (input.events.length === 0) {
-      setExportError("Add at least one event-support line before exporting.");
+    const empty = materializeOptions(input).find((option) => option.events.length === 0);
+    if (empty) {
+      setExportError(
+        hasMultipleOptions(input)
+          ? `${empty.name} has no service lines. Add one, or remove the option.`
+          : "Add at least one service line before exporting.",
+      );
       return;
     }
 
@@ -477,24 +554,102 @@ export default function ServiceEstimatorClient() {
         </div>
       </section>
 
+      {/*
+        Options — Natalia, 2026-08-11: "we have now 3 cost sheet going for one
+        thing … also has to be options — option 1,2,3 … all within one project
+        aka excel." One estimate carries the alternatives; each gets its own tab
+        in the exported workbook.
+      */}
       <section className="rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <SectionTitle
-            eyebrow="Step 2"
-            title={input.sectionLabels.eventSupport}
-            copy="Calculated lines work out days × technicians × rate. Switch a line to Typed and enter the number yourself for each contract year — no calculation is applied. Enter a number, or the word Included when the project already covers that year."
+            eyebrow="Options"
+            title="Priced alternatives"
+            copy="Price more than one version of this deal in a single estimate — with and without event support, or with an add-on package. Each option exports as its own tab in the same workbook."
           />
-          <div className="flex shrink-0 gap-2">
+          <button
+            type="button"
+            onClick={handleAddOption}
+            className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-primary/40 bg-primary/5 px-3 text-xs font-semibold text-primary hover:bg-primary/10"
+          >
+            <Copy className="h-4 w-4" /> Add Option
+          </button>
+        </div>
+
+        {hasMultipleOptions(input) ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {options.map((option, index) => {
+                const active = option.id === selectedOption.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setSelectedOptionId(option.id)}
+                    aria-pressed={active}
+                    className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold transition ${
+                      active
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-background text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    <span>{option.name}</span>
+                    <span className={active ? "opacity-80" : "opacity-60"}>
+                      {money(pricedOptions[index].result.totalContractIncome, input.currency)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-col gap-2 rounded-lg border border-border bg-background p-3 sm:flex-row sm:items-end">
+              <Field label="Option name" hint="Becomes the tab name in the exported workbook.">
+                <input
+                  className={inputClass}
+                  value={selectedOption.name}
+                  onChange={(event) =>
+                    setInput((current) => renameOption(current, selectedOption.id, event.target.value))
+                  }
+                  placeholder={`Option ${selectedIndex + 1}`}
+                />
+              </Field>
+              <button
+                type="button"
+                onClick={() => handleRemoveOption(selectedOption.id)}
+                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-border bg-background px-3 text-xs font-semibold text-muted-foreground hover:bg-red-50 hover:text-red-600"
+              >
+                <X className="h-4 w-4" /> Remove this option
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+            This estimate prices one version. Add an option to price an alternative alongside it — same project, same workbook.
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <SectionTitle
+            eyebrow={hasMultipleOptions(input) ? `Step 2 · ${selectedOption.name}` : "Step 2"}
+            title={input.sectionLabels.eventSupport}
+            copy="Calculated lines work out days × technicians × rate. Switch a line to Typed and enter the number yourself for each contract year — no calculation is applied. Enter a number, or the word Included when the project already covers that year. Add as many services as the deal needs."
+          />
+          <div className="flex shrink-0 flex-wrap gap-2">
             <button type="button" onClick={addEvent} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-border bg-background px-3 text-xs font-semibold hover:bg-muted">
               <Plus className="h-4 w-4" /> Calculated Line
             </button>
             <button type="button" onClick={addFlatEvent} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-primary/40 bg-primary/5 px-3 text-xs font-semibold text-primary hover:bg-primary/10">
               <Plus className="h-4 w-4" /> Typed Line
             </button>
+            <button type="button" onClick={addAddOnEvent} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-border bg-background px-3 text-xs font-semibold hover:bg-muted">
+              <Plus className="h-4 w-4" /> Optional Add-On
+            </button>
           </div>
         </div>
         <div className="space-y-3">
-          {input.events.map((event, index) => {
+          {selectedOption.events.map((event, index) => {
             const yearLine = firstYear?.eventLines[index];
             const isFlat = event.pricingMode === "flat";
             return (
@@ -526,7 +681,7 @@ export default function ServiceEstimatorClient() {
                     <button
                       type="button"
                       onClick={() => removeEvent(index)}
-                      disabled={input.events.length === 1}
+                      disabled={selectedOption.events.length === 1}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-600 disabled:opacity-30"
                       aria-label={`Remove ${event.name}`}
                     >
@@ -625,21 +780,21 @@ export default function ServiceEstimatorClient() {
       <section className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6">
           <SectionTitle
-            eyebrow="Step 3A"
+            eyebrow={hasMultipleOptions(input) ? `Step 3A · ${selectedOption.name}` : "Step 3A"}
             title="Break/fix coverage"
             copy="The source workbook prices break/fix revenue from technician expense × multiplier. Every driver stays visible."
           />
           <div className="mb-4 flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2">
             <span className="text-sm font-semibold">Include break/fix</span>
-            <input type="checkbox" checked={input.breakFix.enabled} onChange={(event) => setInput((current) => ({ ...current, breakFix: { ...current.breakFix, enabled: event.target.checked } }))} className="h-4 w-4 accent-primary" />
+            <input type="checkbox" checked={selectedOption.breakFix.enabled} onChange={(event) => patchBreakFix({ enabled: event.target.checked })} className="h-4 w-4 accent-primary" />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Line Label"><input className={inputClass} value={input.breakFix.label} onChange={(event) => setInput((current) => ({ ...current, breakFix: { ...current.breakFix, label: event.target.value } }))} /></Field>
-            <Field label="Coverage Days"><input type="number" min={0} step="0.5" className={numberInputClass} value={input.breakFix.days} onChange={(event) => setInput((current) => ({ ...current, breakFix: { ...current.breakFix, days: numberValue(event.target.value) } }))} /></Field>
-            <Field label="Technicians"><input type="number" min={0} className={numberInputClass} value={input.breakFix.technicians} onChange={(event) => setInput((current) => ({ ...current, breakFix: { ...current.breakFix, technicians: numberValue(event.target.value) } }))} /></Field>
-            <Field label="Hours / Day"><input type="number" min={0} step="0.5" className={numberInputClass} value={input.breakFix.hoursPerDay} onChange={(event) => setInput((current) => ({ ...current, breakFix: { ...current.breakFix, hoursPerDay: numberValue(event.target.value) } }))} /></Field>
-            <Field label="Technician Hourly Cost"><input type="number" min={0} className={numberInputClass} value={input.breakFix.technicianHourlyCost} onChange={(event) => setInput((current) => ({ ...current, breakFix: { ...current.breakFix, technicianHourlyCost: numberValue(event.target.value) } }))} /></Field>
-            <Field label="Price Multiplier" hint="Panthers reference: 1.62"><input type="number" min={0.01} step="0.01" className={numberInputClass} value={input.breakFix.priceMultiplier} onChange={(event) => setInput((current) => ({ ...current, breakFix: { ...current.breakFix, priceMultiplier: numberValue(event.target.value) } }))} /></Field>
+            <Field label="Line Label"><input className={inputClass} value={selectedOption.breakFix.label} onChange={(event) => patchBreakFix({ label: event.target.value })} /></Field>
+            <Field label="Coverage Days"><input type="number" min={0} step="0.5" className={numberInputClass} value={selectedOption.breakFix.days} onChange={(event) => patchBreakFix({ days: numberValue(event.target.value) })} /></Field>
+            <Field label="Technicians"><input type="number" min={0} className={numberInputClass} value={selectedOption.breakFix.technicians} onChange={(event) => patchBreakFix({ technicians: numberValue(event.target.value) })} /></Field>
+            <Field label="Hours / Day"><input type="number" min={0} step="0.5" className={numberInputClass} value={selectedOption.breakFix.hoursPerDay} onChange={(event) => patchBreakFix({ hoursPerDay: numberValue(event.target.value) })} /></Field>
+            <Field label="Technician Hourly Cost"><input type="number" min={0} className={numberInputClass} value={selectedOption.breakFix.technicianHourlyCost} onChange={(event) => patchBreakFix({ technicianHourlyCost: numberValue(event.target.value) })} /></Field>
+            <Field label="Price Multiplier" hint="Panthers reference: 1.62"><input type="number" min={0.01} step="0.01" className={numberInputClass} value={selectedOption.breakFix.priceMultiplier} onChange={(event) => patchBreakFix({ priceMultiplier: numberValue(event.target.value) })} /></Field>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3 rounded-md bg-muted/40 p-3 text-sm">
             <div><div className="text-xs text-muted-foreground">Year 1 Cost</div><div className="mt-1 font-semibold tabular-nums">{money(firstYear?.breakFixCost || 0, input.currency)}</div></div>
@@ -713,10 +868,10 @@ export default function ServiceEstimatorClient() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {input.events.map((event, eventIndex) => (
+              {selectedOption.events.map((event, eventIndex) => (
                 <tr key={event.id}><td className="px-4 py-3 font-medium">{event.name}</td>{result.years.map((year) => <td key={year.yearLabel} className="px-4 py-3 text-right tabular-nums">{money(year.eventLines[eventIndex]?.revenue || 0, input.currency)}</td>)}</tr>
               ))}
-              {input.breakFix.enabled ? <tr><td className="px-4 py-3 font-medium">{input.breakFix.label}</td>{result.years.map((year) => <td key={year.yearLabel} className="px-4 py-3 text-right tabular-nums">{money(year.breakFixRevenue, input.currency)}</td>)}</tr> : null}
+              {selectedOption.breakFix.enabled ? <tr><td className="px-4 py-3 font-medium">{selectedOption.breakFix.label}</td>{result.years.map((year) => <td key={year.yearLabel} className="px-4 py-3 text-right tabular-nums">{money(year.breakFixRevenue, input.currency)}</td>)}</tr> : null}
               {input.bundleDiscountMode === "apply-to-subtotal" ? <tr className="text-red-700"><td className="px-4 py-3 font-medium">Bundle Discount</td>{result.years.map((year) => <td key={year.yearLabel} className="px-4 py-3 text-right tabular-nums">({money(year.bundleDiscountAmount, input.currency)})</td>)}</tr> : null}
               <tr className="bg-muted/40 font-bold"><td className="px-4 py-3">YEARLY TOTAL</td>{result.years.map((year) => <td key={year.yearLabel} className="px-4 py-3 text-right tabular-nums">{money(year.totalIncome, input.currency)}</td>)}</tr>
             </tbody>

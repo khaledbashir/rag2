@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 
 import { parseServiceSheet } from "@/services/pricing/serviceSheetParser";
 import { PANTHERS_SERVICE_REFERENCE } from "./engine";
+import { addOption, patchOption, renameOption, resolveSelectedOption } from "./options";
 import { buildServiceEstimatorWorkbook, serviceEstimatorFileName } from "./workbook";
 
 describe("buildServiceEstimatorWorkbook", () => {
@@ -133,5 +134,108 @@ describe("workbook — typed lines, Included, and the operating-expenses divider
     });
     expect(headings).toContain("ANC INTERNAL COSTS");
     expect(headings).not.toContain("OPERATING EXPENSES");
+  });
+});
+
+describe("workbook — options inside one file", () => {
+  /**
+   * Natalia, 2026-08-11: "we have now 3 cost sheet going for one thing … also
+   * has to be options — option 1,2,3 … all within one project aka excel."
+   */
+  const withOptions = () => {
+    const { input: two, addedId } = addOption(PANTHERS_SERVICE_REFERENCE);
+    const named = renameOption(two, addedId, "Option 2 — With Event Support");
+    return patchOption(named, addedId, {
+      events: [
+        ...resolveSelectedOption(named, addedId).events,
+        {
+          id: "add-on",
+          name: "Optional Add-On — Extra Event Days",
+          pricingMode: "calculated" as const,
+          days: 12,
+          technicians: 3,
+          clientDayRate: 1200,
+          technicianDayCost: 400,
+          flatRevenue: [],
+          flatCost: [],
+          flatEscalates: false,
+        },
+      ],
+    });
+  };
+
+  it("leaves a single-option estimate on exactly the sheets it always had", async () => {
+    const workbook = buildServiceEstimatorWorkbook(PANTHERS_SERVICE_REFERENCE);
+    const parsed = XLSX.read(Buffer.from(await workbook.xlsx.writeBuffer()));
+
+    expect(parsed.SheetNames).toEqual([
+      "Project Overview",
+      "Service Fee Schedule",
+      "Calculation Detail",
+    ]);
+  });
+
+  it("gives every option its own client tab and its own calculation tab", async () => {
+    const workbook = buildServiceEstimatorWorkbook(withOptions());
+    const parsed = XLSX.read(Buffer.from(await workbook.xlsx.writeBuffer()));
+
+    expect(parsed.SheetNames).toEqual([
+      "Project Overview",
+      "Option 1",
+      "Option 2 — With Event Support",
+      "Option 1 Detail",
+      "Option 2 — With Event Su Detail",
+      "Options Summary",
+    ]);
+  });
+
+  it("prices the added service into the second option only", async () => {
+    const input = withOptions();
+    const workbook = buildServiceEstimatorWorkbook(input);
+    const parsed = XLSX.read(Buffer.from(await workbook.xlsx.writeBuffer()));
+
+    const optionOne = parseServiceSheet(parsed, "options.xlsx", "Option 1");
+    const optionTwo = parseServiceSheet(parsed, "options.xlsx", "Option 2 — With Event Support");
+
+    const labels = (doc: typeof optionOne) =>
+      doc.document.rows.filter((row) => row.kind === "line").map((row) => row.label);
+
+    expect(labels(optionOne)).not.toContain("Optional Add-On — Extra Event Days");
+    expect(labels(optionTwo)).toContain("Optional Add-On — Extra Event Days");
+
+    const total = (doc: typeof optionOne) =>
+      (doc.document.totalRow?.cells[0].raw as number) ?? 0;
+    expect(total(optionTwo)).toBeGreaterThan(total(optionOne));
+  });
+
+  it("summarises the options against each other with live links", async () => {
+    const workbook = buildServiceEstimatorWorkbook(withOptions());
+    const parsed = XLSX.read(Buffer.from(await workbook.xlsx.writeBuffer()), { cellFormula: true });
+    const summary = parsed.Sheets["Options Summary"];
+
+    expect(summary.A5.v).toBe("Option 1");
+    expect(summary.A6.v).toBe("Option 2 — With Event Support");
+    expect(summary.B5.f).toContain("Option 1 Detail");
+    expect(summary.B6.f).toContain("Option 2 — With Event Su Detail");
+  });
+
+  it("keeps the Project Overview reporting the first option", async () => {
+    const workbook = buildServiceEstimatorWorkbook(withOptions());
+    const parsed = XLSX.read(Buffer.from(await workbook.xlsx.writeBuffer()), { cellFormula: true });
+
+    expect(parsed.Sheets["Project Overview"].C27.f).toContain("Option 1 Detail");
+  });
+
+  it("keeps a tab name Excel will accept when an author types a long one", async () => {
+    const { input: two, addedId } = addOption(PANTHERS_SERVICE_REFERENCE);
+    const awkward = renameOption(two, addedId, "Option 2: full coverage / all events [best]");
+    const workbook = buildServiceEstimatorWorkbook(awkward);
+    const parsed = XLSX.read(Buffer.from(await workbook.xlsx.writeBuffer()));
+
+    for (const name of parsed.SheetNames) {
+      expect(name.length).toBeLessThanOrEqual(31);
+      expect(name).not.toMatch(/[:\\/?*[\]]/);
+    }
+    expect(parsed.SheetNames).toContain("Option 2 full coverage all even");
   });
 });
