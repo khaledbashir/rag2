@@ -9,8 +9,17 @@
  * automatically moved to Deleted Items by Joe's mailbox on 2026-08-03.
  *
  * Schedule: Sundays 4:00 PM America/New_York. The host cron checks this route
- * hourly; isInSendWindow() is the authoritative gate so delivery does not
- * depend on the host timezone or EST/EDT changes.
+ * hourly; briefingDue() is the authoritative gate so delivery does not depend
+ * on the host timezone or EST/EDT changes.
+ *
+ * A missed Sunday is recovered rather than lost. On 2026-08-09 the 4 PM ET
+ * firing executed nothing — a crontab escaping defect ate the command — and the
+ * week simply vanished, which is how Jireh found out. The schedule is therefore
+ * expressed as a weekly ANCHOR (that week's Sunday 4 PM ET instant) plus a
+ * catch-up grace: any hourly check inside the grace window still delivers that
+ * anchor's edition. Because the edition is built from the anchor and not from
+ * the wall clock, a late send is byte-identical to the on-time one instead of
+ * being a thinner digest that happens to arrive on Monday.
  *
  * Env:
  *   MSGRAPH_TENANT_ID / MSGRAPH_CLIENT_ID / MSGRAPH_CLIENT_SECRET  (existing)
@@ -131,11 +140,66 @@ function nyParts(date: Date): { weekday: string; hour: number; ymd: string } {
   };
 }
 
-/** True only during the Sunday 4 PM hour in New York. The host scheduler may
- *  call hourly; this gate lets exactly one weekly run through. */
+const HOUR_MS = 60 * 60 * 1000;
+
+/** The hour, in New York terms, the briefing is promised for. */
+const SEND_HOUR_NY = 16;
+
+/** How long after the anchor a missed edition may still be delivered. Two days
+ *  covers an overnight outage or a broken scheduler discovered the next morning
+ *  while staying far away from the following Sunday, so a catch-up can never
+ *  collide with the next week's send. */
+const CATCH_UP_GRACE_HOURS = 48;
+
+/** True only during the Sunday 4 PM hour in New York — the on-time slot. */
 export function isInSendWindow(now: Date = new Date()): boolean {
   const p = nyParts(now);
-  return p.weekday === "Sun" && p.hour === 16;
+  return p.weekday === "Sun" && p.hour === SEND_HOUR_NY;
+}
+
+/** The most recent Sunday 4:00 PM America/New_York instant at or before `now`.
+ *
+ *  Found by walking back hour by hour and asking New York what time it is,
+ *  rather than by computing a UTC offset. New York is UTC-4 or UTC-5 depending
+ *  on the date, and hard-coding either one is exactly the class of bug this
+ *  schedule keeps hitting. Whole-hour offsets mean a UTC hour boundary is also
+ *  a New York hour boundary, so the returned instant is the top of the hour. */
+export function scheduledAnchor(now: Date = new Date()): Date {
+  const topOfHour = new Date(Math.floor(now.getTime() / HOUR_MS) * HOUR_MS);
+  for (let back = 0; back < 24 * 8; back++) {
+    const candidate = new Date(topOfHour.getTime() - back * HOUR_MS);
+    const p = nyParts(candidate);
+    if (p.weekday === "Sun" && p.hour === SEND_HOUR_NY) return candidate;
+  }
+  // Unreachable: any 8-day span contains a Sunday 4 PM.
+  throw new Error("Could not locate a Sunday 4 PM America/New_York anchor.");
+}
+
+export interface BriefingDue {
+  /** The Sunday 4 PM ET instant this edition belongs to. */
+  anchor: Date;
+  /** Whole hours between the anchor and now. 0 is the on-time firing. */
+  lateHours: number;
+  /** True when this run is recovering a firing that was missed earlier. */
+  isCatchUp: boolean;
+}
+
+/** Whether a briefing is owed right now, and for which week.
+ *
+ *  Returns null once the grace window has closed — a week that old is stale
+ *  news, and sending it would only confuse the next Sunday's edition. */
+export function briefingDue(now: Date = new Date()): BriefingDue | null {
+  const anchor = scheduledAnchor(now);
+  const lateHours = Math.floor((now.getTime() - anchor.getTime()) / HOUR_MS);
+  if (lateHours >= CATCH_UP_GRACE_HOURS) return null;
+  return { anchor, lateHours, isCatchUp: lateHours >= 1 };
+}
+
+/** Subject line for an edition. Derived from the anchor, so the on-time send
+ *  and any catch-up for the same week produce the identical string — which is
+ *  what makes the "did they already get it?" check below trustworthy. */
+export function briefingSubject(weekLabel: string): string {
+  return `Your Week in Focus — ${weekLabel}`;
 }
 
 export function computeWeekWindow(now: Date = new Date()): {
@@ -318,6 +382,31 @@ async function pullMailbox(
   }
 
   return { messages, documents };
+}
+
+/** Has this mailbox already got the edition with this exact subject?
+ *
+ *  The recipient's own mailbox is the source of truth for "did this arrive",
+ *  rather than a flag written on our side: a flag records that we believed we
+ *  sent something, which is precisely the belief that was wrong twice. Searched
+ *  across all folders so an edition filed away by a mailbox rule still counts.
+ *
+ *  Only consulted on catch-up runs. The on-time Sunday firing happens exactly
+ *  once per week by construction and never needs it, so the promised path takes
+ *  on no new dependency that could fail. */
+async function hasReceivedEdition(
+  token: string,
+  mailbox: string,
+  subject: string,
+  sinceIso: string,
+): Promise<boolean> {
+  const odataSubject = subject.replace(/'/g, "''");
+  const filter = `receivedDateTime ge ${sinceIso} and subject eq '${odataSubject}'`;
+  const path =
+    `/users/${encodeURIComponent(mailbox)}/messages` +
+    `?$filter=${encodeURIComponent(filter)}&$select=id&$top=1`;
+  const page: { value?: Array<{ id?: string }> } = await graphFetch(token, path);
+  return (page.value?.length ?? 0) > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -521,6 +610,9 @@ export interface RunResult {
   htmlBytes?: number;
   /** Observer mailboxes BCC'd on this edition. */
   copiedTo?: string[];
+  /** Set when the recipient already held this week's edition, so nothing was
+   *  sent. Distinct from an error: the promise was already kept. */
+  skipped?: "already-delivered";
   /** Populated on dry runs so the edition can be inspected before it ships. */
   html?: string;
 }
@@ -529,7 +621,11 @@ export async function runWeeklyBriefing(options: {
   recipients?: string[];
   observers?: string[];
   dryRun?: boolean;
+  /** The instant the edition is built for. Pass the weekly anchor so a catch-up
+   *  reproduces the on-time edition rather than a partial week. */
   now?: Date;
+  /** Catch-up runs must not re-send to anyone who already has this edition. */
+  skipAlreadyDelivered?: boolean;
 }): Promise<RunResult[]> {
   const recipients = options.recipients?.length ? options.recipients : briefingRecipients();
   if (recipients.length === 0) {
@@ -539,6 +635,27 @@ export async function runWeeklyBriefing(options: {
   const results: RunResult[] = [];
   for (const recipient of recipients) {
     try {
+      // Cheapest possible exit: the week label is pure arithmetic on the
+      // anchor, so a recipient who already holds this edition costs one Graph
+      // lookup — no mailbox pull, no AI ranking pass.
+      if (options.skipAlreadyDelivered && !options.dryRun) {
+        const week = computeWeekWindow(options.now);
+        const alreadyHas = await hasReceivedEdition(
+          await getGraphToken(),
+          recipient,
+          briefingSubject(week.label),
+          week.startIso,
+        );
+        if (alreadyHas) {
+          results.push({ recipient, delivered: false, skipped: "already-delivered" });
+          log.info("[weekly-briefing] already delivered, skipping", {
+            recipient,
+            week: week.label,
+          });
+          continue;
+        }
+      }
+
       const data = await collectWeekData(recipient, options.now);
       const content = await rankWeek(data);
       const displayName = recipient.split("@")[0];
@@ -547,7 +664,7 @@ export async function runWeeklyBriefing(options: {
         weekLabel: data.weekLabel,
         content,
       });
-      const subject = `Your Week in Focus — ${data.weekLabel}`;
+      const subject = briefingSubject(data.weekLabel);
       const observerBcc = observers.filter(
         (observer) => observer.toLowerCase() !== recipient.toLowerCase(),
       );

@@ -2,11 +2,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_OBSERVERS,
   DEFAULT_RECIPIENTS,
+  briefingDue,
   briefingObservers,
   briefingRecipients,
+  briefingSubject,
   computeWeekWindow,
   findWaitingOnReply,
   isInSendWindow,
+  scheduledAnchor,
   isRealBriefingDocument,
   summarizeThreads,
   type WeekMessage,
@@ -88,6 +91,75 @@ describe("isInSendWindow", () => {
   });
   it("rejects a Monday even at 4 PM ET", () => {
     expect(isInSendWindow(new Date("2026-08-03T20:30:00Z"))).toBe(false);
+  });
+});
+
+describe("scheduledAnchor", () => {
+  it("snaps a Sunday 4 PM EDT firing to itself", () => {
+    // 2026-08-09 20:00Z is Sunday 4:00 PM EDT.
+    expect(scheduledAnchor(new Date("2026-08-09T20:05:00Z")).toISOString()).toBe(
+      "2026-08-09T20:00:00.000Z",
+    );
+  });
+  it("walks a mid-week instant back to that week's Sunday 4 PM", () => {
+    expect(scheduledAnchor(new Date("2026-08-10T15:02:00Z")).toISOString()).toBe(
+      "2026-08-09T20:00:00.000Z",
+    );
+  });
+  it("uses the 21:00Z firing in January, when New York is on EST", () => {
+    expect(scheduledAnchor(new Date("2027-01-04T09:00:00Z")).toISOString()).toBe(
+      "2027-01-03T21:00:00.000Z",
+    );
+  });
+  it("never returns an anchor in the future", () => {
+    // Sunday 3 PM ET belongs to the PREVIOUS week's anchor, not that evening's.
+    expect(scheduledAnchor(new Date("2026-08-09T19:00:00Z")).toISOString()).toBe(
+      "2026-08-02T20:00:00.000Z",
+    );
+  });
+});
+
+describe("briefingDue", () => {
+  it("is due on time, and does not treat the on-time run as a catch-up", () => {
+    const due = briefingDue(new Date("2026-08-09T20:30:00Z"));
+    expect(due?.lateHours).toBe(0);
+    expect(due?.isCatchUp).toBe(false);
+  });
+
+  // The incident: cron executed nothing at Sunday 4 PM ET on 2026-08-09, so
+  // Jireh got no briefing. The next morning's hourly check must recover it.
+  it("recovers the Monday-morning miss for the SAME week", () => {
+    const due = briefingDue(new Date("2026-08-10T15:02:00Z"));
+    expect(due).not.toBeNull();
+    expect(due?.isCatchUp).toBe(true);
+    expect(due?.anchor.toISOString()).toBe("2026-08-09T20:00:00.000Z");
+    // Anchored, so the recovered edition covers Mon–Sun, not Monday morning.
+    expect(computeWeekWindow(due!.anchor).label).toBe("Week of August 3 – 9, 2026");
+  });
+
+  it("stops offering a stale week once the grace window closes", () => {
+    // Tuesday 4 PM ET — 48 hours after the anchor.
+    expect(briefingDue(new Date("2026-08-11T20:00:00Z"))).toBeNull();
+  });
+
+  it("stays closed all week, so hourly checks are silent until Sunday", () => {
+    for (const iso of [
+      "2026-08-12T12:00:00Z",
+      "2026-08-13T12:00:00Z",
+      "2026-08-14T12:00:00Z",
+      "2026-08-15T12:00:00Z",
+      "2026-08-09T19:00:00Z", // Sunday 3 PM ET — before the promised hour
+    ]) {
+      expect(briefingDue(new Date(iso)), iso).toBeNull();
+    }
+  });
+});
+
+describe("briefingSubject", () => {
+  it("is identical for the on-time send and a catch-up of the same week", () => {
+    const onTime = computeWeekWindow(new Date("2026-08-09T20:00:00Z"));
+    const recovered = computeWeekWindow(briefingDue(new Date("2026-08-10T15:02:00Z"))!.anchor);
+    expect(briefingSubject(recovered.label)).toBe(briefingSubject(onTime.label));
   });
 });
 

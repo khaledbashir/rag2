@@ -4,12 +4,19 @@
  * configured recipient (WEEKLY_BRIEFING_RECIPIENTS).
  *
  * Body (all optional):
- *   { "scheduled": true }            — cron mode: only proceeds inside the
- *                                      Sunday 4 PM America/New_York window;
- *                                      the host may call hourly and exactly
- *                                      one weekly run proceeds.
+ *   { "scheduled": true }            — cron mode: builds the edition for the
+ *                                      current week's Sunday 4 PM
+ *                                      America/New_York anchor. The host calls
+ *                                      hourly; the on-time firing delivers, and
+ *                                      if that firing was missed a later call
+ *                                      inside the catch-up grace still delivers
+ *                                      the same edition, skipping anyone whose
+ *                                      mailbox already holds it.
  *   { "dryRun": true }               — generate, don't deliver (returns sizes).
  *   { "recipients": ["a@anc.com"] } — override the configured recipient list.
+ *   { "asOf": "2026-08-09T20:00:00Z" } — build the edition for the week ending
+ *                                      at this instant, for re-sending a
+ *                                      specific past week on request.
  *
  * Auth: x-intake-token (BOT_API_TOKEN) or ADMIN/PRODUCT_EXPERT session —
  * same contract as the email → CRM poll route.
@@ -18,7 +25,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/apiAuth";
 import type { UserRole } from "@/lib/rbac";
 import { FEATURES } from "@/lib/featureFlags";
-import { isInSendWindow, runWeeklyBriefing } from "@/services/briefing/weeklyBriefing";
+import { briefingDue, runWeeklyBriefing } from "@/services/briefing/weeklyBriefing";
 
 export const maxDuration = 300;
 
@@ -42,26 +49,53 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  let body: { scheduled?: boolean; dryRun?: boolean; recipients?: string[] } = {};
+  let body: {
+    scheduled?: boolean;
+    dryRun?: boolean;
+    recipients?: string[];
+    asOf?: string;
+  } = {};
   try {
     body = await request.json();
   } catch {
     // empty body is fine
   }
 
-  if (body.scheduled && !isInSendWindow()) {
-    return NextResponse.json({ skipped: true, reason: "outside Sunday 4 PM ET window" });
+  let asOf: Date | undefined;
+  if (body.asOf) {
+    asOf = new Date(body.asOf);
+    if (Number.isNaN(asOf.getTime())) {
+      return NextResponse.json({ error: "asOf is not a valid date" }, { status: 400 });
+    }
+  }
+
+  // Scheduled runs are anchored to the week's Sunday 4 PM ET instant, not to
+  // the moment the cron happened to fire, so a recovered week is the edition
+  // that was owed rather than a partial one.
+  let skipAlreadyDelivered = false;
+  if (body.scheduled) {
+    const due = briefingDue();
+    if (!due) {
+      return NextResponse.json({
+        skipped: true,
+        reason: "past the catch-up window for this week's Sunday 4 PM ET briefing",
+      });
+    }
+    asOf = asOf ?? due.anchor;
+    skipAlreadyDelivered = due.isCatchUp;
   }
 
   try {
     const results = await runWeeklyBriefing({
       recipients: Array.isArray(body.recipients) ? body.recipients : undefined,
       dryRun: Boolean(body.dryRun),
+      now: asOf,
+      skipAlreadyDelivered,
     });
     const failed = results.filter((r) => r.error);
     return NextResponse.json(
       { results },
-      { status: failed.length === results.length ? 500 : 200 },
+      { status: failed.length > 0 && failed.length === results.length ? 500 : 200 },
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Briefing run failed.";
