@@ -34,7 +34,11 @@ import { snapDimension } from "@/services/catalog/productMatcher";
 import WorkbookShell from "@/app/components/reusables/WorkbookShell";
 import { buildEstimatorWorkbook } from "@/app/components/estimator/buildEstimatorWorkbook";
 import type { ExtractedLEDSpec, ExtractedRequirement } from "@/services/rfp/unified/types";
-import type { PricingData } from "@/services/rfp/pipeline/bidFormFiller";
+import type { BidFormMatch, PricingData } from "@/services/rfp/pipeline/bidFormFiller";
+import {
+  BID_FORM_METADATA_HEADERS,
+  readBidFormMetadataHeader,
+} from "@/services/rfp/pipeline/bidFormResponseMetadata";
 
 // ============================================================================
 // Types
@@ -677,10 +681,10 @@ export default function AnalysisDetailPage() {
       const name = res.headers.get("Content-Disposition")?.split("filename=")[1]?.replace(/"/g, "") || "BidForm_Filled.xlsx";
       setFilledBidFormName(name);
       setBidFormSummary({
-        matches: JSON.parse(res.headers.get("X-Bid-Form-Matches") || "[]").length,
+        matches: readBidFormMetadataHeader<BidFormMatch[]>(res.headers, BID_FORM_METADATA_HEADERS.matches, []).length,
         totalBlocks: Number(res.headers.get("X-Bid-Form-Total-Blocks") || 0),
-        unmatchedBlocks: JSON.parse(res.headers.get("X-Bid-Form-Unmatched-Blocks") || "[]").length,
-        unmatchedScreens: JSON.parse(res.headers.get("X-Bid-Form-Unmatched-Screens") || "[]").length,
+        unmatchedBlocks: readBidFormMetadataHeader<string[]>(res.headers, BID_FORM_METADATA_HEADERS.unmatchedBlocks, []).length,
+        unmatchedScreens: readBidFormMetadataHeader<string[]>(res.headers, BID_FORM_METADATA_HEADERS.unmatchedScreens, []).length,
       });
       setBidFormStatus("ready");
     } catch (err: any) {

@@ -18,6 +18,7 @@ import { fillBidForm } from "@/services/rfp/pipeline/bidFormFiller";
 import type { PricingData } from "@/services/rfp/pipeline/bidFormFiller";
 import type { ExtractedLEDSpec } from "@/services/rfp/unified/types";
 import { log } from "@/lib/logger";
+import { buildBidFormMetadataHeaders } from "@/services/rfp/pipeline/bidFormResponseMetadata";
 
 export async function POST(request: NextRequest) {
   try {
@@ -109,15 +110,7 @@ export async function POST(request: NextRequest) {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition": `attachment; filename="${filename}"`,
-        "X-Bid-Form-Matches": JSON.stringify(result.matches),
-        "X-Bid-Form-Unmatched-Blocks": JSON.stringify(
-          result.unmatchedBlocks
-        ),
-        "X-Bid-Form-Unmatched-Screens": JSON.stringify(
-          result.unmatchedScreens
-        ),
-        "X-Bid-Form-Total-Blocks": String(result.totalBlocks),
-        "X-Bid-Form-Total-Screens": String(result.totalScreens),
+        ...buildBidFormMetadataHeaders(result),
       },
     });
 

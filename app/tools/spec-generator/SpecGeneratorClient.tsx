@@ -19,6 +19,11 @@ import WorkbookShell from "@/app/components/reusables/WorkbookShell";
 import { buildSpecWorkbook } from "@/services/specsheet/specFormBuilder";
 import type { WorkbookData } from "@/app/components/reusables/workbookTypes";
 import type { FilledDisplay, TemplateField } from "@/app/api/spec-generator/parse/route";
+import type { BidFormMatch } from "@/services/rfp/pipeline/bidFormFiller";
+import {
+  BID_FORM_METADATA_HEADERS,
+  readBidFormMetadataHeader,
+} from "@/services/rfp/pipeline/bidFormResponseMetadata";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -259,10 +264,10 @@ export default function SpecGeneratorClient() {
         throw new Error(errData?.error || `Bid form fill failed (${fillRes.status})`);
       }
 
-      const matches = JSON.parse(fillRes.headers.get("X-Bid-Form-Matches") || "[]");
+      const matches = readBidFormMetadataHeader<BidFormMatch[]>(fillRes.headers, BID_FORM_METADATA_HEADERS.matches, []);
       const totalBlocks = fillRes.headers.get("X-Bid-Form-Total-Blocks") || "0";
-      const unmatchedBlocks = JSON.parse(fillRes.headers.get("X-Bid-Form-Unmatched-Blocks") || "[]");
-      const unmatchedScreens = JSON.parse(fillRes.headers.get("X-Bid-Form-Unmatched-Screens") || "[]");
+      const unmatchedBlocks = readBidFormMetadataHeader<string[]>(fillRes.headers, BID_FORM_METADATA_HEADERS.unmatchedBlocks, []);
+      const unmatchedScreens = readBidFormMetadataHeader<string[]>(fillRes.headers, BID_FORM_METADATA_HEADERS.unmatchedScreens, []);
       const blob = await fillRes.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");

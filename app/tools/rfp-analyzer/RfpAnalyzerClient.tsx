@@ -18,7 +18,11 @@ import { buildEstimatorWorkbook } from "@/app/components/estimator/buildEstimato
 const LuxWidget = dynamic(() => import("./_components/LuxWidget"), { ssr: false });
 const ProductMatchPanel = dynamic(() => import("./_components/ProductMatchPanel"), { ssr: false });
 import type { ExtractedLEDSpec, ExtractedRequirement } from "@/services/rfp/unified/types";
-import type { PricingData } from "@/services/rfp/pipeline/bidFormFiller";
+import type { BidFormMatch, PricingData } from "@/services/rfp/pipeline/bidFormFiller";
+import {
+  BID_FORM_METADATA_HEADERS,
+  readBidFormMetadataHeader,
+} from "@/services/rfp/pipeline/bidFormResponseMetadata";
 import { useRfpServerPreview } from "@/hooks/useRfpServerPreview";
 import { isPlatformOwner } from "@/lib/platformOwner";
 import {
@@ -2034,15 +2038,13 @@ export default function RfpAnalyzerClient() {
       }
 
       // Parse match metadata from headers
-      const matchesHeader = res.headers.get("X-Bid-Form-Matches");
-      const unmatchedBlocksHeader = res.headers.get("X-Bid-Form-Unmatched-Blocks");
-      const unmatchedScreensHeader = res.headers.get("X-Bid-Form-Unmatched-Screens");
+      const matchesHeader = res.headers.get(BID_FORM_METADATA_HEADERS.matches);
 
       if (matchesHeader) {
         setBidFormResult({
-          matches: JSON.parse(matchesHeader),
-          unmatchedBlocks: unmatchedBlocksHeader ? JSON.parse(unmatchedBlocksHeader) : [],
-          unmatchedScreens: unmatchedScreensHeader ? JSON.parse(unmatchedScreensHeader) : [],
+          matches: readBidFormMetadataHeader<BidFormMatch[]>(res.headers, BID_FORM_METADATA_HEADERS.matches, []),
+          unmatchedBlocks: readBidFormMetadataHeader<string[]>(res.headers, BID_FORM_METADATA_HEADERS.unmatchedBlocks, []),
+          unmatchedScreens: readBidFormMetadataHeader<string[]>(res.headers, BID_FORM_METADATA_HEADERS.unmatchedScreens, []),
         });
       }
 
