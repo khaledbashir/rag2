@@ -8,6 +8,7 @@ import {
   markdownToDocxBuffer,
   normalizeInlineText,
   parseInline,
+  tableColumnWidths,
 } from "./markdownToDocx";
 
 /** A trimmed copy of the real answer Jireh asked to export (2026-07-30). */
@@ -113,16 +114,49 @@ describe("markdownToDocxBuffer", () => {
     return zip.file("word/document.xml")!.async("string");
   };
 
-  it("does not print the title twice", async () => {
-    const xml = await documentXml(await markdownToDocxBuffer(JIREH_ANSWER));
-    const occurrences = xml.split("Samsung Display Replacement Recap").length - 1;
-    expect(occurrences).toBe(1);
+  /** Every header part in the package, concatenated. */
+  const headerXml = async (buffer: Buffer): Promise<string> => {
+    const zip = await JSZip.loadAsync(buffer);
+    const parts = zip.file(/word\/header\d*\.xml/);
+    return (await Promise.all(parts.map((part) => part.async("string")))).join("\n");
+  };
+
+  const footerXml = async (buffer: Buffer): Promise<string> => {
+    const zip = await JSZip.loadAsync(buffer);
+    const parts = zip.file(/word\/footer\d*\.xml/);
+    return (await Promise.all(parts.map((part) => part.async("string")))).join("\n");
+  };
+
+  it("sets the title in the header band and never repeats it in the body", async () => {
+    const buffer = await markdownToDocxBuffer(JIREH_ANSWER);
+    expect(await headerXml(buffer)).toContain("M&amp;T Bank Stadium — Samsung Display Replacement Recap");
+    expect(await documentXml(buffer)).not.toContain("Samsung Display Replacement Recap");
+  });
+
+  it("dates the header, and lets a caller replace the date line", async () => {
+    const dated = await markdownToDocxBuffer(JIREH_ANSWER, { date: new Date("2026-08-10T12:00:00Z") });
+    expect(await headerXml(dated)).toContain("August 10, 2026");
+
+    const attributed = await markdownToDocxBuffer(JIREH_ANSWER, { subtitle: "Prepared for Jireh Billings" });
+    expect(await headerXml(attributed)).toContain("Prepared for Jireh Billings");
+  });
+
+  it("carries the ANC wordmark, the page footer and the sign-off", async () => {
+    const buffer = await markdownToDocxBuffer(JIREH_ANSWER);
+    const zip = await JSZip.loadAsync(buffer);
+    expect(zip.file(/word\/media\/.*\.png/).length).toBeGreaterThan(0);
+
+    const footer = await footerXml(buffer);
+    expect(footer).toContain("www.anc.com");
+    expect(footer).toContain("PAGE");
+    expect(footer).toContain("NUMPAGES");
+
+    expect(await documentXml(buffer)).toContain("ANC Sports Enterprises, LLC");
   });
 
   it("writes the real content, with no uuids or markdown syntax left in it", async () => {
     const xml = await documentXml(await markdownToDocxBuffer(JIREH_ANSWER, { subtitle: "Prepared for Jireh Billings" }));
     expect(xml).toContain("Baltimore Ravens");
-    expect(xml).toContain("Prepared for Jireh Billings");
     expect(xml).toContain("Two new repair facilities have been sourced");
     // House conventions must not survive into the document.
     expect(xml).not.toContain("[[");
@@ -139,8 +173,48 @@ describe("markdownToDocxBuffer", () => {
     expect(xml).not.toContain("|----------|");
   });
 
+  it("keeps the first sentence of an answer that opens with prose", async () => {
+    // The title falls back to that first line, which used to mean the line was
+    // deleted from the body and the answer silently lost its opening.
+    const buffer = await markdownToDocxBuffer("The Ravens renewal closes in March.\n\nDetails follow.");
+    expect(await documentXml(buffer)).toContain("The Ravens renewal closes in March.");
+  });
+
   it("exports an empty-ish answer without throwing", async () => {
     const buffer = await markdownToDocxBuffer("just one line");
     expect(buffer.subarray(0, 2).toString("binary")).toBe("PK");
+  });
+});
+
+describe("tableColumnWidths", () => {
+  const HEADER = ["Priority", "Subsystem", "Action", "Timing"];
+  const ROWS = [
+    [
+      "Critical",
+      "LED Modules",
+      "Full replacement. All LED is End of Life and no longer produced. Samsung has also exited the LED display business",
+      "Before 2026 season",
+    ],
+    ["High", "Processors / Signal Flow", "Replace alongside modules", "Same deployment window"],
+  ];
+
+  it("gives the widest column the most room and always fills the page", () => {
+    const widths = tableColumnWidths(HEADER, ROWS);
+    expect(widths.reduce((sum, width) => sum + width, 0)).toBe(10240);
+    expect(Math.max(...widths)).toBe(widths[2]);
+  });
+
+  it("never squeezes a column below its longest word", () => {
+    const widths = tableColumnWidths(HEADER, ROWS);
+    // "Priority" is 8 characters; anything narrower breaks the heading mid-word.
+    expect(widths[0]).toBeGreaterThanOrEqual(8 * 120);
+  });
+
+  it("still returns a full-width set when every column is wordy", () => {
+    const wordy = Array.from({ length: 6 }, () => "Extraordinarily-long-single-token-heading");
+    const widths = tableColumnWidths(wordy, [wordy]);
+    expect(widths).toHaveLength(6);
+    expect(widths.reduce((sum, width) => sum + width, 0)).toBeLessThanOrEqual(10240);
+    expect(Math.min(...widths)).toBeGreaterThan(0);
   });
 });

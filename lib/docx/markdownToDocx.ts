@@ -19,6 +19,7 @@ import {
   AlignmentType,
   BorderStyle,
   Document,
+  Header,
   HeadingLevel,
   Packer,
   Paragraph,
@@ -30,10 +31,23 @@ import {
   WidthType,
 } from "docx";
 
-const ANC_BLUE = "0A52EF";
-const ANC_NAVY = "071A3D";
-const MUTED = "6B7280";
-const RULE_GRAY = "D1D5DB";
+import {
+  ANC_DOC_COLOR,
+  ANC_DOC_FONT,
+  ANC_DOC_MONO_FONT,
+  ANC_DOC_PAGE,
+  ANC_DOC_SIZE,
+  ancSectionProperties,
+  buildAncClosingBlock,
+  buildAncFooter,
+  buildAncHeader,
+  formatDocumentDate,
+} from "./ancDocumentTemplate";
+
+const ANC_BLUE = ANC_DOC_COLOR.blue;
+const ANC_NAVY = ANC_DOC_COLOR.navy;
+const MUTED = ANC_DOC_COLOR.muted;
+const RULE_GRAY = ANC_DOC_COLOR.rule;
 
 /** Slack shortcodes the assistant uses for priority markers. */
 const EMOJI: Record<string, string> = {
@@ -89,15 +103,19 @@ export function parseInline(raw: string): InlineSpan[] {
   return spans.length > 0 ? spans : [{ text }];
 }
 
-const runsFor = (raw: string, opts: { size?: number; color?: string; bold?: boolean } = {}): TextRun[] =>
+const runsFor = (
+  raw: string,
+  opts: { size?: number; color?: string; bold?: boolean; allCaps?: boolean } = {},
+): TextRun[] =>
   parseInline(raw).map(
     (span) =>
       new TextRun({
         text: span.text,
         bold: span.bold || opts.bold,
         italics: span.italics,
-        font: span.code ? "Consolas" : undefined,
-        size: opts.size ?? 22,
+        allCaps: opts.allCaps,
+        font: span.code ? ANC_DOC_MONO_FONT : undefined,
+        size: opts.size ?? ANC_DOC_SIZE.body,
         color: opts.color,
       }),
   );
@@ -108,17 +126,91 @@ const splitRow = (line: string): string[] =>
 
 const isTableDivider = (line: string): boolean => /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(line) && line.includes("-");
 
+/**
+ * Column widths proportional to the longest cell in each column, so a wide
+ * "Action" column is not squeezed to the same width as "Priority". Word's
+ * default even split is what made an exported table look nothing like the
+ * house document.
+ */
+export function tableColumnWidths(header: string[], rows: string[][]): number[] {
+  /**
+   * Roughly one character of 9pt type, plus the two cell margins. Sized for a
+   * wide sans rather than Calibri, so the column still holds when the document
+   * is opened somewhere Calibri is not installed.
+   */
+  const CHAR = 120;
+  const PADDING = 240;
+
+  const columns = header.map((cell, columnIndex) => {
+    const cells = [cell, ...rows.map((row) => row[columnIndex] ?? "")].map(normalizeInlineText);
+    const longestCell = Math.max(...cells.map((text) => text.length));
+    const longestWord = Math.max(
+      ...cells.flatMap((text) => text.split(/\s+/).map((word) => word.length)),
+      1,
+    );
+    return {
+      // One very wide cell must not starve the rest, and a one-word column
+      // still earns a readable share.
+      weight: Math.min(60, Math.max(9, longestCell)),
+      // Never so narrow that a heading like "Priority" breaks mid-word.
+      floor: longestWord * CHAR + PADDING,
+    };
+  });
+
+  const total = ANC_DOC_PAGE.contentWidth;
+  const floorSum = columns.reduce((sum, column) => sum + column.floor, 0);
+  if (floorSum >= total) {
+    // Nothing fits comfortably — fall back to the floors, scaled to the page.
+    return columns.map((column) => Math.floor((column.floor / floorSum) * total));
+  }
+
+  // Share the width out by weight, pinning any column that lands under its
+  // floor and re-sharing what is left over the rest.
+  const widths = new Array<number>(columns.length).fill(0);
+  const pinned = new Array<boolean>(columns.length).fill(false);
+  for (;;) {
+    const free = columns.map((_, i) => i).filter((i) => !pinned[i]);
+    if (free.length === 0) break;
+    const remaining = total - widths.reduce((sum, width) => sum + width, 0);
+    const weightSum = free.reduce((sum, i) => sum + columns[i].weight, 0);
+    let pinnedAny = false;
+    for (const i of free) {
+      const share = Math.round((columns[i].weight / weightSum) * remaining);
+      if (share < columns[i].floor) {
+        widths[i] = columns[i].floor;
+        pinned[i] = true;
+        pinnedAny = true;
+      } else {
+        widths[i] = share;
+      }
+    }
+    if (!pinnedAny) break;
+  }
+
+  // Hand any rounding remainder to the widest column.
+  const widest = widths.indexOf(Math.max(...widths));
+  widths[widest] += total - widths.reduce((sum, width) => sum + width, 0);
+  return widths;
+}
+
 function buildTable(header: string[], rows: string[][]): Table {
+  const columnWidths = tableColumnWidths(header, rows);
   const headerRow = new TableRow({
     tableHeader: true,
     children: header.map(
-      (cell) =>
+      (cell, columnIndex) =>
         new TableCell({
+          width: { size: columnWidths[columnIndex], type: WidthType.DXA },
           shading: { type: ShadingType.CLEAR, fill: ANC_NAVY },
           margins: { top: 80, bottom: 80, left: 120, right: 120 },
           children: [
             new Paragraph({
-              children: runsFor(cell, { size: 20, color: "FFFFFF", bold: true }),
+              spacing: { after: 0 },
+              children: runsFor(cell, {
+                size: ANC_DOC_SIZE.tableHeader,
+                color: ANC_DOC_COLOR.white,
+                bold: true,
+              }),
             }),
           ],
         }),
@@ -131,19 +223,36 @@ function buildTable(header: string[], rows: string[][]): Table {
         children: header.map(
           (_, columnIndex) =>
             new TableCell({
+              width: { size: columnWidths[columnIndex], type: WidthType.DXA },
               shading:
                 rowIndex % 2 === 1
-                  ? { type: ShadingType.CLEAR, fill: "F5F7FA" }
+                  ? { type: ShadingType.CLEAR, fill: ANC_DOC_COLOR.zebra }
                   : undefined,
               margins: { top: 80, bottom: 80, left: 120, right: 120 },
-              children: [new Paragraph({ children: runsFor(row[columnIndex] ?? "", { size: 20 }) })],
+              children: [
+                new Paragraph({
+                  spacing: { after: 0 },
+                  children: runsFor(row[columnIndex] ?? "", { size: ANC_DOC_SIZE.table }),
+                }),
+              ],
             }),
         ),
       }),
   );
 
+  const hairline = { style: BorderStyle.SINGLE, size: 2, color: ANC_DOC_COLOR.tableBorder };
+
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
+    columnWidths,
+    borders: {
+      top: hairline,
+      bottom: hairline,
+      left: hairline,
+      right: hairline,
+      insideHorizontal: hairline,
+      insideVertical: hairline,
+    },
     rows: [headerRow, ...bodyRows],
   });
 }
@@ -206,15 +315,21 @@ export function markdownToBlocks(markdown: string): (Paragraph | Table)[] {
     const heading = trimmed.match(/^(#{1,6})\s+(.*)$/);
     if (heading) {
       const level = heading[1].length;
+      // Section headings are ANC blue and set in caps; the sub-sections under
+      // them are navy. Anything deeper stays blue but at body size, so a long
+      // answer never grows a fourth typographic voice.
+      const isSection = level <= 2;
+      const isSubSection = level === 3;
       blocks.push(
         new Paragraph({
           heading: HEADING_LEVELS[level - 1],
-          spacing: { before: level === 1 ? 0 : 240, after: 120 },
+          spacing: { before: index === 0 ? 0 : isSection ? 300 : 240, after: 120 },
           keepNext: true,
           children: runsFor(heading[2], {
-            size: level === 1 ? 32 : level === 2 ? 26 : 23,
-            color: level <= 2 ? ANC_NAVY : ANC_BLUE,
+            size: isSection ? ANC_DOC_SIZE.h2 : isSubSection ? ANC_DOC_SIZE.h3 : ANC_DOC_SIZE.h4,
+            color: isSubSection ? ANC_NAVY : ANC_BLUE,
             bold: true,
+            allCaps: isSection,
           }),
         }),
       );
@@ -256,8 +371,9 @@ export function markdownToBlocks(markdown: string): (Paragraph | Table)[] {
     if (bullet) {
       blocks.push(
         new Paragraph({
-          bullet: { level: Math.min(4, Math.floor(bullet[1].length / 2)) },
+          numbering: { reference: "anc-bullet", level: Math.min(4, Math.floor(bullet[1].length / 2)) },
           spacing: { after: 60 },
+          alignment: AlignmentType.JUSTIFIED,
           children: runsFor(bullet[2]),
         }),
       );
@@ -272,6 +388,7 @@ export function markdownToBlocks(markdown: string): (Paragraph | Table)[] {
         new Paragraph({
           numbering: { reference: "anc-numbered", level: Math.min(4, Math.floor(numbered[1].length / 2)) },
           spacing: { after: 60 },
+          alignment: AlignmentType.JUSTIFIED,
           children: runsFor(numbered[2]),
         }),
       );
@@ -279,7 +396,13 @@ export function markdownToBlocks(markdown: string): (Paragraph | Table)[] {
       continue;
     }
 
-    blocks.push(new Paragraph({ spacing: { after: 120 }, children: runsFor(trimmed) }));
+    blocks.push(
+      new Paragraph({
+        spacing: { after: 120 },
+        alignment: AlignmentType.JUSTIFIED,
+        children: runsFor(trimmed),
+      }),
+    );
     index += 1;
   }
 
@@ -301,8 +424,14 @@ export function inferTitle(markdown: string): string | null {
 export interface MarkdownDocxOptions {
   /** Overrides the title inferred from the Markdown. */
   title?: string | null;
-  /** Small line under the title, e.g. "Prepared for Jireh Billings". */
+  /**
+   * The line under the title in the header band. Defaults to today's date,
+   * which is what the house template carries; pass something like
+   * "Prepared for Jireh Billings" to override it.
+   */
   subtitle?: string | null;
+  /** Fixes the header date — used by the tests, and by any dated re-export. */
+  date?: Date;
 }
 
 export async function markdownToDocxBuffer(
@@ -313,29 +442,18 @@ export async function markdownToDocxBuffer(
   const inferred = inferTitle(body);
   const title = (options.title ?? inferred ?? "ANC Report").trim();
 
-  // The inferred title is already the document's first heading — don't print it twice.
-  const stripLeadingHeading = !options.title && inferred !== null;
-  const bodyMarkdown = stripLeadingHeading
-    ? body.replace(/^\s*(?:#{1,6}\s+.*|[^\n]+)\n?/, "")
-    : body;
+  // The title is printed in the header band, so drop the heading it came from.
+  // Only ever a heading line: an answer that opens with prose keeps its first
+  // sentence, whatever the title turned out to be.
+  const opensWithHeading = /^\s*#{1,6}\s+\S/.test(body);
+  const bodyMarkdown = opensWithHeading ? body.replace(/^\s*#{1,6}\s+.*\n?/, "") : body;
 
-  const header: Paragraph[] = [
-    new Paragraph({
-      // A real Heading 1 so Word's navigation pane and any table of contents
-      // pick the document up — it is forwarded to executives, not just read.
-      heading: HeadingLevel.HEADING_1,
-      spacing: { after: options.subtitle ? 40 : 240 },
-      children: [new TextRun({ text: title, bold: true, size: 36, color: ANC_NAVY })],
-    }),
-  ];
-  if (options.subtitle) {
-    header.push(
-      new Paragraph({
-        spacing: { after: 240 },
-        children: [new TextRun({ text: options.subtitle, size: 20, color: MUTED })],
-      }),
-    );
-  }
+  // The title is set in the header band beside the wordmark, so the body opens
+  // straight into the content — printing it twice is what the old export did.
+  const documentHeader = buildAncHeader({
+    title,
+    date: options.subtitle ?? formatDocumentDate(options.date ?? new Date()),
+  });
 
   const doc = new Document({
     creator: "ANC Sports Enterprises",
@@ -349,20 +467,42 @@ export async function markdownToDocxBuffer(
             format: "decimal" as const,
             text: `%${level + 1}.`,
             alignment: AlignmentType.START,
-            style: { paragraph: { indent: { left: 360 * (level + 1), hanging: 260 } } },
+            style: { paragraph: { indent: { left: 720 + 360 * level, hanging: 360 } } },
+          })),
+        },
+        {
+          // The house bullet: a small round dot indented 0.5in with the text at
+          // 0.25in beyond it, matching the reference document rather than
+          // Word's default heavy glyph.
+          reference: "anc-bullet",
+          levels: Array.from({ length: 5 }, (_, level) => ({
+            level,
+            format: "bullet" as const,
+            text: level % 2 === 0 ? "•" : "◦",
+            alignment: AlignmentType.START,
+            style: { paragraph: { indent: { left: 720 + 360 * level, hanging: 360 } } },
           })),
         },
       ],
     },
     styles: {
       default: {
-        document: { run: { font: "Calibri", size: 22, color: "111827" } },
+        document: {
+          run: { font: ANC_DOC_FONT, size: ANC_DOC_SIZE.body, color: ANC_DOC_COLOR.ink },
+        },
       },
     },
     sections: [
       {
-        properties: { page: { margin: { top: 900, bottom: 900, left: 1000, right: 1000 } } },
-        children: [...header, ...markdownToBlocks(bodyMarkdown)],
+        properties: ancSectionProperties(),
+        headers: {
+          first: documentHeader,
+          // Page two onward opens straight into the content, as the house
+          // template does — only the footer repeats.
+          default: new Header({ children: [new Paragraph({ children: [new TextRun({ text: "" })] })] }),
+        },
+        footers: { first: buildAncFooter(), default: buildAncFooter() },
+        children: [...markdownToBlocks(bodyMarkdown), ...buildAncClosingBlock()],
       },
     ],
   });
