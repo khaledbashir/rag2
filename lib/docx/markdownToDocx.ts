@@ -134,11 +134,13 @@ const isTableDivider = (line: string): boolean => /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s
  */
 export function tableColumnWidths(header: string[], rows: string[][]): number[] {
   /**
-   * Roughly one character of 9pt type, plus the two cell margins. Sized for a
-   * wide sans rather than Calibri, so the column still holds when the document
-   * is opened somewhere Calibri is not installed.
+   * Roughly one character of 9pt DejaVu Sans, plus the two cell margins. Sized
+   * for the wide sans the house template sets, so a column still holds its
+   * content where a narrower substitute font is used instead.
    */
-  const CHAR = 120;
+  // 120 was measured off the regular weight and left a header like "League"
+  // breaking to "Leagu / e" — column headings are bold, which is wider.
+  const CHAR = 145;
   const PADDING = 240;
 
   const columns = header.map((cell, columnIndex) => {
@@ -287,7 +289,7 @@ export function markdownToBlocks(markdown: string): (Paragraph | Table)[] {
       blocks.push(
         new Paragraph({
           spacing: { after: 0 },
-          children: [new TextRun({ text: line, font: "Consolas", size: 18 })],
+          children: [new TextRun({ text: line, font: ANC_DOC_MONO_FONT, size: ANC_DOC_SIZE.code })],
         }),
       );
       index += 1;
@@ -324,6 +326,7 @@ export function markdownToBlocks(markdown: string): (Paragraph | Table)[] {
         new Paragraph({
           heading: HEADING_LEVELS[level - 1],
           spacing: { before: index === 0 ? 0 : isSection ? 300 : 240, after: 120 },
+          alignment: AlignmentType.JUSTIFIED,
           keepNext: true,
           children: runsFor(heading[2], {
             size: isSection ? ANC_DOC_SIZE.h2 : isSubSection ? ANC_DOC_SIZE.h3 : ANC_DOC_SIZE.h4,
@@ -424,12 +427,6 @@ export function inferTitle(markdown: string): string | null {
 export interface MarkdownDocxOptions {
   /** Overrides the title inferred from the Markdown. */
   title?: string | null;
-  /**
-   * The line under the title in the header band. Defaults to today's date,
-   * which is what the house template carries; pass something like
-   * "Prepared for Jireh Billings" to override it.
-   */
-  subtitle?: string | null;
   /** Fixes the header date — used by the tests, and by any dated re-export. */
   date?: Date;
 }
@@ -450,9 +447,14 @@ export async function markdownToDocxBuffer(
 
   // The title is set in the header band beside the wordmark, so the body opens
   // straight into the content — printing it twice is what the old export did.
+  //
+  // The line under the title is the document date and nothing else. Callers
+  // used to be able to put a provenance string there — the CRM's export button
+  // sent "Prepared from ANC AI" — which is precisely the line Natalia expects
+  // to read the date on, so the slot is no longer for rent.
   const documentHeader = buildAncHeader({
     title,
-    date: options.subtitle ?? formatDocumentDate(options.date ?? new Date()),
+    date: formatDocumentDate(options.date ?? new Date()),
   });
 
   const doc = new Document({

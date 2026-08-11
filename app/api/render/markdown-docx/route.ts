@@ -7,7 +7,9 @@
  * export to word document feature? i just asked it something and it gave a
  * great response, but looking to get better formatted."
  *
- * Body: { markdown: string, title?: string, subtitle?: string, fileName?: string }
+ * Body: { markdown: string, title?: string, fileName?: string }
+ * The line under the title in the header band is always the document date, so
+ * there is no caller-supplied subtitle — see `markdownToDocx`.
  * GET is supported with ?markdown= so a link can carry a short answer directly.
  *
  * Auth-exempt via the /api/render/* allowlist — openable as a direct link and
@@ -48,12 +50,7 @@ function addBrowserHeaders(response: NextResponse, req: NextRequest): NextRespon
   return response;
 }
 
-async function render(
-  markdown: string,
-  title: string | null,
-  subtitle: string | null,
-  fileName: string | null,
-) {
+async function render(markdown: string, title: string | null, fileName: string | null) {
   if (!markdown || !markdown.trim()) {
     return NextResponse.json(
       { error: "Nothing to export — send the assistant's answer as `markdown`." },
@@ -67,7 +64,7 @@ async function render(
     );
   }
 
-  const buffer = await markdownToDocxBuffer(markdown, { title, subtitle });
+  const buffer = await markdownToDocxBuffer(markdown, { title });
   const resolvedName = fileName?.trim()
     ? (fileName.trim().toLowerCase().endsWith(".docx") ? fileName.trim() : `${fileName.trim()}.docx`)
     : docxFileName(title || inferTitle(markdown) || "ANC Report");
@@ -96,7 +93,6 @@ export async function POST(req: NextRequest) {
       await render(
         String(body?.markdown ?? body?.content ?? body?.text ?? ""),
         body?.title ? String(body.title) : null,
-        body?.subtitle ? String(body.subtitle) : null,
         body?.fileName ? String(body.fileName) : null,
       ),
       req,
@@ -119,7 +115,6 @@ export async function GET(req: NextRequest) {
       await render(
         params.get("markdown") ?? "",
         params.get("title"),
-        params.get("subtitle"),
         params.get("fileName"),
       ),
       req,

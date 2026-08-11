@@ -12,12 +12,12 @@
  * under it; a hairline closes the header band; every page carries a rule,
  * `www.anc.com` and "Page N of M"; the body closes with the company sign-off.
  *
- * Point sizes are the one deliberate departure. The reference PDF was rendered
- * on Linux, where the body fell back to DejaVu Sans at 9pt. DejaVu carries a
- * much larger x-height than Calibri, which is what an ANC reader actually has
- * installed, so the sizes here are set one step up: 10pt body, 11pt headings.
- * On screen and on paper that reproduces the reference, rather than shrinking
- * every document by a size.
+ * A first pass set the type in Calibri one size up, reasoning that DejaVu has
+ * the larger x-height and is not installed on a typical ANC desk. Natalia read
+ * the result against her document and rejected it, 2026-08-11: "font is DejaVu
+ * Sans family ... main text 9 font, headers 10". So the reference is followed
+ * literally — DejaVu Sans, 9pt body, 10pt headings — and nothing here is set
+ * by taste over what she measured.
  *
  * `docx` sizes are half-points, spacing and positions are twips (1pt = 20).
  */
@@ -54,26 +54,28 @@ export const ANC_DOC_COLOR = {
   white: "FFFFFF",
 } as const;
 
-/** Half-points, so 20 = 10pt. */
+/** Half-points, so 18 = 9pt. Measured off the reference document. */
 export const ANC_DOC_SIZE = {
   title: 20,
-  date: 16,
-  body: 20,
-  h2: 22,
-  h3: 22,
-  h4: 20,
+  date: 14,
+  body: 18,
+  h2: 20,
+  h3: 20,
+  h4: 18,
   table: 18,
   tableHeader: 18,
-  footer: 15,
-  closing: 17,
-  code: 17,
+  footer: 14,
+  closing: 16,
+  code: 16,
 } as const;
 
-export const ANC_DOC_FONT = "Calibri";
-export const ANC_DOC_MONO_FONT = "Consolas";
+export const ANC_DOC_FONT = "DejaVu Sans";
+export const ANC_DOC_MONO_FONT = "DejaVu Sans Mono";
 
 /** Letter page, 0.7in sides, with room reserved for the header band and footer. */
 export const ANC_DOC_PAGE = {
+  /** 8.5x11in in twips. Stated outright — `docx` defaults a page to A4. */
+  size: { width: 12240, height: 15840 },
   margin: {
     top: 1000,
     bottom: 1080,
@@ -275,6 +277,6 @@ export function buildAncClosingBlock(): Paragraph[] {
 export function ancSectionProperties() {
   return {
     titlePage: true,
-    page: { margin: { ...ANC_DOC_PAGE.margin } },
+    page: { size: { ...ANC_DOC_PAGE.size }, margin: { ...ANC_DOC_PAGE.margin } },
   };
 }

@@ -102,7 +102,7 @@ describe("inferTitle / docxFileName", () => {
 
 describe("markdownToDocxBuffer", () => {
   it("produces a real .docx (a zip) for Jireh's answer", async () => {
-    const buffer = await markdownToDocxBuffer(JIREH_ANSWER, { subtitle: "Prepared for Jireh Billings" });
+    const buffer = await markdownToDocxBuffer(JIREH_ANSWER);
     expect(buffer.length).toBeGreaterThan(4000);
     // Every .docx is a zip — check the local file header magic bytes.
     expect(buffer.subarray(0, 2).toString("binary")).toBe("PK");
@@ -133,12 +133,55 @@ describe("markdownToDocxBuffer", () => {
     expect(await documentXml(buffer)).not.toContain("Samsung Display Replacement Recap");
   });
 
-  it("dates the header, and lets a caller replace the date line", async () => {
+  it("puts the date under the title, and nothing else", async () => {
     const dated = await markdownToDocxBuffer(JIREH_ANSWER, { date: new Date("2026-08-10T12:00:00Z") });
-    expect(await headerXml(dated)).toContain("August 10, 2026");
+    const header = await headerXml(dated);
+    expect(header).toContain("August 10, 2026");
 
-    const attributed = await markdownToDocxBuffer(JIREH_ANSWER, { subtitle: "Prepared for Jireh Billings" });
-    expect(await headerXml(attributed)).toContain("Prepared for Jireh Billings");
+    // The CRM's export button used to send a provenance line for this slot.
+    // Natalia, 2026-08-11: "header is justified right, under has date."
+    const viaTheRoute = await markdownToDocxBuffer(JIREH_ANSWER, {
+      ...({ subtitle: "Prepared from ANC AI" } as object),
+    });
+    expect(await headerXml(viaTheRoute)).not.toContain("Prepared from ANC AI");
+  });
+
+  /**
+   * Natalia Kovaleva, 2026-08-11, reading an export against her document:
+   * "header is justified right, under has date. color in ANC blue, its all
+   * caps ... sub headers are also all caps, font is DejaVu Sans family ...
+   * main text 9 font, headers 10".
+   */
+  it("wears the house type: DejaVu Sans, 9pt body, 10pt headings", async () => {
+    const buffer = await markdownToDocxBuffer(JIREH_ANSWER);
+    const zip = await JSZip.loadAsync(buffer);
+    const styles = await zip.file("word/styles.xml")!.async("string");
+    expect(styles).toContain('w:ascii="DejaVu Sans"');
+    expect(styles).toContain('<w:sz w:val="18"/>');
+
+    const body = await documentXml(buffer);
+    // Body copy at 9pt, section headings at 10pt in ANC blue and set in caps.
+    expect(body).toContain('<w:sz w:val="18"/>');
+    expect(body).toMatch(/<w:caps\/>[\s\S]{0,200}?<w:color w:val="0A52EF"\/><w:sz w:val="20"\/>/);
+    // Prose is justified, as the reference document is throughout.
+    expect(body).toContain('<w:jc w:val="both"/>');
+  });
+
+  it("sets the title and the date right, in blue caps", async () => {
+    const header = await headerXml(
+      await markdownToDocxBuffer(JIREH_ANSWER, { date: new Date("2026-08-10T12:00:00Z") }),
+    );
+    // Title: right, caps, ANC blue, 10pt.
+    expect(header).toMatch(
+      /<w:jc w:val="right"\/>[\s\S]*?<w:caps\/>[\s\S]*?<w:color w:val="0A52EF"\/><w:sz w:val="20"\/>/,
+    );
+    // Date: right, under it, at 7pt.
+    expect(header).toMatch(/<w:jc w:val="right"\/>[\s\S]*?<w:sz w:val="14"\/>[\s\S]*?August 10, 2026/);
+  });
+
+  it("prints on US Letter, not the library's A4 default", async () => {
+    const xml = await documentXml(await markdownToDocxBuffer(JIREH_ANSWER));
+    expect(xml).toContain('<w:pgSz w:w="12240" w:h="15840"');
   });
 
   it("carries the ANC wordmark, the page footer and the sign-off", async () => {
@@ -155,7 +198,7 @@ describe("markdownToDocxBuffer", () => {
   });
 
   it("writes the real content, with no uuids or markdown syntax left in it", async () => {
-    const xml = await documentXml(await markdownToDocxBuffer(JIREH_ANSWER, { subtitle: "Prepared for Jireh Billings" }));
+    const xml = await documentXml(await markdownToDocxBuffer(JIREH_ANSWER));
     expect(xml).toContain("Baltimore Ravens");
     expect(xml).toContain("Two new repair facilities have been sourced");
     // House conventions must not survive into the document.
