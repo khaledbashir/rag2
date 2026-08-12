@@ -5,6 +5,7 @@ import { parsePricingTablesWithValidation, PRICING_PARSER_STRICT_VERSION } from 
 import { parseServiceSheet, isServiceSheetWorkbook } from "@/services/pricing/serviceSheetParser";
 import { findMarginAnalysisSheet } from "@/lib/sheetDetection";
 import { normalizeExcel } from "@/services/import/excelNormalizer";
+import { applyDisplaySpecDescriptions } from "@/lib/pricing/displaySpecDescription";
 import * as xlsx from "xlsx";
 import crypto from "node:crypto";
 import { log } from "@/lib/logger";
@@ -124,6 +125,15 @@ export async function POST(req: NextRequest) {
                         }
                     }
                 });
+
+                // Spell out screen specs on the LED hardware line (Natalia 2026-08-12).
+                // The workbook labels it "LED Hardware"; a client-facing document
+                // names the screen, its size, pitch and quantity instead. Runs after
+                // the group backfill so it reads the same screen list.
+                const specRewrites = applyDisplaySpecDescriptions(pricingDocument, screens);
+                if (specRewrites.length > 0) {
+                    log.info(`[EXCEL IMPORT] Spelled out screen specs on ${specRewrites.length} LED hardware line(s): ${specRewrites.map((r) => `"${r.table}" -> "${r.to}"`).join("; ")}`);
+                }
 
                 log.info(`[EXCEL IMPORT] PricingDocument: ${pricingDocument.tables.length} tables, ${pricingDocument.documentTotal} total`);
                 (data as any).validation = validation;

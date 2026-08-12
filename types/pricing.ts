@@ -29,6 +29,13 @@ export interface PricingLineItem {
 
   /** True if this row was hidden in the original Excel */
   isHidden?: boolean;
+
+  /**
+   * The label the workbook actually carried, kept when the import rewrites the
+   * description — today only the LED hardware line, which client-facing
+   * documents spell out as a screen spec (see lib/pricing/displaySpecDescription.ts).
+   */
+  sourceDescription?: string;
 }
 
 export interface AlternateItem {
