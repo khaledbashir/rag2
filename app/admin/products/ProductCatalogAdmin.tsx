@@ -77,6 +77,8 @@ export default function ProductCatalogAdmin() {
     const { confirm, alert: showAlert } = useConfirm();
     const [importing, setImporting] = useState(false);
     const [importResult, setImportResult] = useState<any>(null);
+    const [rateCardBusy, setRateCardBusy] = useState(false);
+    const [rateCard, setRateCard] = useState<{ report?: any; file?: File; error?: string } | null>(null);
 
     // Filters
     const [searchText, setSearchText] = useState("");
@@ -145,6 +147,39 @@ export default function ProductCatalogAdmin() {
             setImportResult({ error: "Import failed" });
         } finally {
             setImporting(false);
+        }
+    };
+
+    // ========================================================================
+    // NX RATE CARD IMPORT
+    //
+    // Two steps on purpose. A rate card moves what the estimator charges per
+    // sqft, so the diff is shown first and nothing is written until it is
+    // accepted.
+    // ========================================================================
+
+    const runRateCard = async (file: File, dryRun: boolean) => {
+        setRateCardBusy(true);
+        try {
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("dryRun", String(dryRun));
+
+            const res = await fetch("/api/products/import-rate-card", {
+                method: "POST",
+                body: formData,
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                setRateCard({ error: data.error ?? "Rate card import failed" });
+                return;
+            }
+            setRateCard({ report: data.report, file });
+            if (!dryRun) fetchProducts();
+        } catch {
+            setRateCard({ error: "Rate card import failed" });
+        } finally {
+            setRateCardBusy(false);
         }
     };
 
@@ -391,6 +426,25 @@ export default function ProductCatalogAdmin() {
                         Template
                     </a>
 
+                    {/* NX rate card */}
+                    <label
+                        className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors cursor-pointer"
+                        title="Upload an NX Yaham rate card (ANC or LGEUS) — shows the price changes before anything is saved"
+                    >
+                        <Upload className={`w-4 h-4 ${rateCardBusy ? "animate-pulse" : ""}`} />
+                        Import rate card
+                        <input
+                            type="file"
+                            className="hidden"
+                            accept=".xlsx"
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) runRateCard(file, true);
+                                e.target.value = "";
+                            }}
+                        />
+                    </label>
+
                     {/* Import */}
                     <label className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer">
                         <Upload className={`w-4 h-4 ${importing ? "animate-pulse" : ""}`} />
@@ -423,6 +477,116 @@ export default function ProductCatalogAdmin() {
                     <button onClick={() => setImportResult(null)} className="ml-3 text-xs opacity-60 hover:opacity-100">
                         <X className="w-3 h-3 inline" />
                     </button>
+                </div>
+            )}
+
+            {/* NX rate card — diff, then apply */}
+            {rateCard && (
+                <div className="p-4 bg-card border border-border rounded-lg space-y-3 text-sm">
+                    {rateCard.error ? (
+                        <div className="flex items-start justify-between gap-3">
+                            <span className="text-red-400">{rateCard.error}</span>
+                            <button onClick={() => setRateCard(null)} className="text-xs opacity-60 hover:opacity-100">
+                                <X className="w-3 h-3 inline" />
+                            </button>
+                        </div>
+                    ) : (
+                        (() => {
+                            const r = rateCard.report;
+                            const p = r.products;
+                            const moved = r.estimatorRates.changes.filter((c: any) => c.action !== "unchanged");
+                            return (
+                                <>
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                                <Package className="w-4 h-4" />
+                                                {r.variant === "LGEUS" ? "LG USA rate card" : "Yaham direct rate card"}
+                                                {r.dryRun && (
+                                                    <span className="px-1.5 py-0.5 text-[10px] uppercase tracking-wide bg-amber-500/15 text-amber-400 rounded">
+                                                        Preview
+                                                    </span>
+                                                )}
+                                            </h3>
+                                            <p className="text-xs text-muted-foreground mt-0.5">
+                                                {r.sourceFile} · priced {r.pricedOn ?? "—"} · {r.basis}
+                                                {r.markupPct !== null && ` ${(r.markupPct * 100).toFixed(0)}%`}
+                                            </p>
+                                        </div>
+                                        <button onClick={() => setRateCard(null)} className="text-xs opacity-60 hover:opacity-100">
+                                            <X className="w-3 h-3 inline" />
+                                        </button>
+                                    </div>
+
+                                    <div className="text-foreground">
+                                        Catalog: {p.created} new, {p.updated} repriced, {p.unchanged} unchanged, {p.retired} retired
+                                    </div>
+
+                                    <div>
+                                        <div className="text-xs text-muted-foreground mb-1">
+                                            Estimator pricing: {r.estimatorRates.reason}
+                                        </div>
+                                        {moved.length > 0 && (
+                                            <div className="max-h-56 overflow-y-auto border border-border rounded">
+                                                <table className="w-full text-xs">
+                                                    <tbody>
+                                                        {moved.map((c: any) => {
+                                                            const pct =
+                                                                c.oldValue && c.newValue
+                                                                    ? ((c.newValue / c.oldValue - 1) * 100)
+                                                                    : null;
+                                                            return (
+                                                                <tr key={c.key} className="border-b border-border/50 last:border-0">
+                                                                    <td className="px-2 py-1 font-mono text-muted-foreground">{c.key}</td>
+                                                                    <td className="px-2 py-1 text-right tabular-nums">
+                                                                        {c.oldValue !== null ? c.oldValue.toFixed(2) : "—"}
+                                                                    </td>
+                                                                    <td className="px-2 py-1 text-right tabular-nums text-foreground">
+                                                                        → {c.newValue.toFixed(2)}
+                                                                    </td>
+                                                                    <td className={`px-2 py-1 text-right tabular-nums ${pct && pct > 0 ? "text-amber-400" : "text-emerald-400"}`}>
+                                                                        {pct !== null ? `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%` : "new"}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {r.warnings?.length > 0 && (
+                                        <ul className="text-xs text-amber-400 space-y-0.5">
+                                            {r.warnings.map((w: string, i: number) => (
+                                                <li key={i}>· {w}</li>
+                                            ))}
+                                        </ul>
+                                    )}
+
+                                    {r.dryRun ? (
+                                        <div className="flex items-center gap-2 pt-1">
+                                            <button
+                                                onClick={() => rateCard.file && runRateCard(rateCard.file, false)}
+                                                disabled={rateCardBusy}
+                                                className="px-3 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                                            >
+                                                Apply this rate card
+                                            </button>
+                                            <button
+                                                onClick={() => setRateCard(null)}
+                                                className="px-3 py-2 text-sm font-medium border border-border text-foreground rounded-lg hover:bg-muted transition-colors"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="text-emerald-400">Applied. New estimates use these prices.</div>
+                                    )}
+                                </>
+                            );
+                        })()
+                    )}
                 </div>
             )}
 
