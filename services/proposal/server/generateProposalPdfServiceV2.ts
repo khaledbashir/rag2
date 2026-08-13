@@ -97,6 +97,16 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 	const isServiceDocument = !!(body.details as any)?.servicePricingDocument &&
 		(documentMode === "SERVICE_PROPOSAL" || documentMode === "SERVICE_CONTRACT" || documentMode === "SERVICE_AGREEMENT");
 
+	// Service documents are laid out in print media; every other mode keeps the
+	// screen media this pipeline has always used. Chrome only repeats a table
+	// header group across pages when it is laying out for print, and that repeat
+	// is what carries the document header onto page 2+ of a service document
+	// (Natalia 2026-08-12). Independent of servicePricingDocument: a hand-built
+	// Service Contract needs the header on every page just as much.
+	const usesPrintMedia = documentMode === "SERVICE_PROPOSAL"
+		|| documentMode === "SERVICE_CONTRACT"
+		|| documentMode === "SERVICE_AGREEMENT";
+
 	if (isMirrorMode && !hasValidAudit && !isServiceDocument && (!pricingDocument || !Array.isArray(pricingDocument?.tables) || pricingDocument.tables.length === 0)) {
 		return preflightError(
 			"We couldn't generate this PDF because pricing tables were not found in the uploaded Excel.",
@@ -244,7 +254,7 @@ export async function generateProposalPdfServiceV2(req: NextRequest) {
 		const viewportWidth = isLandscapeLayout ? 1122 : 794;
 		await page.setViewport({ width: viewportWidth, height: 1122, deviceScaleFactor: 1 });
 		try {
-			await page.emulateMediaType("screen");
+			await page.emulateMediaType(usesPrintMedia ? "print" : "screen");
 		} catch {
 		}
 		await page.setContent(html, {
