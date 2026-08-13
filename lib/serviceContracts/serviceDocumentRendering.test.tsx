@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import PdfServiceContract from "@/app/components/templates/proposal-pdf/PdfServiceContract";
 import PdfServiceProposal from "@/app/components/templates/proposal-pdf/PdfServiceProposal";
+import PdfRunningHeaderFrame from "@/app/components/templates/proposal-pdf/sections/PdfRunningHeaderFrame";
 import type { PdfColors } from "@/app/components/templates/proposal-pdf/sections/shared";
 
 const colors: PdfColors = {
@@ -266,5 +267,76 @@ describe("service proposal — scope of services and notes", () => {
     expect(html).not.toContain("service-section-notes");
     // The rest of the document is untouched.
     expect(html).toContain("Compensation");
+  });
+});
+
+/**
+ * Natalia 2026-08-12, three asks on the same export:
+ *   1. the service documents must carry a header like every other type,
+ *   2. the pricing table must match the LED template,
+ *   3. the Contract Year fee is a YEARLY fee, not a monthly one.
+ */
+describe("service documents — header, pricing style, yearly fee", () => {
+  const svcDoc = {
+    sourceSheet: "Option 1",
+    fileName: "Charlotte Hornets 2026-2027 Service.xlsx",
+    clientName: "Charlotte Hornets",
+    yearLabels: ["Year 1"],
+    rows: [
+      { label: "On-site Maintenance", cells: [{ raw: 96824, display: "$96,824" }], kind: "line", sourceRow: 9 },
+      { label: "bundle disocunt", cells: [{ raw: -29047, display: "$(29,047)" }], kind: "line", sourceRow: 10 },
+    ],
+    totalRow: { label: "YEARLY TOTAL:", cells: [{ raw: 95777, display: "$95,777" }], kind: "total", sourceRow: 13 },
+    termYears: 1,
+    termStartYear: 2026,
+    termEndYear: 2027,
+    currency: "USD" as const,
+    metadata: { importedAt: "2026-08-12T00:00:00.000Z", warnings: [] },
+  };
+
+  it("repeats the document header on every printed page", () => {
+    const html = renderToStaticMarkup(
+      <PdfRunningHeaderFrame header={<div data-preview-section="header">ANC · SERVICE PROPOSAL</div>}>
+        <p>Body</p>
+      </PdfRunningHeaderFrame>,
+    );
+    // A repeated table header group is the only running-header mechanism Chrome
+    // honours; losing the thead silently drops the header from pages 2+.
+    expect(html).toContain("table-header-group");
+    expect(html.indexOf("SERVICE PROPOSAL")).toBeLessThan(html.indexOf("<tbody>"));
+    expect(html).toContain("<p>Body</p>");
+  });
+
+  it("dresses the imported fee table in the LED pricing-table styling", () => {
+    const html = renderToStaticMarkup(
+      <PdfServiceProposal colors={colors} intro={intro} details={{ servicePricingDocument: svcDoc }} />,
+    );
+    // Card + blue-underlined column heads + pale-blue total band.
+    expect(html).toContain("rounded-lg border overflow-hidden");
+    expect(html).toContain(`border-bottom:2px solid ${colors.primary}`);
+    expect(html).toContain(`background:${colors.primaryLight}`);
+    // Mirrored values are untouched by the restyle.
+    expect(html).toContain("$96,824");
+    expect(html).toContain("$(29,047)");
+    expect(html).toContain("Yearly Total:");
+  });
+
+  it("calls the Contract Year fee a yearly fee in a service contract", () => {
+    const html = renderToStaticMarkup(
+      <PdfServiceContract
+        colors={colors}
+        config={{ purchaserName: "Baylor University", venueName: "Foster Pavillion" }}
+        details={{
+          serviceManualFeeRows: [
+            { contractYear: "Contract Year 1 - 2026-2027", monthlyFee: "$47,080" },
+            { contractYear: "Contract Year 2 - 2027-2028", monthlyFee: "$42,692" },
+          ],
+        }}
+      />,
+    );
+    expect(html).toContain("Yearly Service Fee");
+    expect(html).not.toContain("Monthly Service Fee");
+    expect(html).toContain("$47,080");
+    expect(html).toContain("Contract Year 2 - 2027-2028");
   });
 });

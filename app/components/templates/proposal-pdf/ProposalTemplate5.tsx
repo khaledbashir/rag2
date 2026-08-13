@@ -20,6 +20,7 @@ import PageBreak from "@/app/components/templates/proposal-pdf/PageBreak";
 
 // Section sub-components
 import PdfHeader from "./sections/PdfHeader";
+import PdfRunningHeaderFrame from "./sections/PdfRunningHeaderFrame";
 import PdfPricingTables from "./sections/PdfPricingTables";
 import PdfFreeformTables from "./sections/PdfFreeformTables";
 import PdfRichBody from "./PdfRichBody";
@@ -774,16 +775,21 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
             <ProposalLayout data={data} disableFixedFooter>
                 {fontSizeOverrideCss && <style dangerouslySetInnerHTML={{ __html: fontSizeOverrideCss }} />}
                 <div className={fontOffset !== 0 ? "pdf-font-scaled" : ""}>
-                    <PdfHeader
-                        colors={colors}
-                        contentPaddingX={contentPaddingX}
-                        headerToIntroGap={headerToIntroGap}
-                        docLabel={docLabel}
-                        proposalName={details?.proposalName || ""}
-                        clientName={receiver?.name || "Client Name"}
-                        date={headerDate}
-                    />
-                    <PdfServiceContract colors={colors} config={saConfig} details={details} />
+                    <PdfRunningHeaderFrame
+                        header={
+                            <PdfHeader
+                                colors={colors}
+                                contentPaddingX={contentPaddingX}
+                                headerToIntroGap={headerToIntroGap}
+                                docLabel={docLabel}
+                                proposalName={details?.proposalName || ""}
+                                clientName={receiver?.name || "Client Name"}
+                                date={headerDate}
+                            />
+                        }
+                    >
+                        <PdfServiceContract colors={colors} config={saConfig} details={details} />
+                    </PdfRunningHeaderFrame>
                 </div>
             </ProposalLayout>
         );
@@ -815,15 +821,19 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
             <ProposalLayout data={data} disableFixedFooter>
                 {fontSizeOverrideCss && <style dangerouslySetInnerHTML={{ __html: fontSizeOverrideCss }} />}
                 <div className={fontOffset !== 0 ? "pdf-font-scaled" : ""}>
-                    <PdfHeader
-                        colors={colors}
-                        contentPaddingX={contentPaddingX}
-                        headerToIntroGap={headerToIntroGap}
-                        docLabel={docLabel}
-                        proposalName={details?.proposalName || ""}
-                        clientName={receiver?.name || "Client Name"}
-                        date={headerDate}
-                    />
+                    <PdfRunningHeaderFrame
+                        header={
+                            <PdfHeader
+                                colors={colors}
+                                contentPaddingX={contentPaddingX}
+                                headerToIntroGap={headerToIntroGap}
+                                docLabel={docLabel}
+                                proposalName={details?.proposalName || ""}
+                                clientName={receiver?.name || "Client Name"}
+                                date={headerDate}
+                            />
+                        }
+                    >
                     <PdfServiceProposal
                         colors={colors}
                         details={details}
@@ -839,6 +849,7 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
                             termEnd: scTermEnd || (svcDoc?.termEndYear ? String(svcDoc.termEndYear) : null),
                         }}
                     />
+                    </PdfRunningHeaderFrame>
                 </div>
             </ProposalLayout>
         );
