@@ -20,6 +20,7 @@ import {
   type OpportunityCandidate,
 } from "@/services/intake/emailToCrmSync";
 import { createDraftOpportunityForRfpIntake } from "@/services/integrations/twenty/crmAutomation";
+import { postBidAlert } from "@/services/intake/bidAlertSlack";
 import type { Prisma } from "@prisma/client";
 
 export interface ProcessOptions {
@@ -134,6 +135,15 @@ async function runIntakePipeline(
               matchedOpportunityId: draft.opportunityId,
             },
           });
+          await postBidAlert({
+            intakeId,
+            status: updated.status,
+            input,
+            extraction,
+            decision,
+            opportunityId: draft.opportunityId,
+            opportunityName: extraction.projectName,
+          });
           return {
             intake: updated,
             extraction,
@@ -154,6 +164,15 @@ async function runIntakePipeline(
         where: { id: intakeId },
         data: { ...baseUpdate, status: "pending_review" },
       });
+      await postBidAlert({
+        intakeId,
+        status: updated.status,
+        input,
+        extraction,
+        decision,
+        opportunityId: null,
+        opportunityName: null,
+      });
       return { intake: updated, extraction, candidates, decision, applied: null };
     }
 
@@ -168,6 +187,15 @@ async function runIntakePipeline(
         appliedBy: options?.appliedBy || "auto",
       },
     });
+    await postBidAlert({
+      intakeId,
+      status: updated.status,
+      input,
+      extraction,
+      decision,
+      opportunityId: decision.top!.id,
+      opportunityName: decision.top!.name,
+    });
     return { intake: updated, extraction, candidates, decision, applied };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -175,6 +203,16 @@ async function runIntakePipeline(
     const updated = await prisma.emailCrmIntake.update({
       where: { id: intakeId },
       data: { status: "failed", error: message },
+    });
+    // A failed read is the case that most needs a human, so it alerts too —
+    // with no extraction there is no venue to route on, so it lands in the
+    // default channel.
+    await postBidAlert({
+      intakeId,
+      status: updated.status,
+      input,
+      extraction: null,
+      decision: null,
     });
     return { intake: updated, extraction: null, candidates: [], decision: null, applied: null };
   }

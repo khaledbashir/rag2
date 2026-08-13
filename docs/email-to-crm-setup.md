@@ -87,3 +87,37 @@ cron entry is safe to add early.
    timeline note with deadlines, key info, sender, and attachment list.
 5. Files attachments into `EMAIL_CRM_ONEDRIVE_FOLDER/<venue>/` and marks the
    message read.
+
+## 6. Slack bid alerts (Jireh ask 2026-08-12)
+
+Every processed email can also announce itself in Slack — venue, project, the
+bid due date with its verbatim quote, attachments, and either a link to the CRM
+opportunity it was logged on or a link to the review queue when a human has to
+confirm the deal.
+
+Env on the app service:
+
+| Var | Required | What it does |
+|---|---|---|
+| `SLACK_BOT_TOKEN` | yes | Bot token for the ANC workspace (`@anc`). No token = alerts are a silent no-op. |
+| `EMAIL_CRM_SLACK_CHANNEL` | no | Catch-all channel for emails whose venue matches no pursuit channel. |
+| `EMAIL_CRM_SLACK_CHANNEL_MAP` | no | Explicit overrides, `{"venue keyword":"C0123456"}`. Beats name matching. |
+
+**Routing follows the workspace's own convention.** Sales keeps one channel per
+pursuit — `#sales-bank-of-america-stadium-carolina-panthers` — so a venue of
+"Bank of America Stadium" finds that channel with no configuration, and a new
+pursuit routes itself the day someone opens its channel. Matching requires
+*every* identifying word of the venue to appear in the channel name (generic
+words like "stadium", "arena", "field" are ignored), so "America First Field"
+can never land in the Bank of America channel.
+
+Two things gate a channel actually receiving alerts:
+
+- **Public channel** — works immediately (`chat:write.public`).
+- **Private channel** — `/invite @anc` first. Until then the bot cannot even see
+  the channel in the lookup, and that venue's alerts fall to the catch-all.
+
+Engine: `services/intake/bidAlertSlack.ts`. Alerts fire on all four outcomes —
+applied, draft created, pending review, and failed-to-read — because the failure
+cases are exactly the ones that need a person. A Slack failure is logged and
+never fails the intake; the CRM write is the product.
