@@ -24,6 +24,21 @@ function esc(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
+const CRM_OPPORTUNITY_URL = "https://crm.ancsports.net/object/opportunity";
+
+/** Wraps text in a link when there is somewhere real to go, and leaves it as
+ *  plain text when there isn't. Outlook ignores an inherited link colour, so
+ *  every anchor carries its own colour and underline. */
+function maybeLink(text: string, href: string | undefined, color: string): string {
+  const safeText = esc(text);
+  if (!href) return safeText;
+  return `<a href="${esc(href)}" style="color:${color};text-decoration:underline;">${safeText}</a>`;
+}
+
+function opportunityHref(recordId?: string): string | undefined {
+  return recordId ? `${CRM_OPPORTUNITY_URL}/${encodeURIComponent(recordId)}` : undefined;
+}
+
 function sectionLabel(text: string): string {
   return `<tr><td style="padding:26px 36px 10px;">
     <div style="font-family:Consolas,Menlo,monospace;font-size:11px;letter-spacing:3px;text-transform:uppercase;color:${MUTED};border-bottom:1px solid ${LINE};padding-bottom:10px;">${esc(text)}</div>
@@ -97,7 +112,7 @@ export function renderBriefingEmail(input: {
           <tr>
             <td valign="top" style="width:26px;font-family:Arial,sans-serif;font-size:15px;font-weight:700;color:${FAINT};padding:14px 0;">${index + 1}</td>
             <td style="padding:14px 0;">
-              <div style="font-family:Arial,sans-serif;font-size:14.5px;font-weight:700;color:${INK};line-height:20px;">${esc(item.title)}${amount}</div>
+              <div style="font-family:Arial,sans-serif;font-size:14.5px;font-weight:700;color:${INK};line-height:20px;">${maybeLink(item.title, opportunityHref(item.recordId), INK)}${amount}</div>
               <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:4px;">${bullets}</table>
               <div style="padding-top:8px;">${tags}</div>
             </td>
@@ -125,7 +140,7 @@ export function renderBriefingEmail(input: {
       (o) => `<tr><td style="padding:0 36px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid ${LINE};">
         <tr>
-          <td style="font-family:Arial,sans-serif;font-size:13.5px;color:${INK};padding:10px 0;">${esc(o.item)}</td>
+          <td style="font-family:Arial,sans-serif;font-size:13.5px;color:${INK};padding:10px 0;">${maybeLink(o.item, opportunityHref(o.recordId), INK)}</td>
           <td align="right" style="font-family:Consolas,Menlo,monospace;font-size:12px;color:${AMBER};padding:10px 0;white-space:nowrap;">${esc(o.when)}</td>
         </tr>
       </table>
@@ -134,13 +149,16 @@ export function renderBriefingEmail(input: {
     .join("");
 
   const waiting = content.waiting
-    .map(
-      (w) => `<tr><td style="padding:0 36px;">
+    .map((w) => {
+      // The name opens a reply to the person it names — this section is a list
+      // of replies owed, so the reply is the obvious destination.
+      const who = maybeLink(w.who, w.email ? `mailto:${w.email}` : undefined, INK);
+      return `<tr><td style="padding:0 36px;">
       <div style="font-family:Arial,sans-serif;font-size:13px;color:${MUTED};padding:9px 0;border-bottom:1px solid ${LINE};">
-        <span style="color:${INK};font-weight:700;">${esc(w.who)}</span> — ${esc(w.what)}
+        <span style="color:${INK};font-weight:700;">${who}</span> — ${esc(w.what)}
       </div>
-    </td></tr>`,
-    )
+    </td></tr>`;
+    })
     .join("");
 
   return `<!doctype html>

@@ -11,7 +11,12 @@ import {
   isInSendWindow,
   scheduledAnchor,
   isRealBriefingDocument,
+  keepOnlyRealLinks,
+  personNameFromEmail,
+  resolveCounterpartName,
   summarizeThreads,
+  type BriefingContent,
+  type WeekData,
   type WeekMessage,
 } from "@/services/briefing/weeklyBriefing";
 import { humanizeEnums, humanizeTag, renderBriefingEmail } from "@/services/briefing/briefingTemplate";
@@ -20,6 +25,7 @@ function msg(partial: Partial<WeekMessage>): WeekMessage {
   return {
     subject: "Re: Test",
     counterpart: "someone@anc.com",
+    counterpartName: "Some One",
     direction: "in",
     at: "2026-07-24T12:00:00Z",
     conversationId: "c1",
@@ -259,6 +265,146 @@ describe("renderBriefingEmail", () => {
     expect(html).toContain("$25.0M");
     expect(html).not.toMatch(/display:\s*(flex|grid)/);
     expect(html).toContain("Delivered automatically every Sunday at 4:00 PM ET");
+  });
+
+  it("links the items that have a real destination and leaves the rest as text", () => {
+    const html = renderBriefingEmail({
+      recipientName: "jbillings",
+      weekLabel: "Week of July 27 – August 2, 2026",
+      content: {
+        stats: [],
+        top10: [
+          {
+            title: "Carolina Panthers 2027-2028 LED procurement",
+            tag: "Business Development",
+            bullets: ["Moved to WON on Jul 29"],
+            recordId: "11111111-1111-1111-1111-111111111111",
+          },
+          { title: "Internal budget review", tag: "Department / Org", bullets: ["No record"] },
+        ],
+        documents: [],
+        onDeck: [
+          { item: "Browns RFP", when: "Aug 5", recordId: "22222222-2222-2222-2222-222222222222" },
+          { item: "Team offsite", when: "Aug 8" },
+        ],
+        waiting: [
+          { who: "Dave Whitehurst", what: "partnership agreement", email: "dave@lg.com" },
+          { who: "Jonathan Reyes", what: "proposal" },
+        ],
+      },
+    });
+    expect(html).toContain(
+      'href="https://crm.ancsports.net/object/opportunity/11111111-1111-1111-1111-111111111111"',
+    );
+    expect(html).toContain(
+      'href="https://crm.ancsports.net/object/opportunity/22222222-2222-2222-2222-222222222222"',
+    );
+    expect(html).toContain('href="mailto:dave@lg.com"');
+    // Full names survive, and an unlinkable person still renders — just as text.
+    expect(html).toContain("Dave Whitehurst");
+    expect(html).toContain("Jonathan Reyes");
+    expect(html).not.toContain('href="mailto:"');
+    // Exactly the three linkable things are links; nothing else got one.
+    expect(html.match(/<a href=/g)).toHaveLength(3);
+  });
+});
+
+describe("resolveCounterpartName", () => {
+  it("keeps a real display name", () => {
+    expect(resolveCounterpartName("Dave Whitehurst", "dave@monumentalsports.com")).toBe(
+      "Dave Whitehurst",
+    );
+  });
+  it("flips directory-style 'Surname, First' into reading order", () => {
+    expect(resolveCounterpartName("Billings, Jireh", "jbillings@anc.com")).toBe("Jireh Billings");
+  });
+  it("falls back to the address when the name slot just repeats the address", () => {
+    expect(resolveCounterpartName("dave.smith@lg.com", "dave.smith@lg.com")).toBe("Dave Smith");
+  });
+  it("derives a full name from a separated local part", () => {
+    expect(personNameFromEmail("jonathan.reyes@charlottefc.com")).toBe("Jonathan Reyes");
+    expect(personNameFromEmail("mary-jo_kent@anc.com")).toBe("Mary Jo Kent");
+  });
+  it("refuses to invent a surname it cannot see", () => {
+    expect(personNameFromEmail("dsmith@anc.com")).toBe("");
+    expect(personNameFromEmail("info@venue.com")).toBe("");
+    expect(resolveCounterpartName("", "dsmith@anc.com")).toBe("");
+  });
+});
+
+describe("summarizeThreads", () => {
+  it("carries the sender's display name onto the thread for the waiting list", () => {
+    const threads = summarizeThreads([
+      msg({ counterpart: "dave@lg.com", counterpartName: "Dave Whitehurst", direction: "in" }),
+    ]);
+    expect(threads[0].lastFromName).toBe("Dave Whitehurst");
+    expect(threads[0].lastFrom).toBe("dave@lg.com");
+  });
+  it("leaves the name blank when our own message is last", () => {
+    const threads = summarizeThreads([msg({ direction: "out" })]);
+    expect(threads[0].lastFromName).toBe("");
+  });
+});
+
+describe("keepOnlyRealLinks", () => {
+  const week = {
+    crmChanges: [{ recordId: "11111111-1111-1111-1111-111111111111" }],
+    crmDueSoon: [{ recordId: "22222222-2222-2222-2222-222222222222" }],
+    waitingOnReply: [{ lastFrom: "Dave@LG.com" }],
+  } as unknown as WeekData;
+
+  const content = (over: Partial<BriefingContent>): BriefingContent => ({
+    stats: [],
+    top10: [{ title: "t", tag: "Business Development", bullets: [] }],
+    documents: [],
+    onDeck: [],
+    waiting: [],
+    ...over,
+  });
+
+  it("keeps ids and addresses that appear in the week's own data", () => {
+    const kept = keepOnlyRealLinks(
+      content({
+        top10: [
+          {
+            title: "Panthers",
+            tag: "Business Development",
+            bullets: [],
+            recordId: "11111111-1111-1111-1111-111111111111",
+          },
+        ],
+        onDeck: [
+          { item: "Browns", when: "Aug 5", recordId: "22222222-2222-2222-2222-222222222222" },
+        ],
+        waiting: [{ who: "Dave Whitehurst", what: "agreement", email: "dave@lg.com" }],
+      }),
+      week,
+    );
+    expect(kept.top10[0].recordId).toBe("11111111-1111-1111-1111-111111111111");
+    expect(kept.onDeck[0].recordId).toBe("22222222-2222-2222-2222-222222222222");
+    expect(kept.waiting[0].email).toBe("dave@lg.com");
+  });
+
+  it("drops an id or address the week never produced", () => {
+    const kept = keepOnlyRealLinks(
+      content({
+        top10: [
+          {
+            title: "Invented",
+            tag: "Business Development",
+            bullets: [],
+            recordId: "99999999-9999-9999-9999-999999999999",
+          },
+        ],
+        onDeck: [{ item: "Invented", when: "Aug 5", recordId: "not-a-real-id" }],
+        waiting: [{ who: "Nobody", what: "reply", email: "nobody@example.com" }],
+      }),
+      week,
+    );
+    expect(kept.top10[0].recordId).toBeUndefined();
+    expect(kept.onDeck[0].recordId).toBeUndefined();
+    expect(kept.waiting[0].email).toBeUndefined();
+    expect(kept.waiting[0].who).toBe("Nobody");
   });
 });
 

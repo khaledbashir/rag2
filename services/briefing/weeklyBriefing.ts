@@ -47,6 +47,7 @@ import { sendMicrosoftGraphMail } from "@/services/email/microsoftGraphMailer";
 export interface WeekMessage {
   subject: string;
   counterpart: string; // from-address (received) or first to-address (sent)
+  counterpartName: string; // display name on that address, when Exchange has one
   direction: "in" | "out";
   at: string; // ISO
   conversationId: string;
@@ -65,6 +66,7 @@ export interface CrmChange {
   event: string; // opportunity.updated etc.
   day: string; // "Mon 07-20"
   record: string;
+  recordId: string | null; // opportunity id, when the activity targets one
   bidStatus: string | null;
   amountMillions: number | null;
   diff: string;
@@ -72,6 +74,7 @@ export interface CrmChange {
 
 export interface CrmDueItem {
   name: string;
+  recordId: string;
   bidStatus: string;
   due: string; // "Jul 30"
   amountMillions: number | null;
@@ -84,6 +87,7 @@ export interface ThreadSummary {
   lastDirection: "in" | "out";
   lastAt: string;
   lastFrom: string;
+  lastFromName: string;
 }
 
 export interface WeekData {
@@ -106,14 +110,17 @@ export interface BriefingItem {
   tag: "Business Development" | "Department / Org" | "Service Ops";
   extraTags?: string[];
   bullets: string[];
+  /** Opportunity this item is about, so the title can open the record. Only
+   *  ever set to an id that appeared in this week's own CRM data. */
+  recordId?: string;
 }
 
 export interface BriefingContent {
   stats: Array<{ value: string; label: string }>;
   top10: BriefingItem[];
   documents: Array<{ file: string; note: string }>;
-  onDeck: Array<{ item: string; when: string }>;
-  waiting: Array<{ who: string; what: string }>;
+  onDeck: Array<{ item: string; when: string; recordId?: string }>;
+  waiting: Array<{ who: string; what: string; email?: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -238,6 +245,33 @@ export function computeWeekWindow(now: Date = new Date()): {
 const NOISE_SUBJECT = /^(automatic reply|accepted:|declined:|tentative:|statement -)/i;
 const NOISE_SENDER = /(noreply|no-reply|donotreply|receipts@|@docusign\.net|@yardi\.com)/i;
 
+/** Best-effort person name from an address local part: "dave.smith@" → "Dave
+ *  Smith". Returns "" when the local part carries no separable name ("dsmith",
+ *  "info"), so the caller can fall back to the address rather than print a
+ *  half-invented name at an executive. */
+export function personNameFromEmail(address: string): string {
+  const local = address.split("@")[0] || "";
+  const parts = local
+    .split(/[._-]+/)
+    .filter((p) => p.length >= 2 && /^[a-z]+$/i.test(p));
+  if (parts.length < 2) return "";
+  return parts.map((p) => p[0].toUpperCase() + p.slice(1).toLowerCase()).join(" ");
+}
+
+/** The name to show for a correspondent. Exchange's display name is preferred
+ *  because it is the person's real full name; it just needs two repairs first.
+ *  Directories commonly store "Billings, Jireh", and some senders arrive with
+ *  the address duplicated into the name slot. */
+export function resolveCounterpartName(rawName: string, address: string): string {
+  const name = rawName.trim().replace(/^"|"$/g, "");
+  if (!name || name.toLowerCase() === address.toLowerCase()) {
+    return personNameFromEmail(address);
+  }
+  const surnameFirst = name.match(/^([^,@]+),\s*([^,@]+)$/);
+  if (surnameFirst) return `${surnameFirst[2].trim()} ${surnameFirst[1].trim()}`;
+  return name;
+}
+
 export function summarizeThreads(messages: WeekMessage[]): ThreadSummary[] {
   const byConv = new Map<string, WeekMessage[]>();
   for (const m of messages) {
@@ -255,6 +289,7 @@ export function summarizeThreads(messages: WeekMessage[]): ThreadSummary[] {
       lastDirection: last.direction,
       lastAt: last.at,
       lastFrom: last.direction === "in" ? last.counterpart : "",
+      lastFromName: last.direction === "in" ? last.counterpartName : "",
     });
   }
   return threads.sort((a, b) => b.messages - a.messages);
@@ -287,8 +322,8 @@ interface GraphListMessage {
   bodyPreview?: string;
   conversationId?: string;
   hasAttachments?: boolean;
-  from?: { emailAddress?: { address?: string } };
-  toRecipients?: Array<{ emailAddress?: { address?: string } }>;
+  from?: { emailAddress?: { address?: string; name?: string } };
+  toRecipients?: Array<{ emailAddress?: { address?: string; name?: string } }>;
 }
 
 async function pageMessages(
@@ -334,6 +369,10 @@ async function pullMailbox(
       (m): WeekMessage => ({
         subject: m.subject || "",
         counterpart: m.from?.emailAddress?.address || "",
+        counterpartName: resolveCounterpartName(
+          m.from?.emailAddress?.name || "",
+          m.from?.emailAddress?.address || "",
+        ),
         direction: "in",
         at: m.receivedDateTime || "",
         conversationId: m.conversationId || "",
@@ -345,6 +384,10 @@ async function pullMailbox(
       (m): WeekMessage => ({
         subject: m.subject || "",
         counterpart: m.toRecipients?.[0]?.emailAddress?.address || "",
+        counterpartName: resolveCounterpartName(
+          m.toRecipients?.[0]?.emailAddress?.name || "",
+          m.toRecipients?.[0]?.emailAddress?.address || "",
+        ),
         direction: "out",
         at: m.sentDateTime || "",
         conversationId: m.conversationId || "",
@@ -448,6 +491,7 @@ async function pullCrmActivity(
       name: string;
       day: string;
       record: string | null;
+      recordId: string | null;
       bidStatus: string | null;
       amt: string | null;
       props: string | null;
@@ -455,6 +499,7 @@ async function pullCrmActivity(
       `select ta."name",
               to_char(ta."createdAt", 'Dy MM-DD') as day,
               coalesce(o."name", ta."linkedRecordCachedName") as record,
+              o."id" as "recordId",
               o."bidStatus" as "bidStatus",
               round(o."amountAmountMicros" / 1e12::numeric, 3)::text as amt,
               left(ta."properties"::text, 400) as props
@@ -469,6 +514,7 @@ async function pullCrmActivity(
       event: r.name,
       day: r.day,
       record: r.record || "",
+      recordId: r.recordId,
       bidStatus: r.bidStatus ? humanizeEnums(r.bidStatus) : null,
       amountMillions: r.amt ? Number(r.amt) : null,
       diff: humanizeEnums(r.props || ""),
@@ -477,12 +523,13 @@ async function pullCrmActivity(
 
   const due = await db.query<{
     name: string;
+    id: string;
     bidStatus: string;
     due: string;
     amt: string | null;
     ae: string | null;
   }>(
-    `select o."name", o."bidStatus", to_char(o."proposalDueDate", 'Mon DD') as due,
+    `select o."name", o."id", o."bidStatus", to_char(o."proposalDueDate", 'Mon DD') as due,
             round(o."amountAmountMicros" / 1e12::numeric, 2)::text as amt,
             o."accountExecutive" as ae
        from ${JSON.stringify(schema).slice(1, -1)}."opportunity" o
@@ -492,6 +539,7 @@ async function pullCrmActivity(
   );
   const dueSoon: CrmDueItem[] = due.rows.map((r) => ({
     name: r.name,
+    recordId: r.id,
     bidStatus: r.bidStatus,
     due: r.due,
     amountMillions: r.amt ? Number(r.amt) : null,
@@ -531,14 +579,55 @@ const RANK_SYSTEM_PROMPT =
   "You are the editorial engine for a private weekly executive briefing at ANC, an LED display and venue-services company. " +
   "From the aggregated week data (email threads, documents, CRM changes, upcoming due dates) produce STRICT JSON only, matching: " +
   '{"stats":[{"value":string,"label":string}] /* exactly 4, first is always the email count */, ' +
-  '"top10":[{"title":string,"amount":string?,"tag":"Business Development"|"Department / Org"|"Service Ops","extraTags":[string]?,"bullets":[string]}], ' +
+  '"top10":[{"title":string,"amount":string?,"tag":"Business Development"|"Department / Org"|"Service Ops","extraTags":[string]?,"bullets":[string],"recordId":string?}], ' +
   '"documents":[{"file":string,"note":string}] /* 6-9 most consequential documents */, ' +
-  '"onDeck":[{"item":string,"when":string}] /* what carries into next week: due dates, scheduled visits, open contracts */, ' +
-  '"waiting":[{"who":string,"what":string}] /* people whose last message is unanswered, grouped by person */}. ' +
+  '"onDeck":[{"item":string,"when":string,"recordId":string?}] /* what carries into next week: due dates, scheduled visits, open contracts */, ' +
+  '"waiting":[{"who":string,"what":string,"email":string?}] /* people whose last message is unanswered, grouped by person */}. ' +
   "Rules: exactly 10 top10 items ranked by real weight (deal size, thread volume, decisions). 2-4 bullets each, every bullet a concrete fact from the data — never invent. " +
-  "Use first names for colleagues. amount only when a deal value is in the data (e.g. \"$25.0M\"). " +
+  "Use first names for colleagues in bullets. amount only when a deal value is in the data (e.g. \"$25.0M\"). " +
+  // Full names in `waiting` because it is an action list — the reader is deciding
+  // who to chase, and two Daves in a week make a first name useless.
+  'In "waiting", `who` is the person\'s FULL name (first and last) exactly as it appears in that thread\'s lastFromName, and `email` is that thread\'s lastFrom address, copied verbatim. ' +
+  "When lastFromName is empty use the address as `who`. Never guess a surname. " +
+  // recordId is echoed, never composed: the renderer drops any id that is not in
+  // the week's own CRM rows, so a guessed id costs a link, not a wrong link.
+  "Set `recordId` only when the item is about one specific CRM record, copied verbatim from that record's recordId in the input. Omit it otherwise. " +
+  // CRM diffs carry currency as raw micros; one leaked into a bullet as
+  // "Margin 2026 updated to $200.0M micros", which is both jargon and off by
+  // six orders of magnitude in front of an executive.
+  'Money in bullets is always human currency ("$2.5M", "$250K"). Never write the word "micros", and never copy a raw micros figure — divide by 1,000,000 to get dollars. ' +
   "Business Development = deals/RFPs/partnerships/renewals; Service Ops = field/venue/repair work; Department / Org = internal, legal, finance, admin. " +
   "Never mention software brand names. Keep bullets under 110 characters.";
+
+/** Strips every link target the week's data cannot vouch for.
+ *
+ *  The ranker is asked to echo record ids and addresses it was given, but a
+ *  language model can compose a plausible uuid or a plausible address, and a
+ *  briefing that sends an executive to the wrong record — or mails a stranger —
+ *  is worse than one that renders as plain text. So a link survives only if its
+ *  destination appears in this week's own CRM rows or mail. */
+export function keepOnlyRealLinks(content: BriefingContent, data: WeekData): BriefingContent {
+  const recordIds = new Set(
+    [
+      ...data.crmChanges.map((c) => c.recordId),
+      ...data.crmDueSoon.map((d) => d.recordId),
+    ].filter((id): id is string => Boolean(id)),
+  );
+  const addresses = new Set(
+    data.waitingOnReply.map((t) => t.lastFrom.toLowerCase()).filter(Boolean),
+  );
+  const realRecord = (id?: string) => (id && recordIds.has(id) ? id : undefined);
+
+  return {
+    ...content,
+    top10: content.top10.map((item) => ({ ...item, recordId: realRecord(item.recordId) })),
+    onDeck: content.onDeck.map((o) => ({ ...o, recordId: realRecord(o.recordId) })),
+    waiting: content.waiting.map((w) => ({
+      ...w,
+      email: w.email && addresses.has(w.email.toLowerCase()) ? w.email : undefined,
+    })),
+  };
+}
 
 export async function rankWeek(data: WeekData): Promise<BriefingContent> {
   const payload = {
@@ -557,7 +646,7 @@ export async function rankWeek(data: WeekData): Promise<BriefingContent> {
   if (!Array.isArray(content.top10) || content.top10.length === 0) {
     throw new Error("Briefing ranking returned no top10 items.");
   }
-  return content;
+  return keepOnlyRealLinks(content, data);
 }
 
 /** Sends through ANC's connected Microsoft mailbox using normal Mail.Send
