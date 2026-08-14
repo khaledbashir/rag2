@@ -38,6 +38,14 @@ import {
   type ReportScope,
 } from "@/services/reports/lgAlliance";
 import {
+  buildSelection,
+  cellValue,
+  isRenderable,
+  toMirrorColumn,
+  type MirrorColumn,
+  type ViewColumn,
+} from "@/services/reports/viewMirror";
+import {
   BAND_STRONG,
   FONT,
   GUTTER,
@@ -81,6 +89,70 @@ function dollars(field: any): number | null {
   return Number(micros) / 1_000_000;
 }
 
+/**
+ * The saved view the report mirrors. Jireh edits its columns directly, and the
+ * Deal Detail sheet follows whatever he leaves there.
+ */
+const LG_VIEW_ID = "ee5690f5-c80c-4f8c-b0f5-53f5e664eba0";
+const OPPORTUNITY_OBJECT_ID = "c779922d-cf25-4a5e-9382-23eb1c02199e";
+
+async function metaGql<T = any>(query: string): Promise<T> {
+  const res = await fetch(`${TWENTY_BASE}/metadata`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${TWENTY_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+  });
+  const body = await res.json();
+  if (body.errors?.length) throw new Error(body.errors.map((e: any) => e.message).join("; "));
+  return body.data;
+}
+
+export type MirroredColumns = {
+  columns: MirrorColumn[];
+  /** Columns on the view whose type the sheet cannot render. */
+  skipped: string[];
+};
+
+/**
+ * Reads the view's visible columns, in his order.
+ *
+ * A failure here must not take the export down — the report is still useful
+ * with its own column set — so the caller falls back to no mirroring.
+ */
+async function fetchViewColumns(): Promise<MirroredColumns> {
+  const data = await metaGql<any>(`query {
+    getViewFields(viewId: "${LG_VIEW_ID}") { fieldMetadataId position isVisible }
+    object(id: "${OPPORTUNITY_OBJECT_ID}") {
+      fields(paging: { first: 300 }) { edges { node { id name label type isActive } } }
+    }
+  }`);
+
+  const fields = new Map<string, any>(
+    data.object.fields.edges
+      .map((e: any) => e.node)
+      .filter((f: any) => f.isActive)
+      .map((f: any) => [f.id, f]),
+  );
+
+  const columns: MirrorColumn[] = [];
+  const skipped: string[] = [];
+  const visible = data.getViewFields
+    .filter((v: any) => v.isVisible)
+    .sort((a: any, b: any) => a.position - b.position);
+
+  for (const viewField of visible) {
+    const field = fields.get(viewField.fieldMetadataId);
+    if (!field) continue;
+    const column: ViewColumn = { fieldName: field.name, label: field.label, type: field.type };
+    if (!isRenderable(column)) {
+      skipped.push(field.label);
+      continue;
+    }
+    columns.push(toMirrorColumn(column));
+  }
+  return { columns, skipped };
+}
+
 const YEAR_FIELDS = FISCAL_YEARS.map(
   (y) => `revenue${y} { amountMicros } margin${y} { amountMicros }`,
 ).join(" ");
@@ -92,7 +164,18 @@ const YEAR_FIELDS = FISCAL_YEARS.map(
  * made the cursor skip and repeat pages (203 records came back as 143 rows with
  * 90 unique ids). Any paged read here must order by something unique.
  */
-async function fetchLgDeals(): Promise<LgDealInput[]> {
+type LgDeal = LgDealInput & { raw: Record<string, any> };
+
+async function fetchLgDeals(mirrored: MirrorColumn[]): Promise<LgDeal[]> {
+  // Fields the query already names by hand; the mirror adds only what is new.
+  const HAND_SELECTED = [
+    "id", "name", "opportunityNumber", "bidStatus", "league", "winConfidence",
+    "closeDate", "lgTier", "lgFiscalYear", "lgBusinessUnits", "lgDescription",
+    "lgNotes", "poValue", "sponsorshipValue", "totalProjectRevenue",
+    "totalProjectMargin", "company",
+  ];
+  const mirroredSelection = buildSelection(mirrored, HAND_SELECTED);
+
   const query = `query LgDeals($after: String) {
     opportunities(
       filter: {
@@ -113,11 +196,12 @@ async function fetchLgDeals(): Promise<LgDealInput[]> {
         totalProjectMargin { amountMicros }
         ${YEAR_FIELDS}
         company { name }
+        ${mirroredSelection}
       } }
     }
   }`;
 
-  const deals: LgDealInput[] = [];
+  const deals: LgDeal[] = [];
   let after: string | null = null;
   // Bounded so a cursor that ever stops advancing cannot spin forever.
   for (let page = 0; page < 100; page++) {
@@ -153,6 +237,7 @@ async function fetchLgDeals(): Promise<LgDealInput[]> {
         margin: dollars(n.totalProjectMargin),
         revenueByYear,
         marginByYear,
+        raw: n,
       });
     }
     if (!conn.pageInfo.hasNextPage) break;
@@ -176,7 +261,11 @@ function pct(rate: number): string {
   return `${(rate * 100).toFixed(rate * 100 % 1 === 0 ? 0 : 1)}%`;
 }
 
-function buildWorkbook(report: LgAllianceReport, scope: ReportScope): ExcelJS.Workbook {
+function buildWorkbook(
+  report: LgAllianceReport,
+  scope: ReportScope,
+  mirror: MirroredColumns,
+): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook();
   wb.creator = "ANC";
   const rate = report.allianceRate;
@@ -341,7 +430,65 @@ function buildWorkbook(report: LgAllianceReport, scope: ReportScope): ExcelJS.Wo
   const detail = wb.addWorksheet("Deal Detail");
   detail.properties.defaultRowHeight = 16;
 
-  const detailCols: ColumnSpec[] = [
+  // The Deal Detail sheet mirrors the saved view: his columns, his order. The
+  // report's own arithmetic (the alliance fee and LG margin) is appended, since
+  // those are calculated here rather than stored on the opportunity.
+  const mirrored = mirror.columns;
+  const detailCols: ColumnSpec[] = mirrored.length
+    ? [
+        { header: "Opp #", width: 11 },
+        ...mirrored.map((c) => ({
+          header: c.label,
+          width: c.width,
+          money: c.money,
+          wrap: c.wrap,
+        })),
+        { header: `Alliance ${pct(rate)}`, width: 14, money: true },
+        { header: "LG Margin", width: 14, money: true },
+      ]
+    : LEGACY_DETAIL_COLS(rate);
+
+  const dHead = writeSheetHeader(detail, {
+    title: "LG Alliance — Deal Detail",
+    subtitle: `As of ${asOf} · ${scopeLabel} · ${report.rows.length} deals`,
+    note: mirrored.length
+      ? "Mirrors the LG Alliance Detail list in the CRM — the same columns, in the same order, so anything added there lands here. " +
+        `Alliance ${pct(rate)} and LG Margin are calculated by this report.` +
+        (mirror.skipped.length
+          ? ` Not carried across: ${mirror.skipped.join(", ")}.`
+          : "")
+      : "One row per LG opportunity, straight from the CRM. Technology Vendor PO Value is blank where none has been entered.",
+  });
+  writeTableHeader(detail, detailCols, dHead);
+
+  report.rows.forEach((r, i) => {
+    const raw = (r as unknown as { raw?: Record<string, any> }).raw || {};
+    const values = mirrored.length
+      ? [
+          r.opportunityNumber || "",
+          ...mirrored.map((c) => cellValue(c, raw, fmtDate)),
+          r.allianceFee,
+          r.lgMargin,
+        ]
+      : LEGACY_DETAIL_VALUES(r);
+    dataRow(detail, detailCols, values, i);
+  });
+
+  detail.autoFilter = {
+    from: { row: dHead, column: 1 + GUTTER },
+    to: { row: dHead + report.rows.length, column: detailCols.length + GUTTER },
+  };
+
+  return wb;
+}
+
+/**
+ * The column set the sheet used before it mirrored the view. Kept as the
+ * fallback for when the view cannot be read, so a metadata hiccup degrades to
+ * the old report instead of no report.
+ */
+function LEGACY_DETAIL_COLS(rate: number): ColumnSpec[] {
+  return [
     { header: "Opp #", width: 11 },
     { header: "Account", width: 26 },
     { header: "Opportunity", width: 38, wrap: true },
@@ -361,43 +508,29 @@ function buildWorkbook(report: LgAllianceReport, scope: ReportScope): ExcelJS.Wo
     { header: "Description", width: 42, wrap: true },
     { header: "Notes", width: 42, wrap: true },
   ];
+}
 
-  const dHead = writeSheetHeader(detail, {
-    title: "LG Alliance — Deal Detail",
-    subtitle: `As of ${asOf} · ${scopeLabel} · ${report.rows.length} deals`,
-    note: "One row per LG opportunity, straight from the CRM. Technology Vendor PO Value is blank where none has been entered.",
-  });
-  writeTableHeader(detail, detailCols, dHead);
-
-  report.rows.forEach((r, i) => {
-    dataRow(detail, detailCols, [
-      r.opportunityNumber || "",
-      r.account || "",
-      r.name,
-      r.tier ? r.tierLabel : "",
-      fiscalYearLabel(r.fiscalYears),
-      humanizeStatus(r.bidStatus),
-      winConfidenceLabel(r.winConfidence),
-      r.league ? humanizeStatus(r.league) : "",
-      fmtDate(r.awardDate),
-      r.poValue,
-      r.sponsorshipValue,
-      r.revenue,
-      r.margin,
-      r.allianceFee,
-      r.lgMargin,
-      r.businessUnits.map(businessUnitLabel).join(", "),
-      r.description || "",
-      r.notes || "",
-    ], i);
-  });
-
-  detail.autoFilter = {
-    from: { row: dHead, column: 1 + GUTTER },
-    to: { row: dHead + report.rows.length, column: detailCols.length + GUTTER },
-  };
-
-  return wb;
+function LEGACY_DETAIL_VALUES(r: LgAllianceReport["rows"][number]): (string | number | null)[] {
+  return [
+    r.opportunityNumber || "",
+    r.account || "",
+    r.name,
+    r.tier ? r.tierLabel : "",
+    fiscalYearLabel(r.fiscalYears),
+    humanizeStatus(r.bidStatus),
+    winConfidenceLabel(r.winConfidence),
+    r.league ? humanizeStatus(r.league) : "",
+    fmtDate(r.awardDate),
+    r.poValue,
+    r.sponsorshipValue,
+    r.revenue,
+    r.margin,
+    r.allianceFee,
+    r.lgMargin,
+    r.businessUnits.map(businessUnitLabel).join(", "),
+    r.description || "",
+    r.notes || "",
+  ];
 }
 
 function usd(value: number): string {
@@ -421,14 +554,23 @@ export async function GET(request: NextRequest) {
         ? rateParam
         : ALLIANCE_RATE_DEFAULT;
 
-    const deals = await fetchLgDeals();
+    // A metadata failure must not cost the whole export — fall back to the
+    // report's own column set and carry on.
+    let mirror: MirroredColumns = { columns: [], skipped: [] };
+    try {
+      mirror = await fetchViewColumns();
+    } catch (error) {
+      console.error("[lg-alliance-report] could not read the view columns", error);
+    }
+
+    const deals = await fetchLgDeals(mirror.columns);
     const report = buildLgAllianceReport(deals, { allianceRate, scope });
 
     if (params.get("format") === "json") {
       return withRenderCors(NextResponse.json(report), request);
     }
 
-    const wb = buildWorkbook(report, scope);
+    const wb = buildWorkbook(report, scope, mirror);
     const buffer = await wb.xlsx.writeBuffer();
     const stamp = new Date(report.generatedAt).toISOString().slice(0, 10);
     return withRenderCors(new NextResponse(Buffer.from(buffer), {
