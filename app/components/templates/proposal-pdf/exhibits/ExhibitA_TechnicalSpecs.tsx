@@ -51,6 +51,15 @@ const getShortDisplayName = (screen: any, fallbackIndex?: number): string => {
     return sanitized;
 };
 
+/**
+ * A single measurement (e.g. "50.26'", "2103.68'", "1,471") that must never be split
+ * across lines. Wrapping is allowed BETWEEN tokens instead, so a long value like
+ * "3.94' x 2103.68'" folds onto a second line rather than being clipped.
+ */
+const Token = ({ children }: { children: React.ReactNode }) => (
+    <span style={{ whiteSpace: "nowrap" }}>{children}</span>
+);
+
 const computePixels = (feetValue: any, pitchMm: any) => {
     const ft = Number(feetValue);
     const pitch = normalizePitch(pitchMm);
@@ -180,19 +189,19 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
                             </>
                         ) : hasAnyExhibitG ? (
                             <>
-                                <col style={{ width: hasAnyBrightness ? "24%" : "28%" }} />
-                                <col style={{ width: "12%" }} />
+                                <col style={{ width: hasAnyBrightness ? "21%" : "25%" }} />
+                                <col style={{ width: "15%" }} />
                                 <col style={{ width: "10%" }} />
                                 <col style={{ width: "14%" }} />
                                 {hasAnyBrightness && <col style={{ width: "10%" }} />}
                                 <col style={{ width: "11%" }} />
                                 <col style={{ width: "11%" }} />
-                                <col style={{ width: hasAnyBrightness ? "8%" : "8%" }} />
+                                <col style={{ width: "8%" }} />
                             </>
                         ) : (
                             <>
-                                <col style={{ width: hasAnyBrightness ? "34%" : "38%" }} />
-                                <col style={{ width: "14%" }} />
+                                <col style={{ width: hasAnyBrightness ? "30%" : "34%" }} />
+                                <col style={{ width: "18%" }} />
                                 <col style={{ width: "12%" }} />
                                 <col style={{ width: "16%" }} />
                                 {hasAnyBrightness && <col style={{ width: "12%" }} />}
@@ -202,14 +211,14 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
                     </colgroup>
                     <thead>
                         <tr className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#002C73", borderBottom: "2px solid #0A52EF", background: "transparent", pageBreakInside: 'avoid', breakInside: 'avoid', fontFamily: "Arial, Helvetica, sans-serif" }}>
-                            <th className="text-left" style={{ whiteSpace: "nowrap", padding: "4px 10px" }}>DISPLAY NAME</th>
-                            <th className="text-left" style={{ whiteSpace: "nowrap", padding: "4px 10px" }}>DIMENSIONS</th>
-                            {!isCondensed && <th className="text-right" style={{ whiteSpace: "nowrap", padding: "4px 10px" }}>PITCH</th>}
-                            {!isCondensed && <th className="text-right" style={{ whiteSpace: "nowrap", padding: "4px 10px" }}>RESOLUTION</th>}
-                            {!isCondensed && hasAnyBrightness && <th className="text-right" style={{ whiteSpace: "nowrap", padding: "4px 10px" }}>BRIGHTNESS</th>}
-                            {!isCondensed && hasAnyExhibitG && <th className="text-right" style={{ whiteSpace: "nowrap", padding: "4px 10px" }}>WEIGHT</th>}
-                            {!isCondensed && hasAnyExhibitG && <th className="text-right" style={{ whiteSpace: "nowrap", padding: "4px 10px" }}>MAX POWER</th>}
-                            <th className="text-right" style={{ whiteSpace: "nowrap", padding: "4px 10px" }}>QTY</th>
+                            <th className="text-left" style={{ whiteSpace: "normal", padding: "4px 10px" }}>DISPLAY NAME</th>
+                            <th className="text-left" style={{ whiteSpace: "normal", padding: "4px 10px" }}>DIMENSIONS</th>
+                            {!isCondensed && <th className="text-right" style={{ whiteSpace: "normal", padding: "4px 10px" }}>PITCH</th>}
+                            {!isCondensed && <th className="text-right" style={{ whiteSpace: "normal", padding: "4px 10px" }}>RESOLUTION</th>}
+                            {!isCondensed && hasAnyBrightness && <th className="text-right" style={{ whiteSpace: "normal", padding: "4px 10px" }}>BRIGHTNESS</th>}
+                            {!isCondensed && hasAnyExhibitG && <th className="text-right" style={{ whiteSpace: "normal", padding: "4px 10px" }}>WEIGHT</th>}
+                            {!isCondensed && hasAnyExhibitG && <th className="text-right" style={{ whiteSpace: "normal", padding: "4px 10px" }}>MAX POWER</th>}
+                            <th className="text-right" style={{ whiteSpace: "normal", padding: "4px 10px" }}>QTY</th>
                         </tr>
                     </thead>
                     <tbody className="text-gray-900">
@@ -232,7 +241,17 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
                                             ? formatNumberWithCommas(brightnessNumber)
                                             : "\u2014";
 
-                                const cellStyle = { overflow: 'hidden' as const, textOverflow: 'ellipsis' as const, padding: "4px 10px", fontFamily: "Arial, Helvetica, sans-serif" };
+                                // Never clip a spec cell. A fixed-layout table plus nowrap+ellipsis used to
+                                // silently drop the tail of long values ("3.94' x 2103..."), which put wrong
+                                // dimensions in front of clients. Cells wrap instead; individual measurements
+                                // stay atomic via <Token>.
+                                const cellStyle = {
+                                    padding: "4px 10px",
+                                    fontFamily: "Arial, Helvetica, sans-serif",
+                                    whiteSpace: "normal" as const,
+                                    overflowWrap: "break-word" as const,
+                                    wordBreak: "break-word" as const,
+                                };
 
                                 return (
                                     <tr
@@ -240,25 +259,31 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
                                         className="border-b border-gray-200 last:border-b-0 break-inside-avoid"
                                         style={{ minHeight: 16, pageBreakInside: 'avoid', breakInside: 'avoid' }}
                                     >
-                                        <td className="font-semibold text-[9px] align-top" style={{ ...cellStyle, wordBreak: "break-word", whiteSpace: "normal" }}>
+                                        <td className="font-semibold text-[9px] align-top" style={cellStyle}>
                                             {name}
                                         </td>
-                                        <td className="text-gray-800 text-[9px] align-top" style={{ ...cellStyle, whiteSpace: "nowrap" }}>
-                                            {formatFeet(h)} x {formatFeet(w)}
+                                        <td className="text-gray-800 text-[9px] align-top" style={cellStyle}>
+                                            <Token>{formatFeet(h)}</Token> x <Token>{formatFeet(w)}</Token>
                                         </td>
                                         {!isCondensed && (
-                                            <td className="text-right tabular-nums text-[9px] align-top" style={{ ...cellStyle, whiteSpace: "nowrap" }}>
-                                                {pitch ? `${formatPitchMm(pitch)}mm` : "\u2014"}
+                                            <td className="text-right tabular-nums text-[9px] align-top" style={cellStyle}>
+                                                <Token>{pitch ? `${formatPitchMm(pitch)}mm` : "\u2014"}</Token>
                                             </td>
                                         )}
                                         {!isCondensed && (
-                                            <td className="text-right tabular-nums text-[9px] align-top" style={{ ...cellStyle, whiteSpace: "nowrap" }}>
-                                                {resolution}
+                                            <td className="text-right tabular-nums text-[9px] align-top" style={cellStyle}>
+                                                {pixelsH && pixelsW ? (
+                                                    <>
+                                                        <Token>{pixelsH}</Token> x <Token>{pixelsW}</Token>
+                                                    </>
+                                                ) : (
+                                                    resolution
+                                                )}
                                             </td>
                                         )}
                                         {!isCondensed && hasAnyBrightness && (
-                                            <td className="text-right tabular-nums text-[9px] align-top" style={{ ...cellStyle, whiteSpace: "nowrap" }}>
-                                                {brightnessText}
+                                            <td className="text-right tabular-nums text-[9px] align-top" style={cellStyle}>
+                                                <Token>{brightnessText}</Token>
                                             </td>
                                         )}
                                         {!isCondensed && hasAnyExhibitG && (() => {
@@ -267,11 +292,15 @@ export default function ExhibitA_TechnicalSpecs({ data, showSOW = false, heading
                                             const maxPower = Number(screen?.manualMaxPowerW) || Number(ex?.maxPowerW);
                                             return (
                                                 <>
-                                                    <td className="text-right tabular-nums text-[9px] align-top" style={{ ...cellStyle, whiteSpace: "nowrap" }}>
-                                                        {isFinite(weightLbs) && weightLbs > 0 ? formatNumberWithCommas(Math.round(weightLbs)) + " lbs" : "\u2014"}
+                                                    <td className="text-right tabular-nums text-[9px] align-top" style={cellStyle}>
+                                                        {isFinite(weightLbs) && weightLbs > 0
+                                                            ? <><Token>{formatNumberWithCommas(Math.round(weightLbs))}</Token> lbs</>
+                                                            : "\u2014"}
                                                     </td>
-                                                    <td className="text-right tabular-nums text-[9px] align-top" style={{ ...cellStyle, whiteSpace: "nowrap" }}>
-                                                        {isFinite(maxPower) && maxPower > 0 ? formatNumberWithCommas(Math.round(maxPower)) + " W" : "\u2014"}
+                                                    <td className="text-right tabular-nums text-[9px] align-top" style={cellStyle}>
+                                                        {isFinite(maxPower) && maxPower > 0
+                                                            ? <><Token>{formatNumberWithCommas(Math.round(maxPower))}</Token> W</>
+                                                            : "\u2014"}
                                                     </td>
                                                 </>
                                             );
