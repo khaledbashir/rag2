@@ -1,0 +1,29 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Friday 8:00 AM US Eastern: SF-style closed-won report for the last 7 days.
+# Vixie cron on Ubuntu does NOT honor CRON_TZ, so the schedule must be set
+# in server local time (Berlin, CET/CEST). To cover every DST permutation
+# of US/EU clocks (8 AM EDT = 14:00 CEST or 13:00 CET; 8 AM EST = 14:00
+# CET) cron fires at both 13:00 and 14:00 Berlin local. The wrapper
+# script's ET-hour guard exits with no-op unless the current US Eastern
+# hour is exactly 08, so only one of the two daily fires actually sends.
+0 13,14 * * 5 root /usr/local/sbin/anc-crm-closed-won-report.sh last7 >> /var/log/anc-crm-closed-won-report.log 2>&1
+
+# Last day of the month at 8:05 AM US Eastern: month-to-date report.
+# Cron fires every day 28-31 at both 13:05 and 14:05 Berlin local; the
+# endpoint's onlyLastDay=1 query parameter makes the API call a no-op on
+# non-last days, and the wrapper's ET-hour guard ensures the correct
+# Eastern fire regardless of DST state.
+5 13,14 28-31 * * root /usr/local/sbin/anc-crm-closed-won-report.sh monthToDate '&onlyLastDay=1' >> /var/log/anc-crm-closed-won-report.log 2>&1
+
+# Catch-up. Fires every 30 minutes, every day; the script itself decides whether
+# a retry is due (US Eastern Friday from 9 AM through Saturday) and exits
+# immediately once the week has been delivered. This is what stops a deploy or a
+# 500 at 8 AM Eastern from costing the whole week, as it did on six of the nine
+# Fridays to 2026-08-14.
+*/30 * * * * root CATCHUP=1 /usr/local/sbin/anc-crm-closed-won-report.sh last7 >> /var/log/anc-crm-closed-won-report.log 2>&1
+
+# Monthly catch-up. The endpoint no-ops on any day but the last, so this only
+# does real work on the last day of the month, retrying until it delivers.
+*/30 * 28-31 * * root CATCHUP=1 /usr/local/sbin/anc-crm-closed-won-report.sh monthToDate '&onlyLastDay=1' >> /var/log/anc-crm-closed-won-report.log 2>&1
