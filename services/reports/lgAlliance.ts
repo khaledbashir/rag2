@@ -65,6 +65,12 @@ export type LgDealInput = {
   notes: string | null;
   /** Money, already converted to whole dollars. */
   poValue: number | null;
+  /**
+   * Sponsorship value carried alongside the PO (Jireh, 2026-08-14). It sits
+   * next to the PO rather than inside it — the alliance fee and LG margin
+   * columns are still calculated from the PO alone.
+   */
+  sponsorshipValue: number | null;
   revenue: number | null;
   margin: number | null;
   /** Per-fiscal-year revenue and margin, keyed by year. */
@@ -89,6 +95,7 @@ export type LgDealRow = Omit<LgDealInput, "tier"> & {
 export type MoneyTotals = {
   deals: number;
   po: number;
+  sponsorship: number;
   cost: number;
   allianceFee: number;
   ancMargin: number;
@@ -138,6 +145,8 @@ export type LgAllianceReport = {
   rowsWithoutPo: number;
   /** How many rows carry no LG tier yet. */
   rowsUntiered: number;
+  /** How many rows have a sponsorship value entered. */
+  rowsWithSponsorship: number;
 };
 
 const TIER_LABELS: Record<string, { label: string; rank: number }> = {
@@ -203,12 +212,13 @@ export function outcomeFor(status: string | null): DealOutcome {
 }
 
 function emptyTotals(): MoneyTotals {
-  return { deals: 0, po: 0, cost: 0, allianceFee: 0, ancMargin: 0, lgMargin: 0 };
+  return { deals: 0, po: 0, sponsorship: 0, cost: 0, allianceFee: 0, ancMargin: 0, lgMargin: 0 };
 }
 
 function addTo(totals: MoneyTotals, row: LgDealRow): void {
   totals.deals += 1;
   totals.po += row.po;
+  totals.sponsorship += row.sponsorshipValue || 0;
   totals.cost += row.cost;
   totals.allianceFee += row.allianceFee;
   totals.ancMargin += row.margin || 0;
@@ -373,5 +383,6 @@ export function buildLgAllianceReport(
     ),
     rowsWithoutPo: rows.filter((r) => r.poBasis === "revenue").length,
     rowsUntiered: rows.filter((r) => !r.tier).length,
+    rowsWithSponsorship: rows.filter((r) => !!r.sponsorshipValue).length,
   };
 }

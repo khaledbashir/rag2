@@ -108,6 +108,7 @@ async function fetchLgDeals(): Promise<LgDealInput[]> {
         id name opportunityNumber bidStatus league winConfidence closeDate
         lgTier lgFiscalYear lgBusinessUnits lgDescription lgNotes
         poValue { amountMicros }
+        sponsorshipValue { amountMicros }
         totalProjectRevenue { amountMicros }
         totalProjectMargin { amountMicros }
         ${YEAR_FIELDS}
@@ -147,6 +148,7 @@ async function fetchLgDeals(): Promise<LgDealInput[]> {
         description: n.lgDescription || null,
         notes: n.lgNotes || null,
         poValue: dollars(n.poValue),
+        sponsorshipValue: dollars(n.sponsorshipValue),
         revenue: dollars(n.totalProjectRevenue),
         margin: dollars(n.totalProjectMargin),
         revenueByYear,
@@ -202,6 +204,7 @@ function buildWorkbook(report: LgAllianceReport, scope: ReportScope): ExcelJS.Wo
     { header: "Status", width: 16 },
     { header: "LG Business Units", width: 22, wrap: true },
     { header: "ANC LG PO", width: 15, money: true },
+    { header: "Sponsorship Value", width: 16, money: true },
     { header: "Cost", width: 14, money: true },
     { header: `Alliance ${pct(rate)}`, width: 14, money: true },
     { header: "LG Margin", width: 14, money: true },
@@ -214,9 +217,11 @@ function buildWorkbook(report: LgAllianceReport, scope: ReportScope): ExcelJS.Wo
     subtitle: `As of ${asOf} · Technology · ${scopeLabel} · alliance rate ${pct(rate)}`,
     headline:
       `${report.totals.deals} LG deals · PO ${usd(report.totals.po)} · ` +
+      (report.totals.sponsorship ? `sponsorship ${usd(report.totals.sponsorship)} · ` : "") +
       `alliance ${usd(report.totals.allianceFee)} · LG margin ${usd(report.totals.lgMargin)}`,
     note:
       "LG Margin = ANC margin less the alliance contribution. Cost is revenue less margin. " +
+      "Sponsorship Value is reported alongside the PO and is not part of the alliance fee. " +
       (report.rowsWithoutPo
         ? `${report.rowsWithoutPo} of ${report.totals.deals} rows have no Technology Vendor PO Value entered yet and use Revenue — Total Project instead.`
         : "Every row uses an entered Technology Vendor PO Value."),
@@ -229,7 +234,8 @@ function buildWorkbook(report: LgAllianceReport, scope: ReportScope): ExcelJS.Wo
       tier.label,
       `${tier.rows.length} ${tier.rows.length === 1 ? "deal" : "deals"}`,
       null, null, null, null,
-      tier.totals.po, tier.totals.cost, tier.totals.allianceFee, tier.totals.lgMargin,
+      tier.totals.po, tier.totals.sponsorship,
+      tier.totals.cost, tier.totals.allianceFee, tier.totals.lgMargin,
       null, null,
     ], { fill: BAND_STRONG });
 
@@ -242,6 +248,7 @@ function buildWorkbook(report: LgAllianceReport, scope: ReportScope): ExcelJS.Wo
         humanizeStatus(r.bidStatus),
         r.businessUnits.map(businessUnitLabel).join(", "),
         r.po,
+        r.sponsorshipValue,
         r.cost,
         r.allianceFee,
         r.lgMargin,
@@ -258,7 +265,8 @@ function buildWorkbook(report: LgAllianceReport, scope: ReportScope): ExcelJS.Wo
 
   bandRow(roll, rollCols, [
     "TOTAL", `${report.totals.deals} deals`, null, null, null, null,
-    report.totals.po, report.totals.cost, report.totals.allianceFee, report.totals.lgMargin,
+    report.totals.po, report.totals.sponsorship,
+    report.totals.cost, report.totals.allianceFee, report.totals.lgMargin,
     null, null,
   ], { fill: BAND_STRONG, height: 22 });
 
@@ -344,6 +352,7 @@ function buildWorkbook(report: LgAllianceReport, scope: ReportScope): ExcelJS.Wo
     { header: "League", width: 14 },
     { header: "Award Date", width: 14 },
     { header: "Technology Vendor PO Value", width: 18, money: true },
+    { header: "Sponsorship Value", width: 16, money: true },
     { header: "Revenue — Total Project", width: 17, money: true },
     { header: "Margin — Total Project", width: 17, money: true },
     { header: `Alliance ${pct(rate)}`, width: 14, money: true },
@@ -372,6 +381,7 @@ function buildWorkbook(report: LgAllianceReport, scope: ReportScope): ExcelJS.Wo
       r.league ? humanizeStatus(r.league) : "",
       fmtDate(r.awardDate),
       r.poValue,
+      r.sponsorshipValue,
       r.revenue,
       r.margin,
       r.allianceFee,

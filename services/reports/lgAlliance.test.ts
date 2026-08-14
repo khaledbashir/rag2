@@ -28,6 +28,7 @@ function deal(over: Partial<LgDealInput> = {}): LgDealInput {
     description: null,
     notes: null,
     poValue: null,
+    sponsorshipValue: null,
     revenue: 0,
     margin: 0,
     revenueByYear: {},
@@ -283,5 +284,43 @@ describe("multiple fiscal years", () => {
 
   it("renders nothing when a deal has no year set", () => {
     expect(fiscalYearLabel([])).toBe("");
+  });
+});
+
+describe("sponsorship value (Jireh, 2026-08-14)", () => {
+  it("totals sponsorship across the rollup and per tier", () => {
+    const report = buildLgAllianceReport([
+      deal({ id: "a", tier: "TIER_1", poValue: 1_000_000, sponsorshipValue: 250_000, revenue: 1_000_000, margin: 200_000 }),
+      deal({ id: "b", tier: "TIER_1", poValue: 500_000, sponsorshipValue: 100_000, revenue: 500_000, margin: 100_000 }),
+      deal({ id: "c", tier: "TIER_2", poValue: 400_000, sponsorshipValue: null, revenue: 400_000, margin: 80_000 }),
+    ]);
+    expect(report.totals.sponsorship).toBe(350_000);
+    expect(report.tiers[0].totals.sponsorship).toBe(350_000);
+    expect(report.tiers[1].totals.sponsorship).toBe(0);
+    expect(report.rowsWithSponsorship).toBe(2);
+  });
+
+  // Sponsorship sits beside the PO — folding it into the fee would change every
+  // number in the workbook Jireh reconciles against by hand.
+  it("leaves the alliance fee and LG margin calculated from the PO alone", () => {
+    const withSponsorship = toDealRow(
+      deal({ poValue: 1_000_000, sponsorshipValue: 750_000, revenue: 1_000_000, margin: 200_000 }),
+      ALLIANCE_RATE_DEFAULT,
+    );
+    const without = toDealRow(
+      deal({ poValue: 1_000_000, sponsorshipValue: null, revenue: 1_000_000, margin: 200_000 }),
+      ALLIANCE_RATE_DEFAULT,
+    );
+    expect(withSponsorship.po).toBe(1_000_000);
+    expect(withSponsorship.allianceFee).toBe(without.allianceFee);
+    expect(withSponsorship.lgMargin).toBe(without.lgMargin);
+    expect(withSponsorship.sponsorshipValue).toBe(750_000);
+  });
+
+  it("does not treat a missing sponsorship value as a zero-dollar entry", () => {
+    const report = buildLgAllianceReport([deal({ poValue: 100_000, revenue: 100_000 })]);
+    expect(report.totals.sponsorship).toBe(0);
+    expect(report.rowsWithSponsorship).toBe(0);
+    expect(report.rows[0].sponsorshipValue).toBeNull();
   });
 });
