@@ -11,6 +11,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
+import { renderCorsHeaders, withRenderCors } from "@/lib/http/renderCors";
 import {
   EXCLUDED_STATUSES,
   buildPricingPriorityReport,
@@ -33,6 +34,10 @@ import {
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+export async function OPTIONS(req: NextRequest) {
+  return new NextResponse(null, { status: 204, headers: renderCorsHeaders(req) });
+}
 
 const TWENTY_BASE = "https://abc-twenty.izcgmb.easypanel.host";
 const TWENTY_TOKEN =
@@ -175,19 +180,20 @@ function buildWorkbook(report: PricingPriorityReport): ExcelJS.Workbook {
       `${report.totals.deals} deals awaiting pricing · ${usd(report.totals.revenue)} revenue · ` +
       `${usd(report.totals.margin)} margin · ${report.counts.overdue} past due`,
     note:
-      "Technology deals with pricing not complete, awarding 2026 or later, excluding lost and no-bid. " +
-      "Ordered by proposal due date.",
+      "Technology deals with pricing not complete, awarding 2026 or later, excluding lost and no-bid — " +
+      "the same deals as the Active Pricing Priority List in the CRM, grouped by Proposal Stage the same way, " +
+      "and sorted by proposal due date inside each stage.",
   });
   writeTableHeader(ws, cols, headRow);
 
-  for (const group of report.buckets) {
+  for (const group of report.groups) {
     bandRow(ws, cols, [
       group.label,
       null,
       `${group.rows.length} ${group.rows.length === 1 ? "deal" : "deals"}`,
       null, null, null, null, null, null, null, null, null,
-      group.rows.reduce((s, r) => s + (r.revenue || 0), 0),
-      group.rows.reduce((s, r) => s + (r.margin || 0), 0),
+      group.revenue,
+      group.margin,
     ], { fill: BAND_STRONG });
 
     group.rows.forEach((r, i) => {
@@ -234,13 +240,13 @@ export async function GET(request: NextRequest) {
     const report = buildPricingPriorityReport(deals);
 
     if (new URL(request.url).searchParams.get("format") === "json") {
-      return NextResponse.json(report);
+      return withRenderCors(NextResponse.json(report), request);
     }
 
     const wb = buildWorkbook(report);
     const buffer = await wb.xlsx.writeBuffer();
     const stamp = new Date(report.generatedAt).toISOString().slice(0, 10);
-    return new NextResponse(Buffer.from(buffer), {
+    return withRenderCors(new NextResponse(Buffer.from(buffer), {
       status: 200,
       headers: {
         "Content-Type":
@@ -248,12 +254,12 @@ export async function GET(request: NextRequest) {
         "Content-Disposition": `attachment; filename="ANC_Active_Pricing_Priority_${stamp}.xlsx"`,
         "Cache-Control": "no-store",
       },
-    });
+    }), request);
   } catch (error: any) {
     console.error("[pricing-priority-list] failed", error);
-    return NextResponse.json(
-      { error: error?.message || "Failed to build the pricing priority list" },
-      { status: 500 },
+    return withRenderCors(
+      NextResponse.json({ error: error?.message || "Failed to build the pricing priority list" }, { status: 500 }),
+      request,
     );
   }
 }

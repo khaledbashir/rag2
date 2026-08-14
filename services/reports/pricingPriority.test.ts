@@ -85,11 +85,6 @@ describe("report shape", () => {
     expect(r.counts).toEqual({ overdue: 1, this_week: 1, later: 0, undated: 1 });
   });
 
-  it("drops empty buckets rather than printing bare headers", () => {
-    const r = buildPricingPriorityReport(deals, { now: NOW });
-    expect(r.buckets.map((b) => b.bucket)).toEqual(["overdue", "this_week", "undated"]);
-  });
-
   it("reports days until due, negative once past", () => {
     const r = buildPricingPriorityReport(deals, { now: NOW });
     expect(r.rows[0].daysUntilDue).toBe(-2);
@@ -100,7 +95,36 @@ describe("report shape", () => {
   it("handles an empty list without dividing by anything", () => {
     const r = buildPricingPriorityReport([], { now: NOW });
     expect(r.rows).toEqual([]);
-    expect(r.buckets).toEqual([]);
+    expect(r.groups).toEqual([]);
     expect(r.totals).toEqual({ deals: 0, revenue: 0, margin: 0 });
+  });
+});
+
+describe("grouping matches the CRM view", () => {
+  const deals = [
+    deal({ id: "a", proposalStage: "CONTRACT", proposalDueDate: at(1), revenue: 100 }),
+    deal({ id: "b", proposalStage: "RFP", proposalDueDate: at(5), revenue: 200 }),
+    deal({ id: "c", proposalStage: "RFP", proposalDueDate: at(2), revenue: 300 }),
+    deal({ id: "d", proposalStage: null, proposalDueDate: at(3), revenue: 400 }),
+  ];
+
+  it("orders stages the way the view orders them, not alphabetically", () => {
+    const r = buildPricingPriorityReport(deals, { now: NOW });
+    expect(r.groups.map((g) => g.label)).toEqual(["RFP", "Contract", "No proposal stage"]);
+  });
+
+  it("keeps the due-date sort inside a stage", () => {
+    const r = buildPricingPriorityReport(deals, { now: NOW });
+    expect(r.groups[0].rows.map((x) => x.id)).toEqual(["c", "b"]);
+  });
+
+  it("subtotals each stage", () => {
+    const r = buildPricingPriorityReport(deals, { now: NOW });
+    expect(r.groups[0].revenue).toBe(500);
+  });
+
+  it("gives deals with no stage a named group rather than a blank header", () => {
+    const r = buildPricingPriorityReport(deals, { now: NOW });
+    expect(r.groups.at(-1)!.label).toBe("No proposal stage");
   });
 });

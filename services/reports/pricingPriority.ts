@@ -35,15 +35,50 @@ export type PricingDealInput = {
 
 export type UrgencyBucket = "overdue" | "this_week" | "later" | "undated";
 
+/**
+ * The Proposal Stage order the CRM view groups by, read from the view itself.
+ * The workbook mirrors it so the export and the screen read the same way —
+ * Jireh compares them side by side, and a different grouping reads as a
+ * different set of deals even when the records are identical.
+ */
+export const PROPOSAL_STAGE_ORDER = [
+  "DESIGN_CREATIVE",
+  "BAFO",
+  "RFP",
+  "SALES_LEAD",
+  "PRICING_SUBMITTED",
+  "ACTIVE_DISCUSSIONS",
+  "LOI",
+  "CONTRACT",
+  "EXISTING_CLIENT_BUDGET",
+] as const;
+
+export const NO_STAGE = "__no_stage__";
+
+export function stageRank(stage: string | null): number {
+  if (!stage) return PROPOSAL_STAGE_ORDER.length;
+  const i = (PROPOSAL_STAGE_ORDER as readonly string[]).indexOf(stage);
+  return i === -1 ? PROPOSAL_STAGE_ORDER.length : i;
+}
+
 export type PricingDealRow = PricingDealInput & {
   bucket: UrgencyBucket;
   daysUntilDue: number | null;
 };
 
+export type StageGroup = {
+  stage: string;
+  label: string;
+  rows: PricingDealRow[];
+  revenue: number;
+  margin: number;
+};
+
 export type PricingPriorityReport = {
   generatedAt: string;
   rows: PricingDealRow[];
-  buckets: { bucket: UrgencyBucket; label: string; rows: PricingDealRow[] }[];
+  /** Grouped the way the CRM view groups — by Proposal Stage, in its order. */
+  groups: StageGroup[];
   totals: { deals: number; revenue: number; margin: number };
   counts: Record<UrgencyBucket, number>;
 };
@@ -58,6 +93,25 @@ export const BUCKET_LABELS: Record<UrgencyBucket, string> = {
 export const BUCKET_ORDER: UrgencyBucket[] = ["overdue", "this_week", "later", "undated"];
 
 const DAY = 24 * 60 * 60 * 1000;
+
+const STAGE_LABELS: Record<string, string> = {
+  DESIGN_CREATIVE: "Design / Creative",
+  BAFO: "BAFO",
+  RFP: "RFP",
+  SALES_LEAD: "Sales Lead",
+  PRICING_SUBMITTED: "Pricing Submitted",
+  ACTIVE_DISCUSSIONS: "Active Discussions",
+  LOI: "LOI",
+  CONTRACT: "Contract",
+  EXISTING_CLIENT_BUDGET: "Existing Client Budget",
+};
+
+export function stageLabel(stage: string): string {
+  return (
+    STAGE_LABELS[stage] ||
+    stage.split("_").map((w) => w.charAt(0) + w.slice(1).toLowerCase()).join(" ")
+  );
+}
 
 /** Whole days from now to the due date; negative once it has passed. */
 export function daysUntil(due: string | null, now: number): number | null {
@@ -101,14 +155,30 @@ export function buildPricingPriorityReport(
   };
   for (const r of rows) counts[r.bucket] += 1;
 
+  const groupMap = new Map<string, StageGroup>();
+  for (const r of rows) {
+    const key = r.proposalStage || NO_STAGE;
+    const group = groupMap.get(key) || {
+      stage: key,
+      label: key === NO_STAGE ? "No proposal stage" : stageLabel(key),
+      rows: [] as PricingDealRow[],
+      revenue: 0,
+      margin: 0,
+    };
+    group.rows.push(r);
+    group.revenue += r.revenue || 0;
+    group.margin += r.margin || 0;
+    groupMap.set(key, group);
+  }
+
   return {
     generatedAt,
     rows,
-    buckets: BUCKET_ORDER.map((bucket) => ({
-      bucket,
-      label: BUCKET_LABELS[bucket],
-      rows: rows.filter((r) => r.bucket === bucket),
-    })).filter((g) => g.rows.length > 0),
+    groups: [...groupMap.values()].sort(
+      (a, b) =>
+        stageRank(a.stage === NO_STAGE ? null : a.stage) -
+        stageRank(b.stage === NO_STAGE ? null : b.stage),
+    ),
     totals: {
       deals: rows.length,
       revenue: rows.reduce((s, r) => s + (r.revenue || 0), 0),

@@ -23,6 +23,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
+import { renderCorsHeaders, withRenderCors } from "@/lib/http/renderCors";
 import {
   ALLIANCE_RATE_DEFAULT,
   FISCAL_YEARS,
@@ -52,6 +53,10 @@ import {
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+export async function OPTIONS(req: NextRequest) {
+  return new NextResponse(null, { status: 204, headers: renderCorsHeaders(req) });
+}
 
 const TWENTY_BASE = "https://abc-twenty.izcgmb.easypanel.host";
 const TWENTY_TOKEN =
@@ -410,13 +415,13 @@ export async function GET(request: NextRequest) {
     const report = buildLgAllianceReport(deals, { allianceRate, scope });
 
     if (params.get("format") === "json") {
-      return NextResponse.json(report);
+      return withRenderCors(NextResponse.json(report), request);
     }
 
     const wb = buildWorkbook(report, scope);
     const buffer = await wb.xlsx.writeBuffer();
     const stamp = new Date(report.generatedAt).toISOString().slice(0, 10);
-    return new NextResponse(Buffer.from(buffer), {
+    return withRenderCors(new NextResponse(Buffer.from(buffer), {
       status: 200,
       headers: {
         "Content-Type":
@@ -424,12 +429,12 @@ export async function GET(request: NextRequest) {
         "Content-Disposition": `attachment; filename="ANC_LG_Alliance_Report_${stamp}.xlsx"`,
         "Cache-Control": "no-store",
       },
-    });
+    }), request);
   } catch (error: any) {
     console.error("[lg-alliance-report] failed", error);
-    return NextResponse.json(
-      { error: error?.message || "Failed to build the LG alliance report" },
-      { status: 500 },
+    return withRenderCors(
+      NextResponse.json({ error: error?.message || "Failed to build the LG alliance report" }, { status: 500 }),
+      request,
     );
   }
 }
