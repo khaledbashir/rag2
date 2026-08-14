@@ -54,7 +54,12 @@ export type LgDealInput = {
   awardDate: string | null;
   /** LG section fields on the opportunity. */
   tier: string | null;
-  fiscalYear: string | null;
+  /**
+   * The fiscal years the LG PO spans. Jireh asked for more than one after the
+   * first version shipped — a deal that phases across 2027 and 2028 has to say
+   * so — so this is a list, and the single-value form is still accepted.
+   */
+  fiscalYears: string[];
   businessUnits: string[];
   description: string | null;
   notes: string | null;
@@ -172,6 +177,17 @@ export function humanizeStatus(status: string | null): string {
 
 export function businessUnitLabel(value: string): string {
   return BUSINESS_UNIT_LABELS[value] || humanizeStatus(value);
+}
+
+/** Accepts the single-select legacy shape as well as the multi-select list. */
+export function normalizeFiscalYears(value: string[] | string | null | undefined): string[] {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  return value ? [value] : [];
+}
+
+/** "FY2027, FY2028" — sorted so the sheet reads chronologically. */
+export function fiscalYearLabel(years: string[]): string {
+  return [...years].sort().join(", ");
 }
 
 export function winConfidenceLabel(value: string | null): string {

@@ -4,6 +4,10 @@
  * The detailed LG report (Jireh, 2026-08-14) — his "LG ANC Marketing Breakdown
  * Tier Detail" workbook rebuilt from live CRM data instead of by hand.
  *
+ * Scoped to Technology deals only, per Jireh: the LG alliance is a Technology
+ * partnership, so a Venue Services deal that happens to name LG as the vendor
+ * does not belong in the rollup.
+ *
  * Three sheets:
  *   Alliance Rollup — every LG opportunity grouped by tier, with the PO,
  *                     cost, 8% alliance fee and LG margin columns from his
@@ -24,7 +28,9 @@ import {
   FISCAL_YEARS,
   buildLgAllianceReport,
   businessUnitLabel,
+  fiscalYearLabel,
   humanizeStatus,
+  normalizeFiscalYears,
   winConfidenceLabel,
   type LgDealInput,
   type LgAllianceReport,
@@ -84,7 +90,10 @@ const YEAR_FIELDS = FISCAL_YEARS.map(
 async function fetchLgDeals(): Promise<LgDealInput[]> {
   const query = `query LgDeals($after: String) {
     opportunities(
-      filter: { technologyVendorPartner: { eq: "LG" } }
+      filter: {
+        technologyVendorPartner: { eq: "LG" }
+        businessUnit: { eq: "TECHNOLOGY" }
+      }
       orderBy: { id: AscNullsLast }
       first: 60
       after: $after
@@ -128,7 +137,7 @@ async function fetchLgDeals(): Promise<LgDealInput[]> {
         winConfidence: n.winConfidence || null,
         awardDate: n.closeDate || null,
         tier: n.lgTier || null,
-        fiscalYear: n.lgFiscalYear || null,
+        fiscalYears: normalizeFiscalYears(n.lgFiscalYear),
         businessUnits: Array.isArray(n.lgBusinessUnits) ? n.lgBusinessUnits : [],
         description: n.lgDescription || null,
         notes: n.lgNotes || null,
@@ -184,7 +193,7 @@ function buildWorkbook(report: LgAllianceReport, scope: ReportScope): ExcelJS.Wo
     { header: "Tier", width: 11 },
     { header: "Account", width: 26 },
     { header: "Opportunity", width: 34, wrap: true },
-    { header: "FY", width: 9, align: "center" },
+    { header: "FY", width: 16, wrap: true },
     { header: "Status", width: 16 },
     { header: "LG Business Units", width: 22, wrap: true },
     { header: "ANC LG PO", width: 15, money: true },
@@ -197,7 +206,7 @@ function buildWorkbook(report: LgAllianceReport, scope: ReportScope): ExcelJS.Wo
 
   const headRow = writeSheetHeader(roll, {
     title: "LG Alliance — Tier Detail",
-    subtitle: `As of ${asOf} · ${scopeLabel} · alliance rate ${pct(rate)}`,
+    subtitle: `As of ${asOf} · Technology · ${scopeLabel} · alliance rate ${pct(rate)}`,
     headline:
       `${report.totals.deals} LG deals · PO ${usd(report.totals.po)} · ` +
       `alliance ${usd(report.totals.allianceFee)} · LG margin ${usd(report.totals.lgMargin)}`,
@@ -224,7 +233,7 @@ function buildWorkbook(report: LgAllianceReport, scope: ReportScope): ExcelJS.Wo
         r.tierLabel,
         r.account || "",
         r.opportunityNumber ? `${r.name}  (#${r.opportunityNumber})` : r.name,
-        r.fiscalYear || "",
+        fiscalYearLabel(r.fiscalYears),
         humanizeStatus(r.bidStatus),
         r.businessUnits.map(businessUnitLabel).join(", "),
         r.po,
@@ -324,7 +333,7 @@ function buildWorkbook(report: LgAllianceReport, scope: ReportScope): ExcelJS.Wo
     { header: "Account", width: 26 },
     { header: "Opportunity", width: 38, wrap: true },
     { header: "Tier", width: 11 },
-    { header: "FY", width: 9, align: "center" },
+    { header: "FY", width: 16, wrap: true },
     { header: "Status", width: 16 },
     { header: "Win Confidence", width: 13, align: "right" },
     { header: "League", width: 14 },
@@ -352,7 +361,7 @@ function buildWorkbook(report: LgAllianceReport, scope: ReportScope): ExcelJS.Wo
       r.account || "",
       r.name,
       r.tier ? r.tierLabel : "",
-      r.fiscalYear || "",
+      fiscalYearLabel(r.fiscalYears),
       humanizeStatus(r.bidStatus),
       winConfidenceLabel(r.winConfidence),
       r.league ? humanizeStatus(r.league) : "",

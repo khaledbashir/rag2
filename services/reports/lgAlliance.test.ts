@@ -3,7 +3,9 @@ import {
   ALLIANCE_RATE_DEFAULT,
   buildLgAllianceReport,
   businessUnitLabel,
+  fiscalYearLabel,
   humanizeStatus,
+  normalizeFiscalYears,
   outcomeFor,
   toDealRow,
   winConfidenceLabel,
@@ -21,7 +23,7 @@ function deal(over: Partial<LgDealInput> = {}): LgDealInput {
     winConfidence: null,
     awardDate: null,
     tier: null,
-    fiscalYear: null,
+    fiscalYears: [],
     businessUnits: [],
     description: null,
     notes: null,
@@ -257,5 +259,29 @@ describe("acronym handling", () => {
 
   it("title-cases the words around an acronym", () => {
     expect(humanizeStatus("RFP_RECEIVED")).toBe("RFP Received");
+  });
+});
+
+describe("multiple fiscal years", () => {
+  it("accepts the multi-select list", () => {
+    expect(normalizeFiscalYears(["FY2027", "FY2028"])).toEqual(["FY2027", "FY2028"]);
+  });
+
+  it("still accepts the single-select shape it replaced", () => {
+    expect(normalizeFiscalYears("FY2027")).toEqual(["FY2027"]);
+  });
+
+  it("treats null and empty as no years, not a blank entry", () => {
+    expect(normalizeFiscalYears(null)).toEqual([]);
+    expect(normalizeFiscalYears(undefined)).toEqual([]);
+    expect(normalizeFiscalYears([])).toEqual([]);
+  });
+
+  it("renders several years chronologically on one line", () => {
+    expect(fiscalYearLabel(["FY2028", "FY2027"])).toBe("FY2027, FY2028");
+  });
+
+  it("renders nothing when a deal has no year set", () => {
+    expect(fiscalYearLabel([])).toBe("");
   });
 });
