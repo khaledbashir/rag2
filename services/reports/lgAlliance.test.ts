@@ -29,6 +29,7 @@ function deal(over: Partial<LgDealInput> = {}): LgDealInput {
     notes: null,
     poValue: null,
     sponsorshipValue: null,
+    sponsorshipByYear: {},
     revenue: 0,
     margin: 0,
     revenueByYear: {},
@@ -322,5 +323,47 @@ describe("sponsorship value (Jireh, 2026-08-14)", () => {
     expect(report.totals.sponsorship).toBe(0);
     expect(report.rowsWithSponsorship).toBe(0);
     expect(report.rows[0].sponsorshipValue).toBeNull();
+  });
+});
+
+describe("sponsorship phased by fiscal year (Jireh, 2026-08-14)", () => {
+  // His Monumental example: $750k a year for four years.
+  const monumental = () =>
+    deal({
+      id: "mse", bidStatus: "WON", revenue: 8_000_000, margin: 1_000_000,
+      sponsorshipValue: 3_000_000,
+      sponsorshipByYear: { 2026: 750_000, 2027: 750_000, 2028: 750_000, 2029: 750_000 },
+      revenueByYear: { 2026: 8_000_000 },
+      marginByYear: { 2026: 1_000_000 },
+    });
+
+  it("phases the sponsorship across the years it was entered for", () => {
+    const fy = buildLgAllianceReport([monumental()]).byFiscalYear;
+    for (const year of [2026, 2027, 2028, 2029]) {
+      expect(fy.find((r) => r.year === year)!.sponsorship).toBe(750_000);
+    }
+    expect(fy.find((r) => r.year === 2030)!.sponsorship).toBe(0);
+  });
+
+  it("splits sponsorship open vs won the way the project money splits", () => {
+    const fy = buildLgAllianceReport([
+      monumental(),
+      deal({
+        id: "open", bidStatus: "SCOPING", revenue: 1_000_000,
+        sponsorshipByYear: { 2027: 200_000 },
+      }),
+    ]).byFiscalYear;
+    const y2027 = fy.find((r) => r.year === 2027)!;
+    expect(y2027.wonSponsorship).toBe(750_000);
+    expect(y2027.openSponsorship).toBe(200_000);
+    expect(y2027.sponsorship).toBe(950_000);
+  });
+
+  // A sponsorship-only year would otherwise be filtered out of the sheet.
+  it("keeps a year that carries sponsorship but no project revenue", () => {
+    const fy = buildLgAllianceReport([
+      deal({ bidStatus: "WON", sponsorshipByYear: { 2031: 500_000 } }),
+    ]).byFiscalYear;
+    expect(fy.find((r) => r.year === 2031)!.sponsorship).toBe(500_000);
   });
 });

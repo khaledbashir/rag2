@@ -157,6 +157,12 @@ const YEAR_FIELDS = FISCAL_YEARS.map(
   (y) => `revenue${y} { amountMicros } margin${y} { amountMicros }`,
 ).join(" ");
 
+/** The years the LG FY picklist — and so the sponsorship fields — cover. */
+const SPONSORSHIP_YEARS = [2026, 2027, 2028, 2029, 2030, 2031, 2032] as const;
+const SPONSORSHIP_YEAR_FIELDS = SPONSORSHIP_YEARS.map(
+  (y) => `sponsorship${y} { amountMicros }`,
+).join(" ");
+
 /**
  * Pages the LG opportunities.
  *
@@ -195,6 +201,7 @@ async function fetchLgDeals(mirrored: MirrorColumn[]): Promise<LgDeal[]> {
         totalProjectRevenue { amountMicros }
         totalProjectMargin { amountMicros }
         ${YEAR_FIELDS}
+        ${SPONSORSHIP_YEAR_FIELDS}
         company { name }
         ${mirroredSelection}
       } }
@@ -211,6 +218,11 @@ async function fetchLgDeals(mirrored: MirrorColumn[]): Promise<LgDeal[]> {
       const n = edge.node;
       const revenueByYear: Record<number, number> = {};
       const marginByYear: Record<number, number> = {};
+      const sponsorshipByYear: Record<number, number> = {};
+      for (const y of SPONSORSHIP_YEARS) {
+        const s = dollars(n[`sponsorship${y}`]);
+        if (s) sponsorshipByYear[y] = s;
+      }
       for (const y of FISCAL_YEARS) {
         const r = dollars(n[`revenue${y}`]);
         const m = dollars(n[`margin${y}`]);
@@ -237,6 +249,7 @@ async function fetchLgDeals(mirrored: MirrorColumn[]): Promise<LgDeal[]> {
         margin: dollars(n.totalProjectMargin),
         revenueByYear,
         marginByYear,
+        sponsorshipByYear,
         raw: n,
       });
     }
@@ -369,6 +382,8 @@ function buildWorkbook(
     { header: "Open Margin", width: 15, money: true },
     { header: "Won Revenue", width: 16, money: true },
     { header: "Won Margin", width: 15, money: true },
+    { header: "Open Sponsorship", width: 17, money: true },
+    { header: "Won Sponsorship", width: 17, money: true },
     { header: "Total Revenue", width: 16, money: true },
     { header: "Cost", width: 15, money: true },
     { header: `Alliance ${pct(rate)}`, width: 15, money: true },
@@ -378,15 +393,20 @@ function buildWorkbook(
   const fyHead = writeSheetHeader(fy, {
     title: "LG Alliance — Fiscal Year Phasing",
     subtitle: `As of ${asOf} · ${scopeLabel}`,
-    note: "Phased from the per-year revenue and margin the CRM already carries on each deal.",
+    note:
+      "Phased from the per-year revenue, margin and sponsorship carried on each deal. " +
+      "Sponsorship splits open vs won the same way the project money does.",
   });
   writeTableHeader(fy, fyCols, fyHead);
 
-  const fyRows = report.byFiscalYear.filter((r) => r.revenue !== 0 || r.cost !== 0);
+  const fyRows = report.byFiscalYear.filter(
+    (r) => r.revenue !== 0 || r.cost !== 0 || r.sponsorship !== 0,
+  );
   fyRows.forEach((r, i) => {
     dataRow(fy, fyCols, [
       `FY${r.year}`,
       r.openRevenue, r.openMargin, r.wonRevenue, r.wonMargin,
+      r.openSponsorship, r.wonSponsorship,
       r.revenue, r.cost, r.allianceFee, r.lgMargin,
     ], i);
   });
@@ -396,6 +416,7 @@ function buildWorkbook(
     "TOTAL",
     fyTotal((r) => r.openRevenue), fyTotal((r) => r.openMargin),
     fyTotal((r) => r.wonRevenue), fyTotal((r) => r.wonMargin),
+    fyTotal((r) => r.openSponsorship), fyTotal((r) => r.wonSponsorship),
     fyTotal((r) => r.revenue), fyTotal((r) => r.cost),
     fyTotal((r) => r.allianceFee), fyTotal((r) => r.lgMargin),
   ], { fill: BAND_STRONG, height: 22 });

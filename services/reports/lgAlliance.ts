@@ -71,6 +71,12 @@ export type LgDealInput = {
    * columns are still calculated from the PO alone.
    */
   sponsorshipValue: number | null;
+  /**
+   * Sponsorship phased by fiscal year, keyed by year — Jireh's Monumental deal
+   * is $750k in each of four years rather than one $3m figure. Only the years
+   * the LG picklist offers are carried.
+   */
+  sponsorshipByYear: Record<number, number>;
   revenue: number | null;
   margin: number | null;
   /** Per-fiscal-year revenue and margin, keyed by year. */
@@ -112,6 +118,10 @@ export type TierGroup = {
 
 export type FiscalYearRow = {
   year: number;
+  /** Sponsorship booked or forecast in this year, split the same way. */
+  openSponsorship: number;
+  wonSponsorship: number;
+  sponsorship: number;
   openRevenue: number;
   openMargin: number;
   wonRevenue: number;
@@ -334,6 +344,9 @@ export function buildLgAllianceReport(
   const byFiscalYear: FiscalYearRow[] = FISCAL_YEARS.map((year) => {
     const fy: FiscalYearRow = {
       year,
+      openSponsorship: 0,
+      wonSponsorship: 0,
+      sponsorship: 0,
       openRevenue: 0,
       openMargin: 0,
       wonRevenue: 0,
@@ -346,14 +359,20 @@ export function buildLgAllianceReport(
     for (const row of rows) {
       const revenue = row.revenueByYear[year] || 0;
       const margin = row.marginByYear[year] || 0;
-      if (!revenue && !margin) continue;
+      const sponsorship = row.sponsorshipByYear?.[year] || 0;
+      // A year can carry sponsorship without project revenue, so the row is
+      // only skipped when all three are empty.
+      if (!revenue && !margin && !sponsorship) continue;
       if (row.outcome === "open") {
         fy.openRevenue += revenue;
         fy.openMargin += margin;
+        fy.openSponsorship += sponsorship;
       } else if (row.outcome === "won") {
         fy.wonRevenue += revenue;
         fy.wonMargin += margin;
+        fy.wonSponsorship += sponsorship;
       }
+      fy.sponsorship += sponsorship;
       fy.revenue += revenue;
       fy.cost += revenue - margin;
       fy.allianceFee += revenue * allianceRate;
