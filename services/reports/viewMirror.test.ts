@@ -4,6 +4,7 @@ import {
   cellValue,
   enumLabel,
   isRenderable,
+  rollupLayout,
   selectionFor,
   toMirrorColumn,
   type ViewColumn,
@@ -118,5 +119,106 @@ describe("column layout", () => {
   it("wraps long free text and leaves the name column on one line", () => {
     expect(toMirrorColumn(col("lgNotes", "TEXT")).wrap).toBe(true);
     expect(toMirrorColumn(col("name", "TEXT")).wrap).toBe(false);
+  });
+});
+
+describe("rollup layout (Jireh, 2026-08-17)", () => {
+  // The LG Alliance Detail list, in the order he keeps it.
+  const view = [
+    col("name", "TEXT", "Opportunity Name"),
+    col("company", "RELATION", "Company"),
+    col("lgTier", "SELECT", "LG Tier"),
+    col("technologyVendorPartner", "SELECT", "Technology Vendor Partner"),
+    col("bidStatus", "SELECT", "Opportunity Status"),
+    col("poValue", "CURRENCY", "Technology Vendor PO Value"),
+    col("sponsorshipValue", "CURRENCY", "Sponsorship Value"),
+    col("sponsorship2031", "CURRENCY", "Sponsorship FY2031"),
+    col("totalProjectRevenue", "CURRENCY", "Revenue — Total Project"),
+    col("lgNotes", "TEXT", "LG Notes"),
+  ].map(toMirrorColumn);
+
+  const keys = (drop = new Set<string>()) =>
+    rollupLayout(view, "8%", drop).map((c) => c.key);
+
+  it("keeps the CRM's columns, labels and order", () => {
+    const layout = rollupLayout(view, "8%");
+    expect(layout.map((c) => c.spec.header)).toEqual([
+      "Opportunity Name",
+      "Company",
+      "LG Tier",
+      "Opportunity Status",
+      "Technology Vendor PO Value",
+      "PO Source",
+      "Sponsorship Value",
+      "Alliance 8%",
+      "LG Margin",
+      "Sponsorship FY2031",
+      "Revenue — Total Project",
+      "LG Notes",
+    ]);
+  });
+
+  // Every row of an LG report names LG as the vendor.
+  it("drops the vendor column the whole sheet is scoped to", () => {
+    expect(keys()).not.toContain("technologyVendorPartner");
+  });
+
+  it("drops the columns the caller found empty", () => {
+    expect(keys(new Set(["sponsorship2031"]))).not.toContain("sponsorship2031");
+  });
+
+  // Tracking the PO is the point of the sheet — a view edit cannot cost it.
+  it("puts the PO back when the view stops showing it", () => {
+    const withoutPo = view.filter((c) => c.fieldName !== "poValue");
+    const layout = rollupLayout(withoutPo, "8%");
+    expect(layout[0].key).toBe("poValue");
+    expect(layout[0].spec.header).toBe("Technology Vendor PO Value");
+    expect(layout[1].key).toBe("poSource");
+    // Sponsorship is still there, so the calculated pair stays beside it.
+    expect(layout.map((c) => c.key).filter((k) => k === "allianceFee")).toHaveLength(1);
+  });
+
+  it("keeps the calculated pair with the PO when there is no sponsorship column", () => {
+    const noSponsorship = view.filter((c) => c.fieldName !== "sponsorshipValue");
+    expect(rollupLayout(noSponsorship, "8%").map((c) => c.key)).toEqual([
+      "name", "company", "lgTier", "bidStatus",
+      "poValue", "poSource", "allianceFee", "lgMargin",
+      "sponsorship2031", "totalProjectRevenue", "lgNotes",
+    ]);
+  });
+
+  it("still produces one PO block when neither money column is on the view", () => {
+    const bare = view.filter(
+      (c) => c.fieldName !== "poValue" && c.fieldName !== "sponsorshipValue",
+    );
+    expect(rollupLayout(bare, "8%").map((c) => c.key).slice(0, 4)).toEqual([
+      "poValue", "poSource", "allianceFee", "lgMargin",
+    ]);
+  });
+
+  it("carries the rate into the alliance column header", () => {
+    const layout = rollupLayout(view, "5%");
+    expect(layout.find((c) => c.key === "allianceFee")!.spec.header).toBe("Alliance 5%");
+  });
+
+  it("keeps the money columns formatted as money", () => {
+    const layout = rollupLayout(view, "8%");
+    for (const key of ["poValue", "allianceFee", "lgMargin", "sponsorshipValue"]) {
+      expect(layout.find((c) => c.key === key)!.spec.money).toBe(true);
+    }
+    expect(layout.find((c) => c.key === "poSource")!.spec.money).toBeFalsy();
+  });
+});
+
+describe("fiscal year multi-select", () => {
+  // The CRM stores the years in click order, which reads as a typo on a sheet.
+  it("sorts a run of fiscal years chronologically", () => {
+    expect(cellValue(col("lgFiscalYear", "MULTI_SELECT"), { lgFiscalYear: ["FY2030", "FY2027", "FY2028"] }, fmtDate))
+      .toBe("FY2027, FY2028, FY2030");
+  });
+
+  it("leaves other multi-selects in the order the CRM keeps them", () => {
+    expect(cellValue(col("lgBusinessUnits", "MULTI_SELECT"), { lgBusinessUnits: ["LED", "AIR_SOLUTIONS"] }, fmtDate))
+      .toBe("LED, Air Solutions");
   });
 });

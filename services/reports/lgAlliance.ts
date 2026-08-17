@@ -101,7 +101,17 @@ export type LgDealRow = Omit<LgDealInput, "tier"> & {
 export type MoneyTotals = {
   deals: number;
   po: number;
+  /**
+   * PO coverage, split out because Jireh tracks the PO rather than the project
+   * economics (2026-08-17): `poEntered` is the part of `po` that comes from a
+   * Technology Vendor PO Value someone actually typed, `poEstimated` the part
+   * still standing in from Revenue — Total Project.
+   */
+  poEntered: number;
+  poEstimated: number;
+  dealsWithPo: number;
   sponsorship: number;
+  revenue: number;
   cost: number;
   allianceFee: number;
   ancMargin: number;
@@ -222,13 +232,32 @@ export function outcomeFor(status: string | null): DealOutcome {
 }
 
 function emptyTotals(): MoneyTotals {
-  return { deals: 0, po: 0, sponsorship: 0, cost: 0, allianceFee: 0, ancMargin: 0, lgMargin: 0 };
+  return {
+    deals: 0,
+    po: 0,
+    poEntered: 0,
+    poEstimated: 0,
+    dealsWithPo: 0,
+    sponsorship: 0,
+    revenue: 0,
+    cost: 0,
+    allianceFee: 0,
+    ancMargin: 0,
+    lgMargin: 0,
+  };
 }
 
 function addTo(totals: MoneyTotals, row: LgDealRow): void {
   totals.deals += 1;
   totals.po += row.po;
+  if (row.poBasis === "po") {
+    totals.poEntered += row.po;
+    totals.dealsWithPo += 1;
+  } else {
+    totals.poEstimated += row.po;
+  }
   totals.sponsorship += row.sponsorshipValue || 0;
+  totals.revenue += row.revenue || 0;
   totals.cost += row.cost;
   totals.allianceFee += row.allianceFee;
   totals.ancMargin += row.margin || 0;

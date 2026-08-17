@@ -367,3 +367,41 @@ describe("sponsorship phased by fiscal year (Jireh, 2026-08-14)", () => {
     expect(fy.find((r) => r.year === 2031)!.sponsorship).toBe(500_000);
   });
 });
+
+describe("PO coverage (Jireh, 2026-08-17)", () => {
+  // He tracks the PO, not the project economics, so the sheet has to say how
+  // much of the PO figure is real paper and how much is still standing in.
+  const deals = [
+    deal({ id: "a", tier: "TIER_1", poValue: 2_000_000, revenue: 2_400_000, margin: 400_000 }),
+    deal({ id: "b", tier: "TIER_1", poValue: null, revenue: 1_000_000, margin: 200_000 }),
+    deal({ id: "c", tier: "TIER_2", poValue: 500_000, revenue: 600_000, margin: 100_000 }),
+  ];
+
+  it("splits the PO total into entered and estimated", () => {
+    const t = buildLgAllianceReport(deals).totals;
+    expect(t.po).toBe(3_500_000);
+    expect(t.poEntered).toBe(2_500_000);
+    expect(t.poEstimated).toBe(1_000_000);
+    expect(t.dealsWithPo).toBe(2);
+  });
+
+  it("counts coverage per tier as well as overall", () => {
+    const tier1 = buildLgAllianceReport(deals).tiers[0].totals;
+    expect(tier1.deals).toBe(2);
+    expect(tier1.dealsWithPo).toBe(1);
+    expect(tier1.poEntered).toBe(2_000_000);
+    expect(tier1.poEstimated).toBe(1_000_000);
+  });
+
+  it("totals project revenue alongside margin so the rollup can show both", () => {
+    const t = buildLgAllianceReport(deals).totals;
+    expect(t.revenue).toBe(4_000_000);
+    expect(t.ancMargin).toBe(700_000);
+  });
+
+  it("keeps a zero PO out of the entered count", () => {
+    const t = buildLgAllianceReport([deal({ poValue: 0, revenue: 800_000 })]).totals;
+    expect(t.dealsWithPo).toBe(0);
+    expect(t.poEstimated).toBe(800_000);
+  });
+});

@@ -73,11 +73,17 @@ export type ColumnSpec = {
   wrap?: boolean;
 };
 
-/** Writes the table header band and freezes the panes above the first data row. */
+/**
+ * Writes the table header band and freezes the panes above the first data row.
+ *
+ * `frozenColumns` additionally pins that many leading data columns, the way the
+ * CRM keeps a record's name in view while the rest of the row scrolls.
+ */
 export function writeTableHeader(
   ws: ExcelJS.Worksheet,
   cols: ColumnSpec[],
   headRow: number,
+  frozenColumns = 0,
 ) {
   ws.getColumn(1).width = 2.6;
   cols.forEach((col, i) => {
@@ -97,7 +103,14 @@ export function writeTableHeader(
     cell.border = { bottom: { style: "medium", color: { argb: RULE } } };
   });
   head.height = 26;
-  ws.views = [{ state: "frozen", ySplit: headRow, showGridLines: false }];
+  ws.views = [
+    {
+      state: "frozen",
+      ySplit: headRow,
+      xSplit: frozenColumns ? frozenColumns + GUTTER : 0,
+      showGridLines: false,
+    },
+  ];
   while ((ws.lastRow?.number || 0) < headRow) ws.addRow({});
 }
 

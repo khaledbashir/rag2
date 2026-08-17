@@ -9,9 +9,10 @@
  * does not belong in the rollup.
  *
  * Three sheets:
- *   Alliance Rollup — every LG opportunity grouped by tier, with the PO,
- *                     cost, 8% alliance fee and LG margin columns from his
- *                     sheet, plus the LG description / business units / notes.
+ *   Alliance Rollup — every LG opportunity grouped by tier, in the CRM's own
+ *                     columns and order (Jireh, 2026-08-17), led by the
+ *                     Technology Vendor PO Value with its source, the 8%
+ *                     alliance fee and LG margin beside it.
  *   By Fiscal Year  — the money phased across FY2025-FY2032, split open vs won.
  *   Deal Detail     — the flat list with every field, for pivoting.
  *
@@ -38,11 +39,17 @@ import {
   type ReportScope,
 } from "@/services/reports/lgAlliance";
 import {
+  ALLIANCE_FEE_KEY,
+  LG_MARGIN_KEY,
+  PO_FIELD,
+  PO_SOURCE_KEY,
   buildSelection,
   cellValue,
   isRenderable,
+  rollupLayout,
   toMirrorColumn,
   type MirrorColumn,
+  type RollupColumn,
   type ViewColumn,
 } from "@/services/reports/viewMirror";
 import {
@@ -298,79 +305,86 @@ function buildWorkbook(
   const roll = wb.addWorksheet("Alliance Rollup");
   roll.properties.defaultRowHeight = 16;
 
-  const rollCols: ColumnSpec[] = [
-    { header: "Tier", width: 11 },
-    { header: "Account", width: 26 },
-    { header: "Opportunity", width: 34, wrap: true },
-    { header: "FY", width: 16, wrap: true },
-    { header: "Status", width: 16 },
-    { header: "LG Business Units", width: 22, wrap: true },
-    { header: "ANC LG PO", width: 15, money: true },
-    { header: "Sponsorship Value", width: 16, money: true },
-    { header: "Cost", width: 14, money: true },
-    { header: `Alliance ${pct(rate)}`, width: 14, money: true },
-    { header: "LG Margin", width: 14, money: true },
-    { header: "Description", width: 42, wrap: true },
-    { header: "Notes", width: 42, wrap: true },
-  ];
+  // Sponsorship years nobody has phased money into would be seven empty columns
+  // between the PO and the dates, which is the opposite of "looks like the CRM".
+  const emptySponsorshipYears = new Set(
+    SPONSORSHIP_YEARS.filter(
+      (y) => !report.rows.some((r) => (r.sponsorshipByYear?.[y] || 0) !== 0),
+    ).map((y) => `sponsorship${y}`),
+  );
+
+  const layout: RollupColumn[] = mirror.columns.length
+    ? rollupLayout(mirror.columns, pct(rate), emptySponsorshipYears)
+    : LEGACY_ROLLUP_LAYOUT(rate);
+  const rollCols: ColumnSpec[] = layout.map((c) => c.spec);
+  const indexOf = (key: string) => layout.findIndex((c) => c.key === key);
+  const poColumn = indexOf(PO_FIELD);
 
   const headRow = writeSheetHeader(roll, {
     title: "LG Alliance — Tier Detail",
     subtitle: `As of ${asOf} · Technology · ${scopeLabel} · alliance rate ${pct(rate)}`,
     headline:
-      `${report.totals.deals} LG deals · PO ${usd(report.totals.po)} · ` +
-      (report.totals.sponsorship ? `sponsorship ${usd(report.totals.sponsorship)} · ` : "") +
-      `alliance ${usd(report.totals.allianceFee)} · LG margin ${usd(report.totals.lgMargin)}`,
+      `PO ${usd(report.totals.po)} across ${report.totals.deals} LG deals · ` +
+      `alliance ${pct(rate)} ${usd(report.totals.allianceFee)} · ` +
+      `LG margin ${usd(report.totals.lgMargin)}` +
+      (report.totals.sponsorship ? ` · sponsorship ${usd(report.totals.sponsorship)}` : ""),
     note:
-      "LG Margin = ANC margin less the alliance contribution. Cost is revenue less margin. " +
-      "Sponsorship Value is reported alongside the PO and is not part of the alliance fee. " +
+      `Technology Vendor PO Value is entered on ${report.totals.dealsWithPo} of ` +
+      `${report.totals.deals} deals (${usd(report.totals.poEntered)}). ` +
       (report.rowsWithoutPo
-        ? `${report.rowsWithoutPo} of ${report.totals.deals} rows have no Technology Vendor PO Value entered yet and use Revenue — Total Project instead.`
-        : "Every row uses an entered Technology Vendor PO Value."),
+        ? `The other ${report.rowsWithoutPo} stand in Revenue — Total Project ` +
+          `(${usd(report.totals.poEstimated)}) and are marked Estimated in the PO Source column. `
+        : "") +
+      "The alliance fee and LG Margin are calculated from the PO. " +
+      "Sponsorship Value sits alongside the PO and is not part of the fee. " +
+      "Columns follow the LG Alliance Detail list in the CRM.",
   });
 
-  writeTableHeader(roll, rollCols, headRow);
+  // Two columns pinned — the CRM keeps the opportunity and account in view.
+  writeTableHeader(roll, rollCols, headRow, Math.min(2, rollCols.length));
+
+  /** A band row carrying a tier's — or the sheet's — subtotals, by column. */
+  const subtotalRow = (
+    label: string,
+    totals: typeof report.totals,
+    height?: number,
+  ) => {
+    const values: (string | number | null)[] = rollCols.map(() => null);
+    values[0] = label;
+    if (rollCols.length > 1) {
+      values[1] = `${totals.deals} ${totals.deals === 1 ? "deal" : "deals"}`;
+    }
+    const put = (key: string, value: string | number | null) => {
+      const i = indexOf(key);
+      if (i >= 0) values[i] = value;
+    };
+    put(PO_FIELD, totals.po);
+    put(PO_SOURCE_KEY, `${totals.dealsWithPo}/${totals.deals} entered`);
+    put("sponsorshipValue", totals.sponsorship);
+    put(ALLIANCE_FEE_KEY, totals.allianceFee);
+    put(LG_MARGIN_KEY, totals.lgMargin);
+    put("totalProjectRevenue", totals.revenue);
+    put("totalProjectMargin", totals.ancMargin);
+    return bandRow(roll, rollCols, values, { fill: BAND_STRONG, height });
+  };
 
   for (const tier of report.tiers) {
-    bandRow(roll, rollCols, [
-      tier.label,
-      `${tier.rows.length} ${tier.rows.length === 1 ? "deal" : "deals"}`,
-      null, null, null, null,
-      tier.totals.po, tier.totals.sponsorship,
-      tier.totals.cost, tier.totals.allianceFee, tier.totals.lgMargin,
-      null, null,
-    ], { fill: BAND_STRONG });
+    subtotalRow(tier.label, tier.totals);
 
     tier.rows.forEach((r, i) => {
-      const row = dataRow(roll, rollCols, [
-        r.tierLabel,
-        r.account || "",
-        r.opportunityNumber ? `${r.name}  (#${r.opportunityNumber})` : r.name,
-        fiscalYearLabel(r.fiscalYears),
-        humanizeStatus(r.bidStatus),
-        r.businessUnits.map(businessUnitLabel).join(", "),
-        r.po,
-        r.sponsorshipValue,
-        r.cost,
-        r.allianceFee,
-        r.lgMargin,
-        r.description || "",
-        r.notes || "",
-      ], i);
-      if (r.poBasis === "revenue") {
-        const cell = row.getCell(7 + GUTTER);
+      const raw = (r as unknown as { raw?: Record<string, any> }).raw || {};
+      const row = dataRow(roll, rollCols, rollupValues(r, raw, layout), i);
+      // An estimated PO is flagged where it is read rather than only in the
+      // note at the top, so a subtotal is never mistaken for booked paper.
+      if (r.poBasis === "revenue" && poColumn >= 0) {
+        const cell = row.getCell(poColumn + 1 + GUTTER);
         cell.note = "No Technology Vendor PO Value entered — this is Revenue — Total Project.";
         cell.font = { name: FONT, size: 10, color: { argb: INK_SOFT }, italic: true };
       }
     });
   }
 
-  bandRow(roll, rollCols, [
-    "TOTAL", `${report.totals.deals} deals`, null, null, null, null,
-    report.totals.po, report.totals.sponsorship,
-    report.totals.cost, report.totals.allianceFee, report.totals.lgMargin,
-    null, null,
-  ], { fill: BAND_STRONG, height: 22 });
+  subtotalRow("TOTAL", report.totals, 22);
 
   // ---------------------------------------------------------------- sheet 2
   const fy = wb.addWorksheet("By Fiscal Year");
@@ -431,7 +445,7 @@ function buildWorkbook(
     const cols: ColumnSpec[] = [
       { header: "", width: 24 },
       { header: "Deals", width: 10, align: "right" },
-      { header: "ANC LG PO", width: 16, money: true },
+      { header: "PO Value", width: 16, money: true },
       { header: "LG Margin", width: 15, money: true },
     ];
     const hr = fy.addRow({});
@@ -501,6 +515,84 @@ function buildWorkbook(
   };
 
   return wb;
+}
+
+/**
+ * How to fill a rollup column from the report row when there is no mirrored
+ * view column behind it — the fallback layout, and any column the mirror
+ * dropped. Keyed by the CRM's field names so both paths agree.
+ */
+const ROLLUP_FALLBACKS: Record<
+  string,
+  (r: LgAllianceReport["rows"][number]) => string | number | null
+> = {
+  company: (r) => r.account || "",
+  lgTier: (r) => (r.tier ? r.tierLabel : ""),
+  lgFiscalYear: (r) => fiscalYearLabel(r.fiscalYears),
+  bidStatus: (r) => humanizeStatus(r.bidStatus),
+  lgBusinessUnits: (r) => r.businessUnits.map(businessUnitLabel).join(", "),
+  sponsorshipValue: (r) => r.sponsorshipValue,
+  closeDate: (r) => fmtDate(r.awardDate),
+  totalProjectRevenue: (r) => r.revenue,
+  totalProjectMargin: (r) => r.margin,
+  league: (r) => (r.league ? humanizeStatus(r.league) : ""),
+  winConfidence: (r) => winConfidenceLabel(r.winConfidence),
+  lgDescription: (r) => r.description || "",
+  lgNotes: (r) => r.notes || "",
+};
+
+/** One rollup row, in the layout's column order. */
+function rollupValues(
+  r: LgAllianceReport["rows"][number],
+  raw: Record<string, any>,
+  layout: RollupColumn[],
+): (string | number | null)[] {
+  return layout.map((col) => {
+    switch (col.key) {
+      // The working PO — the entered value, or the revenue standing in for it.
+      case PO_FIELD:
+        return r.po;
+      case PO_SOURCE_KEY:
+        return r.poBasis === "po" ? "Entered" : "Estimated";
+      case ALLIANCE_FEE_KEY:
+        return r.allianceFee;
+      case LG_MARGIN_KEY:
+        return r.lgMargin;
+      // The CRM shows the name alone; the sheet keeps the opportunity number
+      // with it so a row can be looked up without opening the record.
+      case "name":
+        return r.opportunityNumber ? `${r.name}  (#${r.opportunityNumber})` : r.name;
+      default:
+        if (col.column) return cellValue(col.column, raw, fmtDate);
+        return ROLLUP_FALLBACKS[col.key]?.(r) ?? "";
+    }
+  });
+}
+
+/**
+ * The rollup layout for when the view cannot be read — the CRM's labels and
+ * order, hard-coded, so a metadata hiccup still produces the same sheet.
+ */
+function LEGACY_ROLLUP_LAYOUT(rate: number): RollupColumn[] {
+  return [
+    { key: "name", spec: { header: "Opportunity Name", width: 38, wrap: true } },
+    { key: "company", spec: { header: "Company", width: 26 } },
+    { key: "lgTier", spec: { header: "LG Tier", width: 11 } },
+    { key: "lgFiscalYear", spec: { header: "LG FY", width: 16, wrap: true } },
+    { key: "bidStatus", spec: { header: "Opportunity Status", width: 16 } },
+    { key: "lgBusinessUnits", spec: { header: "LG Business Units", width: 22, wrap: true } },
+    { key: PO_FIELD, spec: { header: "Technology Vendor PO Value", width: 19, money: true } },
+    { key: PO_SOURCE_KEY, spec: { header: "PO Source", width: 13, align: "center" } },
+    { key: "sponsorshipValue", spec: { header: "Sponsorship Value", width: 17, money: true } },
+    { key: ALLIANCE_FEE_KEY, spec: { header: `Alliance ${pct(rate)}`, width: 14, money: true } },
+    { key: LG_MARGIN_KEY, spec: { header: "LG Margin", width: 14, money: true } },
+    { key: "closeDate", spec: { header: "Award Date", width: 14 } },
+    { key: "totalProjectRevenue", spec: { header: "Revenue — Total Project", width: 18, money: true } },
+    { key: "totalProjectMargin", spec: { header: "Margin — Total Project", width: 18, money: true } },
+    { key: "league", spec: { header: "Account Type / League", width: 16 } },
+    { key: "lgDescription", spec: { header: "LG Description", width: 42, wrap: true } },
+    { key: "lgNotes", spec: { header: "LG Notes", width: 42, wrap: true } },
+  ];
 }
 
 /**

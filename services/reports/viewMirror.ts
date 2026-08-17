@@ -118,6 +118,95 @@ export function enumLabel(value: string): string {
   return businessUnitLabel(value);
 }
 
+/**
+ * The rollup tab's column layout (Jireh, 2026-08-17: "can the roll up tab look
+ * more like the actual CRM page?").
+ *
+ * The rollup used to carry an invented column set — "Account", "ANC LG PO",
+ * "Cost" — none of which are what he reads on the LG Alliance Detail list. It
+ * now takes the view's own columns, labels and order, the same as the detail
+ * tab, and only weaves in the figures the report calculates rather than stores.
+ *
+ * Two deliberate departures from a straight mirror:
+ *  - the PO column is always present, even if the view stops showing it, and is
+ *    followed by a PO Source column, because tracking the PO is the point of
+ *    the sheet;
+ *  - the calculated alliance fee and LG margin sit directly beside the PO and
+ *    sponsorship money rather than at the far right, so the PO block reads as
+ *    one story and the project revenue/margin columns stay where the CRM puts
+ *    them — to the right, out of the way.
+ */
+export type RollupColumn = {
+  /** Field name for a mirrored column, or the calculated column's own key. */
+  key: string;
+  spec: { header: string; width: number; money?: boolean; wrap?: boolean; align?: "left" | "right" | "center" };
+  /** Present only for columns that come from the view. */
+  column?: MirrorColumn;
+};
+
+/**
+ * Columns the CRM page shows that the rollup never repeats: every row of an LG
+ * report names LG as the vendor.
+ */
+export const ROLLUP_OMITTED_FIELDS = new Set(["technologyVendorPartner"]);
+
+export const PO_FIELD = "poValue";
+export const PO_SOURCE_KEY = "poSource";
+export const ALLIANCE_FEE_KEY = "allianceFee";
+export const LG_MARGIN_KEY = "lgMargin";
+
+export function rollupLayout(
+  columns: MirrorColumn[],
+  rateLabel: string,
+  drop: Set<string> = new Set(),
+): RollupColumn[] {
+  const kept = columns.filter(
+    (c) => !ROLLUP_OMITTED_FIELDS.has(c.fieldName) && !drop.has(c.fieldName),
+  );
+
+  const poColumns = (mirrored?: MirrorColumn): RollupColumn[] => [
+    mirrored
+      ? {
+          key: PO_FIELD,
+          column: mirrored,
+          spec: { header: mirrored.label, width: 19, money: true },
+        }
+      : {
+          key: PO_FIELD,
+          spec: { header: "Technology Vendor PO Value", width: 19, money: true },
+        },
+    // Centred so it reads as a tag on the PO rather than crowding the figure.
+    { key: PO_SOURCE_KEY, spec: { header: "PO Source", width: 13, align: "center" } },
+  ];
+  const calculated: RollupColumn[] = [
+    { key: ALLIANCE_FEE_KEY, spec: { header: `Alliance ${rateLabel}`, width: 14, money: true } },
+    { key: LG_MARGIN_KEY, spec: { header: "LG Margin", width: 14, money: true } },
+  ];
+
+  const hasPo = kept.some((c) => c.fieldName === PO_FIELD);
+  // The calculated pair follows the last of the two money columns it belongs
+  // with, so PO · source · sponsorship · fee · margin read left to right.
+  const anchor = kept.some((c) => c.fieldName === "sponsorshipValue")
+    ? "sponsorshipValue"
+    : hasPo
+      ? PO_FIELD
+      : null;
+
+  const out: RollupColumn[] = [];
+  for (const c of kept) {
+    if (c.fieldName === PO_FIELD) out.push(...poColumns(c));
+    else out.push({ key: c.fieldName, column: c, spec: { header: c.label, width: c.width, money: c.money, wrap: c.wrap } });
+    if (c.fieldName === anchor) out.push(...calculated);
+  }
+  // A view edit that hides the PO must not cost the sheet its subject: it goes
+  // back in at the front, with the calculated pair beside it unless the loop
+  // has already placed that next to sponsorship.
+  if (!hasPo) {
+    out.unshift(...poColumns(), ...(anchor ? [] : calculated));
+  }
+  return out;
+}
+
 /** Turns one record's raw GraphQL value into the cell the sheet writes. */
 export function cellValue(
   column: ViewColumn,
@@ -140,8 +229,15 @@ export function cellValue(
     case "DATE":
     case "DATE_TIME":
       return formatDate(raw);
-    case "MULTI_SELECT":
-      return Array.isArray(raw) ? raw.map(enumLabel).join(", ") : enumLabel(String(raw));
+    case "MULTI_SELECT": {
+      if (!Array.isArray(raw)) return enumLabel(String(raw));
+      // A run of fiscal years is sorted; the CRM stores them in click order, so
+      // a deal phased across four years reads "FY2030, FY2027, FY2028, FY2029".
+      const values = raw.every((v) => FISCAL_YEAR.test(String(v)))
+        ? [...raw].sort()
+        : raw;
+      return values.map(enumLabel).join(", ");
+    }
     case "SELECT":
       return enumLabel(String(raw));
     case "BOOLEAN":
