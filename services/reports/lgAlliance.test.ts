@@ -149,6 +149,31 @@ describe("tier grouping", () => {
     ]);
     expect(report.rowsUntiered).toBe(1);
   });
+
+  // The two further sections he asked for the same afternoon, in his order.
+  it("bands Needs Review and the sponsorship-led technology work in turn", () => {
+    const report = buildLgAllianceReport([
+      ...deals,
+      deal({ id: "e", tier: "NO_SPONSORSHIP", account: "Bears", revenue: 2_000_000, margin: 300_000 }),
+      deal({ id: "f", tier: "NEEDS_REVIEW", account: "Mets", revenue: 1_000_000, margin: 150_000 }),
+      deal({
+        id: "g",
+        tier: "ADDITIONAL_TECHNOLOGY_FROM_SPONSORSHIP",
+        account: "Suns",
+        revenue: 800_000,
+        margin: 120_000,
+      }),
+    ]);
+    expect(report.tiers.map((t) => t.label)).toEqual([
+      "Tier 1",
+      "Tier 3",
+      "No Sponsorship",
+      "Needs Review",
+      "Additional Technology Opportunities from Sponsorship",
+      "Not yet tiered",
+    ]);
+    expect(report.rowsUntiered).toBe(1);
+  });
 });
 
 describe("fiscal year phasing", () => {

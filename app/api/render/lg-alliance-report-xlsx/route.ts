@@ -396,6 +396,7 @@ function buildWorkbook(
   const rollCols: ColumnSpec[] = layout.map((c) => c.spec);
   const indexOf = (key: string) => layout.findIndex((c) => c.key === key);
   const poColumn = indexOf(PO_FIELD);
+  const allianceColumn = indexOf(ALLIANCE_FEE_KEY);
   const sponsorship = sponsorshipLayoutFor(layout.map((c) => c.key));
 
   const headRow = writeSheetHeader(roll, {
@@ -412,7 +413,8 @@ function buildWorkbook(
         ? `The other ${report.rowsWithoutPo} stand in Revenue — Total Project ` +
           `(${usd(report.totals.poEstimated)}) and are marked Estimated in the PO Source column. `
         : "") +
-      `The alliance ${pct(rate)} is calculated from the PO. ` +
+      `The alliance ${pct(rate)} is the PO cell beside it times ${pct(rate)}, and every ` +
+      "tier subtotal adds up the rows beneath it, so the whole sheet is live. " +
       (sponsorship
         ? "Sponsorship Value adds up its fiscal year columns as a live formula, and " +
           "sits alongside the PO rather than inside the fee. "
@@ -431,33 +433,38 @@ function buildWorkbook(
   const effectiveSponsorship = (r: LgAllianceReport["rows"][number]) =>
     yearTotalOf(r) || r.sponsorshipValue || 0;
 
+  /** What one row puts in a money column, for caching a band's result. */
+  const rowMoneyAt = (r: LgAllianceReport["rows"][number], index: number): number => {
+    if (sponsorship && index === sponsorship.totalIndex) return effectiveSponsorship(r);
+    const raw = (r as unknown as { raw?: Record<string, any> }).raw || {};
+    const value = rollupValues(r, raw, layout)[index];
+    return typeof value === "number" ? value : 0;
+  };
+
   /**
-   * Puts live sums in a band's sponsorship cells so the tier and sheet totals
-   * follow the rows above them — the same formula chain the row totals use.
-   * `source` is the block of rows a tier band covers, or the list of band rows
-   * the TOTAL adds together.
+   * Puts live sums in every money cell of a band, so a tier subtotal and the
+   * sheet total are read off the rows rather than baked in (Jireh, 2026-08-18:
+   * "can we make the tier totals roll up to the opportunity totals for vendor
+   * PO's?"). `source` is the block of rows a tier band covers, or the list of
+   * band rows the TOTAL adds together.
    */
-  const bandSponsorship = (
+  const bandRollup = (
     band: ExcelJS.Row,
     rows: LgAllianceReport["rows"],
     source: { from: number; to: number } | number[],
   ) => {
-    if (!sponsorship) return;
     if (Array.isArray(source) && !source.length) return;
-    const columns: { index: number; result: number }[] = [
-      { index: sponsorship.totalIndex, result: rows.reduce((s, r) => s + effectiveSponsorship(r), 0) },
-      ...sponsorship.yearIndices.map((index, i) => ({
-        index,
-        result: rows.reduce((s, r) => s + (r.sponsorshipByYear?.[sponsorship.years[i]] || 0), 0),
-      })),
-    ];
-    for (const { index, result } of columns) {
+    layout.forEach((col, index) => {
+      if (!col.spec.money) return;
       const letter = columnLetter(roll, index);
       const formula = Array.isArray(source)
         ? source.map((n) => `${letter}${n}`).join("+")
         : `SUM(${letter}${source.from}:${letter}${source.to})`;
-      money(band.getCell(index + 1 + GUTTER), { formula, result });
-    }
+      money(band.getCell(index + 1 + GUTTER), {
+        formula,
+        result: rows.reduce((sum, r) => sum + rowMoneyAt(r, index), 0),
+      });
+    });
   };
 
   /** A band row carrying a tier's — or the sheet's — subtotals, by column. */
@@ -500,14 +507,21 @@ function buildWorkbook(
         cell.font = { name: FONT, size: 10, color: { argb: INK_SOFT }, italic: true };
       }
       if (sponsorship) applySponsorshipFormula(roll, row, sponsorship, r);
+      // The fee is literally the PO cell times the rate, so the sheet says so.
+      if (poColumn >= 0 && allianceColumn >= 0) {
+        money(row.getCell(allianceColumn + 1 + GUTTER), {
+          formula: `${columnLetter(roll, poColumn)}${row.number}*${rate}`,
+          result: r.allianceFee,
+        });
+      }
     });
 
     // The band sits above its rows, so its range starts on the next line.
-    bandSponsorship(band, tier.rows, { from: band.number + 1, to: band.number + tier.rows.length });
+    bandRollup(band, tier.rows, { from: band.number + 1, to: band.number + tier.rows.length });
   }
 
   const total = subtotalRow("TOTAL", report.totals, 22);
-  bandSponsorship(total, report.rows, tierBands);
+  bandRollup(total, report.rows, tierBands);
 
   // ---------------------------------------------------------------- sheet 2
   const fy = wb.addWorksheet("By Fiscal Year");

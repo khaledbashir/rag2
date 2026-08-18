@@ -177,6 +177,13 @@ const TIER_LABELS: Record<string, { label: string; rank: number }> = {
   // all, which is a decision — not the same thing as nobody having tiered it
   // yet. It bands below the three tiers and above the untiered rows.
   NO_SPONSORSHIP: { label: "No Sponsorship", rank: 4 },
+  // Two more sections he asked for the same afternoon: a triage state, and the
+  // technology work that comes out of a sponsorship rather than a tier deal.
+  NEEDS_REVIEW: { label: "Needs Review", rank: 5 },
+  ADDITIONAL_TECHNOLOGY_FROM_SPONSORSHIP: {
+    label: "Additional Technology Opportunities from Sponsorship",
+    rank: 6,
+  },
 };
 
 const UNTIERED = { label: "Not yet tiered", rank: 9 };
