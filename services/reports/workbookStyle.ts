@@ -25,8 +25,26 @@ export const MONEY = '"$"#,##0;[Red]-"$"#,##0';
 export const MONEY_CENTS = '"$"#,##0.00;[Red]-"$"#,##0.00';
 export const PERCENT = "0.0%";
 
-export function money(cell: ExcelJS.Cell, value: number | null | undefined) {
-  cell.value = value === null || value === undefined ? "" : value;
+/**
+ * A live Excel formula rather than a baked number. `result` is the value the
+ * report already calculated, cached into the file so a reader that never
+ * recalculates (Preview, Google Sheets on import, a PDF print) still shows the
+ * figure.
+ */
+export type FormulaValue = { formula: string; result?: number };
+
+export type SheetValue = string | number | null | FormulaValue;
+
+export function isFormula(value: SheetValue | undefined): value is FormulaValue {
+  return !!value && typeof value === "object" && "formula" in value;
+}
+
+export function money(cell: ExcelJS.Cell, value: number | FormulaValue | null | undefined) {
+  if (isFormula(value)) {
+    cell.value = { formula: value.formula, result: value.result } as ExcelJS.CellFormulaValue;
+  } else {
+    cell.value = value === null || value === undefined ? "" : value;
+  }
   cell.numFmt = MONEY;
   cell.alignment = { vertical: "middle", horizontal: "right" };
 }
@@ -118,7 +136,7 @@ export function writeTableHeader(
 export function bandRow(
   ws: ExcelJS.Worksheet,
   cols: ColumnSpec[],
-  values: (string | number | null)[],
+  values: SheetValue[],
   opts: { fill?: string; bold?: boolean; height?: number } = {},
 ): ExcelJS.Row {
   const row = ws.addRow({});
@@ -126,10 +144,10 @@ export function bandRow(
   cols.forEach((col, i) => {
     const cell = row.getCell(i + 1 + GUTTER);
     const v = values[i];
-    if (col.money && typeof v === "number") {
+    if (col.money && (typeof v === "number" || isFormula(v))) {
       money(cell, v);
     } else {
-      cell.value = v ?? "";
+      cell.value = (v ?? "") as ExcelJS.CellValue;
       cell.alignment = {
         vertical: "middle",
         horizontal: col.align || (col.money ? "right" : "left"),
@@ -147,17 +165,17 @@ export function bandRow(
 export function dataRow(
   ws: ExcelJS.Worksheet,
   cols: ColumnSpec[],
-  values: (string | number | null)[],
+  values: SheetValue[],
   index: number,
 ): ExcelJS.Row {
   const row = ws.addRow({});
   cols.forEach((col, i) => {
     const cell = row.getCell(i + 1 + GUTTER);
     const v = values[i];
-    if (col.money && typeof v === "number") {
+    if (col.money && (typeof v === "number" || isFormula(v))) {
       money(cell, v);
     } else {
-      cell.value = v ?? "";
+      cell.value = (v ?? "") as ExcelJS.CellValue;
       cell.alignment = {
         vertical: "top",
         horizontal: col.align || (col.money ? "right" : "left"),

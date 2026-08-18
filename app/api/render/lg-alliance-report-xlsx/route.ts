@@ -11,8 +11,8 @@
  * Three sheets:
  *   Alliance Rollup — every LG opportunity grouped by tier, in the CRM's own
  *                     columns and order (Jireh, 2026-08-17), led by the
- *                     Technology Vendor PO Value with its source, the 8%
- *                     alliance fee and LG margin beside it.
+ *                     Technology Vendor PO Value with its source and the 8%
+ *                     alliance fee beside it.
  *   By Fiscal Year  — the money phased across FY2025-FY2032, split open vs won.
  *   Deal Detail     — the flat list with every field, for pivoting.
  *
@@ -40,12 +40,12 @@ import {
 } from "@/services/reports/lgAlliance";
 import {
   ALLIANCE_FEE_KEY,
-  LG_MARGIN_KEY,
   PO_FIELD,
   PO_SOURCE_KEY,
   buildSelection,
   cellValue,
   isRenderable,
+  isSponsorshipYearField,
   rollupLayout,
   toMirrorColumn,
   type MirrorColumn,
@@ -61,9 +61,11 @@ import {
   LINE,
   bandRow,
   dataRow,
+  money,
   writeSheetHeader,
   writeTableHeader,
   type ColumnSpec,
+  type SheetValue,
 } from "@/services/reports/workbookStyle";
 
 export const runtime = "nodejs";
@@ -281,6 +283,81 @@ function pct(rate: number): string {
   return `${(rate * 100).toFixed(rate * 100 % 1 === 0 ? 0 : 1)}%`;
 }
 
+const usdExact = (value: number) =>
+  value.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+/**
+ * Where a sheet's Sponsorship Value column sits relative to its per-year
+ * sponsorship columns (Jireh, 2026-08-18: "is it possible to make the
+ * sponsorship years total up to sponsorship total with a formula?").
+ *
+ * The total becomes a live `=SUM(...)` over the year cells, so a reader can
+ * change a year in Excel and watch the total, the tier band and the sheet
+ * total move with it. Null when the sheet carries no year columns to add up.
+ */
+type SponsorshipLayout = { totalIndex: number; yearIndices: number[]; years: number[] };
+
+function sponsorshipLayoutFor(keys: string[]): SponsorshipLayout | null {
+  const totalIndex = keys.indexOf("sponsorshipValue");
+  const yearIndices: number[] = [];
+  const years: number[] = [];
+  keys.forEach((key, i) => {
+    if (!isSponsorshipYearField(key)) return;
+    yearIndices.push(i);
+    years.push(Number(key.slice("sponsorship".length)));
+  });
+  if (totalIndex < 0 || !yearIndices.length) return null;
+  return { totalIndex, yearIndices, years };
+}
+
+/** The column letter for a 0-based table column, allowing for the gutter. */
+function columnLetter(ws: ExcelJS.Worksheet, index: number): string {
+  return ws.getColumn(index + 1 + GUTTER).letter;
+}
+
+/** `M9:R9` when the columns run together, `M9,P9` when they do not. */
+function cellRange(ws: ExcelJS.Worksheet, indices: number[], rowNumber: number): string {
+  const contiguous = indices.every((v, i) => i === 0 || v === indices[i - 1] + 1);
+  if (contiguous && indices.length > 1) {
+    return `${columnLetter(ws, indices[0])}${rowNumber}:${columnLetter(ws, indices[indices.length - 1])}${rowNumber}`;
+  }
+  return indices.map((i) => `${columnLetter(ws, i)}${rowNumber}`).join(",");
+}
+
+/**
+ * Turns one row's Sponsorship Value cell into the sum of its year cells.
+ *
+ * A row that carries a total but has never been phased by year keeps the
+ * entered figure — summing empty cells would wipe it off the sheet — and says
+ * so in a note. A row whose years disagree with the entered total shows the
+ * years, and the note carries what the CRM holds.
+ */
+function applySponsorshipFormula(
+  ws: ExcelJS.Worksheet,
+  row: ExcelJS.Row,
+  layout: SponsorshipLayout,
+  r: LgAllianceReport["rows"][number],
+): void {
+  const cell = row.getCell(layout.totalIndex + 1 + GUTTER);
+  const yearTotal = layout.years.reduce((sum, y) => sum + (r.sponsorshipByYear?.[y] || 0), 0);
+  const entered = r.sponsorshipValue || 0;
+
+  if (!yearTotal) {
+    if (entered) {
+      cell.note =
+        "Not phased by fiscal year yet — this is the Sponsorship Value entered in the CRM.";
+    }
+    return;
+  }
+
+  money(cell, { formula: `SUM(${cellRange(ws, layout.yearIndices, row.number)})`, result: yearTotal });
+  if (entered && Math.abs(entered - yearTotal) >= 1) {
+    cell.note =
+      `Adds the fiscal year columns (${usdExact(yearTotal)}). ` +
+      `Sponsorship Value in the CRM: ${usdExact(entered)}.`;
+  }
+}
+
 function buildWorkbook(
   report: LgAllianceReport,
   scope: ReportScope,
@@ -319,14 +396,14 @@ function buildWorkbook(
   const rollCols: ColumnSpec[] = layout.map((c) => c.spec);
   const indexOf = (key: string) => layout.findIndex((c) => c.key === key);
   const poColumn = indexOf(PO_FIELD);
+  const sponsorship = sponsorshipLayoutFor(layout.map((c) => c.key));
 
   const headRow = writeSheetHeader(roll, {
     title: "LG Alliance — Tier Detail",
     subtitle: `As of ${asOf} · Technology · ${scopeLabel} · alliance rate ${pct(rate)}`,
     headline:
       `PO ${usd(report.totals.po)} across ${report.totals.deals} LG deals · ` +
-      `alliance ${pct(rate)} ${usd(report.totals.allianceFee)} · ` +
-      `LG margin ${usd(report.totals.lgMargin)}` +
+      `alliance ${pct(rate)} ${usd(report.totals.allianceFee)}` +
       (report.totals.sponsorship ? ` · sponsorship ${usd(report.totals.sponsorship)}` : ""),
     note:
       `Technology Vendor PO Value is entered on ${report.totals.dealsWithPo} of ` +
@@ -335,13 +412,53 @@ function buildWorkbook(
         ? `The other ${report.rowsWithoutPo} stand in Revenue — Total Project ` +
           `(${usd(report.totals.poEstimated)}) and are marked Estimated in the PO Source column. `
         : "") +
-      "The alliance fee and LG Margin are calculated from the PO. " +
-      "Sponsorship Value sits alongside the PO and is not part of the fee. " +
+      `The alliance ${pct(rate)} is calculated from the PO. ` +
+      (sponsorship
+        ? "Sponsorship Value adds up its fiscal year columns as a live formula, and " +
+          "sits alongside the PO rather than inside the fee. "
+        : "Sponsorship Value sits alongside the PO and is not part of the fee. ") +
       "Columns follow the LG Alliance Detail list in the CRM.",
   });
 
   // Two columns pinned — the CRM keeps the opportunity and account in view.
   writeTableHeader(roll, rollCols, headRow, Math.min(2, rollCols.length));
+
+  /** What a row contributes to the sponsorship column as the sheet writes it. */
+  const yearTotalOf = (r: LgAllianceReport["rows"][number]) =>
+    sponsorship
+      ? sponsorship.years.reduce((sum, y) => sum + (r.sponsorshipByYear?.[y] || 0), 0)
+      : 0;
+  const effectiveSponsorship = (r: LgAllianceReport["rows"][number]) =>
+    yearTotalOf(r) || r.sponsorshipValue || 0;
+
+  /**
+   * Puts live sums in a band's sponsorship cells so the tier and sheet totals
+   * follow the rows above them — the same formula chain the row totals use.
+   * `source` is the block of rows a tier band covers, or the list of band rows
+   * the TOTAL adds together.
+   */
+  const bandSponsorship = (
+    band: ExcelJS.Row,
+    rows: LgAllianceReport["rows"],
+    source: { from: number; to: number } | number[],
+  ) => {
+    if (!sponsorship) return;
+    if (Array.isArray(source) && !source.length) return;
+    const columns: { index: number; result: number }[] = [
+      { index: sponsorship.totalIndex, result: rows.reduce((s, r) => s + effectiveSponsorship(r), 0) },
+      ...sponsorship.yearIndices.map((index, i) => ({
+        index,
+        result: rows.reduce((s, r) => s + (r.sponsorshipByYear?.[sponsorship.years[i]] || 0), 0),
+      })),
+    ];
+    for (const { index, result } of columns) {
+      const letter = columnLetter(roll, index);
+      const formula = Array.isArray(source)
+        ? source.map((n) => `${letter}${n}`).join("+")
+        : `SUM(${letter}${source.from}:${letter}${source.to})`;
+      money(band.getCell(index + 1 + GUTTER), { formula, result });
+    }
+  };
 
   /** A band row carrying a tier's — or the sheet's — subtotals, by column. */
   const subtotalRow = (
@@ -349,7 +466,7 @@ function buildWorkbook(
     totals: typeof report.totals,
     height?: number,
   ) => {
-    const values: (string | number | null)[] = rollCols.map(() => null);
+    const values: SheetValue[] = rollCols.map(() => null);
     values[0] = label;
     if (rollCols.length > 1) {
       values[1] = `${totals.deals} ${totals.deals === 1 ? "deal" : "deals"}`;
@@ -362,14 +479,15 @@ function buildWorkbook(
     put(PO_SOURCE_KEY, `${totals.dealsWithPo}/${totals.deals} entered`);
     put("sponsorshipValue", totals.sponsorship);
     put(ALLIANCE_FEE_KEY, totals.allianceFee);
-    put(LG_MARGIN_KEY, totals.lgMargin);
     put("totalProjectRevenue", totals.revenue);
     put("totalProjectMargin", totals.ancMargin);
     return bandRow(roll, rollCols, values, { fill: BAND_STRONG, height });
   };
 
+  const tierBands: number[] = [];
   for (const tier of report.tiers) {
-    subtotalRow(tier.label, tier.totals);
+    const band = subtotalRow(tier.label, tier.totals);
+    tierBands.push(band.number);
 
     tier.rows.forEach((r, i) => {
       const raw = (r as unknown as { raw?: Record<string, any> }).raw || {};
@@ -381,10 +499,15 @@ function buildWorkbook(
         cell.note = "No Technology Vendor PO Value entered — this is Revenue — Total Project.";
         cell.font = { name: FONT, size: 10, color: { argb: INK_SOFT }, italic: true };
       }
+      if (sponsorship) applySponsorshipFormula(roll, row, sponsorship, r);
     });
+
+    // The band sits above its rows, so its range starts on the next line.
+    bandSponsorship(band, tier.rows, { from: band.number + 1, to: band.number + tier.rows.length });
   }
 
-  subtotalRow("TOTAL", report.totals, 22);
+  const total = subtotalRow("TOTAL", report.totals, 22);
+  bandSponsorship(total, report.rows, tierBands);
 
   // ---------------------------------------------------------------- sheet 2
   const fy = wb.addWorksheet("By Fiscal Year");
@@ -401,7 +524,6 @@ function buildWorkbook(
     { header: "Total Revenue", width: 16, money: true },
     { header: "Cost", width: 15, money: true },
     { header: `Alliance ${pct(rate)}`, width: 15, money: true },
-    { header: "LG Margin", width: 15, money: true },
   ];
 
   const fyHead = writeSheetHeader(fy, {
@@ -421,7 +543,7 @@ function buildWorkbook(
       `FY${r.year}`,
       r.openRevenue, r.openMargin, r.wonRevenue, r.wonMargin,
       r.openSponsorship, r.wonSponsorship,
-      r.revenue, r.cost, r.allianceFee, r.lgMargin,
+      r.revenue, r.cost, r.allianceFee,
     ], i);
   });
   const fyTotal = (pick: (r: (typeof fyRows)[number]) => number) =>
@@ -432,11 +554,11 @@ function buildWorkbook(
     fyTotal((r) => r.wonRevenue), fyTotal((r) => r.wonMargin),
     fyTotal((r) => r.openSponsorship), fyTotal((r) => r.wonSponsorship),
     fyTotal((r) => r.revenue), fyTotal((r) => r.cost),
-    fyTotal((r) => r.allianceFee), fyTotal((r) => r.lgMargin),
+    fyTotal((r) => r.allianceFee),
   ], { fill: BAND_STRONG, height: 22 });
 
   // Two supporting breakdowns beneath the year table.
-  const sub = (title: string, rows: { label: string; deals: number; po: number; lgMargin: number }[]) => {
+  const sub = (title: string, rows: { label: string; deals: number; po: number }[]) => {
     fy.addRow({});
     const h = fy.addRow({});
     h.getCell(1 + GUTTER).value = title;
@@ -446,7 +568,6 @@ function buildWorkbook(
       { header: "", width: 24 },
       { header: "Deals", width: 10, align: "right" },
       { header: "PO Value", width: 16, money: true },
-      { header: "LG Margin", width: 15, money: true },
     ];
     const hr = fy.addRow({});
     cols.forEach((c, i) => {
@@ -456,7 +577,7 @@ function buildWorkbook(
       cell.alignment = { horizontal: c.align || (c.money ? "right" : "left") };
       cell.border = { bottom: { style: "thin", color: { argb: LINE } } };
     });
-    rows.forEach((r, i) => dataRow(fy, cols, [r.label, r.deals, r.po, r.lgMargin], i));
+    rows.forEach((r, i) => dataRow(fy, cols, [r.label, r.deals, r.po], i));
   };
   sub("By LG business unit", report.byBusinessUnit);
   sub("By league", report.byLeague);
@@ -466,29 +587,40 @@ function buildWorkbook(
   detail.properties.defaultRowHeight = 16;
 
   // The Deal Detail sheet mirrors the saved view: his columns, his order. The
-  // report's own arithmetic (the alliance fee and LG margin) is appended, since
-  // those are calculated here rather than stored on the opportunity.
+  // one figure the report calculates rather than stores — the alliance fee —
+  // follows the PO it is a percentage of, the same as on the rollup.
   const mirrored = mirror.columns;
-  const detailCols: ColumnSpec[] = mirrored.length
-    ? [
-        { header: "Opp #", width: 11 },
-        ...mirrored.map((c) => ({
-          header: c.label,
-          width: c.width,
-          money: c.money,
-          wrap: c.wrap,
-        })),
-        { header: `Alliance ${pct(rate)}`, width: 14, money: true },
-        { header: "LG Margin", width: 14, money: true },
-      ]
+  const detailLayout: { key: string; column?: MirrorColumn; spec: ColumnSpec }[] = [];
+  if (mirrored.length) {
+    const feeColumn = {
+      key: ALLIANCE_FEE_KEY,
+      spec: { header: `Alliance ${pct(rate)}`, width: 14, money: true },
+    };
+    detailLayout.push({ key: "opportunityNumber", spec: { header: "Opp #", width: 11 } });
+    for (const c of mirrored) {
+      detailLayout.push({
+        key: c.fieldName,
+        column: c,
+        spec: { header: c.label, width: c.width, money: c.money, wrap: c.wrap },
+      });
+      if (c.fieldName === PO_FIELD) detailLayout.push(feeColumn);
+    }
+    if (!mirrored.some((c) => c.fieldName === PO_FIELD)) detailLayout.push(feeColumn);
+  }
+  const detailCols: ColumnSpec[] = detailLayout.length
+    ? detailLayout.map((c) => c.spec)
     : LEGACY_DETAIL_COLS(rate);
+  const detailSponsorship = sponsorshipLayoutFor(detailLayout.map((c) => c.key));
 
   const dHead = writeSheetHeader(detail, {
     title: "LG Alliance — Deal Detail",
     subtitle: `As of ${asOf} · ${scopeLabel} · ${report.rows.length} deals`,
     note: mirrored.length
       ? "Mirrors the LG Alliance Detail list in the CRM — the same columns, in the same order, so anything added there lands here. " +
-        `Alliance ${pct(rate)} and LG Margin are calculated by this report.` +
+        `Alliance ${pct(rate)} is calculated by this report from the PO beside it.` +
+        (detailSponsorship
+          ? " Sponsorship Value adds up its fiscal year columns as a live formula."
+          : "") +
         (mirror.skipped.length
           ? ` Not carried across: ${mirror.skipped.join(", ")}.`
           : "")
@@ -498,15 +630,15 @@ function buildWorkbook(
 
   report.rows.forEach((r, i) => {
     const raw = (r as unknown as { raw?: Record<string, any> }).raw || {};
-    const values = mirrored.length
-      ? [
-          r.opportunityNumber || "",
-          ...mirrored.map((c) => cellValue(c, raw, fmtDate)),
-          r.allianceFee,
-          r.lgMargin,
-        ]
+    const values: SheetValue[] = detailLayout.length
+      ? detailLayout.map((c) => {
+          if (c.key === "opportunityNumber") return r.opportunityNumber || "";
+          if (c.key === ALLIANCE_FEE_KEY) return r.allianceFee;
+          return c.column ? cellValue(c.column, raw, fmtDate) : "";
+        })
       : LEGACY_DETAIL_VALUES(r);
-    dataRow(detail, detailCols, values, i);
+    const row = dataRow(detail, detailCols, values, i);
+    if (detailSponsorship) applySponsorshipFormula(detail, row, detailSponsorship, r);
   });
 
   detail.autoFilter = {
@@ -556,8 +688,6 @@ function rollupValues(
         return r.poBasis === "po" ? "Entered" : "Estimated";
       case ALLIANCE_FEE_KEY:
         return r.allianceFee;
-      case LG_MARGIN_KEY:
-        return r.lgMargin;
       // The CRM shows the name alone; the sheet keeps the opportunity number
       // with it so a row can be looked up without opening the record.
       case "name":
@@ -583,15 +713,14 @@ function LEGACY_ROLLUP_LAYOUT(rate: number): RollupColumn[] {
     { key: "lgBusinessUnits", spec: { header: "LG Business Units", width: 22, wrap: true } },
     { key: PO_FIELD, spec: { header: "Technology Vendor PO Value", width: 19, money: true } },
     { key: PO_SOURCE_KEY, spec: { header: "PO Source", width: 13, align: "center" } },
-    { key: "sponsorshipValue", spec: { header: "Sponsorship Value", width: 17, money: true } },
     { key: ALLIANCE_FEE_KEY, spec: { header: `Alliance ${pct(rate)}`, width: 14, money: true } },
-    { key: LG_MARGIN_KEY, spec: { header: "LG Margin", width: 14, money: true } },
+    { key: "sponsorshipValue", spec: { header: "Sponsorship Value", width: 17, money: true } },
     { key: "closeDate", spec: { header: "Award Date", width: 14 } },
     { key: "totalProjectRevenue", spec: { header: "Revenue — Total Project", width: 18, money: true } },
     { key: "totalProjectMargin", spec: { header: "Margin — Total Project", width: 18, money: true } },
     { key: "league", spec: { header: "Account Type / League", width: 16 } },
     { key: "lgDescription", spec: { header: "LG Description", width: 42, wrap: true } },
-    { key: "lgNotes", spec: { header: "LG Notes", width: 42, wrap: true } },
+    { key: "lgNotes", spec: { header: "Internal Notes", width: 42, wrap: true } },
   ];
 }
 
@@ -612,14 +741,13 @@ function LEGACY_DETAIL_COLS(rate: number): ColumnSpec[] {
     { header: "League", width: 14 },
     { header: "Award Date", width: 14 },
     { header: "Technology Vendor PO Value", width: 18, money: true },
+    { header: `Alliance ${pct(rate)}`, width: 14, money: true },
     { header: "Sponsorship Value", width: 16, money: true },
     { header: "Revenue — Total Project", width: 17, money: true },
     { header: "Margin — Total Project", width: 17, money: true },
-    { header: `Alliance ${pct(rate)}`, width: 14, money: true },
-    { header: "LG Margin", width: 14, money: true },
     { header: "LG Business Units", width: 22, wrap: true },
     { header: "Description", width: 42, wrap: true },
-    { header: "Notes", width: 42, wrap: true },
+    { header: "Internal Notes", width: 42, wrap: true },
   ];
 }
 
@@ -635,11 +763,10 @@ function LEGACY_DETAIL_VALUES(r: LgAllianceReport["rows"][number]): (string | nu
     r.league ? humanizeStatus(r.league) : "",
     fmtDate(r.awardDate),
     r.poValue,
+    r.allianceFee,
     r.sponsorshipValue,
     r.revenue,
     r.margin,
-    r.allianceFee,
-    r.lgMargin,
     r.businessUnits.map(businessUnitLabel).join(", "),
     r.description || "",
     r.notes || "",

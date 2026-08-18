@@ -173,6 +173,10 @@ const TIER_LABELS: Record<string, { label: string; rank: number }> = {
   TIER_1: { label: "Tier 1", rank: 1 },
   TIER_2: { label: "Tier 2", rank: 2 },
   TIER_3: { label: "Tier 3", rank: 3 },
+  // Jireh, 2026-08-18: a deal can be a live LG deal and carry no sponsorship at
+  // all, which is a decision — not the same thing as nobody having tiered it
+  // yet. It bands below the three tiers and above the untiered rows.
+  NO_SPONSORSHIP: { label: "No Sponsorship", rank: 4 },
 };
 
 const UNTIERED = { label: "Not yet tiered", rank: 9 };

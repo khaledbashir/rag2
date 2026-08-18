@@ -4,6 +4,7 @@ import {
   cellValue,
   enumLabel,
   isRenderable,
+  isSponsorshipYearField,
   rollupLayout,
   selectionFor,
   toMirrorColumn,
@@ -122,7 +123,7 @@ describe("column layout", () => {
   });
 });
 
-describe("rollup layout (Jireh, 2026-08-17)", () => {
+describe("rollup layout (Jireh, 2026-08-17, revised 2026-08-18)", () => {
   // The LG Alliance Detail list, in the order he keeps it.
   const view = [
     col("name", "TEXT", "Opportunity Name"),
@@ -134,7 +135,7 @@ describe("rollup layout (Jireh, 2026-08-17)", () => {
     col("sponsorshipValue", "CURRENCY", "Sponsorship Value"),
     col("sponsorship2031", "CURRENCY", "Sponsorship FY2031"),
     col("totalProjectRevenue", "CURRENCY", "Revenue — Total Project"),
-    col("lgNotes", "TEXT", "LG Notes"),
+    col("lgNotes", "TEXT", "Internal Notes"),
   ].map(toMirrorColumn);
 
   const keys = (drop = new Set<string>()) =>
@@ -149,13 +150,28 @@ describe("rollup layout (Jireh, 2026-08-17)", () => {
       "Opportunity Status",
       "Technology Vendor PO Value",
       "PO Source",
-      "Sponsorship Value",
       "Alliance 8%",
-      "LG Margin",
+      "Sponsorship Value",
       "Sponsorship FY2031",
       "Revenue — Total Project",
-      "LG Notes",
+      "Internal Notes",
     ]);
+  });
+
+  // Jireh, 2026-08-18: "the alliance 8% column can be after the tech vendor PO
+  // column" — the fee is a percentage of the PO, so it reads beside it.
+  it("puts the alliance fee straight after the PO block", () => {
+    const keys = rollupLayout(view, "8%").map((c) => c.key);
+    const po = keys.indexOf("poValue");
+    expect(keys.slice(po, po + 3)).toEqual(["poValue", "poSource", "allianceFee"]);
+    expect(keys.indexOf("allianceFee")).toBeLessThan(keys.indexOf("sponsorshipValue"));
+  });
+
+  // Removed at his request the same day; the report still calculates it for
+  // the JSON payload, it is simply not a column any more.
+  it("carries no LG Margin column", () => {
+    expect(rollupLayout(view, "8%").map((c) => c.spec.header)).not.toContain("LG Margin");
+    expect(rollupLayout(view, "8%").map((c) => c.key)).not.toContain("lgMargin");
   });
 
   // Every row of an LG report names LG as the vendor.
@@ -174,15 +190,15 @@ describe("rollup layout (Jireh, 2026-08-17)", () => {
     expect(layout[0].key).toBe("poValue");
     expect(layout[0].spec.header).toBe("Technology Vendor PO Value");
     expect(layout[1].key).toBe("poSource");
-    // Sponsorship is still there, so the calculated pair stays beside it.
+    expect(layout[2].key).toBe("allianceFee");
     expect(layout.map((c) => c.key).filter((k) => k === "allianceFee")).toHaveLength(1);
   });
 
-  it("keeps the calculated pair with the PO when there is no sponsorship column", () => {
+  it("keeps the fee with the PO when there is no sponsorship column", () => {
     const noSponsorship = view.filter((c) => c.fieldName !== "sponsorshipValue");
     expect(rollupLayout(noSponsorship, "8%").map((c) => c.key)).toEqual([
       "name", "company", "lgTier", "bidStatus",
-      "poValue", "poSource", "allianceFee", "lgMargin",
+      "poValue", "poSource", "allianceFee",
       "sponsorship2031", "totalProjectRevenue", "lgNotes",
     ]);
   });
@@ -191,8 +207,8 @@ describe("rollup layout (Jireh, 2026-08-17)", () => {
     const bare = view.filter(
       (c) => c.fieldName !== "poValue" && c.fieldName !== "sponsorshipValue",
     );
-    expect(rollupLayout(bare, "8%").map((c) => c.key).slice(0, 4)).toEqual([
-      "poValue", "poSource", "allianceFee", "lgMargin",
+    expect(rollupLayout(bare, "8%").map((c) => c.key).slice(0, 3)).toEqual([
+      "poValue", "poSource", "allianceFee",
     ]);
   });
 
@@ -203,10 +219,21 @@ describe("rollup layout (Jireh, 2026-08-17)", () => {
 
   it("keeps the money columns formatted as money", () => {
     const layout = rollupLayout(view, "8%");
-    for (const key of ["poValue", "allianceFee", "lgMargin", "sponsorshipValue"]) {
+    for (const key of ["poValue", "allianceFee", "sponsorshipValue"]) {
       expect(layout.find((c) => c.key === key)!.spec.money).toBe(true);
     }
     expect(layout.find((c) => c.key === "poSource")!.spec.money).toBeFalsy();
+  });
+});
+
+describe("sponsorship year fields", () => {
+  // The Sponsorship Value column sums these, so the sheet has to know which
+  // mirrored columns are the per-year ones.
+  it("recognises a per-year sponsorship field and nothing else", () => {
+    expect(isSponsorshipYearField("sponsorship2027")).toBe(true);
+    expect(isSponsorshipYearField("sponsorship2032")).toBe(true);
+    expect(isSponsorshipYearField("sponsorshipValue")).toBe(false);
+    expect(isSponsorshipYearField("revenue2027")).toBe(false);
   });
 });
 

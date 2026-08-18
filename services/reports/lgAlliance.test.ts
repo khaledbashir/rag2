@@ -135,6 +135,20 @@ describe("tier grouping", () => {
   it("reports how much of the sheet still needs tiering", () => {
     expect(buildLgAllianceReport(deals).rowsUntiered).toBe(1);
   });
+
+  // Jireh, 2026-08-18 — a new LG Tier option. A deal marked No Sponsorship is
+  // a decision, so it bands below the three tiers but above the rows nobody
+  // has tiered yet, and does not count as untiered.
+  it("bands No Sponsorship deals after Tier 3 and before the untiered", () => {
+    const report = buildLgAllianceReport([
+      ...deals,
+      deal({ id: "e", tier: "NO_SPONSORSHIP", account: "Bears", revenue: 2_000_000, margin: 300_000 }),
+    ]);
+    expect(report.tiers.map((t) => t.label)).toEqual([
+      "Tier 1", "Tier 3", "No Sponsorship", "Not yet tiered",
+    ]);
+    expect(report.rowsUntiered).toBe(1);
+  });
 });
 
 describe("fiscal year phasing", () => {
