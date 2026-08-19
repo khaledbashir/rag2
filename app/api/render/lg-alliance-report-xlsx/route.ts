@@ -454,8 +454,17 @@ function buildWorkbook(
     source: { from: number; to: number } | number[],
   ) => {
     if (Array.isArray(source) && !source.length) return;
+    // A tier with no deals yet still gets its band — and a range that would run
+    // backwards (`H9:H8`) is not an empty sum in Excel, it silently swallows the
+    // band's own row and reports the tier above it. An empty section is a hard
+    // zero instead.
+    const isEmptyBlock = !Array.isArray(source) && source.to < source.from;
     layout.forEach((col, index) => {
       if (!col.spec.money) return;
+      if (isEmptyBlock) {
+        money(band.getCell(index + 1 + GUTTER), 0);
+        return;
+      }
       const letter = columnLetter(roll, index);
       const formula = Array.isArray(source)
         ? source.map((n) => `${letter}${n}`).join("+")

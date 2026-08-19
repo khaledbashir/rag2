@@ -359,6 +359,27 @@ export function buildLgAllianceReport(
   );
 
   const tierMap = new Map<string, TierGroup>();
+
+  // Jireh, 2026-08-18: "add a section for the LG Tiers, Needs Review… as well
+  // as another section called Additional Technology Opportunities from
+  // Sponsorship." Both were added to the CRM field the same afternoon and no
+  // deal carries either yet — so if a band only appeared once a deal landed in
+  // it, he would open the export, find no section, and have nowhere to file the
+  // first one. Every tier the CRM offers gets its band, empty or not, in the
+  // field's own order.
+  //
+  // "Not yet tiered" is not seeded: it is the absence of a decision rather than
+  // one of the choices, so it appears only when rows are actually sitting there.
+  for (const [key, meta] of Object.entries(TIER_LABELS)) {
+    tierMap.set(meta.label, {
+      tier: key,
+      label: meta.label,
+      rank: meta.rank,
+      rows: [],
+      totals: emptyTotals(),
+    });
+  }
+
   const totals = emptyTotals();
   const open = emptyTotals();
   const won = emptyTotals();

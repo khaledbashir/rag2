@@ -112,11 +112,37 @@ describe("tier grouping", () => {
     deal({ id: "d", tier: null, account: "Unknown", revenue: 500_000, margin: 100_000 }),
   ];
 
-  it("orders tiers 1 → 3 and puts untiered deals last", () => {
+  // Jireh, 2026-08-18: every LG Tier the CRM offers is a section on the sheet,
+  // whether or not a deal carries it yet — he asked for Needs Review and the
+  // sponsorship-led technology section before tagging a single deal into either,
+  // and a section he cannot see is one he cannot start filing into.
+  it("bands every tier the CRM offers, in the field's order, untiered last", () => {
     const report = buildLgAllianceReport(deals);
     expect(report.tiers.map((t) => t.label)).toEqual([
-      "Tier 1", "Tier 3", "Not yet tiered",
+      "Tier 1",
+      "Tier 2",
+      "Tier 3",
+      "No Sponsorship",
+      "Needs Review",
+      "Additional Technology Opportunities from Sponsorship",
+      "Not yet tiered",
     ]);
+  });
+
+  it("leaves an unused section empty rather than dropping it", () => {
+    const report = buildLgAllianceReport(deals);
+    const needsReview = report.tiers.find((t) => t.label === "Needs Review")!;
+    expect(needsReview.rows).toEqual([]);
+    expect(needsReview.totals.deals).toBe(0);
+    expect(needsReview.totals.po).toBe(0);
+    expect(needsReview.totals.allianceFee).toBe(0);
+  });
+
+  it("does not invent a Not yet tiered section when every deal is tiered", () => {
+    const tiered = deals.filter((d) => d.tier);
+    const report = buildLgAllianceReport(tiered);
+    expect(report.tiers.map((t) => t.label)).not.toContain("Not yet tiered");
+    expect(report.rowsUntiered).toBe(0);
   });
 
   it("sorts deals inside a tier by size", () => {
@@ -145,8 +171,16 @@ describe("tier grouping", () => {
       deal({ id: "e", tier: "NO_SPONSORSHIP", account: "Bears", revenue: 2_000_000, margin: 300_000 }),
     ]);
     expect(report.tiers.map((t) => t.label)).toEqual([
-      "Tier 1", "Tier 3", "No Sponsorship", "Not yet tiered",
+      "Tier 1",
+      "Tier 2",
+      "Tier 3",
+      "No Sponsorship",
+      "Needs Review",
+      "Additional Technology Opportunities from Sponsorship",
+      "Not yet tiered",
     ]);
+    const noSponsorship = report.tiers.find((t) => t.label === "No Sponsorship")!;
+    expect(noSponsorship.totals.deals).toBe(1);
     expect(report.rowsUntiered).toBe(1);
   });
 
@@ -166,12 +200,19 @@ describe("tier grouping", () => {
     ]);
     expect(report.tiers.map((t) => t.label)).toEqual([
       "Tier 1",
+      "Tier 2",
       "Tier 3",
       "No Sponsorship",
       "Needs Review",
       "Additional Technology Opportunities from Sponsorship",
       "Not yet tiered",
     ]);
+    expect(report.tiers.find((t) => t.label === "Needs Review")!.totals.deals).toBe(1);
+    expect(
+      report.tiers.find(
+        (t) => t.label === "Additional Technology Opportunities from Sponsorship",
+      )!.totals.deals,
+    ).toBe(1);
     expect(report.rowsUntiered).toBe(1);
   });
 });
