@@ -23,6 +23,18 @@ export function buildDocumentConfig(d: any) {
     showCompanyFooter: d.showCompanyFooter,
     showPaymentTerms: d.showPaymentTerms,
     showTermsAndConditions: d.showTermsAndConditions,
+    // General Terms exhibit composition. The toggles and the warranty term were
+    // read by the template but never persisted, so the exhibit reverted to its
+    // defaults on every reload (Natalia 2026-08-20 — a warranty period she set
+    // survived the export she made in that session and nothing after it).
+    tcIncludeLaborWarranty: d.tcIncludeLaborWarranty,
+    tcIncludeMaterialsWarranty: d.tcIncludeMaterialsWarranty,
+    tcIncludeCms: d.tcIncludeCms,
+    tcIncludeGraphics: d.tcIncludeGraphics,
+    tcWarrantyYears: d.tcWarrantyYears,
+    tcLaborWarrantyYears: d.tcLaborWarrantyYears,
+    tcMaterialsWarrantyYears: d.tcMaterialsWarrantyYears,
+    generalTermsBodyOverride: d.generalTermsBodyOverride,
     showSubstantialCompletionDate: d.showSubstantialCompletionDate,
     showSignatureBlock: d.showSignatureBlock,
     showExhibitA: d.showExhibitA,

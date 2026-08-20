@@ -115,6 +115,18 @@ export function mapDbProposalToFormSchema(dbProject: any) {
             showCompanyFooter: cfg.showCompanyFooter ?? true,
             showPaymentTerms: cfg.showPaymentTerms ?? false,
             showTermsAndConditions: cfg.showTermsAndConditions ?? documentMode === "CONTRACT",
+            // General Terms exhibit composition — same defaults the template
+            // applies, so a proposal saved before these were persisted reopens
+            // looking exactly as it did.
+            tcIncludeLaborWarranty: cfg.tcIncludeLaborWarranty ?? true,
+            tcIncludeMaterialsWarranty: cfg.tcIncludeMaterialsWarranty ?? true,
+            tcIncludeCms: cfg.tcIncludeCms ?? false,
+            tcIncludeGraphics: cfg.tcIncludeGraphics ?? false,
+            tcWarrantyYears: cfg.tcWarrantyYears ?? 5,
+            // Left undefined on purpose: unset means "use the shared term".
+            tcLaborWarrantyYears: cfg.tcLaborWarrantyYears ?? undefined,
+            tcMaterialsWarrantyYears: cfg.tcMaterialsWarrantyYears ?? undefined,
+            generalTermsBodyOverride: cfg.generalTermsBodyOverride ?? undefined,
             showSubstantialCompletionDate: cfg.showSubstantialCompletionDate ?? documentMode === "CONTRACT",
             showSignatureBlock: cfg.showSignatureBlock ?? false,
             showAssumptions: false,

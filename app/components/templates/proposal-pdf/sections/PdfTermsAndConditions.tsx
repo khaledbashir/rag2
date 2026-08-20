@@ -22,8 +22,21 @@ import React from "react";
 export interface TermsAndConditionsConfig {
     /** Purchaser entity name (e.g., "Los Angeles Dodgers") */
     purchaserName: string;
-    /** Warranty duration in years (default: 5) */
+    /**
+     * Warranty duration in years (default: 5). Applies to both the labor and
+     * the materials warranty unless one of them is given its own term below.
+     */
     warrantyYears?: number;
+    /**
+     * Labor warranty term, when it differs from the materials term.
+     * Natalia Kovaleva, 2026-08-20: the two warranties are frequently sold on
+     * different terms (labor 1 year, parts 5), and the exhibit could only ever
+     * state one number. Unset falls back to `warrantyYears`, so every contract
+     * written before this renders exactly as it did.
+     */
+    laborWarrantyYears?: number;
+    /** Materials & equipment warranty term. Unset falls back to `warrantyYears`. */
+    materialsWarrantyYears?: number;
     /** Include labor warranty section */
     includeLaborWarranty?: boolean;
     /** Include materials warranty (parts + equipment) */
@@ -48,6 +61,8 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
     const {
         purchaserName = "Purchaser",
         warrantyYears = 5,
+        laborWarrantyYears,
+        materialsWarrantyYears,
         includeLaborWarranty = true,
         includeMaterialsWarranty = true,
         includeCms = false,
@@ -56,6 +71,11 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
         bodyOverride,
     } = config;
 
+    // A per-warranty term wins; otherwise both read the single shared term, so
+    // documents written before the split are unchanged.
+    const laborYears = laborWarrantyYears ?? warrantyYears;
+    const materialsYears = materialsWarrantyYears ?? warrantyYears;
+
     let sectionNum = 1;
 
     const overrideText = (bodyOverride || "").trim();
@@ -63,7 +83,7 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
     return (
         <div data-preview-section="terms-and-conditions" className="px-6">
             {/* Exhibit Header — "General Terms" (renamed per Natalia 1C). */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', breakAfter: "avoid", pageBreakAfter: "avoid" }}>
                 <div style={{ width: '3px', height: '14px', borderRadius: '1px', background: colors.primary, flexShrink: 0 }} />
                 <span className="text-[14px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>
                     Exhibit {exhibitLetter} — General Terms
@@ -77,7 +97,10 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
                     {renderMarkdown(overrideText)}
                 </div>
             ) : (
-            <div className="space-y-3 text-[12px] leading-relaxed" style={{ color: colors.text }}>
+            /* Natalia 2026-08-20: the last Miscellaneous bullet was falling to a
+               page of its own. Section spacing and body leading tightened just
+               enough for the exhibit to close on one page. */
+            <div className="space-y-2 text-[12px]" style={{ color: colors.text, lineHeight: 1.45 }}>
                 {/* Section 1: Intellectual Property */}
                 <Section num={sectionNum++} title="Intellectual Property" colors={colors}>
                     <p>
@@ -110,13 +133,13 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
                 {/* Section 4: Warranty */}
                 <Section num={sectionNum++} title="Warranty" colors={colors}>
                     {includeLaborWarranty && (
-                        <div className="mb-2">
-                            <p className="font-semibold text-[11px] uppercase tracking-wide mb-1" style={{ color: colors.textMuted }}>
+                        <div className="mb-1.5">
+                            <p className="font-semibold text-[11px] uppercase tracking-wide mb-0.5" style={{ color: colors.textMuted }}>
                                 (a) Labor Warranty
                             </p>
                             <p>
                                 ANC warrants that the installation labor and workmanship shall be free from
-                                defects for a period of {warrantyYears} year{warrantyYears !== 1 ? "s" : ""} from
+                                defects for a period of {laborYears} year{laborYears !== 1 ? "s" : ""} from
                                 the date of installation completion. During this warranty period, ANC shall
                                 repair or correct, at its own expense, any defects in workmanship within
                                 forty-eight (48) hours of receiving written notice from {purchaserName}.
@@ -125,13 +148,13 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
                     )}
 
                     {includeMaterialsWarranty && (
-                        <div className="mb-2">
-                            <p className="font-semibold text-[11px] uppercase tracking-wide mb-1" style={{ color: colors.textMuted }}>
+                        <div className="mb-1.5">
+                            <p className="font-semibold text-[11px] uppercase tracking-wide mb-0.5" style={{ color: colors.textMuted }}>
                                 {includeLaborWarranty ? "(b)" : "(a)"} Materials &amp; Equipment Warranty
                             </p>
                             <p>
                                 ANC warrants that all equipment and materials furnished shall be free from
-                                defects in materials for a period of {warrantyYears} year{warrantyYears !== 1 ? "s" : ""} from
+                                defects in materials for a period of {materialsYears} year{materialsYears !== 1 ? "s" : ""} from
                                 the date of installation completion. ANC shall, at its option, repair or
                                 replace any defective parts or components at no additional cost
                                 to {purchaserName}.
@@ -139,8 +162,8 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
                         </div>
                     )}
 
-                    <div className="mb-2">
-                        <p className="font-semibold text-[11px] uppercase tracking-wide mb-1" style={{ color: colors.textMuted }}>
+                    <div className="mb-1.5">
+                        <p className="font-semibold text-[11px] uppercase tracking-wide mb-0.5" style={{ color: colors.textMuted }}>
                             {includeLaborWarranty && includeMaterialsWarranty ? "(c)" : includeLaborWarranty || includeMaterialsWarranty ? "(b)" : "(a)"} Exclusions
                         </p>
                         <p>
@@ -153,7 +176,7 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
                     </div>
 
                     <div>
-                        <p className="font-semibold text-[11px] uppercase tracking-wide mb-1" style={{ color: colors.textMuted }}>
+                        <p className="font-semibold text-[11px] uppercase tracking-wide mb-0.5" style={{ color: colors.textMuted }}>
                             {includeLaborWarranty && includeMaterialsWarranty ? "(d)" : includeLaborWarranty || includeMaterialsWarranty ? "(c)" : "(b)"} Limitation
                         </p>
                         <p>
@@ -267,14 +290,19 @@ function Section({
     children: React.ReactNode;
 }) {
     return (
-        <div className="break-inside-avoid">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+        // The Tailwind class alone is not enough here: this PDF pipeline loads
+        // Tailwind from a CDN that can fail, so a class-only print rule is
+        // silently lost and a clause splits across the page break. The inline
+        // style is what actually holds (same lesson as the pricing tables,
+        // 2026-07-28).
+        <div className="break-inside-avoid" style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px', breakAfter: "avoid", pageBreakAfter: "avoid" }}>
                 <div style={{ width: '3px', height: '12px', borderRadius: '1px', background: colors.primary, flexShrink: 0 }} />
                 <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: colors.text }}>
                     {num}. {title}
                 </span>
             </div>
-            <div className="pl-3 text-[12px] leading-relaxed">
+            <div className="pl-3 text-[12px]" style={{ lineHeight: 1.45 }}>
                 {children}
             </div>
         </div>

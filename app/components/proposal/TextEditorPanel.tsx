@@ -41,6 +41,11 @@ export function TextEditorPanel() {
     const tcIncludeCms = watch("details.tcIncludeCms") ?? false;
     const tcIncludeGraphics = watch("details.tcIncludeGraphics") ?? false;
     const tcWarrantyYears = watch("details.tcWarrantyYears") ?? 5;
+    // Labor and materials carry their own terms (Natalia 2026-08-20). Either
+    // one left unset reads the shared Warranty Period, so an existing contract
+    // keeps the single number it was written with.
+    const tcLaborWarrantyYears = watch("details.tcLaborWarrantyYears") ?? tcWarrantyYears;
+    const tcMaterialsWarrantyYears = watch("details.tcMaterialsWarrantyYears") ?? tcWarrantyYears;
 
     const hasContent = introText.length > 0 || paymentTerms.length > 0 || additionalNotes.length > 0 || purchaserLegalName.length > 0 || signatureLegalText.length > 0 || substantialCompletionDate.length > 0;
 
@@ -268,21 +273,50 @@ export function TextEditorPanel() {
                                 </label>
                             </div>
 
-                            <div className="flex items-center gap-3">
-                                <Label htmlFor="tcWarrantyYears" className="text-xs text-foreground whitespace-nowrap">
-                                    Warranty Period
-                                </Label>
-                                <Input
-                                    id="tcWarrantyYears"
-                                    type="number"
-                                    min={1}
-                                    max={25}
-                                    value={tcWarrantyYears}
-                                    onChange={(e) => setValue("details.tcWarrantyYears", parseInt(e.target.value) || 5, { shouldDirty: true })}
-                                    className="w-20 h-8 text-xs"
-                                />
-                                <span className="text-[10px] text-muted-foreground">years</span>
-                            </div>
+                            {/* Warranty periods — labor and materials are sold on
+                                different terms often enough that one shared number
+                                could not express the deal (Natalia 2026-08-20). */}
+                            {(tcIncludeLaborWarranty || tcIncludeMaterialsWarranty) && (
+                                <div className="space-y-2">
+                                    <Label className="text-xs text-foreground">Warranty Periods</Label>
+
+                                    {tcIncludeLaborWarranty && (
+                                        <div className="flex items-center gap-3">
+                                            <Label htmlFor="tcLaborWarrantyYears" className="text-xs text-muted-foreground w-32 shrink-0">
+                                                Labor
+                                            </Label>
+                                            <Input
+                                                id="tcLaborWarrantyYears"
+                                                type="number"
+                                                min={1}
+                                                max={25}
+                                                value={tcLaborWarrantyYears}
+                                                onChange={(e) => setValue("details.tcLaborWarrantyYears", parseInt(e.target.value) || 1, { shouldDirty: true })}
+                                                className="w-20 h-8 text-xs"
+                                            />
+                                            <span className="text-[10px] text-muted-foreground">years</span>
+                                        </div>
+                                    )}
+
+                                    {tcIncludeMaterialsWarranty && (
+                                        <div className="flex items-center gap-3">
+                                            <Label htmlFor="tcMaterialsWarrantyYears" className="text-xs text-muted-foreground w-32 shrink-0">
+                                                Materials &amp; Equipment
+                                            </Label>
+                                            <Input
+                                                id="tcMaterialsWarrantyYears"
+                                                type="number"
+                                                min={1}
+                                                max={25}
+                                                value={tcMaterialsWarrantyYears}
+                                                onChange={(e) => setValue("details.tcMaterialsWarrantyYears", parseInt(e.target.value) || 1, { shouldDirty: true })}
+                                                className="w-20 h-8 text-xs"
+                                            />
+                                            <span className="text-[10px] text-muted-foreground">years</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
                 </CardContent>

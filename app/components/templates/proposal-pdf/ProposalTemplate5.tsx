@@ -99,6 +99,11 @@ const ProposalTemplate5 = (data: ProposalTemplate5Props) => {
     const tcConfig = (isLOI && showTc) ? {
         purchaserName: (details as any)?.purchaserLegalName || receiver?.name || "Purchaser",
         warrantyYears: (details as any)?.tcWarrantyYears ?? 5,
+        // Labor and materials can carry different terms (Natalia 2026-08-20).
+        // Unset means "use the shared term", which is how every contract
+        // written before the split still renders.
+        laborWarrantyYears: (details as any)?.tcLaborWarrantyYears ?? undefined,
+        materialsWarrantyYears: (details as any)?.tcMaterialsWarrantyYears ?? undefined,
         includeLaborWarranty: (details as any)?.tcIncludeLaborWarranty ?? true,
         includeMaterialsWarranty: (details as any)?.tcIncludeMaterialsWarranty ?? true,
         includeCms: (details as any)?.tcIncludeCms ?? false,

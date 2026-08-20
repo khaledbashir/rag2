@@ -8,7 +8,10 @@ import { SERVICE_CONTRACT_PRESETS, getPreset } from "./presets";
 // Render PdfTermsAndConditions to a string to assert the byte-identical default
 // (no override) still contains every original clause. This is the CONTRACT-path
 // regression guard for the Priority-1 "General Terms" refactor.
-async function renderTcToString(override?: string): Promise<string> {
+async function renderTcToString(
+  override?: string,
+  extra: Record<string, unknown> = {},
+): Promise<string> {
   const React = await import("react");
   const { renderToStaticMarkup } = await import("react-dom/server");
   const Mod = (await import("../../app/components/templates/proposal-pdf/sections/PdfTermsAndConditions")).default;
@@ -27,6 +30,7 @@ async function renderTcToString(override?: string): Promise<string> {
         includeGraphics: false,
         exhibitLetter: "C",
         bodyOverride: override,
+        ...extra,
       },
     } as any)
   );
@@ -248,6 +252,42 @@ describe("CONTRACT General Terms (byte-identical default regression)", () => {
     expect(html).toContain("CONSEQUENTIAL, INCIDENTAL, OR SPECIAL DAMAGES");
     // Labor warranty default (5 years) text present
     expect(html).toContain("forty-eight (48) hours");
+  });
+
+  it("states one shared term on both warranties when no per-warranty term is set", async () => {
+    const html = await renderTcToString(undefined, { warrantyYears: 5 });
+    // Labor and materials both read the shared term — the pre-split behaviour.
+    expect(html).toContain("workmanship shall be free from defects for a period of 5 years");
+    expect(html).toContain("free from defects in materials for a period of 5 years");
+  });
+
+  it("states labor and materials terms independently when each is set", async () => {
+    const html = await renderTcToString(undefined, {
+      warrantyYears: 5,
+      laborWarrantyYears: 1,
+      materialsWarrantyYears: 10,
+    });
+    expect(html).toContain("workmanship shall be free from defects for a period of 1 year ");
+    expect(html).toContain("free from defects in materials for a period of 10 years");
+    // The shared term must not leak into either clause once both are set.
+    expect(html).not.toContain("for a period of 5 year");
+  });
+
+  it("falls back to the shared term for whichever warranty has none of its own", async () => {
+    const html = await renderTcToString(undefined, { warrantyYears: 5, laborWarrantyYears: 2 });
+    expect(html).toContain("workmanship shall be free from defects for a period of 2 years");
+    expect(html).toContain("free from defects in materials for a period of 5 years");
+  });
+
+  it("keeps every General Terms clause on one page — no clause may split", async () => {
+    const html = await renderTcToString();
+    // The Tailwind class alone is dropped when the CDN fails in this PDF
+    // pipeline, which is how a Miscellaneous bullet ended up alone on its own
+    // page (Natalia 2026-08-20). Every clause carries the inline rule too.
+    const inlineAvoids = html.match(/break-inside:\s*avoid/g) ?? [];
+    const clauseCount = (html.match(/class="break-inside-avoid"/g) ?? []).length;
+    expect(clauseCount).toBeGreaterThanOrEqual(7);
+    expect(inlineAvoids.length).toBeGreaterThanOrEqual(clauseCount);
   });
 
   it("renders the Markdown override in place of the fixed sections", async () => {

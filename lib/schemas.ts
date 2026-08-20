@@ -418,6 +418,18 @@ const ProposalDetailsSchema = z.object({
     })).optional().default({}),
     // CONTRACT path: editable General Terms override (seeded from contract-general-terms)
     generalTermsBodyOverride: z.string().optional(),
+    // CONTRACT path: General Terms exhibit composition. These were being set on
+    // the form and read by the template but never written into documentConfig,
+    // so every one of them reset on reload (found while splitting the warranty
+    // term, Natalia 2026-08-20).
+    tcIncludeLaborWarranty: z.boolean().optional(),
+    tcIncludeMaterialsWarranty: z.boolean().optional(),
+    tcIncludeCms: z.boolean().optional(),
+    tcIncludeGraphics: z.boolean().optional(),
+    /** Shared warranty term, and the per-warranty terms that override it. */
+    tcWarrantyYears: z.number().optional(),
+    tcLaborWarrantyYears: z.number().optional(),
+    tcMaterialsWarrantyYears: z.number().optional(),
     // Manual table composer: exact text only, with visual-only row roles.
     freeformTables: z.array(z.object({
         id: z.string(),
