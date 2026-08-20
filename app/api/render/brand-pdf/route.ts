@@ -365,6 +365,8 @@ export async function POST(req: NextRequest) {
         placedOnSheet: result.placedOnSheet,
         placedOnBand: result.placedOnBand,
         positionsUsed: result.positionsUsed,
+        decidedBy: result.decidedBy,
+        decisionNote: result.decisionNote,
         footer: result.footer,
         warnings: result.warnings,
         base64: Buffer.from(result.bytes).toString("base64"),
@@ -388,6 +390,7 @@ export async function POST(req: NextRequest) {
         onSheet: result.placedOnSheet,
         onBand: result.placedOnBand,
         positions: result.positionsUsed,
+        decidedBy: result.decidedBy,
       }),
     },
   });
