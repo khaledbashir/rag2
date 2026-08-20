@@ -164,6 +164,13 @@ export default auth((req) => {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/pdf-triage|api/rfp/analyze|.*\\.(?:svg|png|jpg|jpeg|gif|webp|html|css)$).*)",
+    // `api/render/brand-pdf` joins pdf-triage and rfp/analyze here for the same
+    // reason: the middleware buffers the request body and caps it around 10MB,
+    // so a drawing set never reaches the route intact. Measured 2026-08-20 —
+    // 7.57MB through, 10.23MB rejected, and a raw-body POST of a 42MB drawing
+    // arrived truncated at ~9.5MB. `experimental.middlewareClientMaxBodySize`
+    // is already set to 2000mb above and does NOT lift it; excluding the route
+    // is what actually works. Real ANC drawing sets run to 395MB.
+    "/((?!_next/static|_next/image|favicon.ico|api/pdf-triage|api/rfp/analyze|api/render/brand-pdf|.*\\.(?:svg|png|jpg|jpeg|gif|webp|html|css)$).*)",
   ],
 };

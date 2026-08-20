@@ -36,7 +36,9 @@ import {
 } from "@/lib/pdf/brandPdf";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// A 104MB / 67-page drawing set brands in 3.2s at 528MB peak RSS (measured
+// 2026-08-20), so the ceiling is time spent uploading, not stamping.
+export const maxDuration = 300;
 
 /** Covers the 105MB Scotia drawing set used for the real regression probe. */
 const MAX_BYTES = 200 * 1024 * 1024;
@@ -174,10 +176,42 @@ export async function POST(req: NextRequest) {
   try {
     parsed = await readBody(req);
   } catch {
+    // Nearly always the body being cut off in transit rather than a malformed
+    // upload — say so, because "could not be read" sends people looking at
+    // their file instead of its size.
     return withHeaders(
-      NextResponse.json({ error: "That upload could not be read." }, { status: 400 }),
+      NextResponse.json(
+        {
+          error:
+            "That upload could not be read — most often the request body was cut off in transit. Try again, and if it is a very large drawing set send fewer sheets.",
+        },
+        { status: 400 },
+      ),
       req,
     );
+  }
+
+  // A body shorter than its own Content-Length was truncated upstream. Saying
+  // "not a PDF" there would be a lie: the file was fine when it was sent.
+  const declared = Number.parseInt(req.headers.get("content-length") || "", 10);
+  if (parsed.bytes && Number.isFinite(declared) && declared > 0) {
+    const shortfall = declared - parsed.bytes.length;
+    // Multipart framing adds a little; a real truncation loses far more.
+    if (shortfall > 4096) {
+      return withHeaders(
+        NextResponse.json(
+          {
+            error: `That upload arrived incomplete — ${Math.round(
+              parsed.bytes.length / 1024 / 1024,
+            )}MB of a declared ${Math.round(
+              declared / 1024 / 1024,
+            )}MB. The file was not the problem; the request was cut off in transit.`,
+          },
+          { status: 400 },
+        ),
+        req,
+      );
+    }
   }
 
   if (parsed.error || !parsed.bytes) {
