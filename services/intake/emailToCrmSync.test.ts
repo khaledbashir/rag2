@@ -271,3 +271,79 @@ describe("looksLikeNewRfp", () => {
     expect(looksLikeNewRfp(ext, { subject: "following up" })).toBe(false);
   });
 });
+
+// Jireh 2026-08-20, having linked the deal himself and asked what users should
+// do differently: nothing. The GC writes the venue out in full, sales
+// abbreviates it in the deal name, and the account carries the full name.
+describe("matching a deal that abbreviates what the email spells out", () => {
+  const OKC_EXTRACTION: EmailCrmExtraction = {
+    clientOrVenue:
+      "Oklahoma City New Arena (Owner: City of Oklahoma City / Oklahoma City Public Property Authority; CM: Flintco/Mortenson)",
+    projectName: "Oklahoma City New Arena: Bid Package #5: Scoreboards and LED Boards",
+    summary: "Flintco uploaded previously issued architectural sheets.",
+    dueDates: [
+      {
+        label: "Bid Due",
+        dateIso: "2026-08-27",
+        kind: "proposal_due",
+        sourceText: "Bid Due: August 27, 2026",
+        verified: true,
+      },
+    ],
+    keyFacts: [],
+    people: [],
+    confidence: 0.92,
+  };
+
+  // The real rows under the Oklahoma City Thunder account.
+  const rows: OpportunitySearchRow[] = [
+    {
+      id: "752450b3-14c0-4c04-9a31-7cb1dc33fc04",
+      name: "OKC New Arena - Video Boards RFP",
+      stage: "RFP",
+      proposalDueDate: "2026-08-27T21:00:00.000Z",
+      companyName: "Oklahoma City Thunder",
+    },
+    {
+      id: "old-1",
+      name: "Oklahoma City Thunder Vomitory LED 2014",
+      stage: "EXISTING_CUSTOMER",
+      companyName: "Oklahoma City Thunder",
+    },
+    {
+      id: "old-2",
+      name: "Oklahoma City Thunder LED Displays 2013",
+      stage: "EXISTING_CUSTOMER",
+      companyName: "Oklahoma City Thunder",
+    },
+  ];
+
+  it("ranks the live RFP above the closed jobs on the same account", () => {
+    const ranked = scoreOpportunities(OKC_EXTRACTION, rows);
+
+    expect(ranked[0].id).toBe("752450b3-14c0-4c04-9a31-7cb1dc33fc04");
+    expect(ranked[0].score).toBeGreaterThan(ranked[1].score);
+  });
+
+  it("only reaches the deal because the account name is read with it", () => {
+    const withAccount = scoreOpportunities(OKC_EXTRACTION, [rows[0]])[0].score;
+    const withoutAccount = scoreOpportunities(OKC_EXTRACTION, [
+      { ...rows[0], companyName: null },
+    ])[0].score;
+
+    expect(withAccount).toBeGreaterThan(withoutAccount);
+  });
+
+  it("still refuses to auto-apply — a human confirms the link", () => {
+    const ranked = scoreOpportunities(OKC_EXTRACTION, rows);
+    expect(decideMatch(ranked).autoApply).toBe(false);
+    expect(decideMatch(ranked).top?.name).toBe("OKC New Arena - Video Boards RFP");
+  });
+
+  it("a deal with no account scores exactly as it did before", () => {
+    const plain: OpportunitySearchRow = { id: "x", name: "OKC New Arena - Video Boards RFP", stage: "RFP" };
+    expect(scoreOpportunities(OKC_EXTRACTION, [plain])[0].score).toBeCloseTo(
+      scoreOpportunities(OKC_EXTRACTION, [{ ...plain, companyName: undefined }])[0].score,
+    );
+  });
+});

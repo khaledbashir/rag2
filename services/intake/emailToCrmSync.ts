@@ -144,12 +144,21 @@ export interface OpportunitySearchRow {
   stage?: string;
   proposalDueDate?: string | null;
   createdAt?: string;
+  /** The account the deal hangs off. Sales abbreviate in the deal name and
+   *  spell it out on the account, so both have to be readable. */
+  companyName?: string | null;
 }
 
 /**
  * Scores CRM opportunities against the extraction. Pure — callers fetch rows.
- * Score = fraction of venue/client tokens present in the opportunity name,
- * with bonuses for project-name tokens and open pipeline stages.
+ * Score = fraction of venue/client tokens present in the opportunity name AND
+ * its account name, with bonuses for project-name tokens and open stages.
+ *
+ * Jireh 2026-08-20, "What do we need to do differently as users?": nothing —
+ * this was ours. A GC writes "Oklahoma City New Arena"; sales names the deal
+ * "OKC New Arena - Video Boards RFP" and lets the account carry "Oklahoma City
+ * Thunder". Reading only the deal name lost both spelled-out words and scored
+ * the right deal at 0.12. Reading the account with it puts it top at 0.40.
  */
 export function scoreOpportunities(
   extraction: EmailCrmExtraction,
@@ -161,7 +170,9 @@ export function scoreOpportunities(
   );
 
   const candidates = rows.map((row) => {
-    const nameNorm = normalizeForMatch(row.name);
+    const nameNorm = normalizeForMatch(
+      row.companyName ? `${row.name} ${row.companyName}` : row.name,
+    );
     const reasons: string[] = [];
     let score = 0;
 
@@ -519,6 +530,9 @@ export async function extractEmailCrmFacts(input: EmailCrmInput): Promise<EmailC
 // CRM lookups + writes
 // ---------------------------------------------------------------------------
 
+/** Keeps the account sweep bounded — a generic token can match many. */
+const MAX_MATCHED_COMPANIES = 8;
+
 export async function findOpportunityCandidates(
   extraction: EmailCrmExtraction,
 ): Promise<OpportunityCandidate[]> {
@@ -530,6 +544,7 @@ export async function findOpportunityCandidates(
   ).slice(0, 5);
   if (tokens.length === 0) return [];
 
+
   const rowsById = new Map<string, OpportunitySearchRow>();
   for (const token of tokens) {
     const data = await twentyRestFetch<{
@@ -537,6 +552,47 @@ export async function findOpportunityCandidates(
     }>(`/rest/opportunities?filter=name[ilike]:%25${encodeURIComponent(token)}%25&limit=30`);
     for (const row of data.data?.opportunities || []) {
       rowsById.set(row.id, row);
+    }
+  }
+
+  // Searching deal names alone cannot find a deal that abbreviates what the
+  // email spells out — "OKC New Arena" for "Oklahoma City New Arena". The
+  // account carries the full name, so the same tokens are run against accounts
+  // and their deals pulled in. Bounded: a handful of accounts, one page each.
+  const companyIds = new Map<string, string>();
+  for (const token of tokens) {
+    if (companyIds.size >= MAX_MATCHED_COMPANIES) break;
+    try {
+      const data = await twentyRestFetch<{ data?: { companies?: Array<{ id: string; name: string }> } }>(
+        `/rest/companies?filter=name[ilike]:%25${encodeURIComponent(token)}%25&limit=5`,
+      );
+      for (const company of data.data?.companies || []) {
+        if (companyIds.size >= MAX_MATCHED_COMPANIES) break;
+        if (company?.id && company?.name) companyIds.set(company.id, company.name);
+      }
+    } catch (error) {
+      // A lookup failure must not lose the name-search results we already have.
+      log.error("[email-to-crm] account lookup failed; continuing on deal names", {
+        token,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  for (const [companyId, companyName] of companyIds) {
+    try {
+      const data = await twentyRestFetch<{ data?: { opportunities?: OpportunitySearchRow[] } }>(
+        `/rest/opportunities?filter=companyId[eq]:${encodeURIComponent(companyId)}&limit=30`,
+      );
+      for (const row of data.data?.opportunities || []) {
+        // Deals found by name lack the account, so always stamp it on.
+        rowsById.set(row.id, { ...(rowsById.get(row.id) || row), companyName });
+      }
+    } catch (error) {
+      log.error("[email-to-crm] account deal fetch failed", {
+        companyId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
