@@ -83,7 +83,7 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
     return (
         <div data-preview-section="terms-and-conditions" className="px-6">
             {/* Exhibit Header — "General Terms" (renamed per Natalia 1C). */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', breakAfter: "avoid", pageBreakAfter: "avoid" }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px', breakAfter: "avoid", pageBreakAfter: "avoid" }}>
                 <div style={{ width: '3px', height: '14px', borderRadius: '1px', background: colors.primary, flexShrink: 0 }} />
                 <span className="text-[14px] font-bold uppercase tracking-wider" style={{ color: colors.primaryDark }}>
                     Exhibit {exhibitLetter} — General Terms
@@ -100,7 +100,7 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
             /* Natalia 2026-08-20: the last Miscellaneous bullet was falling to a
                page of its own. Section spacing and body leading tightened just
                enough for the exhibit to close on one page. */
-            <div className="space-y-2 text-[12px]" style={{ color: colors.text, lineHeight: 1.45 }}>
+            <div className="space-y-1 text-[12px] leading-snug" style={{ color: colors.text }}>
                 {/* Section 1: Intellectual Property */}
                 <Section num={sectionNum++} title="Intellectual Property" colors={colors}>
                     <p>
@@ -133,7 +133,7 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
                 {/* Section 4: Warranty */}
                 <Section num={sectionNum++} title="Warranty" colors={colors}>
                     {includeLaborWarranty && (
-                        <div className="mb-1.5">
+                        <div className="mb-1">
                             <p className="font-semibold text-[11px] uppercase tracking-wide mb-0.5" style={{ color: colors.textMuted }}>
                                 (a) Labor Warranty
                             </p>
@@ -148,7 +148,7 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
                     )}
 
                     {includeMaterialsWarranty && (
-                        <div className="mb-1.5">
+                        <div className="mb-1">
                             <p className="font-semibold text-[11px] uppercase tracking-wide mb-0.5" style={{ color: colors.textMuted }}>
                                 {includeLaborWarranty ? "(b)" : "(a)"} Materials &amp; Equipment Warranty
                             </p>
@@ -162,7 +162,7 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
                         </div>
                     )}
 
-                    <div className="mb-1.5">
+                    <div className="mb-1">
                         <p className="font-semibold text-[11px] uppercase tracking-wide mb-0.5" style={{ color: colors.textMuted }}>
                             {includeLaborWarranty && includeMaterialsWarranty ? "(c)" : includeLaborWarranty || includeMaterialsWarranty ? "(b)" : "(a)"} Exclusions
                         </p>
@@ -246,23 +246,23 @@ export default function PdfTermsAndConditions({ colors, config }: PdfTermsAndCon
 
                 {/* Miscellaneous */}
                 <Section num={sectionNum++} title="Miscellaneous" colors={colors}>
-                    <p className="mb-1">
+                    <p className="mb-0.5">
                         (a) ANC may assign this Agreement without the consent of {purchaserName}.
                     </p>
-                    <p className="mb-1">
+                    <p className="mb-0.5">
                         (b) The parties are independent contractors. Nothing herein creates an
                         employment, agency, partnership, or joint venture relationship.
                     </p>
-                    <p className="mb-1">
+                    <p className="mb-0.5">
                         (c) {purchaserName} shall be responsible for all applicable taxes, fees,
                         and assessments relating to the equipment and services.
                     </p>
-                    <p className="mb-1">
+                    <p className="mb-0.5">
                         (d) This Agreement, together with all exhibits and attachments, constitutes
                         the entire agreement between the parties and supersedes all prior negotiations,
                         representations, and agreements.
                     </p>
-                    <p className="mb-1">
+                    <p className="mb-0.5">
                         (e) Section headings are for reference only and shall not affect interpretation.
                     </p>
                     <p>
@@ -296,13 +296,13 @@ function Section({
         // style is what actually holds (same lesson as the pricing tables,
         // 2026-07-28).
         <div className="break-inside-avoid" style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px', breakAfter: "avoid", pageBreakAfter: "avoid" }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px', breakAfter: "avoid", pageBreakAfter: "avoid" }}>
                 <div style={{ width: '3px', height: '12px', borderRadius: '1px', background: colors.primary, flexShrink: 0 }} />
                 <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: colors.text }}>
                     {num}. {title}
                 </span>
             </div>
-            <div className="pl-3 text-[12px]" style={{ lineHeight: 1.45 }}>
+            <div className="pl-3 text-[12px] leading-snug">
                 {children}
             </div>
         </div>

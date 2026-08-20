@@ -23,6 +23,20 @@ import { TAILWIND_CDN } from "../variables";
 /** 11in at 96dpi, less the 36px top and 40px bottom margins page.pdf applies. */
 const USABLE_PAGE_HEIGHT = 11 * 96 - 36 - 40;
 
+/**
+ * Headless Chrome here still lays the exhibit out a little shorter than the
+ * render host does — font availability, mostly. Calibrated against the real
+ * thing: on 2026-08-20 the production export of the Lincoln Financial Field
+ * contract put the last line of Miscellaneous 953.6px below the top of the
+ * content area, where this probe read 898px for the same code.
+ *
+ * Without it the probe reports a comfortable fit for a page that prints one
+ * line over, which is exactly the mistake that shipped the first attempt.
+ * Re-measure it whenever the shell, the margins or the page size change.
+ */
+const PROBE_UNDER_MEASURES_BY = 56;
+const BUDGET = USABLE_PAGE_HEIGHT - PROBE_UNDER_MEASURES_BY;
+
 /** Byte-for-byte the shell generateProposalPdfServiceV2 builds around a template. */
 const shell = (body: string) =>
   `<!doctype html><html><head><meta charset="utf-8"/><title>probe</title><style>body,.font-sans{font-family:Arial,Helvetica,sans-serif!important;line-height:1.3!important;font-size:11px!important}h1,h2,h3,h4,h5,h6{font-family:Arial,Helvetica,sans-serif!important;line-height:1.3!important}p,div,span,td,th{line-height:1.3!important}.leading-relaxed{line-height:1.35!important}.leading-snug{line-height:1.25!important}</style></head><body>${body}</body></html>`;
@@ -91,6 +105,7 @@ describe.skipIf(!process.env.PDF_PROBE)("General Terms exhibit pagination", () =
           React.createElement(
             "div",
             {
+              id: "doc-footer",
               className: "mt-8 pt-3 border-t flex items-center justify-between",
               style: { borderColor: "#e5e7eb" },
             },
@@ -120,7 +135,12 @@ describe.skipIf(!process.env.PDF_PROBE)("General Terms exhibit pagination", () =
 
     try {
       const page = await browser.newPage();
-      await page.setViewport({ width: 794, height: 1122, deviceScaleFactor: 1 });
+      // The page box, not the viewport the service sets for rendering: 8.5in
+      // at 96dpi less the 20px left and right margins page.pdf applies. A
+      // wider viewport wraps the text into fewer lines and quietly reports the
+      // exhibit as ~70px shorter than it prints — which is how it measured as
+      // fitting while the real export still pushed the footer onto page 10.
+      await page.setViewport({ width: 8.5 * 96 - 40, height: 1122, deviceScaleFactor: 1 });
       await page.emulateMediaType("screen");
       await page.setContent(shell(markup), {
         waitUntil: ["domcontentloaded", "load"],
@@ -131,8 +151,12 @@ describe.skipIf(!process.env.PDF_PROBE)("General Terms exhibit pagination", () =
 
       const measured = await page.evaluate(() => {
         const clauses = Array.from(document.querySelectorAll(".break-inside-avoid"));
+        // The footer's `mt-8` collapses out of body.scrollHeight, so that
+        // number says the page fits while the real export puts the footer on a
+        // page of its own. Its laid-out bottom edge is the honest measure.
+        const footer = document.getElementById("doc-footer");
         return {
-          height: document.body.scrollHeight,
+          height: Math.round(footer.getBoundingClientRect().bottom),
           clauses: clauses.map((el) => ({
             title: (el.querySelector("span")?.textContent || "").trim(),
             bottom: Math.round(el.getBoundingClientRect().bottom),
@@ -144,10 +168,19 @@ describe.skipIf(!process.env.PDF_PROBE)("General Terms exhibit pagination", () =
       // just the pass/fail.
       // eslint-disable-next-line no-console
       console.log(
-        `General Terms: ${measured.height}px of ${USABLE_PAGE_HEIGHT}px usable ` +
-          `(${USABLE_PAGE_HEIGHT - measured.height}px headroom)\n` +
+        `General Terms [${purchaserName}]: ${measured.height}px against a ${BUDGET}px budget ` +
+          `(${BUDGET - measured.height}px headroom)\n` +
           measured.clauses.map((c) => `  ${String(c.bottom).padStart(5)}px  ${c.title}`).join("\n"),
       );
+
+      // A number is not a look. PDF_PROBE_SHOT=<path> renders the page so the
+      // tightening can be judged by eye before it ships.
+      if (process.env.PDF_PROBE_SHOT) {
+        await page.screenshot({
+          path: `${process.env.PDF_PROBE_SHOT}/general-terms-${purchaserName.slice(0, 12).replace(/\W+/g, "-")}.png`,
+          fullPage: true,
+        });
+      }
 
       expect(measured.clauses.length).toBeGreaterThanOrEqual(7);
       // The last clause — Miscellaneous, ending on bullet (f) — is the one that
@@ -155,8 +188,11 @@ describe.skipIf(!process.env.PDF_PROBE)("General Terms exhibit pagination", () =
       const last = measured.clauses[measured.clauses.length - 1];
       // Rendered in caps by CSS; textContent keeps the authored casing.
       expect(last.title.toUpperCase()).toContain("MISCELLANEOUS");
-      expect(last.bottom).toBeLessThanOrEqual(USABLE_PAGE_HEIGHT);
-      expect(measured.height).toBeLessThanOrEqual(USABLE_PAGE_HEIGHT);
+      expect(last.bottom).toBeLessThanOrEqual(BUDGET);
+      // The footer closes the document on this page; if it does not fit, it
+      // takes a page of its own and the contract ends on a sheet carrying
+      // nothing but "www.anc.com".
+      expect(measured.height).toBeLessThanOrEqual(BUDGET);
     } finally {
       await browser.close();
     }
