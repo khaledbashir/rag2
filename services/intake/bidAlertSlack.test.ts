@@ -5,6 +5,7 @@ import {
   daysUntil,
   describeDueDateMove,
   formatDueDate,
+  looksBidRelated,
   matchChannelByVenue,
   pickBidDueDate,
   resolveChannel,
@@ -365,5 +366,74 @@ describe("venue used for routing", () => {
     );
     expect(text).toContain("Oklahoma City New Arena");
     expect(text).not.toContain("Flintco");
+  });
+});
+
+// Jireh flagged this one in Slack (2026-08-20) with "This looks like an error":
+// a Dyson & Womack invoice posted as a bid against a URI courtside deal.
+const INVOICE_EXTRACTION: EmailCrmExtraction = {
+  clientOrVenue: "Dyson & Womack",
+  projectName: "OBM",
+  summary:
+    "Dyson & Womack billing confirms payment received for invoice #1587 ($11,600) from ANC for the OBM project.",
+  dueDates: [
+    {
+      label: "Invoice #1587 payment due",
+      dateIso: "2026-07-30",
+      kind: "other",
+      sourceText: "the remittance for invoice #1587 in the amount of $11,600, which was due on July 30th",
+      verified: true,
+    },
+  ],
+  keyFacts: [],
+  people: [],
+  confidence: 0.9,
+};
+
+describe("bid-relatedness gate", () => {
+  it("stays silent on the Dyson & Womack invoice Jireh flagged", () => {
+    expect(
+      looksBidRelated({
+        input: { subject: "Re: Invoice #1587 for OBM", body: "..." },
+        extraction: INVOICE_EXTRACTION,
+      }),
+    ).toBe(false);
+  });
+
+  it("still alerts a real bid email", () => {
+    expect(looksBidRelated(ERP3_CONTEXT)).toBe(true);
+  });
+
+  it("alerts on a proposal_due date even when the subject says nothing", () => {
+    expect(
+      looksBidRelated({
+        input: { subject: "Re: following up", body: "..." },
+        extraction: ERP3_EXTRACTION,
+      }),
+    ).toBe(true);
+  });
+
+  it("alerts on an addendum that quotes no new date", () => {
+    expect(
+      looksBidRelated({
+        input: { subject: "ERP4 addendum 2", body: "..." },
+        extraction: { ...INVOICE_EXTRACTION, dueDates: [] },
+      }),
+    ).toBe(true);
+  });
+
+  it("falls back to the subject when the email could not be read", () => {
+    expect(looksBidRelated({ input: { subject: "ERP4 addendum", body: "" }, extraction: null })).toBe(
+      true,
+    );
+    expect(
+      looksBidRelated({ input: { subject: "Re: Invoice #1587 for OBM", body: "" }, extraction: null }),
+    ).toBe(false);
+  });
+
+  it("does not match bid words hiding inside other words", () => {
+    for (const subject of ["Forbidden resource on the portal", "Wilson field walkthrough"]) {
+      expect(looksBidRelated({ input: { subject, body: "" }, extraction: null })).toBe(false);
+    }
   });
 });

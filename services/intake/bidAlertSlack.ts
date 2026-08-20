@@ -51,6 +51,47 @@ export function slackConfigured(): boolean {
 }
 
 /**
+ * Is this inbound email actually about a bid at all?
+ *
+ * The intake reads every message that reaches the estimation inbox, and that
+ * inbox carries ordinary business mail too — vendor invoices, remittance
+ * chasers, scheduling notes. Those still extract cleanly and still score a
+ * weak match against some open deal, so before this gate every one of them
+ * was announced as a "New bid email" asking a human to confirm a deal.
+ * Jireh flagged the case that proved it: a Dyson & Womack invoice for OBM
+ * (subject "Re: Invoice #1587 for OBM") posted as a bid against "University of
+ * Rhode Island Courtside and Stanchion 2025" at a 0.7 score.
+ *
+ * The extraction already carries the right signal and had been ignored: it
+ * classifies each date it finds, and an invoice's date comes back kind="other"
+ * while a genuine bid comes back kind="proposal_due". So a proposal-due date is
+ * the primary test, and an explicit bid word in the subject is the fallback
+ * for the addendum that quotes no new date. Word-bounded on purpose — an
+ * unanchored /bid/ matches "forbidden" and /sow/ matches "Wilson".
+ *
+ * Deliberately looser than `looksLikeNewRfp`: that one gates CREATING a deal
+ * and so demands venue + project + date, while a bid date moving on a deal that
+ * already exists is exactly the alert the bid team wants. Pure + unit-tested.
+ */
+const BID_SUBJECT_INTENT =
+  /\b(rfp|rfq|bid|bids|bidding|proposal|quote|quotation|pricing|sow|spec|specs|addendum|itb|invitation to bid|scope of work)\b/i;
+
+export function looksBidRelated(ctx: Pick<BidAlertContext, "input" | "extraction">): boolean {
+  const subjectSaysBid = BID_SUBJECT_INTENT.test(ctx.input?.subject || "");
+
+  // A failed read has no extraction to judge, so the subject is all there is.
+  // Keep alerting there — a bid we could not parse is the case most needing a
+  // human — but stay silent on mail that never claimed to be a bid.
+  if (!ctx.extraction) return subjectSaysBid;
+
+  const hasProposalDue = ctx.extraction.dueDates.some(
+    (d) => d.kind === "proposal_due" && d.verified !== false,
+  );
+
+  return hasProposalDue || subjectSaysBid;
+}
+
+/**
  * Per-project channel when a keyword matches venue or project name, else the
  * default channel. Keywords are matched case-insensitively; the longest
  * matching keyword wins so "bank of america stadium" beats "bank".
@@ -362,6 +403,17 @@ export async function resolveDestination(
 export async function postBidAlert(ctx: BidAlertContext, now: Date = new Date()): Promise<boolean> {
   const token = process.env.SLACK_BOT_TOKEN;
   if (!token) return false;
+
+  // Gated here rather than at the four call sites so no future branch can post
+  // an invoice or a scheduling note to a pursuit channel by forgetting to ask.
+  if (!looksBidRelated(ctx)) {
+    log.info("[bid-alert] not bid-related; no Slack post", {
+      intakeId: ctx.intakeId,
+      subject: ctx.input?.subject,
+    });
+    return false;
+  }
+
   const channel = await resolveDestination(ctx.extraction, token);
   if (!channel) return false;
 
