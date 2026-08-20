@@ -143,7 +143,7 @@ const SOURCE_QUERY = `
     att.role, att."threadId", att."fileFilename",
     th.title AS "threadTitle",
     u.email,
-    wm."nameFirstName", wm."nameLastName"
+    wm.id AS "memberId", wm."nameFirstName", wm."nameLastName"
   FROM files
   LEFT JOIN LATERAL (
     SELECT m.role::text AS role, m."threadId", mp."fileFilename"
@@ -187,7 +187,7 @@ async function loadExistingRows() {
     const data = await gql(
       `query($after: String) {
         ancAiExports(first: 200, after: $after, orderBy: { id: AscNullsLast }) {
-          edges { node { id fileId urlExpiresAt } }
+          edges { node { id fileId urlExpiresAt exportedByMemberId } }
           pageInfo { hasNextPage endCursor }
         }
       }`,
@@ -231,6 +231,13 @@ async function main() {
       exportedAt: new Date(f.createdAt).toISOString(),
       exportedByName: person || null,
       exportedByEmail: f.email || null,
+      // Security anchor. Every human role carries a row-level predicate
+      // comparing this to the viewer's own workspaceMember id, so this being
+      // wrong or blank is the difference between a person seeing their own
+      // exports and seeing none. A file we could not trace stays null on
+      // purpose — unattributed rows belong to nobody and are visible only
+      // through the owner's unrestricted page.
+      exportedByMemberId: f.memberId || null,
       threadTitle: f.threadTitle || null,
       threadId: f.threadId || null,
       sizeBytes: Number(f.size),
@@ -262,17 +269,30 @@ async function main() {
   const toCreate = [];
   const toUpdate = [];
 
+  // The link is stored twice on purpose: as TEXT for the owner's page, and as a
+  // LINKS field so it is actually clickable in an ordinary CRM view — which is
+  // the surface everyone else gets.
+  const withLink = (d) => {
+    const { url, expiresAt } = mintDownloadUrl(d.fileId);
+    return {
+      ...d,
+      downloadUrl: url,
+      urlExpiresAt: expiresAt,
+      download: { primaryLinkUrl: url, primaryLinkLabel: d.name, secondaryLinks: [] },
+    };
+  };
+
   for (const d of desired) {
     const current = existing.get(d.fileId);
     if (!current) {
-      const { url, expiresAt } = mintDownloadUrl(d.fileId);
-      toCreate.push({ ...d, downloadUrl: url, urlExpiresAt: expiresAt });
+      toCreate.push(withLink(d));
       continue;
     }
     const expiry = current.urlExpiresAt ? new Date(current.urlExpiresAt).getTime() : 0;
-    if (expiry < refreshCutoff) {
-      const { url, expiresAt } = mintDownloadUrl(d.fileId);
-      toUpdate.push({ id: current.id, data: { ...d, downloadUrl: url, urlExpiresAt: expiresAt } });
+    // Re-mint before the link runs low, and repair a row whose member anchor is
+    // missing or has drifted — that anchor is what scopes the row to a person.
+    if (expiry < refreshCutoff || current.exportedByMemberId !== d.exportedByMemberId) {
+      toUpdate.push({ id: current.id, data: withLink(d) });
     }
   }
 
