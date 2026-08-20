@@ -16,7 +16,8 @@
  * ANC wordmark in the sandbox. See lib/pdf/brandPdf.ts.
  *
  * Multipart (`file`) or JSON (`{ base64 }`). Options ride as form fields or query
- * string: `position`, `pages`, `footer`, `footerText`, `title`, `logoScale`.
+ * string: `placement`, `edge`, `position`, `pages`, `footer`, `footerText`,
+ * `title`, `logoScale`.
  * `?format=json` returns the branded PDF as base64 alongside the warnings, which
  * is what the assistant's sandbox wants when it needs to see them.
  *
@@ -26,7 +27,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import {
+  BrandPdfEdge,
   BrandPdfOptions,
+  BrandPdfPlacement,
   BrandPdfPosition,
   brandPdf,
   brandedFileName,
@@ -39,6 +42,8 @@ export const maxDuration = 60;
 const MAX_BYTES = 60 * 1024 * 1024;
 
 const POSITIONS: BrandPdfPosition[] = ["top-left", "top-right", "bottom-left", "bottom-right"];
+const PLACEMENTS: BrandPdfPlacement[] = ["band", "overlay"];
+const EDGES: BrandPdfEdge[] = ["top", "bottom"];
 
 const ALLOWED_BROWSER_ORIGINS = new Set(["https://crm.ancsports.net"]);
 
@@ -127,6 +132,16 @@ async function readBody(req: NextRequest): Promise<Parsed> {
 function optionsFrom(fields: Record<string, string>, url: URL): BrandPdfOptions & { title: string | null } {
   const pick = (name: string): string | null => fields[name] ?? url.searchParams.get(name);
 
+  const rawPlacement = (pick("placement") || "").trim().toLowerCase();
+  const placement = PLACEMENTS.includes(rawPlacement as BrandPdfPlacement)
+    ? (rawPlacement as BrandPdfPlacement)
+    : undefined;
+
+  const rawEdge = (pick("edge") || "").trim().toLowerCase();
+  const edge = EDGES.includes(rawEdge as BrandPdfEdge)
+    ? (rawEdge as BrandPdfEdge)
+    : undefined;
+
   const rawPosition = (pick("position") || "").trim().toLowerCase();
   const position = POSITIONS.includes(rawPosition as BrandPdfPosition)
     ? (rawPosition as BrandPdfPosition)
@@ -141,6 +156,8 @@ function optionsFrom(fields: Record<string, string>, url: URL): BrandPdfOptions 
   const scale = Number.parseFloat(pick("logoScale") || "");
 
   return {
+    placement,
+    edge,
     position,
     pages,
     footer,
@@ -211,6 +228,8 @@ export async function POST(req: NextRequest) {
         fileName,
         pageCount: result.pageCount,
         stampedPages: result.stampedPages,
+        placement: result.placement,
+        edge: result.edge,
         position: result.position,
         footer: result.footer,
         warnings: result.warnings,

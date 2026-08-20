@@ -73,6 +73,7 @@ export interface BrandPdfResult {
   pageCount: number;
   stampedPages: number;
   placement: BrandPdfPlacement;
+  edge: BrandPdfEdge;
   position: BrandPdfPosition;
   footer: string | null;
   /** Anything the caller should mention rather than discover later. */
@@ -260,6 +261,18 @@ export function bandHeight(visualWidth: number, visualHeight: number, logoScale:
   return clamp(shortSide * 0.055, 26, 58) * clamp(logoScale, 0.5, 2);
 }
 
+/** Smallest page box that contains both inputs without discarding existing paper. */
+function enclosingBox(
+  first: { x: number; y: number; width: number; height: number },
+  second: { x: number; y: number; width: number; height: number },
+): { x: number; y: number; width: number; height: number } {
+  const x = Math.min(first.x, second.x);
+  const y = Math.min(first.y, second.y);
+  const right = Math.max(first.x + first.width, second.x + second.width);
+  const top = Math.max(first.y + first.height, second.y + second.height);
+  return { x, y, width: right - x, height: top - y };
+}
+
 /**
  * The mark and the footer on the new strip: wordmark left, footer right, and a
  * hair of brand blue along the edge where the strip meets the drawing so the two
@@ -431,21 +444,29 @@ export async function brandPdf(
     if (placement === "band") {
       // The CropBox is what a viewer actually shows, so it is the sheet we grow.
       const visibleBox = page.getCropBox();
+      const mediaBox = page.getMediaBox();
       const visible = visualSize(rotation, visibleBox.width, visibleBox.height);
       const band = bandHeight(visible.width, visible.height, logoScale);
-      const grown = bandBox(rotation, visibleBox, edge, band);
+      const grownVisible = bandBox(rotation, visibleBox, edge, band);
+      const grownMedia = enclosingBox(mediaBox, grownVisible);
 
-      // Both boxes, or a viewer honouring CropBox never shows the strip.
-      page.setMediaBox(grown.x, grown.y, grown.width, grown.height);
-      page.setCropBox(grown.x, grown.y, grown.width, grown.height);
+      // CropBox is what viewers show. MediaBox must contain it, but must never be
+      // replaced by a smaller inset CropBox or existing printer marks disappear.
+      page.setMediaBox(grownMedia.x, grownMedia.y, grownMedia.width, grownMedia.height);
+      page.setCropBox(
+        grownVisible.x,
+        grownVisible.y,
+        grownVisible.width,
+        grownVisible.height,
+      );
 
-      const grownVisual = visualSize(rotation, grown.width, grown.height);
+      const grownVisual = visualSize(rotation, grownVisible.width, grownVisible.height);
       const { footerFitted } = drawBand(
         page,
         wordmark,
         font,
         rotation,
-        grown,
+        grownVisible,
         grownVisual,
         edge,
         band,
@@ -501,6 +522,7 @@ export async function brandPdf(
     pageCount: pages.length,
     stampedPages: targets.length,
     placement,
+    edge,
     position,
     footer: footerText,
     warnings,

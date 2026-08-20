@@ -197,6 +197,7 @@ describe("brandPdf", () => {
     const result = await brandPdf(input, { title: "Signage Drawings" });
 
     expect(result.placement).toBe("band");
+    expect(result.edge).toBe("top");
 
     const page = (await PDFDocument.load(result.bytes)).getPage(0);
     // The sheet gained paper on one edge; the drawing's own width is untouched,
@@ -240,6 +241,23 @@ describe("brandPdf", () => {
     // A viewer honours CropBox; leaving it behind would clip the strip straight off.
     expect(out.getCropBox().height).toBeCloseTo(out.getMediaBox().height, 1);
     expect(out.getCropBox().height).toBeGreaterThan(792);
+  });
+
+  it("never shrinks an existing MediaBox when CropBox is inset", async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([700, 900]);
+    page.setCropBox(50, 50, 600, 830);
+
+    const result = await brandPdf(await doc.save());
+    const out = (await PDFDocument.load(result.bytes)).getPage(0);
+    const media = out.getMediaBox();
+    const crop = out.getCropBox();
+
+    expect(media.width).toBeGreaterThanOrEqual(700);
+    expect(media.height).toBeGreaterThan(900);
+    expect(crop.x).toBeCloseTo(50, 1);
+    expect(crop.width).toBeCloseTo(600, 1);
+    expect(crop.height).toBeGreaterThan(830);
   });
 
   it("stamps only the first page when asked", async () => {
