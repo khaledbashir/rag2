@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildBidAlertMessage,
+  coreVenueName,
   daysUntil,
   describeDueDateMove,
   formatDueDate,
@@ -315,5 +316,54 @@ describe("due date moves", () => {
     const { text } = buildBidAlertMessage(movedContext(null, "2026-08-27"), new Date("2026-08-20T00:00:00Z"));
     expect(text).toContain("Bid due August 27, 2026");
     expect(text).not.toContain("moved");
+  });
+});
+
+// Jireh 2026-08-20: "for new opportunities that have new Slack channels, how do
+// we go about that cadence?" — the answer is only "name it after the venue and
+// add the bot" if the venue we route on is actually the venue.
+describe("venue used for routing", () => {
+  const OKC_CHANNELS = [
+    { id: "C_OKC", name: "sales-oklahoma-city-thunder-new-arena-rfp", is_member: true },
+    { id: "C_BOFA", name: "sales-bank-of-america-stadium-carolina-panthers", is_member: true },
+  ];
+  const OKC_RAW =
+    "Oklahoma City New Arena (Owner: City of Oklahoma City / Oklahoma City Public Property Authority; CM: Flintco/Mortenson)";
+
+  it("separates the venue from the ownership chain", () => {
+    expect(coreVenueName(OKC_RAW)).toBe("Oklahoma City New Arena");
+  });
+
+  it("leaves a clean venue untouched", () => {
+    expect(coreVenueName("Bank of America Stadium")).toBe("Bank of America Stadium");
+  });
+
+  it("handles the un-bracketed form", () => {
+    expect(coreVenueName("Levi's Stadium - CM: Turner Construction")).toBe("Levi's Stadium");
+  });
+
+  it("never returns empty, however odd the input", () => {
+    expect(coreVenueName("(Owner: someone)")).toBe("(Owner: someone)");
+  });
+
+  it("the raw venue misses its own channel — this is the bug", () => {
+    expect(matchChannelByVenue(OKC_RAW, OKC_CHANNELS)).toBeNull();
+  });
+
+  it("the cleaned venue reaches it", () => {
+    expect(matchChannelByVenue(coreVenueName(OKC_RAW), OKC_CHANNELS)?.id).toBe("C_OKC");
+  });
+
+  it("and still cannot stray into another venue's channel", () => {
+    expect(matchChannelByVenue(coreVenueName(OKC_RAW), [OKC_CHANNELS[1]])).toBeNull();
+  });
+
+  it("the headline reads as the venue, not the paperwork", () => {
+    const { text } = buildBidAlertMessage(
+      { ...ERP3_CONTEXT, extraction: { ...ERP3_EXTRACTION, clientOrVenue: OKC_RAW } },
+      new Date("2026-08-20T00:00:00Z"),
+    );
+    expect(text).toContain("Oklahoma City New Arena");
+    expect(text).not.toContain("Flintco");
   });
 });

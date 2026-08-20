@@ -93,6 +93,23 @@ const VENUE_STOPWORDS = new Set([
   "park", "ballpark", "coliseum", "llc", "inc", "university", "college",
 ]);
 
+/**
+ * The venue as extracted often carries the whole ownership chain —
+ * "Oklahoma City New Arena (Owner: City of Oklahoma City / Oklahoma City Public
+ * Property Authority; CM: Flintco/Mortenson)". Channel matching requires every
+ * identifying word to appear in the channel name, and no channel is named after
+ * the CM, so the real venue has to be separated from the paperwork or the bid
+ * misses its own channel and lands in the catch-all.
+ */
+export function coreVenueName(venue: string): string {
+  const withoutParens = venue.replace(/\([^)]*\)/g, " ");
+  const beforeLabel = withoutParens.split(
+    /\b(?:owner|cm|gc|architect|construction manager|general contractor)\s*:/i,
+  )[0];
+  const cleaned = beforeLabel.replace(/\s+/g, " ").replace(/[\s\-–—,;/]+$/, "").trim();
+  return cleaned || venue.trim();
+}
+
 export function venueTokens(venue: string): string[] {
   return venue
     .toLowerCase()
@@ -241,7 +258,8 @@ export function buildBidAlertMessage(
   ctx: BidAlertContext,
   now: Date = new Date(),
 ): { text: string; blocks: SlackBlock[] } {
-  const venue = ctx.extraction?.clientOrVenue?.trim() || ctx.input.subject || "New bid email";
+  const rawVenue = ctx.extraction?.clientOrVenue?.trim();
+  const venue = rawVenue ? coreVenueName(rawVenue) : ctx.input.subject || "New bid email";
   const project = ctx.extraction?.projectName?.trim() || "";
   const due = pickBidDueDate(ctx.extraction);
   const sender = ctx.input.fromName || ctx.input.fromEmail || "unknown sender";
@@ -329,7 +347,7 @@ export async function resolveDestination(
   const venue = extraction?.clientOrVenue?.trim();
   if (venue) {
     try {
-      const match = matchChannelByVenue(venue, await listSlackChannels(token));
+      const match = matchChannelByVenue(coreVenueName(venue), await listSlackChannels(token));
       if (match) return match.id;
     } catch (error) {
       log.error("[bid-alert] channel lookup failed; using default channel", {
