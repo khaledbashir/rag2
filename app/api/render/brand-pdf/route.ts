@@ -15,6 +15,11 @@
  * exactly that to an OKC Thunder LED drawing, had nowhere to go, and drew its own
  * ANC wordmark in the sandbox. See lib/pdf/brandPdf.ts.
  *
+ * Placement is decided from the sheet itself by default: each page is rasterized,
+ * its ink measured, and the mark put on the blank paper nearest `position`
+ * (`bottom-right` unless told otherwise). Pass `placement=band` or
+ * `placement=overlay` to override that judgement.
+ *
  * Multipart (`file`) or JSON (`{ base64 }`). Options ride as form fields or query
  * string: `placement`, `edge`, `position`, `pages`, `footer`, `footerText`,
  * `title`, `logoScale`.
@@ -44,7 +49,7 @@ export const maxDuration = 300;
 const MAX_BYTES = 200 * 1024 * 1024;
 
 const POSITIONS: BrandPdfPosition[] = ["top-left", "top-right", "bottom-left", "bottom-right"];
-const PLACEMENTS: BrandPdfPlacement[] = ["band", "overlay"];
+const PLACEMENTS: BrandPdfPlacement[] = ["auto", "band", "overlay"];
 const EDGES: BrandPdfEdge[] = ["top", "bottom"];
 
 const ALLOWED_BROWSER_ORIGINS = new Set(["https://crm.ancsports.net"]);
@@ -57,7 +62,8 @@ function browserHeaders(req: NextRequest): HeadersInit {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Expose-Headers": "Content-Disposition, X-Anc-Brand-Warnings",
+    "Access-Control-Expose-Headers":
+      "Content-Disposition, X-Anc-Brand-Warnings, X-Anc-Brand-Placement",
     Vary: "Origin",
   };
 }
@@ -73,8 +79,22 @@ interface Parsed {
   bytes: Buffer | null;
   fileName: string | null;
   fields: Record<string, string>;
+  /**
+   * Size of the RAW request body, when we know it, so the truncation check can
+   * compare like with like. Null means "do not check" — for multipart we never
+   * see the raw body, and `formData()` already throws on a cut-off upload.
+   */
+  rawLength: number | null;
   error?: string;
 }
+
+/**
+ * Hosts we will fetch a PDF from when the caller passes `url` instead of bytes.
+ * The assistant's first instinct is to hand over the CRM file link it already
+ * has, which is both reasonable and far cheaper than a download-and-re-upload
+ * round trip. Kept to an allowlist so this is not an open fetch proxy.
+ */
+const FETCHABLE_HOSTS = new Set(["crm.ancsports.net", "proposals.anc.com"]);
 
 async function readBody(req: NextRequest): Promise<Parsed> {
   const contentType = req.headers.get("content-type") || "";
@@ -87,27 +107,50 @@ async function readBody(req: NextRequest): Promise<Parsed> {
     }
     const file = form.get("file") ?? form.get("files") ?? form.get("document") ?? form.get("pdf");
     if (!(file instanceof Blob)) {
-      return { bytes: null, fileName: null, fields, error: "Attach the PDF as `file`." };
+      return { bytes: null, fileName: null, fields, rawLength: null, error: "Attach the PDF as `file`." };
     }
     const name = file instanceof File ? file.name : null;
-    return { bytes: Buffer.from(await file.arrayBuffer()), fileName: name, fields };
+    // Content-Length here also covers MIME framing, so it is not comparable.
+    return { bytes: Buffer.from(await file.arrayBuffer()), fileName: name, fields, rawLength: null };
   }
 
   if (contentType.includes("application/json")) {
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body) return { bytes: null, fileName: null, fields, error: "Send valid JSON." };
+    // Read the bytes rather than req.json() so we know the true body size.
+    const rawBody = Buffer.from(await req.arrayBuffer());
+    let body: Record<string, unknown> | null = null;
+    try {
+      body = JSON.parse(rawBody.toString("utf8")) as Record<string, unknown>;
+    } catch {
+      body = null;
+    }
+    if (!body) {
+      return {
+        bytes: null,
+        fileName: null,
+        fields,
+        rawLength: rawBody.length,
+        error: "Send valid JSON.",
+      };
+    }
     for (const [key, value] of Object.entries(body)) {
       if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
         fields[key] = String(value);
       }
     }
+    const fromUrl = typeof body.url === "string" ? body.url.trim() : null;
+    if (fromUrl) {
+      const fetched = await fetchPdf(fromUrl);
+      return { ...fetched, fields, rawLength: rawBody.length };
+    }
+
     const base64 = typeof body.base64 === "string" ? body.base64 : null;
     if (!base64) {
       return {
         bytes: null,
         fileName: null,
         fields,
-        error: "Send the PDF as multipart `file`, or JSON `{ base64 }`.",
+        rawLength: rawBody.length,
+        error: "Send the PDF as multipart `file`, JSON `{ base64 }`, or JSON `{ url }` for a CRM file link.",
       };
     }
     const cleaned = base64.replace(/^data:application\/pdf;base64,/, "");
@@ -115,6 +158,7 @@ async function readBody(req: NextRequest): Promise<Parsed> {
       bytes: Buffer.from(cleaned, "base64"),
       fileName: typeof body.fileName === "string" ? body.fileName : null,
       fields,
+      rawLength: rawBody.length,
     };
   }
 
@@ -125,10 +169,54 @@ async function readBody(req: NextRequest): Promise<Parsed> {
       bytes: null,
       fileName: null,
       fields,
-      error: "Send the PDF as multipart `file`, or JSON `{ base64 }`.",
+      rawLength: 0,
+      error: "Send the PDF as multipart `file`, JSON `{ base64 }`, or JSON `{ url }`.",
     };
   }
-  return { bytes: raw, fileName: null, fields };
+  return { bytes: raw, fileName: null, fields, rawLength: raw.length };
+}
+
+/** Pull a PDF from an allowlisted host — in practice a signed CRM file link. */
+async function fetchPdf(
+  target: string,
+): Promise<{ bytes: Buffer | null; fileName: string | null; error?: string }> {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(target);
+  } catch {
+    return { bytes: null, fileName: null, error: "`url` is not a valid URL." };
+  }
+  if (parsedUrl.protocol !== "https:" || !FETCHABLE_HOSTS.has(parsedUrl.hostname)) {
+    return {
+      bytes: null,
+      fileName: null,
+      error: `\`url\` must be an https link on ${[...FETCHABLE_HOSTS].join(" or ")}. Send the bytes instead.`,
+    };
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(parsedUrl.toString(), { redirect: "follow" });
+  } catch (error) {
+    return {
+      bytes: null,
+      fileName: null,
+      error: `Could not fetch that URL: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+  if (!response.ok) {
+    // A 403 here is nearly always an expired or mistyped file token.
+    return {
+      bytes: null,
+      fileName: null,
+      error: `That URL returned ${response.status}. If it is a CRM file link the token may have expired — generate a fresh one.`,
+    };
+  }
+
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const disposition = response.headers.get("content-disposition") || "";
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+  return { bytes, fileName: match ? decodeURIComponent(match[1]) : null };
 }
 
 function optionsFrom(fields: Record<string, string>, url: URL): BrandPdfOptions & { title: string | null } {
@@ -169,6 +257,13 @@ function optionsFrom(fields: Record<string, string>, url: URL): BrandPdfOptions 
   };
 }
 
+/** "714KB" / "1.4MB" — round numbers hide the very difference being reported. */
+function describeSize(bytes: number): string {
+  return bytes >= 1024 * 1024
+    ? `${(bytes / 1024 / 1024).toFixed(1)}MB`
+    : `${Math.max(1, Math.round(bytes / 1024))}KB`;
+}
+
 export async function POST(req: NextRequest) {
   const url = new URL(req.url);
 
@@ -191,21 +286,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // A body shorter than its own Content-Length was truncated upstream. Saying
-  // "not a PDF" there would be a lie: the file was fine when it was sent.
+  // A body shorter than its own Content-Length was truncated upstream. Compare
+  // the RAW body against Content-Length, never the extracted PDF: base64 in JSON
+  // is ~33% larger than the file it carries, so comparing the decoded bytes
+  // flagged every valid base64 upload as "incomplete". That false positive
+  // shipped on 2026-08-20 and blocked a real 714KB document.
   const declared = Number.parseInt(req.headers.get("content-length") || "", 10);
-  if (parsed.bytes && Number.isFinite(declared) && declared > 0) {
-    const shortfall = declared - parsed.bytes.length;
-    // Multipart framing adds a little; a real truncation loses far more.
+  if (parsed.rawLength !== null && Number.isFinite(declared) && declared > 0) {
+    const shortfall = declared - parsed.rawLength;
     if (shortfall > 4096) {
       return withHeaders(
         NextResponse.json(
           {
-            error: `That upload arrived incomplete — ${Math.round(
-              parsed.bytes.length / 1024 / 1024,
-            )}MB of a declared ${Math.round(
-              declared / 1024 / 1024,
-            )}MB. The file was not the problem; the request was cut off in transit.`,
+            error: `That upload arrived incomplete — ${describeSize(
+              parsed.rawLength,
+            )} of a declared ${describeSize(
+              declared,
+            )}. The file was not the problem; the request was cut off in transit.`,
           },
           { status: 400 },
         ),
@@ -265,6 +362,9 @@ export async function POST(req: NextRequest) {
         placement: result.placement,
         edge: result.edge,
         position: result.position,
+        placedOnSheet: result.placedOnSheet,
+        placedOnBand: result.placedOnBand,
+        positionsUsed: result.positionsUsed,
         footer: result.footer,
         warnings: result.warnings,
         base64: Buffer.from(result.bytes).toString("base64"),
@@ -281,6 +381,14 @@ export async function POST(req: NextRequest) {
       "Cache-Control": "no-store",
       // Warnings survive the binary response so a caller can surface them.
       "X-Anc-Brand-Warnings": result.warnings.length ? JSON.stringify(result.warnings) : "",
+      // Where the mark actually landed, so a caller streaming the bytes can still
+      // say what was decided without asking for the JSON form.
+      "X-Anc-Brand-Placement": JSON.stringify({
+        placement: result.placement,
+        onSheet: result.placedOnSheet,
+        onBand: result.placedOnBand,
+        positions: result.positionsUsed,
+      }),
     },
   });
   return withHeaders(response, req);
