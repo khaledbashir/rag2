@@ -128,7 +128,9 @@ const classifyOrigin = (storagePath, role) => {
 // certainty: the message part's own fileId (uploads), the minted URL echoed in
 // a tool's output, and the URL retyped into the assistant's answer. The last
 // two are how code-interpreter and render-tool output gets traced, since
-// neither writes a fileId back onto the part.
+// neither writes a fileId back onto the part. Once the matching message gives
+// us a turnId, the exact user request and the final assistant text from that
+// same turn are mirrored as Asked / Outcome for the export detail panel.
 const SOURCE_QUERY = `
   WITH files AS (
     SELECT f.id, f.path, f.size, f."mimeType", f."createdAt"
@@ -142,11 +144,17 @@ const SOURCE_QUERY = `
     files.id, files.path, files.size, files."mimeType", files."createdAt",
     att.role, att."threadId", att."fileFilename",
     th.title AS "threadTitle",
+    req."requestText", req."requestAttachments",
+    outcome."outcomeText",
     u.email,
     wm.id AS "memberId", wm."nameFirstName", wm."nameLastName"
   FROM files
   LEFT JOIN LATERAL (
-    SELECT m.role::text AS role, m."threadId", mp."fileFilename"
+    SELECT
+      m.role::text AS role,
+      m."threadId",
+      m."turnId",
+      mp."fileFilename"
     FROM core."agentMessagePart" mp
     JOIN core."agentMessage" m ON m.id = mp."messageId"
     WHERE mp."workspaceId" = $1
@@ -158,6 +166,30 @@ const SOURCE_QUERY = `
     ORDER BY (mp."fileId" = files.id) DESC, m."createdAt" ASC
     LIMIT 1
   ) att ON TRUE
+  LEFT JOIN LATERAL (
+    SELECT
+      string_agg(mp."textContent", E'\n\n' ORDER BY m."createdAt", mp."orderIndex")
+        FILTER (WHERE NULLIF(BTRIM(mp."textContent"), '') IS NOT NULL) AS "requestText",
+      string_agg(mp."fileFilename", E'\n' ORDER BY m."createdAt", mp."orderIndex")
+        FILTER (WHERE NULLIF(BTRIM(mp."fileFilename"), '') IS NOT NULL)
+        AS "requestAttachments"
+    FROM core."agentMessage" m
+    JOIN core."agentMessagePart" mp ON mp."messageId" = m.id
+    WHERE m."threadId" = att."threadId"
+      AND m."turnId" = att."turnId"
+      AND m.role = 'user'
+  ) req ON TRUE
+  LEFT JOIN LATERAL (
+    SELECT mp."textContent" AS "outcomeText"
+    FROM core."agentMessage" m
+    JOIN core."agentMessagePart" mp ON mp."messageId" = m.id
+    WHERE m."threadId" = att."threadId"
+      AND m."turnId" = att."turnId"
+      AND m.role = 'assistant'
+      AND NULLIF(BTRIM(mp."textContent"), '') IS NOT NULL
+    ORDER BY m."createdAt" DESC, mp."orderIndex" DESC
+    LIMIT 1
+  ) outcome ON TRUE
   LEFT JOIN core."agentChatThread" th ON th.id = att."threadId"
   LEFT JOIN core."userWorkspace" uw ON uw.id = th."userWorkspaceId"
   LEFT JOIN core."user" u ON u.id = uw."userId"
@@ -187,7 +219,12 @@ async function loadExistingRows() {
     const data = await gql(
       `query($after: String) {
         ancAiExports(first: 200, after: $after, orderBy: { id: AscNullsLast }) {
-          edges { node { id fileId urlExpiresAt exportedByMemberId } }
+          edges {
+            node {
+              id fileId urlExpiresAt exportedByMemberId
+              requestText requestAttachments outcomeText
+            }
+          }
           pageInfo { hasNextPage endCursor }
         }
       }`,
@@ -240,6 +277,9 @@ async function main() {
       exportedByMemberId: f.memberId || null,
       threadTitle: f.threadTitle || null,
       threadId: f.threadId || null,
+      requestText: f.requestText || null,
+      requestAttachments: f.requestAttachments || null,
+      outcomeText: f.outcomeText || null,
       sizeBytes: Number(f.size),
       storagePath: f.path,
     };
@@ -247,9 +287,12 @@ async function main() {
 
   const exportsCount = desired.filter((d) => d.direction === 'DIRECTION_EXPORT').length;
   const attributed = desired.filter((d) => d.exportedByName).length;
+  const withRequest = desired.filter((d) => d.requestText).length;
+  const withOutcome = desired.filter((d) => d.outcomeText).length;
   console.log(
     `source: ${desired.length} files (${exportsCount} exports, ` +
-      `${desired.length - exportsCount} uploads), ${attributed} attributed to a person`,
+      `${desired.length - exportsCount} uploads), ${attributed} attributed to a person, ` +
+      `${withRequest} with request text, ${withOutcome} with an outcome`,
   );
 
   if (DRY_RUN) {
@@ -289,9 +332,18 @@ async function main() {
       continue;
     }
     const expiry = current.urlExpiresAt ? new Date(current.urlExpiresAt).getTime() : 0;
-    // Re-mint before the link runs low, and repair a row whose member anchor is
-    // missing or has drifted — that anchor is what scopes the row to a person.
-    if (expiry < refreshCutoff || current.exportedByMemberId !== d.exportedByMemberId) {
+    const conversationChanged =
+      current.requestText !== d.requestText ||
+      current.requestAttachments !== d.requestAttachments ||
+      current.outcomeText !== d.outcomeText;
+    // Re-mint before the link runs low, repair a row whose member anchor is
+    // missing or has drifted, and keep the exact request/outcome mirror current
+    // when a streaming response finishes after an earlier sync pass.
+    if (
+      expiry < refreshCutoff ||
+      current.exportedByMemberId !== d.exportedByMemberId ||
+      conversationChanged
+    ) {
       toUpdate.push({ id: current.id, data: withLink(d) });
     }
   }
