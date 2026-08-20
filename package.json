@@ -80,6 +80,7 @@
         "decimal.js": "^10.6.0",
         "docx": "^9.6.0",
         "exceljs": "^4.4.0",
+        "fast-xml-parser": "^5.11.0",
         "framer-motion": "^12.29.0",
         "html2canvas": "^1.4.1",
         "jsonwebtoken": "^9.0.3",
