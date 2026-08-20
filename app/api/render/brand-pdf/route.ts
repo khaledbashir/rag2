@@ -38,8 +38,8 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-/** Past any drawing set we have seen; a guard, not a working limit. */
-const MAX_BYTES = 60 * 1024 * 1024;
+/** Covers the 105MB Scotia drawing set used for the real regression probe. */
+const MAX_BYTES = 200 * 1024 * 1024;
 
 const POSITIONS: BrandPdfPosition[] = ["top-left", "top-right", "bottom-left", "bottom-right"];
 const PLACEMENTS: BrandPdfPlacement[] = ["band", "overlay"];
