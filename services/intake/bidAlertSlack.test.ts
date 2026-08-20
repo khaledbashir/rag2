@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildBidAlertMessage,
   daysUntil,
+  describeDueDateMove,
   formatDueDate,
   matchChannelByVenue,
   pickBidDueDate,
@@ -231,5 +232,88 @@ describe("message content", () => {
       },
     };
     expect(buildBidAlertMessage(past, AUG_13).text).toContain("(2 days ago)");
+  });
+});
+
+// Jireh 2026-08-20, after seeing the first live alert: "Yes definitely flag
+// due dates". A date that MOVED is the signal; a date that merely exists is
+// already covered above.
+describe("due date moves", () => {
+  const movedContext = (previous: string | null, next: string): BidAlertContext => ({
+    ...ERP3_CONTEXT,
+    extraction: {
+      ...ERP3_EXTRACTION,
+      dueDates: [
+        {
+          label: "Bid Due",
+          dateIso: next,
+          kind: "proposal_due",
+          sourceText: `Bid Due: ${next}`,
+          verified: true,
+        },
+      ],
+    },
+    decision: {
+      ...ERP3_CONTEXT.decision!,
+      top: { ...ERP3_CONTEXT.decision!.top!, proposalDueDate: previous },
+    },
+  });
+
+  it("says nothing about a move when the opportunity had no date", () => {
+    expect(describeDueDateMove(null, "2026-08-27")).toBeNull();
+    expect(describeDueDateMove(undefined, "2026-08-27")).toBeNull();
+  });
+
+  it("says nothing when the date is unchanged, even across the stored 21:00Z time", () => {
+    expect(describeDueDateMove("2026-08-27T21:00:00.000Z", "2026-08-27")).toBeNull();
+  });
+
+  it("reports a date pulled forward as earlier", () => {
+    expect(describeDueDateMove("2026-09-04T21:00:00.000Z", "2026-08-27")).toEqual({
+      previousIso: "2026-09-04",
+      days: 8,
+      direction: "earlier",
+    });
+  });
+
+  it("reports a date pushed back as later", () => {
+    expect(describeDueDateMove("2026-08-20T21:00:00.000Z", "2026-08-27")).toEqual({
+      previousIso: "2026-08-20",
+      days: 7,
+      direction: "later",
+    });
+  });
+
+  it("counts whole days across a month boundary without drifting", () => {
+    expect(describeDueDateMove("2026-07-31T21:00:00.000Z", "2026-08-01")?.days).toBe(1);
+  });
+
+  it("ignores a previous value that is not a date", () => {
+    expect(describeDueDateMove("not-a-date", "2026-08-27")).toBeNull();
+  });
+
+  it("leads the headline with the movement, not the date", () => {
+    const { text } = buildBidAlertMessage(movedContext("2026-09-04T21:00:00.000Z", "2026-08-27"), new Date("2026-08-20T00:00:00Z"));
+    expect(text).toContain("Bid date moved 8 days earlier");
+    expect(text).toContain("now August 27, 2026");
+  });
+
+  it("uses the singular for a one-day move", () => {
+    const { text } = buildBidAlertMessage(movedContext("2026-08-26T21:00:00.000Z", "2026-08-27"), new Date("2026-08-20T00:00:00Z"));
+    expect(text).toContain("moved 1 day later");
+  });
+
+  it("strikes through the old date beside the new one", () => {
+    const { blocks } = buildBidAlertMessage(movedContext("2026-09-04T21:00:00.000Z", "2026-08-27"), new Date("2026-08-20T00:00:00Z"));
+    const fields = blocks.flatMap((b: any) => b.fields || []);
+    const dueField = fields.find((f: any) => f.text.startsWith("*Bid due*"));
+    expect(dueField.text).toContain("August 27, 2026");
+    expect(dueField.text).toContain("~September 4, 2026~");
+  });
+
+  it("keeps the plain headline when there is no previous date", () => {
+    const { text } = buildBidAlertMessage(movedContext(null, "2026-08-27"), new Date("2026-08-20T00:00:00Z"));
+    expect(text).toContain("Bid due August 27, 2026");
+    expect(text).not.toContain("moved");
   });
 });

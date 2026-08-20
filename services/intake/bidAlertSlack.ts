@@ -209,6 +209,34 @@ export interface SlackBlock {
   elements?: Array<{ type: string; text: string }>;
 }
 
+/**
+ * A bid date that MOVED is different news from a bid date that merely exists —
+ * Jireh 2026-08-20: "Yes definitely flag due dates". Moving earlier is the
+ * expensive direction, so the two are never reported the same way.
+ *
+ * `previous` arrives as a full ISO datetime off the opportunity (the CRM stores
+ * these at 21:00Z by the 5pm-ET convention) and `next` as a plain date, so both
+ * are compared on their date portion only. Doing the arithmetic on the
+ * YYYY-MM-DD strings in UTC keeps a reader's timezone out of it — the same trap
+ * that made award dates render a day early across the whole opportunity corpus.
+ */
+export function describeDueDateMove(
+  previous: string | null | undefined,
+  next: string,
+): { previousIso: string; days: number; direction: "earlier" | "later" } | null {
+  if (!previous) return null;
+  const previousIso = previous.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(previousIso) || !/^\d{4}-\d{2}-\d{2}$/.test(next)) return null;
+  if (previousIso === next) return null;
+
+  const from = Date.parse(`${previousIso}T00:00:00Z`);
+  const to = Date.parse(`${next}T00:00:00Z`);
+  if (Number.isNaN(from) || Number.isNaN(to)) return null;
+
+  const days = Math.round(Math.abs(to - from) / 86_400_000);
+  return { previousIso, days, direction: to < from ? "earlier" : "later" };
+}
+
 export function buildBidAlertMessage(
   ctx: BidAlertContext,
   now: Date = new Date(),
@@ -219,9 +247,13 @@ export function buildBidAlertMessage(
   const sender = ctx.input.fromName || ctx.input.fromEmail || "unknown sender";
   const attachments = (ctx.input.attachments || []).map((a) => a.name).filter(Boolean);
 
-  const headline = due
-    ? `Bid due ${formatDueDate(due.dateIso)} (${countdown(daysUntil(due.dateIso, now))}) — ${venue}`
-    : `New bid email — ${venue}`;
+  // A date that moved leads with the movement, not with the date.
+  const move = due ? describeDueDateMove(ctx.decision?.top?.proposalDueDate, due.dateIso) : null;
+  const headline = !due
+    ? `New bid email — ${venue}`
+    : move
+      ? `Bid date moved ${move.days} ${move.days === 1 ? "day" : "days"} ${move.direction} — now ${formatDueDate(due.dateIso)} (${countdown(daysUntil(due.dateIso, now))}) — ${venue}`
+      : `Bid due ${formatDueDate(due.dateIso)} (${countdown(daysUntil(due.dateIso, now))}) — ${venue}`;
 
   const blocks: SlackBlock[] = [
     { type: "header", text: { type: "plain_text", text: headline, emoji: true } },
@@ -237,7 +269,9 @@ export function buildBidAlertMessage(
   if (due) {
     fields.push({
       type: "mrkdwn",
-      text: `*Bid due*\n${formatDueDate(due.dateIso)}`,
+      text: move
+        ? `*Bid due*\n${formatDueDate(due.dateIso)}\n~${formatDueDate(move.previousIso)}~`
+        : `*Bid due*\n${formatDueDate(due.dateIso)}`,
     });
   }
   if (attachments.length) {
