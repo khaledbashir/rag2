@@ -29,6 +29,7 @@ import {
   WORDMARK_RATIO,
   placementOptions,
 } from "@/lib/pdf/brandPlacement";
+import { detectExistingBranding, existingBrandingWarning } from "@/lib/pdf/existingBranding";
 import { PageInk, renderPagesInk } from "@/lib/pdf/pageInk";
 import { PlacementJudge, configuredJudge } from "@/lib/pdf/visionPlacement";
 
@@ -514,6 +515,12 @@ export async function brandPdf(
       "The document is encrypted; it was branded through the encryption, which some viewers refuse to open. Ask for an unprotected copy if the result will not open.",
     );
   }
+
+  // Branding is not idempotent, so a sheet that already carries a mark is about
+  // to carry two. Read it from the bytes as they arrived, before anything is
+  // drawn. See lib/pdf/existingBranding.ts for the drawing this cost us.
+  const alreadyBranded = existingBrandingWarning(await detectExistingBranding(input));
+  if (alreadyBranded) warnings.push(alreadyBranded);
 
   const pages = doc.getPages();
   if (pages.length === 0) throw new Error("That PDF has no pages.");
