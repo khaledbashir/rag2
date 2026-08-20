@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import Unauthorized from "@/app/components/reusables/Unauthorized";
 import type { UserRole } from "@/lib/rbac";
 import { FEATURES } from "@/lib/featureFlags";
+import { LIVESYNC_TOOL_ROLES } from "@/lib/cms/livesyncAccess";
 import LivesyncCalculatorClient from "./LivesyncCalculatorClient";
 
 export default async function LivesyncCalculatorPage() {
@@ -11,7 +12,7 @@ export default async function LivesyncCalculatorPage() {
   const session = await auth();
   const userRole = (session?.user as { role?: UserRole } | undefined)?.role;
 
-  const allowedRoles: UserRole[] = ["ADMIN", "PRODUCT_EXPERT"];
+  const allowedRoles: UserRole[] = LIVESYNC_TOOL_ROLES;
   const hasAccess = userRole && allowedRoles.includes(userRole);
   if (!hasAccess) {
     return <Unauthorized allowedRoles={allowedRoles} featureName="Control System Calculator" />;

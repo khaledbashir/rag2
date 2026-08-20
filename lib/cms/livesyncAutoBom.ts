@@ -35,6 +35,23 @@ export type LivesyncJobInput = {
   includeLicense?: boolean;
 };
 
+/**
+ * How a catalog cost becomes a sell price.
+ *
+ * The CMS catalog carries unit COST for all 80 SKUs and a sell price for none
+ * of them, so every line used to be quoted at cost — a zero-margin BOM handed
+ * out as a price. The house model is the divisor form used everywhere else in
+ * the estimator (lib/estimator.ts: P = C / (1 - M)), and the LiveSync rate is
+ * already on the rate card as `margin.livesync`. Callers resolve it there and
+ * pass it in; the engine stays pure and never reaches for a database.
+ */
+export type LivesyncPricingContext = {
+  /** Fractional margin, e.g. 0.35 for 35%. Must be < 1. */
+  margin: number;
+  /** Where the rate came from, surfaced verbatim to the estimator. */
+  marginSource: string;
+};
+
 export type CatalogEntry = {
   sku: string;
   displayName: string;
@@ -51,8 +68,14 @@ export type BomLine = {
   displayName: string;
   category: string;
   quantity: number;
+  /** What ANC pays, straight off the catalog. */
+  unitCost: number;
+  lineCost: number;
+  /** What the client is quoted: catalog sell price if set, else cost ÷ (1 − margin). */
   unitPrice: number;
   lineTotal: number;
+  /** "catalog-sell" when the SKU carries its own price, "cost-plus-margin" otherwise. */
+  priceBasis: "catalog-sell" | "cost-plus-margin";
   rationale: string;
   flags: string[];
 };
@@ -88,11 +111,39 @@ export type ProcessorAdvisory = {
   flags: string[];
 };
 
+/**
+ * Whether the processing side produced money or only layout math.
+ *
+ * Jackson's processor rules (ports, class, fiber pairs, closets, outdoor racks)
+ * are implemented, but no processor or fiber-converter SKU exists in any
+ * catalog or on the rate card, so there is nothing to price against. That is a
+ * missing input, not a silent zero — the tool says so on its face and flips to
+ * priced the moment those SKUs land.
+ */
+export type ProcessingPricingStatus = {
+  priced: boolean;
+  /** Plain-language statement of exactly where the processing number stands. */
+  summary: string;
+  /** What has to arrive before processing can carry a price. */
+  missingInputs: string[];
+};
+
 export type AutoBomResult = {
   lines: BomLine[];
   screenPlans: ScreenPlan[];
   processorAdvisories: ProcessorAdvisory[];
+  /** Cost→sell basis actually applied to this BOM. */
+  pricing: {
+    margin: number;
+    marginSource: string;
+    linesFromCatalogSell: number;
+    linesFromCostPlusMargin: number;
+  };
+  /** Processing is quoted separately from the control system — this is its state. */
+  processing: ProcessingPricingStatus;
   totals: {
+    /** Total ANC cost, before margin. */
+    cost: number;
     hardware: number;
     softCost: number;
     license: number;
@@ -133,6 +184,12 @@ export const SCREENS_PER_WORKSTATION = 5;
 export const MATRIX_SIZES = [4, 8, 16, 24, 32, 48];
 /** Processor: each output card port handles up to 650,000 pixels */
 export const PIXELS_PER_PORT = 650_000;
+/**
+ * Catalog categories that would hold processing gear. None exist today — the
+ * Control System catalog stops at the servers — so this is what the engine
+ * watches for to flip processing from advisory to priced.
+ */
+export const PROCESSING_CATEGORIES = new Set(["PROCESSOR", "FIBER_CONVERTER", "OUTDOOR_RACK"]);
 /** Fiber: one pair of converters per 6 data lines */
 export const DATA_LINES_PER_FIBER_PAIR = 6;
 /** Closet/IDF + outdoor rack planning distance */
@@ -205,8 +262,14 @@ function pickMatrixSize(inputsNeeded: number): number | null {
 
 export function buildLivesyncAutoBom(
   job: LivesyncJobInput,
-  catalog: CatalogEntry[]
+  catalog: CatalogEntry[],
+  pricing: LivesyncPricingContext
 ): AutoBomResult {
+  if (!Number.isFinite(pricing.margin) || pricing.margin < 0 || pricing.margin >= 1) {
+    throw new Error(
+      `Invalid LiveSync margin: ${pricing.margin}. Must be a fraction between 0 and 1 (divisor model P = C / (1 - M)).`
+    );
+  }
   const bySku = new Map(catalog.map((c) => [c.sku, c]));
   const lines: BomLine[] = [];
   const reviewFlags: string[] = [];
@@ -220,12 +283,21 @@ export function buildLivesyncAutoBom(
     `${job.screens.length} screen(s) on this job. Sports venue: ${sportsVenue ? "yes" : "no"}. License requested: ${job.includeLicense ? "yes" : "no"}.`
   );
 
-  const priceOf = (entry: CatalogEntry) =>
-    entry.unitPrice != null && entry.unitPrice > 0 ? entry.unitPrice : entry.unitCost;
-  // Lines with no sell price fall back to unit COST — tracked and surfaced as
-  // one aggregate review flag (today the whole catalog is cost-basis, so a
-  // per-line flag would just be noise on every row).
-  let costBasisLines = 0;
+  // A SKU that carries its own sell price is quoted at that price. Everything
+  // else is marked up from cost with the house divisor model, P = C / (1 - M),
+  // using the rate the caller read off the rate card. Nothing is ever quoted at
+  // bare cost — that was the bug that made every Control System number read low.
+  const sellFrom = (entry: CatalogEntry): { unitPrice: number; basis: BomLine["priceBasis"] } => {
+    if (entry.unitPrice != null && entry.unitPrice > 0) {
+      return { unitPrice: entry.unitPrice, basis: "catalog-sell" };
+    }
+    return {
+      unitPrice: Number((entry.unitCost / (1 - pricing.margin)).toFixed(2)),
+      basis: "cost-plus-margin",
+    };
+  };
+  let linesFromCatalogSell = 0;
+  let linesFromCostPlusMargin = 0;
 
   const addLine = (
     sku: string,
@@ -245,15 +317,19 @@ export function buildLivesyncAutoBom(
     if (!entry.isActive) {
       allFlags.push("SKU is marked inactive in the catalog — verify before quoting.");
     }
-    if (entry.unitPrice == null || entry.unitPrice <= 0) costBasisLines += 1;
-    const unitPrice = priceOf(entry);
+    const { unitPrice, basis } = sellFrom(entry);
+    if (basis === "catalog-sell") linesFromCatalogSell += 1;
+    else linesFromCostPlusMargin += 1;
     lines.push({
       sku: entry.sku,
       displayName: entry.displayName,
       category: entry.category,
       quantity,
+      unitCost: entry.unitCost,
+      lineCost: Number((entry.unitCost * quantity).toFixed(2)),
       unitPrice,
       lineTotal: Number((unitPrice * quantity).toFixed(2)),
+      priceBasis: basis,
       rationale,
       flags: allFlags,
     });
@@ -657,10 +733,6 @@ export function buildLivesyncAutoBom(
           ? 1
           : 0;
 
-    flags.push(
-      "Processor + fiber-converter SKUs and prices live on the LED rate card, not the Control System catalog — advisory only until Jackson's rate card lands."
-    );
-
     return {
       name: screen.name,
       totalPixels,
@@ -673,15 +745,49 @@ export function buildLivesyncAutoBom(
     };
   });
 
+  // ── 12b. Can the processing side actually carry a price? ──
+  // Jackson's layout rules above are complete; what is missing is a priced
+  // product to attach them to. Say which, in as many words, instead of handing
+  // over a table of counts that reads as a broken total.
+  const pricedProcessorSkus = catalog.filter(
+    (c) => c.isActive && PROCESSING_CATEGORIES.has(c.category)
+  );
+  const totalPortsNeeded = processorAdvisories.reduce((s, a) => s + a.portsNeeded, 0);
+  const totalFiberPairs = processorAdvisories.reduce((s, a) => s + a.fiberConverterPairs, 0);
+  const processingStatus: ProcessingPricingStatus = pricedProcessorSkus.length
+    ? {
+        priced: true,
+        summary: `Processing priced from ${pricedProcessorSkus.length} catalog SKU(s) across ${totalPortsNeeded} port(s) and ${totalFiberPairs} fiber pair(s).`,
+        missingInputs: [],
+      }
+    : {
+        priced: false,
+        summary:
+          `Processing is NOT priced on this sheet. The layout is solved — ${totalPortsNeeded} data port(s), ` +
+          `${totalFiberPairs} fiber-converter pair(s) and the processor class per screen are below — but no processor or ` +
+          `fiber-converter SKU carries a price in any ANC catalog, so there is nothing to multiply them by. ` +
+          `Quote processing from Jackson's rate card by hand until those SKUs are loaded.`,
+        missingInputs: [
+          "Processor SKUs and unit costs (660 Pro / 4K / 8-series classes) from Jackson's processor rate card.",
+          "Fiber-converter pair SKU and unit cost.",
+          "Waterproof/outdoor rack SKU and unit cost for outdoor screens.",
+        ],
+      };
+  if (!processingStatus.priced) {
+    reviewFlags.push(
+      "Processing carries NO price on this sheet — control system only. Add it from Jackson's processor rate card before the number goes to a client."
+    );
+  }
+
   // ── Job-level review flags ──
   if (tierBumps.length > 0) {
     reviewFlags.push(
       `Storage bumped above 4TB on: ${tierBumps.map((t) => `${t.name} (${t.tier})`).join(", ")} — exact 4/6/8 TB thresholds are pending Jackson's confirmation.`
     );
   }
-  if (costBasisLines > 0) {
+  if (linesFromCostPlusMargin > 0) {
     reviewFlags.push(
-      `${costBasisLines} of ${lines.length} BOM lines have no sell price on the rate card — they are priced at unit COST (zero margin). Confirm margin is applied downstream or set sell prices in the CMS catalog.`
+      `${linesFromCostPlusMargin} of ${lines.length} BOM lines carry no sell price in the catalog, so they are quoted at cost ÷ (1 − ${(pricing.margin * 100).toFixed(1)}%) — the LiveSync margin from ${pricing.marginSource}. Set explicit sell prices in the CMS catalog to override per SKU.`
     );
   }
   reviewFlags.push(
@@ -697,7 +803,9 @@ export function buildLivesyncAutoBom(
   let hardware = 0;
   let softCost = 0;
   let license = 0;
+  let cost = 0;
   for (const line of lines) {
+    cost += line.lineCost;
     if (SOFT_COST.has(line.category)) softCost += line.lineTotal;
     else if (LICENSE_CAT.has(line.category)) license += line.lineTotal;
     else hardware += line.lineTotal;
@@ -708,7 +816,15 @@ export function buildLivesyncAutoBom(
     lines,
     screenPlans,
     processorAdvisories,
+    pricing: {
+      margin: pricing.margin,
+      marginSource: pricing.marginSource,
+      linesFromCatalogSell,
+      linesFromCostPlusMargin,
+    },
+    processing: processingStatus,
     totals: {
+      cost: round(cost),
       hardware: round(hardware),
       softCost: round(softCost),
       license: round(license),

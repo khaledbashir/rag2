@@ -18,8 +18,10 @@ import {
   type LivesyncJobInput,
   type LivesyncScreenInput,
 } from "@/lib/cms/livesyncAutoBom";
+import { LIVESYNC_TOOL_ROLES } from "@/lib/cms/livesyncAccess";
+import { resolveLivesyncPricing } from "@/lib/cms/livesyncPricing";
 
-const ALLOWED_ROLES: UserRole[] = ["ADMIN", "PRODUCT_EXPERT"];
+const ALLOWED_ROLES: UserRole[] = LIVESYNC_TOOL_ROLES;
 
 const SECTIONS: Array<{ title: string; category: string }> = [
   { title: "Server Equipement", category: "SERVER_EQUIPMENT" },
@@ -78,7 +80,7 @@ export async function POST(request: NextRequest) {
       unitPrice: item.unitPrice == null ? null : Number(item.unitPrice),
       isActive: item.isActive,
     }));
-    const generated = buildLivesyncAutoBom(job, catalog);
+    const generated = buildLivesyncAutoBom(job, catalog, await resolveLivesyncPricing());
     const postedLines = Array.isArray(body.bomLines) ? body.bomLines : null;
     const result = postedLines
       ? {
@@ -88,7 +90,13 @@ export async function POST(request: NextRequest) {
             if (!edited) return line;
             const quantity = Math.max(0, Number(edited.quantity));
             const unitPrice = Math.max(0, Number(edited.unitPrice));
-            return { ...line, quantity, unitPrice, lineTotal: Number((quantity * unitPrice).toFixed(2)) };
+            return {
+              ...line,
+              quantity,
+              unitPrice,
+              lineCost: Number((quantity * line.unitCost).toFixed(2)),
+              lineTotal: Number((quantity * unitPrice).toFixed(2)),
+            };
           }),
         }
       : generated;
@@ -106,6 +114,7 @@ export async function POST(request: NextRequest) {
       .join(" · ");
 
     let row = 5;
+    let grandCost = 0;
     let grandTotal = 0;
     const sectionTotalRows: number[] = [];
     for (const section of SECTIONS) {
@@ -115,27 +124,32 @@ export async function POST(request: NextRequest) {
       const headerRow = sheet.getRow(row);
       headerRow.getCell(2).value = section.title;
       headerRow.getCell(3).value = "SKU";
-      headerRow.getCell(4).value = "Cost";
+      headerRow.getCell(4).value = "Unit Cost";
       headerRow.getCell(5).value = "Quantity";
       headerRow.getCell(6).value = "Total Cost";
-      headerRow.getCell(7).value = "Selection Rationale";
+      headerRow.getCell(7).value = "Unit Sell";
+      headerRow.getCell(8).value = "Total Sell";
+      headerRow.getCell(9).value = "Selection Rationale";
       headerRow.font = { bold: true };
       headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } };
       row++;
 
+      let sectionCost = 0;
       let sectionTotal = 0;
       const firstLineRow = row;
       for (const line of items) {
         const r = sheet.getRow(row);
         r.getCell(2).value = line.displayName;
         r.getCell(3).value = line.sku;
-        r.getCell(4).value = line.unitPrice;
+        r.getCell(4).value = line.unitCost;
         r.getCell(5).value = line.quantity;
-        // Live formula so the integration team can tweak cost/qty in the file
-        r.getCell(6).value = { formula: `D${row}*E${row}`, result: line.lineTotal };
-        r.getCell(7).value = line.rationale + (line.flags.length ? ` [REVIEW: ${line.flags.join(" | ")}]` : "");
-        r.getCell(4).numFmt = '"$"#,##0.00';
-        r.getCell(6).numFmt = '"$"#,##0.00';
+        // Live formulas so the integration team can tweak cost/qty/sell in the file
+        r.getCell(6).value = { formula: `D${row}*E${row}`, result: Number((line.unitCost * line.quantity).toFixed(2)) };
+        r.getCell(7).value = line.unitPrice;
+        r.getCell(8).value = { formula: `G${row}*E${row}`, result: line.lineTotal };
+        r.getCell(9).value = line.rationale + (line.flags.length ? ` [REVIEW: ${line.flags.join(" | ")}]` : "");
+        for (const c of [4, 6, 7, 8]) r.getCell(c).numFmt = '"$"#,##0.00';
+        sectionCost += line.unitCost * line.quantity;
         sectionTotal += line.lineTotal;
         row++;
       }
@@ -143,11 +157,17 @@ export async function POST(request: NextRequest) {
       totalRow.getCell(2).value = "Total";
       totalRow.getCell(6).value = {
         formula: `SUM(F${firstLineRow}:F${row - 1})`,
+        result: Number(sectionCost.toFixed(2)),
+      };
+      totalRow.getCell(8).value = {
+        formula: `SUM(H${firstLineRow}:H${row - 1})`,
         result: Number(sectionTotal.toFixed(2)),
       };
       totalRow.getCell(6).numFmt = '"$"#,##0.00';
+      totalRow.getCell(8).numFmt = '"$"#,##0.00';
       totalRow.font = { bold: true };
       sectionTotalRows.push(row);
+      grandCost += sectionCost;
       grandTotal += sectionTotal;
       row += 2;
     }
@@ -156,18 +176,44 @@ export async function POST(request: NextRequest) {
     sheet.getRow(row).getCell(6).value = sectionTotalRows.length
       ? {
           formula: sectionTotalRows.map((r) => `F${r}`).join("+"),
+          result: Number(grandCost.toFixed(2)),
+        }
+      : 0;
+    sheet.getRow(row).getCell(8).value = sectionTotalRows.length
+      ? {
+          formula: sectionTotalRows.map((r) => `H${r}`).join("+"),
           result: Number(grandTotal.toFixed(2)),
         }
       : 0;
     sheet.getRow(row).getCell(6).numFmt = '"$"#,##0.00';
+    sheet.getRow(row).getCell(8).numFmt = '"$"#,##0.00';
     sheet.getRow(row).font = { bold: true, size: 12 };
+    row += 2;
+
+    // Say on the face of the sheet how cost became sell, and that processing isn't in it.
+    sheet.getRow(row).getCell(2).value = "Sell basis";
+    sheet.getRow(row).getCell(2).font = { bold: true };
+    sheet.getRow(row).getCell(3).value =
+      `Unit Sell = Unit Cost ÷ (1 − ${(result.pricing.margin * 100).toFixed(1)}%), the LiveSync margin from ${result.pricing.marginSource}. ` +
+      `SKUs carrying their own catalog sell price use that price instead (${result.pricing.linesFromCatalogSell} of ${result.lines.length} lines).`;
+    sheet.getRow(row).getCell(3).alignment = { wrapText: true, vertical: "top" };
+    row++;
+    sheet.getRow(row).getCell(2).value = "Processing";
+    sheet.getRow(row).getCell(2).font = { bold: true };
+    sheet.getRow(row).getCell(3).value = result.processing.summary;
+    sheet.getRow(row).getCell(3).alignment = { wrapText: true, vertical: "top" };
+    if (!result.processing.priced) {
+      sheet.getRow(row).getCell(3).font = { bold: true, color: { argb: "FFC00000" } };
+    }
 
     sheet.getColumn(2).width = 42;
     sheet.getColumn(3).width = 26;
     sheet.getColumn(4).width = 12;
     sheet.getColumn(5).width = 10;
     sheet.getColumn(6).width = 14;
-    sheet.getColumn(7).width = 90;
+    sheet.getColumn(7).width = 12;
+    sheet.getColumn(8).width = 14;
+    sheet.getColumn(9).width = 90;
 
     // ─── Tab 2: Selection logic ───
     const logic = workbook.addWorksheet("Selection Logic");

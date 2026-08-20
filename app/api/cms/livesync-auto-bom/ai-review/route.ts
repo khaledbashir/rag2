@@ -22,8 +22,10 @@ import {
   type LivesyncJobInput,
   type LivesyncScreenInput,
 } from "@/lib/cms/livesyncAutoBom";
+import { LIVESYNC_TOOL_ROLES } from "@/lib/cms/livesyncAccess";
+import { resolveLivesyncPricing } from "@/lib/cms/livesyncPricing";
 
-const ALLOWED_ROLES: UserRole[] = ["ADMIN", "PRODUCT_EXPERT"];
+const ALLOWED_ROLES: UserRole[] = LIVESYNC_TOOL_ROLES;
 
 type Provider = { name: string; baseUrl: string; apiKey: string; model: string };
 
@@ -100,7 +102,8 @@ export async function POST(request: NextRequest) {
       unitCost: Number(item.unitCost),
       unitPrice: item.unitPrice == null ? null : Number(item.unitPrice),
       isActive: item.isActive,
-    }))
+    })),
+    await resolveLivesyncPricing()
   );
 
   const bomTable = result.lines

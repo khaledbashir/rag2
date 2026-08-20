@@ -17,8 +17,11 @@ type BomLine = {
   displayName: string;
   category: string;
   quantity: number;
+  unitCost: number;
+  lineCost: number;
   unitPrice: number;
   lineTotal: number;
+  priceBasis: "catalog-sell" | "cost-plus-margin";
   rationale: string;
   flags: string[];
 };
@@ -55,7 +58,14 @@ type AutoBomResponse = {
   reasoning: ReasoningStep[];
   screenPlans: ScreenPlan[];
   processorAdvisories: ProcessorAdvisory[];
-  totals: { hardware: number; softCost: number; license: number; grand: number };
+  pricing: {
+    margin: number;
+    marginSource: string;
+    linesFromCatalogSell: number;
+    linesFromCostPlusMargin: number;
+  };
+  processing: { priced: boolean; summary: string; missingInputs: string[] };
+  totals: { cost: number; hardware: number; softCost: number; license: number; grand: number };
   counts: {
     uiServers: number;
     renderServers: number;
@@ -415,13 +425,22 @@ export default function LivesyncCalculatorClient() {
       const lines = current.lines.map((line, index) => {
         if (index !== lineIndex) return line;
         const next = { ...line, ...patch };
-        return { ...next, lineTotal: Number((next.quantity * next.unitPrice).toFixed(2)) };
+        return {
+          ...next,
+          lineCost: Number((next.quantity * next.unitCost).toFixed(2)),
+          lineTotal: Number((next.quantity * next.unitPrice).toFixed(2)),
+        };
       });
       const sum = (category: string) => lines.filter((line) => line.category === category).reduce((n, line) => n + line.lineTotal, 0);
       const softCost = sum("INTEGRATION");
       const license = sum("LICENSE");
       const grand = lines.reduce((n, line) => n + line.lineTotal, 0);
-      return { ...current, lines, totals: { hardware: grand - softCost - license, softCost, license, grand } };
+      const cost = lines.reduce((n, line) => n + line.lineCost, 0);
+      return {
+        ...current,
+        lines,
+        totals: { cost: Number(cost.toFixed(2)), hardware: grand - softCost - license, softCost, license, grand },
+      };
     });
   };
 
@@ -623,7 +642,10 @@ export default function LivesyncCalculatorClient() {
                 <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
                 <div>
                   <p className="font-semibold">Estimate ready · {money(result.totals.grand)}</p>
-                  <p className="text-sm text-muted-foreground">Review the editable BOM, then export the working estimate.</p>
+                  <p className="text-sm text-muted-foreground">
+                    Sell price at {(result.pricing.margin * 100).toFixed(1)}% LiveSync margin over {money(result.totals.cost)} cost.
+                    {result.processing.priced ? "" : " Control system only — processing is not priced."}
+                  </p>
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 lg:ml-auto">
@@ -647,7 +669,7 @@ export default function LivesyncCalculatorClient() {
               ["Total servers", `${result.counts.totalServers}`, `${result.counts.renderServers} render + ${result.counts.uiServers} UI`],
               ["Matrix", result.counts.matrixSize ? `${result.counts.matrixSize}×${result.counts.matrixSize}` : "Needs design", `${result.counts.matrixInputsNeeded} inputs needed`],
               ["Racks / labor", `${result.counts.racks}`, `${result.counts.racks} week(s) install`],
-              ["System total", money(result.totals.grand), "hardware + labor" + (result.totals.license > 0 ? " + license" : "")],
+              ["System total", money(result.totals.grand), `${money(result.totals.cost)} cost · ${(result.pricing.margin * 100).toFixed(1)}% margin`],
             ].map(([label, value, sub]) => (
               <div key={label as string} className="border border-border rounded-lg p-4 bg-muted/30">
                 <p className="text-xs font-normal text-muted-foreground">{label}</p>
@@ -734,7 +756,8 @@ export default function LivesyncCalculatorClient() {
                   <tr className="bg-muted/40 text-left">
                     <th className="px-3 py-2">Item</th>
                     <th className="px-3 py-2 text-right">Qty</th>
-                    <th className="px-3 py-2 text-right">Unit price</th>
+                    <th className="px-3 py-2 text-right">Unit cost</th>
+                    <th className="px-3 py-2 text-right">Unit sell</th>
                     <th className="px-3 py-2 text-right">Line total</th>
                     <th className="px-3 py-2">Why it&apos;s here</th>
                   </tr>
@@ -744,7 +767,7 @@ export default function LivesyncCalculatorClient() {
                     (group) => (
                       <React.Fragment key={group.category}>
                         <tr className="bg-muted/40">
-                          <td colSpan={5} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          <td colSpan={6} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                             {CATEGORY_LABEL[group.category] ?? group.category}
                           </td>
                         </tr>
@@ -757,7 +780,8 @@ export default function LivesyncCalculatorClient() {
                               <div className="font-mono text-xs text-muted-foreground">{line.sku}</div>
                             </td>
                             <td className="px-3 py-1.5 text-right"><input aria-label={`Quantity for ${line.displayName}`} type="number" min="0" step="1" className="w-20 px-2 py-1 rounded border border-border bg-background text-right" value={line.quantity} onChange={(e) => editBomLine(lineIndex, { quantity: Math.max(0, Number(e.target.value)) })} /></td>
-                            <td className="px-3 py-1.5 text-right"><input aria-label={`Unit price for ${line.displayName}`} type="number" min="0" step="0.01" className="w-28 px-2 py-1 rounded border border-border bg-background text-right" value={line.unitPrice} onChange={(e) => editBomLine(lineIndex, { unitPrice: Math.max(0, Number(e.target.value)) })} /></td>
+                            <td className="px-3 py-1.5 text-right font-mono text-xs text-muted-foreground">{money(line.unitCost)}</td>
+                            <td className="px-3 py-1.5 text-right"><input aria-label={`Unit sell price for ${line.displayName}`} type="number" min="0" step="0.01" className="w-28 px-2 py-1 rounded border border-border bg-background text-right" value={line.unitPrice} onChange={(e) => editBomLine(lineIndex, { unitPrice: Math.max(0, Number(e.target.value)) })} /></td>
                             <td className="px-3 py-1.5 text-right font-medium">{money(line.lineTotal)}</td>
                             <td className="px-3 py-1.5 text-xs text-muted-foreground max-w-md">
                               {line.rationale}
@@ -773,7 +797,7 @@ export default function LivesyncCalculatorClient() {
                     )
                   )}
                   <tr className="border-t-2 border-border bg-muted/40 font-semibold">
-                    <td className="px-3 py-2" colSpan={3}>
+                    <td className="px-3 py-2" colSpan={4}>
                       System total
                       <span className="ml-3 text-xs font-normal text-muted-foreground">
                         hardware {money(result.totals.hardware)} · labor {money(result.totals.softCost)}
@@ -781,7 +805,9 @@ export default function LivesyncCalculatorClient() {
                       </span>
                     </td>
                     <td className="px-3 py-2 text-right">{money(result.totals.grand)}</td>
-                    <td />
+                    <td className="px-3 py-2 text-xs font-normal text-muted-foreground">
+                      {money(result.totals.cost)} cost · {(result.pricing.margin * 100).toFixed(1)}% margin from {result.pricing.marginSource}
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -810,10 +836,35 @@ export default function LivesyncCalculatorClient() {
 
           {/* ── Processor advisory ── */}
           <section className="space-y-2">
-            <h2 className="text-lg font-semibold">Processing advisory (per screen)</h2>
+            <h2 className="text-lg font-semibold">Processing (per screen)</h2>
+            <div
+              className={
+                result.processing.priced
+                  ? "rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-4 space-y-2"
+                  : "rounded-lg border border-red-500/50 bg-red-500/5 p-4 space-y-2"
+              }
+            >
+              <p className="flex items-start gap-2 text-sm font-medium">
+                <AlertTriangle
+                  className={
+                    result.processing.priced
+                      ? "mt-0.5 h-4 w-4 shrink-0 text-emerald-600"
+                      : "mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-500"
+                  }
+                />
+                {result.processing.summary}
+              </p>
+              {result.processing.missingInputs.length > 0 && (
+                <ul className="space-y-1 pl-6 text-sm text-muted-foreground">
+                  {result.processing.missingInputs.map((item) => (
+                    <li key={item}>• {item}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground">
-              Port counts and layout math for the display processing side. Informational —
-              processor pricing lives on the LED rate card.
+              The layout math below is complete and usable — ports, processor class, closets and
+              fiber pairs per screen.
             </p>
             <div className="overflow-x-auto border border-border rounded-lg">
               <table className="w-full text-sm">

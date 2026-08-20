@@ -50,6 +50,9 @@ const CATALOG: CatalogEntry[] = [
 const qty = (result: ReturnType<typeof buildLivesyncAutoBom>, sku: string) =>
   result.lines.find((l) => l.sku === sku)?.quantity ?? 0;
 
+// House divisor model, P = C / (1 - M), at the rate card's LiveSync margin.
+const PRICING = { margin: 0.35, marginSource: "the rate card (LiveSync / CMS Margin, validated)" };
+
 describe("outputsForScreen — 3840×2160 per output", () => {
   it("matches Jackson's 7680×1000 example: 2 outputs", () => {
     expect(outputsForScreen(7680, 1000)).toBe(2);
@@ -65,7 +68,8 @@ describe("outputsForScreen — 3840×2160 per output", () => {
 describe("Jackson's canonical 7680×1000 deployment", () => {
   const result = buildLivesyncAutoBom(
     { screens: [{ name: "Main Board", pixelWidth: 7680, pixelHeight: 1000 }] },
-    CATALOG
+    CATALOG,
+    PRICING
   );
 
   it("produces 4 servers total: 2 UI (8TB) + 2 render (4TB, primary+backup)", () => {
@@ -120,7 +124,8 @@ describe("matrix sizing — never select exactly what you need", () => {
           { name: "C", pixelWidth: 7680, pixelHeight: 1000 },
         ],
       },
-      CATALOG
+      CATALOG,
+      PRICING
     );
     expect(result.counts.totalServers).toBe(8);
     expect(result.counts.matrixInputsNeeded).toBe(16);
@@ -140,7 +145,8 @@ describe("matrix sizing — dual-GPU servers feed 4 outputs", () => {
           { name: "C", pixelWidth: 8000, pixelHeight: 2000 },
         ],
       },
-      CATALOG
+      CATALOG,
+      PRICING
     );
     expect(result.counts.totalServers).toBe(8);
     // 6 dual × 4 + 2 UI × 2 = 28 inputs → next size up = 32×32
@@ -155,7 +161,8 @@ describe("matrix sizing — dual-GPU servers feed 4 outputs", () => {
   it("standard-only jobs keep Jackson's servers × 2 math unchanged", () => {
     const result = buildLivesyncAutoBom(
       { screens: [{ name: "Main Board", pixelWidth: 7680, pixelHeight: 1000 }] },
-      CATALOG
+      CATALOG,
+      PRICING
     );
     expect(result.counts.matrixInputsNeeded).toBe(8);
     expect(result.counts.matrixSize).toBe(16);
@@ -170,7 +177,8 @@ describe("live video screens", () => {
           { name: "Center Hung", pixelWidth: 5000, pixelHeight: 2000, liveVideo: true },
         ],
       },
-      CATALOG
+      CATALOG,
+      PRICING
     );
     // 5000×2000 = 10M px → 6TB tier, CC capture variant, primary + backup
     expect(qty(result, "ANC-1U-6TB-4ADA-CC")).toBe(2);
@@ -181,7 +189,8 @@ describe("dual video card rule — screen wider than 7680 stays on one box", () 
   it("selects a dual-GPU server for an 8000×2000 board", () => {
     const result = buildLivesyncAutoBom(
       { screens: [{ name: "End Zone", pixelWidth: 8000, pixelHeight: 2000 }] },
-      CATALOG
+      CATALOG,
+      PRICING
     );
     const dual = result.lines.find((l) => l.sku.includes("2x4ADA"));
     expect(dual).toBeDefined();
@@ -199,7 +208,8 @@ describe("small screens pack 2-per-server", () => {
           { name: "Concourse", pixelWidth: 1920, pixelHeight: 1080 },
         ],
       },
-      CATALOG
+      CATALOG,
+      PRICING
     );
     expect(qty(result, "ANC-1U-4TB-4ADA-V1")).toBe(4); // ceil(3/2)=2 primaries ×2
   });
@@ -212,7 +222,7 @@ describe("workstations scale with screen count", () => {
       pixelWidth: 3000,
       pixelHeight: 600,
     }));
-    const result = buildLivesyncAutoBom({ screens }, CATALOG);
+    const result = buildLivesyncAutoBom({ screens }, CATALOG, PRICING);
     expect(result.counts.workstations).toBe(2);
     expect(qty(result, "CMS-WS-PWR")).toBe(2);
     expect(qty(result, "ADDER-RX")).toBe(2);
@@ -233,7 +243,8 @@ describe("outdoor screens", () => {
           },
         ],
       },
-      CATALOG
+      CATALOG,
+      PRICING
     );
     expect(qty(result, "CMS-RACK-ACOUT")).toBe(2);
   });
@@ -252,7 +263,8 @@ describe("processor advisory — 650k pixels per port", () => {
           },
         ],
       },
-      CATALOG
+      CATALOG,
+      PRICING
     );
     const adv = result.processorAdvisories[0];
     expect(adv.portsNeeded).toBe(Math.ceil((7680 * 1000) / 650000)); // 12
@@ -267,39 +279,122 @@ describe("flag-don't-guess behavior", () => {
     const tiny = CATALOG.filter((c) => c.category === "SERVER_EQUIPMENT");
     const result = buildLivesyncAutoBom(
       { screens: [{ name: "X", pixelWidth: 7680, pixelHeight: 1000 }] },
-      tiny
+      tiny,
+      PRICING
     );
     expect(result.reviewFlags.some((f) => f.includes("missing SKU"))).toBe(true);
   });
 
-  it("surfaces cost-basis pricing as one aggregate review flag", () => {
-    // Test catalog has no sell prices at all → every line is quoted at cost
+  it("marks up every price-less SKU instead of quoting it at bare cost", () => {
+    // The real catalog carries cost for all 80 SKUs and a sell price for none,
+    // so this is the production case: nothing may come out at cost.
     const result = buildLivesyncAutoBom(
       { screens: [{ name: "X", pixelWidth: 3000, pixelHeight: 600 }] },
-      CATALOG
+      CATALOG,
+      PRICING
     );
-    const flag = result.reviewFlags.find((f) => f.includes("unit COST"));
-    expect(flag).toBeDefined();
-    expect(flag).toContain(`${result.lines.length} of ${result.lines.length}`);
+    expect(result.pricing.linesFromCostPlusMargin).toBe(result.lines.length);
+    expect(result.pricing.linesFromCatalogSell).toBe(0);
+    for (const line of result.lines) {
+      expect(line.priceBasis).toBe("cost-plus-margin");
+      expect(line.unitPrice).toBeGreaterThan(line.unitCost);
+      expect(line.unitPrice).toBeCloseTo(line.unitCost / (1 - PRICING.margin), 2);
+    }
+    // and the sheet says which margin it used, and where it came from
+    const flag = result.reviewFlags.find((f) => f.includes("cost ÷"));
+    expect(flag).toContain("35.0%");
+    expect(flag).toContain(PRICING.marginSource);
   });
 
-  it("uses the sell price when the catalog has one and excludes it from the cost-basis count", () => {
+  it("totals carry both the cost roll-up and the marked-up sell price", () => {
+    const result = buildLivesyncAutoBom(
+      { screens: [{ name: "X", pixelWidth: 3000, pixelHeight: 600 }] },
+      CATALOG,
+      PRICING
+    );
+    const lineCostSum = result.lines.reduce((s, l) => s + l.lineCost, 0);
+    expect(result.totals.cost).toBeCloseTo(lineCostSum, 2);
+    expect(result.totals.grand).toBeGreaterThan(result.totals.cost);
+    // realised margin on the sheet is the margin we asked for
+    const realised = (result.totals.grand - result.totals.cost) / result.totals.grand;
+    expect(realised).toBeCloseTo(PRICING.margin, 3);
+  });
+
+  it("an explicit catalog sell price wins over the markup", () => {
     const priced = CATALOG.map((c) =>
       c.sku === "CMS-GPI-TRIGGER" ? { ...c, unitPrice: 2900 } : c
     );
     const result = buildLivesyncAutoBom(
       { screens: [{ name: "X", pixelWidth: 3000, pixelHeight: 600 }] },
-      priced
+      priced,
+      PRICING
     );
-    expect(result.lines.find((l) => l.sku === "CMS-GPI-TRIGGER")?.unitPrice).toBe(2900);
-    const flag = result.reviewFlags.find((f) => f.includes("unit COST"));
-    expect(flag).toContain(`${result.lines.length - 1} of ${result.lines.length}`);
+    const trigger = result.lines.find((l) => l.sku === "CMS-GPI-TRIGGER");
+    expect(trigger?.unitPrice).toBe(2900);
+    expect(trigger?.priceBasis).toBe("catalog-sell");
+    expect(trigger?.unitCost).toBe(2270);
+    expect(result.pricing.linesFromCatalogSell).toBe(1);
+    expect(result.pricing.linesFromCostPlusMargin).toBe(result.lines.length - 1);
+  });
+
+  it("refuses an impossible margin rather than dividing by zero", () => {
+    for (const bad of [1, 1.2, -0.1, NaN]) {
+      expect(() =>
+        buildLivesyncAutoBom(
+          { screens: [{ name: "X", pixelWidth: 3000, pixelHeight: 600 }] },
+          CATALOG,
+          { margin: bad, marginSource: "test" }
+        )
+      ).toThrow(/Invalid LiveSync margin/);
+    }
+  });
+
+  it("says plainly that processing is not priced, and why", () => {
+    const result = buildLivesyncAutoBom(
+      { screens: [{ name: "X", pixelWidth: 7680, pixelHeight: 1000, physicalWidthFt: 300 }] },
+      CATALOG,
+      PRICING
+    );
+    expect(result.processing.priced).toBe(false);
+    expect(result.processing.summary).toContain("NOT priced");
+    expect(result.processing.missingInputs.length).toBeGreaterThan(0);
+    expect(
+      result.reviewFlags.some((f) => f.includes("Processing carries NO price"))
+    ).toBe(true);
+    // the layout math is still solved and reported
+    expect(result.processorAdvisories[0].portsNeeded).toBeGreaterThan(0);
+    expect(result.processorAdvisories[0].closets).toBe(2); // 300ft / 150ft rule
+  });
+
+  it("flips processing to priced once processor SKUs exist in the catalog", () => {
+    const withProcessors: CatalogEntry[] = [
+      ...CATALOG,
+      {
+        sku: "PROC-660-PRO",
+        displayName: "660 Pro",
+        category: "PROCESSOR",
+        unitCost: 12000,
+        unitPrice: null,
+        isActive: true,
+      },
+    ];
+    const result = buildLivesyncAutoBom(
+      { screens: [{ name: "X", pixelWidth: 3000, pixelHeight: 600 }] },
+      withProcessors,
+      PRICING
+    );
+    expect(result.processing.priced).toBe(true);
+    expect(result.processing.missingInputs).toHaveLength(0);
+    expect(
+      result.reviewFlags.some((f) => f.includes("Processing carries NO price"))
+    ).toBe(false);
   });
 
   it("always warns about the 15-day price fluctuation", () => {
     const result = buildLivesyncAutoBom(
       { screens: [{ name: "X", pixelWidth: 3000, pixelHeight: 600 }] },
-      CATALOG
+      CATALOG,
+      PRICING
     );
     expect(result.reviewFlags.some((f) => f.includes("15 days"))).toBe(true);
   });
@@ -307,7 +402,8 @@ describe("flag-don't-guess behavior", () => {
   it("emits an ordered reasoning trail covering every decision phase", () => {
     const result = buildLivesyncAutoBom(
       { screens: [{ name: "Main", pixelWidth: 7680, pixelHeight: 1000 }] },
-      CATALOG
+      CATALOG,
+      PRICING
     );
     const phases = result.reasoning.map((s) => s.phase);
     for (const expected of [
@@ -336,7 +432,8 @@ describe("flag-don't-guess behavior", () => {
         screens: [{ name: "X", pixelWidth: 3000, pixelHeight: 600 }],
         includeLicense: true,
       },
-      CATALOG
+      CATALOG,
+      PRICING
     );
     expect(qty(result, "LIVESYNC-LICENSE")).toBe(1);
   });

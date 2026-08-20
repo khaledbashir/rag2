@@ -18,8 +18,10 @@ import {
   type LivesyncJobInput,
   type LivesyncScreenInput,
 } from "@/lib/cms/livesyncAutoBom";
+import { LIVESYNC_TOOL_ROLES } from "@/lib/cms/livesyncAccess";
+import { resolveLivesyncPricing } from "@/lib/cms/livesyncPricing";
 
-const ALLOWED_ROLES: UserRole[] = ["ADMIN", "PRODUCT_EXPERT"];
+const ALLOWED_ROLES: UserRole[] = LIVESYNC_TOOL_ROLES;
 
 export async function POST(request: NextRequest) {
   try {
@@ -77,7 +79,8 @@ export async function POST(request: NextRequest) {
       isActive: item.isActive,
     }));
 
-    const result = buildLivesyncAutoBom(job, catalog);
+    const pricing = await resolveLivesyncPricing();
+    const result = buildLivesyncAutoBom(job, catalog, pricing);
 
     const newestPriceUpdate = catalogItems.reduce<Date | null>(
       (acc, item) => (acc == null || item.updatedAt > acc ? item.updatedAt : acc),
