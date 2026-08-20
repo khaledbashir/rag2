@@ -60,10 +60,42 @@ describe("POST /api/render/brand-pdf", () => {
     expect(output.getPage(0).getHeight()).toBeCloseTo(792, 1);
   });
 
+  it("decides placement from the sheet by default and reports who decided", async () => {
+    const input = await samplePdf();
+    const response = await POST(
+      new NextRequest(`${ENDPOINT}?format=json`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          base64: Buffer.from(input).toString("base64"),
+          fileName: "vendor-sheet.pdf",
+        }),
+      }),
+    );
+    const result = (await response.json()) as {
+      placement: string;
+      position: string;
+      placedOnSheet: number;
+      placedOnBand: number;
+      positionsUsed: string[];
+      base64: string;
+    };
+    const output = await PDFDocument.load(Buffer.from(result.base64, "base64"));
+
+    expect(response.status).toBe(200);
+    expect(result.placement).toBe("auto");
+    expect(result.position).toBe("bottom-right");
+    // A blank sample sheet has room, so nothing is added to it.
+    expect(result.placedOnSheet).toBe(1);
+    expect(result.placedOnBand).toBe(0);
+    expect(result.positionsUsed).toEqual(["bottom-right"]);
+    expect(output.getPage(0).getHeight()).toBeCloseTo(792, 1);
+  }, 30_000);
+
   it("returns JSON for a bottom band and exposes what it applied", async () => {
     const input = await samplePdf();
     const response = await POST(
-      new NextRequest(`${ENDPOINT}?format=json&edge=bottom`, {
+      new NextRequest(`${ENDPOINT}?format=json&placement=band&edge=bottom`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

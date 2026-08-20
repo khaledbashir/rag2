@@ -7,7 +7,7 @@ const nextConfig = {
     typescript: { ignoreBuildErrors: true },
     eslint: { ignoreDuringBuilds: true },
     outputFileTracingRoot: path.join(__dirname),
-    serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
+    serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core", "unpdf", "@napi-rs/canvas"],
     experimental: {
         serverActions: {
             bodySizeLimit: "2000mb",

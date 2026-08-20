@@ -23,38 +23,56 @@
 import { PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, degrees, rgb } from "pdf-lib";
 
 import { ancWordmarkBlue } from "@/lib/docx/ancLogo";
-
-/** 1060x271 — any placement has to keep it or the mark is distorted. */
-const WORDMARK_RATIO = 1060 / 271;
+import {
+  BrandPdfPosition,
+  ClearSpot,
+  WORDMARK_RATIO,
+  placementOptions,
+} from "@/lib/pdf/brandPlacement";
+import { PageInk, renderPagesInk } from "@/lib/pdf/pageInk";
+import { PlacementJudge, configuredJudge } from "@/lib/pdf/visionPlacement";
 
 /** #0A52EF, the brand blue, as pdf-lib wants it. */
 const ANC_BLUE = rgb(0x0a / 255, 0x52 / 255, 0xef / 255);
 const FOOTER_INK = rgb(0x50 / 255, 0x58 / 255, 0x64 / 255);
 const PILL_BORDER = rgb(0xd1 / 255, 0xd5 / 255, 0xdb / 255);
 
-export type BrandPdfPosition = "top-left" | "top-right" | "bottom-left" | "bottom-right";
+/**
+ * Big enough that a hairline border still shows up as ink, small enough that a
+ * 67-sheet drawing set is a few seconds rather than a timeout.
+ */
+const RASTER_LONG_SIDE = 620;
+
+/** Reading the sheets is worth waiting for, but not indefinitely. */
+const LOOK_BUDGET_MS = 60_000;
+
+export type { BrandPdfPosition };
 
 /**
- * `band` grows the sheet and puts the mark on the new strip. `overlay` stamps it
- * onto a corner of the page as it stands.
+ * `auto` reads the sheet and puts the mark on blank paper. `band` grows the sheet
+ * and puts it on the new strip. `overlay` stamps a fixed corner as-is.
  *
- * Band is the default because overlay can always land on something. Branding a
- * real 67-page signage set top-left put the pill straight through the word
- * SIGNAGE on the cover sheet — there is no corner that is safe on every drawing,
- * and a house endpoint cannot gamble with a document going to a client. Adding
- * paper is the drafting-table answer: nothing is covered and nothing is scaled.
+ * Auto is the default, because the corner is a property of the *file*, not of the
+ * request. Told-a-corner went through the word SIGNAGE on one cover sheet; the
+ * band never covers anything but reads as a strip taped above the drawing rather
+ * than branding on it — Jireh Billings, on a real Thunder LED drawing:
+ * *"something that looks more professional and that's embedded in the bottom
+ * right"*. Auto keeps his corner as the preference and walks inward from it until
+ * the paper is actually empty, which on that sheet is the title block's own logo
+ * panel. `band` stays available, and is still where auto lands when a sheet turns
+ * out to be full edge to edge.
  */
-export type BrandPdfPlacement = "band" | "overlay";
+export type BrandPdfPlacement = "auto" | "band" | "overlay";
 
 /** Which edge of the sheet, as the reader sees it, the band is added to. */
 export type BrandPdfEdge = "top" | "bottom";
 
 export interface BrandPdfOptions {
-  /** `band` (default) adds a strip; `overlay` stamps the page as-is. */
+  /** `auto` (default) finds blank paper; `band` adds a strip; `overlay` stamps as-is. */
   placement?: BrandPdfPlacement;
-  /** Band edge. Default `top`. */
+  /** Band edge. Default `top` for an explicit band, `bottom` when auto falls back. */
   edge?: BrandPdfEdge;
-  /** Overlay only — corner the mark sits in. Default `top-left`. */
+  /** The corner the mark belongs in — a preference under `auto`. Default `bottom-right`. */
   position?: BrandPdfPosition;
   /** Stamp every page or only the first. Default `all`. */
   pages?: "all" | "first";
@@ -66,6 +84,11 @@ export interface BrandPdfOptions {
   title?: string | null;
   /** Nudge the mark's size. Clamped to 0.5–2. Default 1. */
   logoScale?: number;
+  /**
+   * Overrides the configured vision judge. Pass `null` to place on geometry
+   * alone; leave undefined to use whatever the deployment is set up with.
+   */
+  judge?: PlacementJudge | null;
 }
 
 export interface BrandPdfResult {
@@ -76,6 +99,16 @@ export interface BrandPdfResult {
   edge: BrandPdfEdge;
   position: BrandPdfPosition;
   footer: string | null;
+  /** Pages where blank paper was found and the mark went onto the sheet itself. */
+  placedOnSheet: number;
+  /** Pages that got a strip instead, because nothing on them was blank enough. */
+  placedOnBand: number;
+  /** Corners actually used, so the caller can say where the mark went. */
+  positionsUsed: BrandPdfPosition[];
+  /** Who chose the corner: a vision model that looked at the sheet, or geometry. */
+  decidedBy: "vision" | "geometry" | "requested";
+  /** The judge's one-line reason, when a judge answered. */
+  decisionNote: string | null;
   /** Anything the caller should mention rather than discover later. */
   warnings: string[];
 }
@@ -291,6 +324,7 @@ function drawBand(
   edge: BrandPdfEdge,
   band: number,
   footerText: string | null,
+  side: "left" | "right" = "left",
 ): { footerFitted: boolean } {
   const place = (vx: number, vy: number) => {
     const anchor = visualToUser(rotation, box.width, box.height, vx, vy);
@@ -317,7 +351,11 @@ function drawBand(
 
   const logoWidth = clamp(band * 2.2, 70, 210);
   const logoHeight = logoWidth / WORDMARK_RATIO;
-  const logo = place(margin, bandBottom + (band - logoHeight) / 2);
+  // The mark takes the requested side and the caption takes the other, so a strip
+  // added as the auto fallback still reads bottom-*right* rather than quietly
+  // moving the branding to the opposite corner from the one that was asked for.
+  const logoVx = side === "left" ? margin : visual.width - margin - logoWidth;
+  const logo = place(logoVx, bandBottom + (band - logoHeight) / 2);
   page.drawImage(wordmark, { ...logo, width: logoWidth, height: logoHeight });
 
   if (!footerText) return { footerFitted: true };
@@ -327,11 +365,62 @@ function drawBand(
   if (textWidth > visual.width - margin * 3 - logoWidth) return { footerFitted: false };
 
   const text = place(
-    visual.width - margin - textWidth,
+    side === "left" ? visual.width - margin - textWidth : margin,
     bandBottom + (band - size) / 2 + size * 0.24,
   );
   page.drawText(footerText, { ...text, size, font, color: FOOTER_INK });
   return { footerFitted: true };
+}
+
+/**
+ * The mark on blank paper, laid out the way a title block is: wordmark, a hair of
+ * brand blue ruled under it the exact width of the mark, and one quiet line of
+ * type beneath that.
+ *
+ * No white pill. The pill exists in the fixed-corner path because a forced corner
+ * can land on line work and the mark would be unreadable over it — but this is
+ * only ever called on paper that was measured as empty, and a white patch on
+ * empty paper is what makes a stamp look stuck on instead of drawn in.
+ */
+function drawStamp(
+  page: PDFPage,
+  wordmark: PDFImage,
+  font: PDFFont,
+  rotation: 0 | 90 | 180 | 270,
+  box: { x: number; y: number; width: number; height: number },
+  spot: ClearSpot,
+): void {
+  const place = (vx: number, vy: number) => {
+    const anchor = visualToUser(rotation, box.width, box.height, vx, vy);
+    return { x: box.x + anchor.x, y: box.y + anchor.y, rotate: degrees(anchor.rotate) };
+  };
+
+  const block = spot.block;
+  const metaBand = block.meta ? block.metaSize + block.metaGap : 0;
+  const ruleVy = spot.vy + metaBand;
+  const logoVy = ruleVy + block.ruleHeight + block.ruleGap;
+
+  page.drawImage(wordmark, {
+    ...place(spot.vx, logoVy),
+    width: block.logoWidth,
+    height: block.logoHeight,
+  });
+
+  page.drawRectangle({
+    ...place(spot.vx, ruleVy),
+    width: block.logoWidth,
+    height: block.ruleHeight,
+    color: ANC_BLUE,
+  });
+
+  if (block.meta) {
+    page.drawText(block.meta, {
+      ...place(spot.vx, spot.vy + block.metaSize * 0.22),
+      size: block.metaSize,
+      font,
+      color: FOOTER_INK,
+    });
+  }
 }
 
 function drawFooter(
@@ -398,9 +487,12 @@ export async function brandPdf(
   input: Uint8Array | Buffer,
   options: BrandPdfOptions = {},
 ): Promise<BrandPdfResult> {
-  const placement = options.placement ?? "band";
-  const edge = options.edge ?? "top";
-  const position = options.position ?? "top-left";
+  const placement = options.placement ?? "auto";
+  // A band asked for by name keeps its historic top edge. A band reached by
+  // falling out of auto goes to the bottom, because bottom is where the mark was
+  // wanted in the first place.
+  const edge = options.edge ?? (placement === "auto" ? "bottom" : "top");
+  const position = options.position ?? "bottom-right";
   const pagesMode = options.pages ?? "all";
   const wantFooter = options.footer !== false;
   const logoScale = clamp(options.logoScale ?? 1, 0.5, 2);
@@ -433,49 +525,130 @@ export async function brandPdf(
     ? winAnsiSafe(options.footerText ?? defaultFooter(options.title ?? null, new Date()))
     : null;
 
-  const targets = pagesMode === "first" ? pages.slice(0, 1) : pages;
+  const targetIndexes = pagesMode === "first" ? [0] : pages.map((_, index) => index);
 
   let footerClipped = false;
   let overlayFooterClipped = false;
+  let placedOnSheet = 0;
+  let placedOnBand = 0;
+  const positionsUsed = new Set<BrandPdfPosition>();
 
-  for (const page of targets) {
+  // Reading the sheets is the whole point of auto, so it happens before a single
+  // mark is drawn — and from the bytes as they arrived, which the pdf-lib document
+  // has not touched yet.
+  const judge = placement === "auto" ? (options.judge ?? configuredJudge()) : null;
+
+  const inkByPage: Map<number, PageInk> =
+    placement === "auto"
+      ? await lookAtPages(
+          input,
+          targetIndexes.map((index) => index + 1),
+          warnings,
+          // Only the first sheet's picture is kept, because only the first sheet
+          // is shown to the judge.
+          judge ? new Set([targetIndexes[0] + 1]) : new Set(),
+        )
+      : new Map();
+
+  // The corner is decided once, on the first sheet, and then held.
+  //
+  // A drawing set is one document: a logo that wanders between corners page to
+  // page looks like a mistake, and asking a model about all sixty-seven sheets
+  // would be sixty-seven round trips to answer a question whose answer does not
+  // change. Geometry still runs per page, so each sheet's own blank space is
+  // what the mark actually lands in.
+  let preferred = position;
+  let decidedBy: BrandPdfResult["decidedBy"] = options.position ? "requested" : "geometry";
+  let decisionNote: string | null = null;
+
+  if (judge && placement === "auto") {
+    const firstInk = inkByPage.get(targetIndexes[0] + 1);
+    const shortlist = firstInk
+      ? placementOptions(firstInk, preferred, logoScale, footerText, (text, size) =>
+          font.widthOfTextAtSize(text, size),
+        )
+      : [];
+
+    if (firstInk?.image && shortlist.length > 1) {
+      const choice = await judge.pick(firstInk.image, shortlist, {
+        visualWidth: firstInk.visualWidth,
+        visualHeight: firstInk.visualHeight,
+        title: options.title ?? null,
+      });
+      if (choice) {
+        preferred = shortlist[choice.index].position;
+        decidedBy = "vision";
+        decisionNote = choice.reason || null;
+      }
+    }
+  }
+
+  /** Grow the sheet and put the mark on the new paper. Covers nothing, ever. */
+  const applyBand = (page: PDFPage, rotation: 0 | 90 | 180 | 270, side: "left" | "right") => {
+    // The CropBox is what a viewer actually shows, so it is the sheet we grow.
+    const visibleBox = page.getCropBox();
+    const mediaBox = page.getMediaBox();
+    const visible = visualSize(rotation, visibleBox.width, visibleBox.height);
+    const band = bandHeight(visible.width, visible.height, logoScale);
+    const grownVisible = bandBox(rotation, visibleBox, edge, band);
+    const grownMedia = enclosingBox(mediaBox, grownVisible);
+
+    // CropBox is what viewers show. MediaBox must contain it, but must never be
+    // replaced by a smaller inset CropBox or existing printer marks disappear.
+    page.setMediaBox(grownMedia.x, grownMedia.y, grownMedia.width, grownMedia.height);
+    page.setCropBox(grownVisible.x, grownVisible.y, grownVisible.width, grownVisible.height);
+
+    const grownVisual = visualSize(rotation, grownVisible.width, grownVisible.height);
+    const { footerFitted } = drawBand(
+      page,
+      wordmark,
+      font,
+      rotation,
+      grownVisible,
+      grownVisual,
+      edge,
+      band,
+      footerText,
+      side,
+    );
+    if (!footerFitted) footerClipped = true;
+  };
+
+  for (const index of targetIndexes) {
+    const page = pages[index];
     const rotation = normalizeRotation(page.getRotation().angle);
 
-    if (placement === "band") {
-      // The CropBox is what a viewer actually shows, so it is the sheet we grow.
-      const visibleBox = page.getCropBox();
-      const mediaBox = page.getMediaBox();
-      const visible = visualSize(rotation, visibleBox.width, visibleBox.height);
-      const band = bandHeight(visible.width, visible.height, logoScale);
-      const grownVisible = bandBox(rotation, visibleBox, edge, band);
-      const grownMedia = enclosingBox(mediaBox, grownVisible);
+    if (placement === "auto") {
+      const ink = inkByPage.get(index + 1);
+      const spot = ink
+        ? placementOptions(ink, preferred, logoScale, footerText, (text, size) =>
+            font.widthOfTextAtSize(text, size),
+          )[0] ?? null
+        : null;
 
-      // CropBox is what viewers show. MediaBox must contain it, but must never be
-      // replaced by a smaller inset CropBox or existing printer marks disappear.
-      page.setMediaBox(grownMedia.x, grownMedia.y, grownMedia.width, grownMedia.height);
-      page.setCropBox(
-        grownVisible.x,
-        grownVisible.y,
-        grownVisible.width,
-        grownVisible.height,
-      );
-
-      const grownVisual = visualSize(rotation, grownVisible.width, grownVisible.height);
-      const { footerFitted } = drawBand(
-        page,
-        wordmark,
-        font,
-        rotation,
-        grownVisible,
-        grownVisual,
-        edge,
-        band,
-        footerText,
-      );
-      if (!footerFitted) footerClipped = true;
+      if (spot) {
+        // Placed against the CropBox: that is the sheet pdf.js measured, so a
+        // coordinate found on the raster means the same thing here.
+        drawStamp(page, wordmark, font, rotation, page.getCropBox(), spot);
+        positionsUsed.add(spot.position);
+        placedOnSheet += 1;
+      } else {
+        // Nothing on this sheet was blank enough. Adding paper is the drafting
+        // table's answer — the mark still lands on the side it was asked for.
+        applyBand(page, rotation, preferred.endsWith("right") ? "right" : "left");
+        placedOnBand += 1;
+      }
       continue;
     }
 
+    if (placement === "band") {
+      applyBand(page, rotation, position.endsWith("right") ? "right" : "left");
+      placedOnBand += 1;
+      positionsUsed.add(position);
+      continue;
+    }
+
+    positionsUsed.add(position);
     const box = page.getMediaBox();
     const visual = visualSize(rotation, box.width, box.height);
     const geometry = stampGeometry(visual.width, visual.height, position, logoScale);
@@ -520,13 +693,59 @@ export async function brandPdf(
   return {
     bytes: await doc.save(),
     pageCount: pages.length,
-    stampedPages: targets.length,
+    stampedPages: targetIndexes.length,
     placement,
     edge,
     position,
     footer: footerText,
+    placedOnSheet,
+    placedOnBand,
+    positionsUsed: [...positionsUsed],
+    decidedBy,
+    decisionNote,
     warnings,
   };
+}
+
+/**
+ * Rasterize the sheets we intend to stamp and measure their ink.
+ *
+ * Isolated so a rendering problem degrades to the band rather than failing the
+ * request: someone who uploaded a drawing to get it branded would rather have it
+ * branded conservatively than get an error back.
+ */
+async function lookAtPages(
+  input: Uint8Array | Buffer,
+  pageNumbers: number[],
+  warnings: string[],
+  imagePages: Set<number>,
+): Promise<Map<number, PageInk>> {
+  try {
+    // A copy, because pdf.js may take ownership of the buffer it is handed and
+    // pdf-lib is still holding the original.
+    const maps = await renderPagesInk(
+      new Uint8Array(input),
+      pageNumbers,
+      RASTER_LONG_SIDE,
+      LOOK_BUDGET_MS,
+      imagePages,
+    );
+    if (maps.size < pageNumbers.length) {
+      warnings.push(
+        `${
+          pageNumbers.length - maps.size
+        } sheet(s) could not be examined in the time allowed; those carry the mark on an added strip instead, which covers nothing.`,
+      );
+    }
+    return maps;
+  } catch (error) {
+    warnings.push(
+      `The sheets could not be examined for blank space (${
+        error instanceof Error ? error.message : String(error)
+      }), so the mark went onto an added strip, which covers nothing.`,
+    );
+    return new Map();
+  }
 }
 
 /** `ANC_Thunder_Drawing.pdf` from whatever the caller had lying around. */

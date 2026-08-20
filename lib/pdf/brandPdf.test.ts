@@ -192,9 +192,26 @@ describe("brandPdf", () => {
     expect(result.bytes.length).toBeGreaterThan(input.length);
   });
 
-  it("defaults to the band, which cannot cover anything already on the page", async () => {
+  it("defaults to reading the sheet and marking it in the bottom right", async () => {
     const input = await makePdf([{ width: 1224, height: 792 }]);
     const result = await brandPdf(input, { title: "Signage Drawings" });
+
+    expect(result.placement).toBe("auto");
+    expect(result.position).toBe("bottom-right");
+    // Blank paper was there, so the mark went onto the sheet and the sheet is
+    // exactly the size it arrived at — nothing added, nothing scaled.
+    expect(result.placedOnSheet).toBe(1);
+    expect(result.placedOnBand).toBe(0);
+    expect(result.positionsUsed).toEqual(["bottom-right"]);
+
+    const page = (await PDFDocument.load(result.bytes)).getPage(0);
+    expect(page.getWidth()).toBeCloseTo(1224, 1);
+    expect(page.getHeight()).toBeCloseTo(792, 1);
+  }, 30_000);
+
+  it("adds a band when asked, which cannot cover anything already on the page", async () => {
+    const input = await makePdf([{ width: 1224, height: 792 }]);
+    const result = await brandPdf(input, { placement: "band", title: "Signage Drawings" });
 
     expect(result.placement).toBe("band");
     expect(result.edge).toBe("top");
@@ -210,8 +227,8 @@ describe("brandPdf", () => {
   it("grows the top of the sheet for a top band and the bottom for a bottom band", async () => {
     const input = await makePdf([{ width: 612, height: 792 }]);
 
-    const top = await PDFDocument.load((await brandPdf(input, { edge: "top" })).bytes);
-    const bottom = await PDFDocument.load((await brandPdf(input, { edge: "bottom" })).bytes);
+    const top = await PDFDocument.load((await brandPdf(input, { placement: "band", edge: "top" })).bytes);
+    const bottom = await PDFDocument.load((await brandPdf(input, { placement: "band", edge: "bottom" })).bytes);
 
     // Same amount of new paper either way, on opposite edges — a top band keeps
     // the original origin, a bottom band pushes it down.
@@ -224,7 +241,7 @@ describe("brandPdf", () => {
     // On /Rotate 90 the reader's top is a MediaBox *side*. Growing the MediaBox
     // top here would put the band down the left-hand edge of the drawing.
     const input = await makePdf([{ width: 612, height: 1224, rotate: 90 }]);
-    const page = (await PDFDocument.load((await brandPdf(input)).bytes)).getPage(0);
+    const page = (await PDFDocument.load((await brandPdf(input, { placement: "band" })).bytes)).getPage(0);
 
     expect(page.getWidth()).toBeGreaterThan(612);
     expect(page.getHeight()).toBeCloseTo(1224, 1);
@@ -235,7 +252,7 @@ describe("brandPdf", () => {
     const doc = await PDFDocument.create();
     const page = doc.addPage([612, 792]);
     page.setCropBox(0, 0, 612, 792);
-    const result = await brandPdf(await doc.save());
+    const result = await brandPdf(await doc.save(), { placement: "band" });
 
     const out = (await PDFDocument.load(result.bytes)).getPage(0);
     // A viewer honours CropBox; leaving it behind would clip the strip straight off.
@@ -248,7 +265,7 @@ describe("brandPdf", () => {
     const page = doc.addPage([700, 900]);
     page.setCropBox(50, 50, 600, 830);
 
-    const result = await brandPdf(await doc.save());
+    const result = await brandPdf(await doc.save(), { placement: "band" });
     const out = (await PDFDocument.load(result.bytes)).getPage(0);
     const media = out.getMediaBox();
     const crop = out.getCropBox();
@@ -266,7 +283,7 @@ describe("brandPdf", () => {
       { width: 612, height: 792 },
       { width: 612, height: 792 },
     ]);
-    const result = await brandPdf(input, { pages: "first" });
+    const result = await brandPdf(input, { placement: "band", pages: "first" });
 
     expect(result.pageCount).toBe(3);
     expect(result.stampedPages).toBe(1);
@@ -284,6 +301,23 @@ describe("brandPdf", () => {
     expect(page.getWidth()).toBeCloseTo(612, 1);
     expect(page.getHeight()).toBeCloseTo(1224, 1);
   });
+
+  it("places auto inside the visible sheet on a rotated drawing", async () => {
+    // The shape almost every CAD export arrives in. pdf.js renders the sheet
+    // already turned, so a coordinate found on the raster is in the reader's
+    // space — it still has to be mapped back through /Rotate before it is drawn,
+    // and getting that wrong puts the mark off the page, sideways.
+    const input = await makePdf([{ width: 612, height: 1224, rotate: 90 }]);
+    const result = await brandPdf(input, { title: "Rotated Drawing" });
+
+    expect(result.placedOnSheet).toBe(1);
+    expect(result.placedOnBand).toBe(0);
+
+    const page = (await PDFDocument.load(result.bytes)).getPage(0);
+    expect(page.getRotation().angle).toBe(90);
+    expect(page.getWidth()).toBeCloseTo(612, 1);
+    expect(page.getHeight()).toBeCloseTo(1224, 1);
+  }, 30_000);
 
   it("keeps the stamp inside the page box at every rotation and corner", async () => {
     for (const rotation of ROTATIONS) {
@@ -306,7 +340,7 @@ describe("brandPdf", () => {
 
   it("does not throw on a title carrying an en dash", async () => {
     const input = await makePdf([{ width: 612, height: 792 }]);
-    const result = await brandPdf(input, { title: "Level 400 – Grand Concourse" });
+    const result = await brandPdf(input, { placement: "band", title: "Level 400 – Grand Concourse" });
 
     expect(result.footer).toContain("Level 400 - Grand Concourse");
     expect(result.footer).not.toContain("–");
@@ -314,20 +348,20 @@ describe("brandPdf", () => {
 
   it("leaves the footer off when asked", async () => {
     const input = await makePdf([{ width: 612, height: 792 }]);
-    const result = await brandPdf(input, { footer: false });
+    const result = await brandPdf(input, { placement: "band", footer: false });
     expect(result.footer).toBeNull();
   });
 
   it("puts the date and anc.com in the default footer", async () => {
     const input = await makePdf([{ width: 612, height: 792 }]);
-    const result = await brandPdf(input, { title: "Thunder" });
+    const result = await brandPdf(input, { placement: "band", title: "Thunder" });
 
     expect(result.footer).toMatch(/^ANC \| Thunder \| \d{1,2} \w+ \d{4} \| www\.anc\.com$/);
   });
 
   it("honours a caller-supplied footer verbatim", async () => {
     const input = await makePdf([{ width: 612, height: 792 }]);
-    const result = await brandPdf(input, { footerText: "ANC Sports Enterprises" });
+    const result = await brandPdf(input, { placement: "band", footerText: "ANC Sports Enterprises" });
     expect(result.footer).toBe("ANC Sports Enterprises");
   });
 
@@ -360,7 +394,13 @@ describe("brandPdf", () => {
 
     // eslint-disable-next-line no-console
     console.log(
-      `[brand-pdf probe] ${result.stampedPages}/${result.pageCount} pages · ${result.position} · ${
+      `[brand-pdf probe] ${result.stampedPages}/${result.pageCount} pages · ${
+        result.placedOnSheet
+      } on the sheet (${result.positionsUsed.join(", ") || "none"}), ${
+        result.placedOnBand
+      } on a band · decided by ${result.decidedBy}${
+        result.decisionNote ? ` ("${result.decisionNote}")` : ""
+      } · ${
         result.warnings.length ? result.warnings.join(" ") : "no warnings"
       }\n  -> ${out}`,
     );
@@ -373,7 +413,7 @@ describe("brandPdf", () => {
     page.setMediaBox(20, 30, 612, 792);
     const input = await doc.save();
 
-    const result = await brandPdf(input, { title: "Offset box" });
+    const result = await brandPdf(input, { placement: "band", title: "Offset box" });
     const out = await PDFDocument.load(result.bytes);
     const box = out.getPage(0).getMediaBox();
     expect(box.x).toBeCloseTo(20, 1);
