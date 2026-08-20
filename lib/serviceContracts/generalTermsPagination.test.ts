@@ -39,7 +39,7 @@ const BUDGET = USABLE_PAGE_HEIGHT - PROBE_UNDER_MEASURES_BY;
 
 /** Byte-for-byte the shell generateProposalPdfServiceV2 builds around a template. */
 const shell = (body: string) =>
-  `<!doctype html><html><head><meta charset="utf-8"/><title>probe</title><style>body,.font-sans{font-family:Arial,Helvetica,sans-serif!important;line-height:1.3!important;font-size:11px!important}h1,h2,h3,h4,h5,h6{font-family:Arial,Helvetica,sans-serif!important;line-height:1.3!important}p,div,span,td,th{line-height:1.3!important}.leading-relaxed{line-height:1.35!important}.leading-snug{line-height:1.25!important}</style></head><body>${body}</body></html>`;
+  `<!doctype html><html><head><meta charset="utf-8"/><title>probe</title><style>body,.font-sans{font-family:Arial,Helvetica,sans-serif!important;line-height:1.3!important;font-size:11px!important}h1,h2,h3,h4,h5,h6{font-family:Arial,Helvetica,sans-serif!important;line-height:1.3!important}p,div,span,td,th{line-height:1.3!important}.leading-relaxed{line-height:1.35!important}.leading-snug{line-height:1.25!important}.anc-doc-page{padding-bottom:0!important}</style></head><body>${body}</body></html>`;
 
 /**
  * The purchaser's name is repeated through eight of the ten clauses, so its

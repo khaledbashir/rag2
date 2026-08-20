@@ -142,7 +142,13 @@ export default function ProposalLayout({ data, children, disableFixedFooter = fa
         <>
             {head}
             <section style={{ fontFamily: "Arial, Helvetica, sans-serif", position: 'relative' }}>
-                <div className="block p-3 sm:p-6 bg-white dark:bg-white !bg-white text-[#1a1a1a] dark:text-[#1a1a1a] !text-black relative overflow-hidden print:bg-white">
+                {/* anc-doc-page is the handle the PDF pipeline uses to drop this
+                    container's bottom padding. On screen the padding closes the
+                    white card; in a PDF it is 24px of nothing trailing the last
+                    element, which is enough to push a document that ends near the
+                    bottom of a page onto a further, entirely blank one — as the
+                    Lincoln Financial Field contract did (Natalia 2026-08-20). */}
+                <div className="anc-doc-page block p-3 sm:p-6 bg-white dark:bg-white !bg-white text-[#1a1a1a] dark:text-[#1a1a1a] !text-black relative overflow-hidden print:bg-white">
                     <div className="absolute" style={{ top: `${slashTop}px`, right: `${slashRight}px` }}>
                         <BrandSlashes
                             width={slashWidth}
