@@ -26,6 +26,9 @@ WORKDIR /app
 COPY --from=build --chown=nextjs:nodejs /app/.next ./.next
 COPY --from=build --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=build --chown=nextjs:nodejs /app/package.json ./package.json
+# `next start` loads runtime-only limits from this file. Without it, large
+# multipart render uploads are silently truncated at Next's 10MB default.
+COPY --from=build --chown=nextjs:nodejs /app/next.config.js ./next.config.js
 COPY --from=build --chown=nextjs:nodejs /app/public ./public
 COPY --from=build --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=build --chown=nextjs:nodejs /app/test-fixtures ./test-fixtures
