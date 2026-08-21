@@ -249,3 +249,43 @@ describe("fiscal year multi-select", () => {
       .toBe("LED, Air Solutions");
   });
 });
+
+describe("relations resolved by their target object", () => {
+  const rel = (fieldName: string, relationTarget?: string): ViewColumn => ({
+    fieldName, label: fieldName, type: "RELATION", relationTarget,
+  });
+
+  it("still follows the field-name map when no target is given (LG report path)", () => {
+    expect(isRenderable(rel("company"))).toBe(true);
+    expect(selectionFor(rel("company"))).toBe("company { name }");
+  });
+
+  it("follows a target the field name alone would not cover", () => {
+    expect(isRenderable(rel("venue", "venue"))).toBe(true);
+    expect(selectionFor(rel("assignedEstimator", "workspaceMember")))
+      .toBe("assignedEstimator { name { firstName lastName } }");
+    expect(selectionFor(rel("pointOfContact", "person")))
+      .toBe("pointOfContact { name { firstName lastName } }");
+  });
+
+  it("drops a relation pointing somewhere the sheet cannot render", () => {
+    expect(isRenderable(rel("someLink", "workflowRun"))).toBe(false);
+    expect(selectionFor(rel("someLink", "workflowRun"))).toBeNull();
+  });
+
+  // Reading a FULL_NAME identifier as a string emptied the Owner column.
+  it("joins a composite name instead of returning blank", () => {
+    expect(cellValue(rel("owner", "workspaceMember"),
+      { owner: { name: { firstName: "Jireh", lastName: "Billings" } } }, fmtDate))
+      .toBe("Jireh Billings");
+    expect(cellValue(rel("company"), { company: { name: "Baltimore Ravens" } }, fmtDate))
+      .toBe("Baltimore Ravens");
+    expect(cellValue(rel("owner", "workspaceMember"), { owner: null }, fmtDate)).toBe("");
+  });
+
+  it("tolerates a half-filled composite name", () => {
+    expect(cellValue(rel("owner", "workspaceMember"),
+      { owner: { name: { firstName: "Krissy", lastName: null } } }, fmtDate))
+      .toBe("Krissy");
+  });
+});

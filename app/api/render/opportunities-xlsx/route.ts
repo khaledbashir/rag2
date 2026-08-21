@@ -14,6 +14,23 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
+import { buildSelection, cellValue, selectionFor } from "@/services/reports/viewMirror";
+import { buildViewFilter, type Field as FilterField } from "@/services/reports/viewFilterTranslate";
+import { contentDisposition } from "@/services/reports/workbookStyle";
+import {
+  aggregateFormula,
+  aggregateLabel,
+  aggregateNumFmt,
+  computeAggregate,
+} from "@/services/reports/viewAggregates";
+import {
+  groupByViewField,
+  layoutFromView,
+  orderGroups,
+  sortByViewSorts,
+  type FieldMeta,
+  type ViewSort,
+} from "@/services/reports/viewExportLayout";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -130,101 +147,277 @@ async function meta<T = any>(query: string): Promise<T> {
 }
 async function fetchView(viewId: string): Promise<any> {
   const d: any = await meta(
-    `query{ getView(id:"${viewId}"){ id name
+    `query{ getView(id:"${viewId}"){ id name mainGroupByFieldMetadataId
        viewFilters{ fieldMetadataId operand value viewFilterGroupId }
-       viewFilterGroups{ id logicalOperator parentViewFilterGroupId } } }`,
+       viewFilterGroups{ id logicalOperator parentViewFilterGroupId }
+       viewSorts{ fieldMetadataId direction }
+       viewFields{ fieldMetadataId isVisible position aggregateOperation } } }`,
   );
   return d.getView;
 }
 const OPPORTUNITY_OBJECT_ID = "c779922d-cf25-4a5e-9382-23eb1c02199e";
-type Field = { name: string; type: string };
+type Field = FilterField & { label: string; relationTarget?: string };
 let _fields: Record<string, Field> | null = null;
 async function fieldMap(): Promise<Record<string, Field>> {
   if (_fields) return _fields;
   // single-object-by-id: the paginated objects{} list only returns ~10 and omits opportunity
-  const d: any = await meta(`query{ object(id:"${OPPORTUNITY_OBJECT_ID}"){ fieldsList{ id name type } } }`);
+  const d: any = await meta(
+    `query{ object(id:"${OPPORTUNITY_OBJECT_ID}"){ fieldsList{ id name type label
+       relation{ targetObjectMetadata{ nameSingular } } } } }`,
+  );
   const m: Record<string, Field> = {};
-  for (const f of d.object?.fieldsList || []) m[f.id] = { name: f.name, type: f.type };
+  for (const f of d.object?.fieldsList || []) {
+    m[f.id] = {
+      name: f.name,
+      type: f.type,
+      label: f.label || f.name,
+      relationTarget: f.relation?.targetObjectMetadata?.nameSingular,
+    };
+  }
   _fields = m;
   return m;
 }
-// Translate one viewFilter into an Opportunity filter clause — type + operand aware.
-function vfClause(f: Field, operand: string, raw: string): any | null {
-  const { name, type } = f;
-  if (type === "RELATION" || type === "UUID" || type === "ACTOR") return null;
-  let val: any = raw;
-  try { val = JSON.parse(raw); } catch { /* keep raw */ }
-  const arr = Array.isArray(val) ? val : null;
-  const first = arr ? arr[0] : val;
-  const isSelect = type === "SELECT" || type === "MULTI_SELECT" || type === "RATING";
-  switch (operand) {
-    case "IS":
-      if (type === "BOOLEAN") return { [name]: { eq: !!first } };
-      return isSelect ? { [name]: { in: arr || [first] } } : { [name]: { eq: first } };
-    case "IS_NOT":
-      if (type === "BOOLEAN") return { not: { [name]: { eq: !!first } } };
-      return isSelect ? { not: { [name]: { in: arr || [first] } } } : { not: { [name]: { eq: first } } };
-    // Comparison operands must use the PARSED scalar (`first`), not `raw`.
-    // Twenty stores these values JSON-array-wrapped (e.g. date filters as
-    // ["2026-08-02T18:13:38Z"]); passing the array-string straight into gt/lt
-    // 500s the query. `first` unwraps the array (or is the plain value).
-    case "IS_AFTER": return { [name]: { gt: first } };
-    case "IS_BEFORE": return { [name]: { lt: first } };
-    // CURRENCY is a composite type — comparisons must target the amountMicros
-    // sub-field, and view-filter values are stored in dollars.
-    case "GREATER_THAN_OR_EQUAL":
-      return type === "CURRENCY"
-        ? { [name]: { amountMicros: { gte: Math.round(Number(first) * 1_000_000) } } }
-        : { [name]: { gte: first } };
-    case "LESS_THAN_OR_EQUAL":
-      return type === "CURRENCY"
-        ? { [name]: { amountMicros: { lte: Math.round(Number(first) * 1_000_000) } } }
-        : { [name]: { lte: first } };
-    case "CONTAINS": return { [name]: { ilike: `%${first}%` } };
-    case "DOES_NOT_CONTAIN": return { not: { [name]: { ilike: `%${first}%` } } };
-    case "IS_EMPTY": return { [name]: { is: "NULL" } };
-    case "IS_NOT_EMPTY": return { [name]: { is: "NOT_NULL" } };
-    case "IS_RELATIVE": {
-      try {
-        const o = JSON.parse(raw);
-        const ms: Record<string, number> = { DAY: 864e5, WEEK: 6048e5, MONTH: 2592e6, YEAR: 31536e6 };
-        const span = (ms[o.unit] || 864e5) * (o.amount || 0);
-        const past = o.direction === "PAST";
-        const d = new Date(Date.now() - (past ? 1 : -1) * span).toISOString().replace(/\.\d{3}Z$/, "Z");
-        return past ? { [name]: { gte: d } } : { [name]: { lte: d } };
-      } catch { return null; }
-    }
-    default: return null;
+// --- Mirrored layout: the sheet IS the view ------------------------------
+// Jireh, 2026-08-21: a report and its export must "agree to the dollar". They
+// could not while the export carried a fixed column set — his LiveSync list
+// totals revenue and margin for every year from 2025 to 2036, and the export
+// showed two of them. So when a viewId is given the sheet takes the view's own
+// visible columns, order, grouping, sorts and per-column totals.
+// `?layout=classic` returns the previous fixed layout, so a stakeholder who
+// preferred the old shape is one parameter away from it, not a redeploy.
+
+/** Pipeline order for status sections, so an export does not open at "Bid Submitted". */
+const STATUS_SECTION_ORDER = [
+  "Won", "Verbal Agreement", "Shortlisted", "Bid Submitted", "Scoping",
+  "RFP Received", "Prospecting", "On Hold", "No Bid", "Lost", "No Status",
+];
+
+async function fetchMirrored(
+  filter: Record<string, unknown> | undefined,
+  selection: string,
+): Promise<any[]> {
+  const out: any[] = [];
+  let cursor: string | null = null;
+  while (true) {
+    // orderBy id — a createdAt cursor skips and repeats rows (203 opportunities
+    // once came back as 143 with 90 unique ids).
+    const d: any = await gql(
+      `query Q($f: OpportunityFilterInput, $after: String) {
+        opportunities(filter: $f, first: 200, after: $after, orderBy: {id: AscNullsLast}) {
+          edges { node { id ${selection} } }
+          pageInfo { hasNextPage endCursor }
+        }
+      }`,
+      { f: filter, after: cursor },
+    );
+    for (const e of d.opportunities.edges) out.push(e.node);
+    if (!d.opportunities.pageInfo.hasNextPage) break;
+    cursor = d.opportunities.pageInfo.endCursor;
   }
+  return out;
 }
-// Reconstruct a view's full AND/OR filter-group tree into one Opportunity filter.
-function buildViewFilter(viewFilters: any[], groups: any[], fm: Record<string, Field>): any | undefined {
-  const byGroup: Record<string, any[]> = {};
-  const ungrouped: any[] = [];
-  for (const vf of viewFilters) {
-    const f = fm[vf.fieldMetadataId];
-    if (!f) continue;
-    const c = vfClause(f, vf.operand, vf.value);
-    if (!c) continue;
-    if (vf.viewFilterGroupId) (byGroup[vf.viewFilterGroupId] ||= []).push(c);
-    else ungrouped.push(c);
+
+async function renderMirrored(view: any, filter: any, fm: Record<string, Field>) {
+  const { columns, skipped } = layoutFromView(view.viewFields || [], fm);
+  if (!columns.length) return null; // nothing renderable — fall back to classic
+
+  const groupMeta: FieldMeta | null = view.mainGroupByFieldMetadataId
+    ? fm[view.mainGroupByFieldMetadataId] || null
+    : null;
+  const sorts: ViewSort[] = view.viewSorts || [];
+
+  // The grouping and sort fields must be fetched even when they are not columns.
+  const extra: string[] = [];
+  const seen = new Set(columns.map((c) => c.fieldName));
+  for (const meta of [groupMeta, ...sorts.map((s) => fm[s.fieldMetadataId])]) {
+    if (!meta || seen.has(meta.name)) continue;
+    const sel = selectionFor({
+      fieldName: meta.name, label: meta.label, type: meta.type, relationTarget: meta.relationTarget,
+    });
+    if (sel) { extra.push(sel); seen.add(meta.name); }
   }
-  if (!groups || !groups.length) {
-    const all = [...ungrouped, ...Object.values(byGroup).flat()];
-    return all.length ? { and: all } : undefined;
+  const selection = [buildSelection(columns), ...extra].filter(Boolean).join(" ");
+  const rows = await fetchMirrored(filter, selection);
+
+  const sorted = sortByViewSorts(rows, sorts, fm);
+  const groups = orderGroups(groupByViewField(sorted, groupMeta, fmtDate), STATUS_SECTION_ORDER);
+
+  const PAPER = "FFFAF9F6", PAPER_ALT = "FFF3F1EC", BAND = "FFECE9E1";
+  const INK = "FF3A3D42", INK_SOFT = "FF74777C", LINE = "FFD7D3C9", TITLE_GREY = "FF56585B";
+  const FONT = "Calibri";
+  const OFF = 1;
+  const moneyNumFmt = '#,##0;[Red](#,##0)';
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "ANC";
+  const ws = wb.addWorksheet("Report");
+  ws.properties.defaultRowHeight = 16;
+
+  const COL1 = 1 + OFF;
+  const COLN = columns.length + OFF;
+  const col = (i: number) => i + 1 + OFF;
+  ws.getColumn(1).width = 2.6;
+  columns.forEach((c, i) => { ws.getColumn(col(i)).width = c.width; });
+  const letterOf = (c: number) => ws.getColumn(c).letter;
+
+  // Title
+  const asOf = new Date().toLocaleString("en-US", {
+    year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+  });
+  const t = ws.getRow(2);
+  t.getCell(COL1).value = view.name || "ANC Opportunities";
+  t.getCell(COL1).font = { name: FONT, size: 18, color: { argb: TITLE_GREY } };
+  t.height = 24;
+  const sub = ws.getRow(3);
+  sub.getCell(COL1).value =
+    `As of ${asOf} · ${rows.length} record${rows.length === 1 ? "" : "s"}` +
+    (skipped.length ? ` · not shown: ${skipped.join(", ")}` : "");
+  sub.getCell(COL1).font = { name: FONT, size: 10, color: { argb: INK_SOFT } };
+
+  // Header + a thin legend row naming each column's total the way the CRM does,
+  // so "Sum of Revenue" and "Average of Probability" are never mistaken for
+  // each other further down the sheet.
+  const HEAD_ROW = 5;
+  const head = ws.getRow(HEAD_ROW);
+  columns.forEach((c, i) => {
+    const cell = head.getCell(col(i));
+    cell.value = c.label;
+    cell.font = { name: FONT, bold: true, size: 10, color: { argb: INK } };
+    cell.alignment = { vertical: "middle", horizontal: c.money ? "right" : "left", wrapText: true };
+    cell.border = { bottom: { style: "medium", color: { argb: "FFB7B2A6" } } };
+  });
+  head.height = 28;
+  const hasAggregate = columns.some((c) => c.aggregate);
+  const LEGEND_ROW = HEAD_ROW + 1;
+  if (hasAggregate) {
+    const legend = ws.getRow(LEGEND_ROW);
+    columns.forEach((c, i) => {
+      const cell = legend.getCell(col(i));
+      if (c.aggregate) cell.value = aggregateLabel(c.aggregate, c.label);
+      cell.font = { name: FONT, size: 8, italic: true, color: { argb: INK_SOFT } };
+      cell.alignment = { horizontal: c.money ? "right" : "left" };
+    });
+    legend.height = 13;
   }
-  const build = (g: any): any | null => {
-    const own = byGroup[g.id] || [];
-    const kids = groups.filter((x) => x.parentViewFilterGroupId === g.id).map(build).filter(Boolean);
-    const parts = [...own, ...kids];
-    if (!parts.length) return null;
-    if (parts.length === 1) return parts[0];
-    return g.logicalOperator === "OR" ? { or: parts } : { and: parts };
+  ws.views = [{ state: "frozen", ySplit: hasAggregate ? LEGEND_ROW : HEAD_ROW, showGridLines: false }];
+  while (ws.lastRow!.number < (hasAggregate ? LEGEND_ROW : HEAD_ROW)) ws.addRow({});
+
+  const totalRowIdxs: number[] = [];
+  const writeTotals = (
+    row: ExcelJS.Row, first: number, last: number, records: any[], bold: boolean,
+  ) => {
+    columns.forEach((c, i) => {
+      if (!c.aggregate) return;
+      const cellRef = row.getCell(col(i));
+      const values = records.map((r) => cellValue(c, r, fmtDate));
+      const result = computeAggregate(c.aggregate, values);
+      const formula = aggregateFormula(c.aggregate, letterOf(col(i)), first, last);
+      // An empty section gets the computed value written flat: SUM(H9:H8) runs
+      // backwards in Excel and swallows the total row itself.
+      if (formula && last >= first) cellRef.value = { formula, result: result ?? undefined } as any;
+      else cellRef.value = result;
+      cellRef.numFmt = aggregateNumFmt(c.aggregate, c.money, moneyNumFmt);
+      cellRef.font = { name: FONT, bold, size: 10, color: { argb: INK } };
+      cellRef.alignment = { horizontal: "right" };
+    });
   };
-  const roots = groups.filter((g) => !g.parentViewFilterGroupId).map(build).filter(Boolean);
-  const all = [...ungrouped, ...roots];
-  if (!all.length) return undefined;
-  return all.length === 1 ? all[0] : { and: all };
+
+  for (const group of groups) {
+    if (group.label) {
+      const gh = ws.addRow({});
+      gh.getCell(COL1).value = group.label;
+      gh.getCell(COLN).value = `${group.records.length} record${group.records.length === 1 ? "" : "s"}`;
+      gh.getCell(COLN).alignment = { horizontal: "right" };
+      gh.getCell(COLN).font = { name: FONT, size: 9, color: { argb: INK_SOFT } };
+      for (let c = COL1; c <= COLN; c++) {
+        const cell = gh.getCell(c);
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BAND } };
+        if (c === COL1) cell.font = { name: FONT, bold: true, size: 11, color: { argb: INK } };
+        cell.border = { bottom: { style: "thin", color: { argb: LINE } } };
+      }
+      gh.height = 20;
+    }
+
+    const dataStart = ws.lastRow!.number + 1;
+    group.records.forEach((record, i) => {
+      const row = ws.addRow({});
+      columns.forEach((c, ci) => {
+        const cell = row.getCell(col(ci));
+        cell.value = cellValue(c, record, fmtDate) as any;
+        cell.font = { name: FONT, size: 10, color: { argb: INK } };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: i % 2 ? PAPER_ALT : PAPER } };
+        if (c.money) { cell.numFmt = moneyNumFmt; cell.alignment = { horizontal: "right" }; }
+        else cell.alignment = { vertical: "middle", wrapText: c.wrap };
+      });
+    });
+    const dataEnd = ws.lastRow!.number;
+
+    if (hasAggregate) {
+      const st = ws.addRow({});
+      // The first column usually carries "Count all", and its number belongs
+      // there — that is where the CRM puts it, under the record column. Only
+      // write a text label when that column has no total of its own to show,
+      // otherwise the label and the count fight over one cell and the count
+      // silently wins.
+      const labelCol = columns.findIndex((c) => !c.aggregate);
+      if (labelCol >= 0) {
+        st.getCell(col(labelCol)).value = group.label
+          ? `Total — ${group.label} (${group.records.length})`
+          : `Total — ${group.records.length} record${group.records.length === 1 ? "" : "s"}`;
+      }
+      for (let c = COL1; c <= COLN; c++) {
+        const cell = st.getCell(c);
+        cell.font = { name: FONT, bold: true, size: 10, color: { argb: INK } };
+        cell.border = { top: { style: "thin", color: { argb: LINE } } };
+      }
+      writeTotals(st, dataStart, dataEnd, group.records, true);
+      totalRowIdxs.push(st.number);
+    }
+    ws.addRow({});
+  }
+
+  if (hasAggregate && groups.length > 1) {
+    const gt = ws.addRow({});
+    const grandLabelCol = columns.findIndex((c) => !c.aggregate);
+    if (grandLabelCol >= 0) {
+      gt.getCell(col(grandLabelCol)).value = `Total — ${rows.length} record${rows.length === 1 ? "" : "s"}`;
+    }
+    for (let c = COL1; c <= COLN; c++) {
+      gt.getCell(c).font = { name: FONT, bold: true, size: 11, color: { argb: INK } };
+      gt.getCell(c).border = { top: { style: "medium", color: { argb: "FF8A857A" } } };
+    }
+    // The grand total re-aggregates the RECORDS, not the section totals: summing
+    // subtotals is only right for SUM and COUNT — an average of averages is
+    // wrong the moment two sections hold a different number of rows.
+    columns.forEach((c, i) => {
+      if (!c.aggregate) return;
+      const cell = gt.getCell(col(i));
+      const result = computeAggregate(c.aggregate, rows.map((r) => cellValue(c, r, fmtDate)));
+      const L = letterOf(col(i));
+      const terms = totalRowIdxs.map((r) => `${L}${r}`).join(",");
+      cell.value =
+        (c.aggregate === "SUM" || c.aggregate.startsWith("COUNT")) && terms
+          ? ({ formula: `SUM(${terms})`, result: result ?? undefined } as any)
+          : result;
+      cell.numFmt = aggregateNumFmt(c.aggregate, c.money, moneyNumFmt);
+      cell.font = { name: FONT, bold: true, size: 11, color: { argb: INK } };
+      cell.alignment = { horizontal: "right" };
+    });
+    gt.height = 22;
+  }
+
+  const lastRow = ws.lastRow!.number;
+  for (let r = 1; r <= lastRow; r++) {
+    const row = ws.getRow(r);
+    for (let c = 1; c <= COLN; c++) {
+      const cell = row.getCell(c);
+      if (!cell.fill || (cell.fill as any).pattern === undefined) {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: PAPER } };
+      }
+    }
+  }
+  ws.autoFilter = { from: { row: HEAD_ROW, column: COL1 }, to: { row: HEAD_ROW, column: COLN } };
+  return wb;
 }
 
 export async function GET(req: NextRequest) {
@@ -233,6 +426,8 @@ export async function GET(req: NextRequest) {
     const and: any[] = [];
     let viewName = "";
     const viewId = sp.get("viewId");
+    let mirrored: ExcelJS.Workbook | null = null;
+    let mirroredName = "";
     if (viewId) {
       try {
         const view = await fetchView(viewId);
@@ -240,7 +435,31 @@ export async function GET(req: NextRequest) {
         const fm = await fieldMap();
         const vfilter = buildViewFilter(view?.viewFilters || [], view?.viewFilterGroups || [], fm);
         if (vfilter) and.push(vfilter);
+
+        // The sheet mirrors the view unless the caller asks for the old fixed
+        // layout, or adds params (status/bu/years/revYears) that only the
+        // classic layout knows how to honour.
+        const wantsClassic =
+          sp.get("layout") === "classic" ||
+          ["status", "bu", "years", "revYears"].some((p) => sp.get(p));
+        if (!wantsClassic) {
+          const filter = and.length ? { and } : undefined;
+          mirrored = await renderMirrored(view, filter, fm);
+          mirroredName = viewName;
+        }
       } catch { /* if the view can't be read, fall through to params/all */ }
+    }
+    if (mirrored) {
+      const buf = await mirrored.xlsx.writeBuffer();
+      const stamp = new Date().toISOString().slice(0, 10);
+      return new NextResponse(buf as any, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": contentDisposition(`${mirroredName || "ANC Opportunities"} ${stamp}.xlsx`),
+          "Cache-Control": "no-store",
+        },
+      });
     }
     if (sp.get("status")) and.push({ bidStatus: { eq: sp.get("status") } });
     if (sp.get("bu")) and.push({ businessUnit: { eq: sp.get("bu") } });

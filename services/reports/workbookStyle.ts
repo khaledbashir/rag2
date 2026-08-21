@@ -192,3 +192,26 @@ export function dataRow(
   });
   return row;
 }
+
+/**
+ * A Content-Disposition value that survives a view name with a dash in it.
+ *
+ * An HTTP header value must be a ByteString, so an em dash (U+2014) throws
+ * outright — "Renewals — Next 90 Days" 500'd the whole export rather than
+ * downloading with a plainer name. Same trap that killed an RFP bid-form fill
+ * on an en dash (2026-08-10) and made CRM downloads save as a UUID
+ * (2026-08-19). The quoted form is folded to ASCII for old clients; the
+ * RFC 8187 `filename*` carries the real name for everyone else.
+ */
+export function contentDisposition(filename: string): string {
+  const safe = filename
+    .replace(/[‐-―]/g, "-")   // hyphens, en/em dashes
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/[^\x20-\x7E]/g, "")
+    .replace(/\s+/g, " ")
+    .trim() || "ANC Report.xlsx";
+  return `attachment; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
+

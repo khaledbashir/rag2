@@ -20,6 +20,13 @@ export type ViewColumn = {
   fieldName: string;
   label: string;
   type: string;
+  /**
+   * For a RELATION, the `nameSingular` of the object it points at. Optional
+   * because the LG report predates it and names its one relation directly; when
+   * present it is preferred, so a view that adds Venue or Point of Contact
+   * mirrors without anyone editing an allow-list here.
+   */
+  relationTarget?: string;
 };
 
 /** A column the sheet can actually render, with its layout already decided. */
@@ -45,19 +52,37 @@ const COMPOSITE_SELECTION: Record<string, string> = {
 };
 
 /**
- * Relations are only followed one level, to the related record's display name,
- * and only for the relations this report is scoped to. A blanket relation
- * walker would need the target object's label-identifier field, which is more
- * machinery than the sheet needs.
+ * Relations are only followed one level, to the related record's display name.
+ * A blanket relation walker would have to resolve each target's
+ * label-identifier field at runtime, which is more machinery than the sheet
+ * needs — these five targets cover every relation column the opportunity views
+ * actually show, and an unrecognised one is dropped with a note rather than
+ * guessed at.
  */
 const RELATION_SELECTION: Record<string, string> = {
   company: "{ name }",
 };
 
+/** By the object the relation points at — preferred over the field-name map. */
+const RELATION_TARGET_SELECTION: Record<string, string> = {
+  company: "{ name }",
+  venue: "{ name }",
+  // Both of these carry a FULL_NAME identifier, so the name is a composite.
+  workspaceMember: "{ name { firstName lastName } }",
+  person: "{ name { firstName lastName } }",
+};
+
+function relationSelection(column: ViewColumn): string | null {
+  if (column.relationTarget && RELATION_TARGET_SELECTION[column.relationTarget]) {
+    return RELATION_TARGET_SELECTION[column.relationTarget];
+  }
+  return RELATION_SELECTION[column.fieldName] || null;
+}
+
 export function isRenderable(column: ViewColumn): boolean {
   if (SCALAR_TYPES.has(column.type)) return true;
   if (COMPOSITE_SELECTION[column.type]) return true;
-  if (column.type === "RELATION") return !!RELATION_SELECTION[column.fieldName];
+  if (column.type === "RELATION") return !!relationSelection(column);
   return false;
 }
 
@@ -84,7 +109,7 @@ export function selectionFor(column: ViewColumn): string | null {
     return `${column.fieldName} ${COMPOSITE_SELECTION[column.type]}`;
   }
   if (column.type === "RELATION") {
-    return `${column.fieldName} ${RELATION_SELECTION[column.fieldName]}`;
+    return `${column.fieldName} ${relationSelection(column)}`;
   }
   return column.fieldName;
 }
@@ -221,8 +246,16 @@ export function cellValue(
     }
     case "LINKS":
       return raw?.primaryLinkUrl || raw?.primaryLinkLabel || "";
-    case "RELATION":
-      return raw?.name || "";
+    case "RELATION": {
+      const name = raw?.name;
+      // A person or workspace member's identifier is a FULL_NAME composite, so
+      // `name` is an object here, not a string. Reading it as a string put a
+      // blank in the Owner column rather than failing loudly.
+      if (name && typeof name === "object") {
+        return [name.firstName, name.lastName].filter(Boolean).join(" ").trim();
+      }
+      return name || "";
+    }
     case "DATE":
     case "DATE_TIME":
       return formatDate(raw);
