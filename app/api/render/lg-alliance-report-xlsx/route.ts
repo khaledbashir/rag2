@@ -30,6 +30,7 @@ import {
   FISCAL_YEARS,
   buildLgAllianceReport,
   businessUnitLabel,
+  sectionsFromViewGroups,
   fiscalYearLabel,
   humanizeStatus,
   normalizeFiscalYears,
@@ -44,15 +45,28 @@ import {
   PO_SOURCE_KEY,
   buildSelection,
   cellValue,
-  isRenderable,
   isSponsorshipYearField,
   rollupLayout,
-  toMirrorColumn,
   type MirrorColumn,
   type RollupColumn,
-  type ViewColumn,
 } from "@/services/reports/viewMirror";
 import {
+  layoutFromView,
+  sortByViewSorts,
+  type FieldMeta,
+  type LaidOutColumn,
+  type ViewSort,
+} from "@/services/reports/viewExportLayout";
+import { buildViewFilter } from "@/services/reports/viewFilterTranslate";
+import {
+  aggregateFormula,
+  aggregateLabel,
+  composedTotalFormula,
+  computeAggregate,
+  isMoneyResult,
+} from "@/services/reports/viewAggregates";
+import {
+  BAND,
   BAND_STRONG,
   FONT,
   GUTTER,
@@ -116,50 +130,139 @@ async function metaGql<T = any>(query: string): Promise<T> {
   return body.data;
 }
 
-export type MirroredColumns = {
-  columns: MirrorColumn[];
+/**
+ * Everything the sheet takes from the saved view: its columns and their
+ * totals, its filters, its sorts, and the order it bands its sections in.
+ *
+ * Jireh, 2026-08-21: "the main tab is still not looking like the actual report
+ * on the CRM." It was mirroring his columns and nothing else — so the sheet
+ * carried 127 rows against the report's 105 (the report hides On Hold, the
+ * sheet counted it as live pipeline), banded No Sponsorship above Needs Review
+ * where he had dragged it below, and listed each section biggest-PO-first while
+ * the report reads alphabetically. Same columns, different document. The view
+ * now decides all four.
+ */
+export type ViewMirror = {
+  /** The view's own name, so the sheet can say which report it is. */
+  name: string;
+  columns: LaidOutColumn[];
   /** Columns on the view whose type the sheet cannot render. */
   skipped: string[];
+  /** The view's filters, translated for the data API. */
+  filter?: Record<string, unknown>;
+  sorts: ViewSort[];
+  fields: Record<string, FieldMeta>;
+  /** The field the report groups by, so its own sort is not applied twice. */
+  groupFieldId?: string;
+  /** Section values in the report's band order, with the CRM's labels. */
+  sectionOrder: string[];
+  sectionLabels: Record<string, string>;
 };
 
+const NO_VIEW: ViewMirror = {
+  name: "",
+  columns: [],
+  skipped: [],
+  sorts: [],
+  fields: {},
+  sectionOrder: [],
+  sectionLabels: {},
+};
+
+type SelectOption = { value: string; label: string; position?: number };
+
 /**
- * Reads the view's visible columns, in his order.
+ * Reads the view.
  *
- * A failure here must not take the export down — the report is still useful
- * with its own column set — so the caller falls back to no mirroring.
+ * A failure here must not take the export down — the report is still useful on
+ * its own column set — so the caller falls back to NO_VIEW and the sheet
+ * degrades to the layout it had before it mirrored anything.
  */
-async function fetchViewColumns(): Promise<MirroredColumns> {
+async function fetchView(): Promise<ViewMirror> {
   const data = await metaGql<any>(`query {
-    getViewFields(viewId: "${LG_VIEW_ID}") { fieldMetadataId position isVisible }
+    getView(id: "${LG_VIEW_ID}") {
+      name
+      mainGroupByFieldMetadataId
+      viewFields { fieldMetadataId isVisible position aggregateOperation }
+      viewFilters { fieldMetadataId operand value viewFilterGroupId }
+      viewFilterGroups { id logicalOperator parentViewFilterGroupId }
+      viewSorts { fieldMetadataId direction }
+      viewGroups { fieldValue position isVisible }
+    }
     object(id: "${OPPORTUNITY_OBJECT_ID}") {
-      fields(paging: { first: 300 }) { edges { node { id name label type isActive } } }
+      fieldsList {
+        id name type label options
+        relation { targetObjectMetadata { nameSingular } }
+      }
     }
   }`);
 
-  const fields = new Map<string, any>(
-    data.object.fields.edges
-      .map((e: any) => e.node)
-      .filter((f: any) => f.isActive)
-      .map((f: any) => [f.id, f]),
-  );
+  const view = data.getView;
+  if (!view) throw new Error("the LG Alliance view is no longer readable");
 
-  const columns: MirrorColumn[] = [];
-  const skipped: string[] = [];
-  const visible = data.getViewFields
-    .filter((v: any) => v.isVisible)
-    .sort((a: any, b: any) => a.position - b.position);
-
-  for (const viewField of visible) {
-    const field = fields.get(viewField.fieldMetadataId);
-    if (!field) continue;
-    const column: ViewColumn = { fieldName: field.name, label: field.label, type: field.type };
-    if (!isRenderable(column)) {
-      skipped.push(field.label);
-      continue;
-    }
-    columns.push(toMirrorColumn(column));
+  const fields: Record<string, FieldMeta> = {};
+  const options: Record<string, SelectOption[]> = {};
+  for (const f of data.object?.fieldsList || []) {
+    fields[f.id] = {
+      name: f.name,
+      type: f.type,
+      label: f.label || f.name,
+      relationTarget: f.relation?.targetObjectMetadata?.nameSingular,
+    };
+    if (Array.isArray(f.options)) options[f.id] = f.options;
   }
-  return { columns, skipped };
+
+  const { columns, skipped } = layoutFromView(view.viewFields || [], fields);
+
+  // The section order is the view's own, NOT the field's option order: the two
+  // disagree on this view, and the report is what he is reading.
+  const sectionOrder = [...(view.viewGroups || [])]
+    .filter((g: any) => g.isVisible !== false)
+    .sort((a: any, b: any) => Number(a.position) - Number(b.position))
+    .map((g: any) => String(g.fieldValue ?? ""));
+
+  const groupFieldId: string | undefined = view.mainGroupByFieldMetadataId || undefined;
+  const sectionLabels: Record<string, string> = {};
+  for (const option of (groupFieldId && options[groupFieldId]) || []) {
+    sectionLabels[option.value] = option.label;
+  }
+
+  return {
+    name: view.name || "",
+    columns,
+    skipped,
+    filter: buildViewFilter(view.viewFilters || [], view.viewFilterGroups || [], fields),
+    sorts: view.viewSorts || [],
+    fields,
+    groupFieldId,
+    sectionOrder,
+    sectionLabels,
+  };
+}
+
+/**
+ * The row order inside a section, taken from the view's sorts.
+ *
+ * The grouping field's own sort is dropped: the sections are already banded in
+ * the view's group order, and comparing a SELECT as text would band them
+ * alphabetically by stored value rather than the order he dragged them into.
+ */
+function viewRowOrder(
+  mirror: ViewMirror,
+): ((rows: LgAllianceReport["rows"]) => LgAllianceReport["rows"]) | undefined {
+  const sorts = mirror.sorts.filter((s) => s.fieldMetadataId !== mirror.groupFieldId);
+  if (!sorts.length) return undefined;
+  return (rows) => {
+    const wrapped = rows.map((row) => ({
+      ...((row as unknown as { raw?: Record<string, any> }).raw || {}),
+      __row: row,
+    }));
+    const ordered = sortByViewSorts(wrapped, sorts, mirror.fields).map((w) => w.__row);
+    // Section first, his order within it — the rollup bands by section anyway,
+    // and it keeps the flat Deal Detail tab reading in the report's order
+    // rather than alphabetically straight through the sections.
+    return ordered.sort((a, b) => a.tierRank - b.tierRank);
+  };
 }
 
 const YEAR_FIELDS = FISCAL_YEARS.map(
@@ -181,7 +284,20 @@ const SPONSORSHIP_YEAR_FIELDS = SPONSORSHIP_YEARS.map(
  */
 type LgDeal = LgDealInput & { raw: Record<string, any> };
 
-async function fetchLgDeals(mirrored: MirrorColumn[]): Promise<LgDeal[]> {
+/**
+ * The filter the report falls back to when the view cannot be read: the LG
+ * alliance is a Technology partnership, so a Venue Services deal naming LG as
+ * its vendor is not part of it.
+ */
+const FALLBACK_FILTER = {
+  technologyVendorPartner: { eq: "LG" },
+  businessUnit: { eq: "TECHNOLOGY" },
+};
+
+async function fetchLgDeals(
+  mirrored: MirrorColumn[],
+  filter?: Record<string, unknown>,
+): Promise<LgDeal[]> {
   // Fields the query already names by hand; the mirror adds only what is new.
   const HAND_SELECTED = [
     "id", "name", "opportunityNumber", "bidStatus", "league", "winConfidence",
@@ -191,12 +307,9 @@ async function fetchLgDeals(mirrored: MirrorColumn[]): Promise<LgDeal[]> {
   ];
   const mirroredSelection = buildSelection(mirrored, HAND_SELECTED);
 
-  const query = `query LgDeals($after: String) {
+  const query = `query LgDeals($filter: OpportunityFilterInput, $after: String) {
     opportunities(
-      filter: {
-        technologyVendorPartner: { eq: "LG" }
-        businessUnit: { eq: "TECHNOLOGY" }
-      }
+      filter: $filter
       orderBy: { id: AscNullsLast }
       first: 60
       after: $after
@@ -221,7 +334,7 @@ async function fetchLgDeals(mirrored: MirrorColumn[]): Promise<LgDeal[]> {
   let after: string | null = null;
   // Bounded so a cursor that ever stops advancing cannot spin forever.
   for (let page = 0; page < 100; page++) {
-    const data: any = await gql(query, { after });
+    const data: any = await gql(query, { filter: filter || FALLBACK_FILTER, after });
     const conn = data.opportunities;
     for (const edge of conn.edges) {
       const n = edge.node;
@@ -361,7 +474,7 @@ function applySponsorshipFormula(
 function buildWorkbook(
   report: LgAllianceReport,
   scope: ReportScope,
-  mirror: MirroredColumns,
+  mirror: ViewMirror,
 ): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook();
   wb.creator = "ANC";
@@ -369,34 +482,33 @@ function buildWorkbook(
   const asOf = new Date(report.generatedAt).toLocaleString("en-US", {
     year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
   });
+  const reportName = mirror.name || "the LG Alliance Detail list";
   const scopeLabel =
     scope === "open"
       ? "Open pipeline only"
       : scope === "won"
         ? "Won deals only"
         : scope === "all"
-          ? "All LG deals, including lost and no-bid"
+          // With the view's own filters applied, "all" means every row the
+          // report shows — which is not the same as every LG deal in the CRM.
+          ? mirror.filter
+            ? `Every row on the ${reportName} report`
+            : "All LG deals, including lost and no-bid"
           : "Open pipeline and won deals";
 
   // ---------------------------------------------------------------- sheet 1
   const roll = wb.addWorksheet("Alliance Rollup");
   roll.properties.defaultRowHeight = 16;
 
-  // Sponsorship years nobody has phased money into would be seven empty columns
-  // between the PO and the dates, which is the opposite of "looks like the CRM".
-  const emptySponsorshipYears = new Set(
-    SPONSORSHIP_YEARS.filter(
-      (y) => !report.rows.some((r) => (r.sponsorshipByYear?.[y] || 0) !== 0),
-    ).map((y) => `sponsorship${y}`),
-  );
-
+  // Every column the report shows, in its order, with its own footer total.
   const layout: RollupColumn[] = mirror.columns.length
-    ? rollupLayout(mirror.columns, pct(rate), emptySponsorshipYears)
+    ? rollupLayout(mirror.columns, pct(rate))
     : LEGACY_ROLLUP_LAYOUT(rate);
   const rollCols: ColumnSpec[] = layout.map((c) => c.spec);
   const indexOf = (key: string) => layout.findIndex((c) => c.key === key);
   const poColumn = indexOf(PO_FIELD);
   const allianceColumn = indexOf(ALLIANCE_FEE_KEY);
+  const poSourceColumn = indexOf(PO_SOURCE_KEY);
   const sponsorship = sponsorshipLayoutFor(layout.map((c) => c.key));
 
   const headRow = writeSheetHeader(roll, {
@@ -407,23 +519,54 @@ function buildWorkbook(
       `alliance ${pct(rate)} ${usd(report.totals.allianceFee)}` +
       (report.totals.sponsorship ? ` · sponsorship ${usd(report.totals.sponsorship)}` : ""),
     note:
+      `This tab is the ${reportName} report in the CRM: its rows, its columns, ` +
+      "its sections in their order, and each column's own total. " +
       `Technology Vendor PO Value is entered on ${report.totals.dealsWithPo} of ` +
       `${report.totals.deals} deals (${usd(report.totals.poEntered)}). ` +
       (report.rowsWithoutPo
         ? `The other ${report.rowsWithoutPo} stand in Revenue — Total Project ` +
           `(${usd(report.totals.poEstimated)}) and are marked Estimated in the PO Source column. `
         : "") +
-      `The alliance ${pct(rate)} is the PO cell beside it times ${pct(rate)}, and every ` +
-      "tier subtotal adds up the rows beneath it, so the whole sheet is live. " +
+      `The alliance ${pct(rate)} column and the PO Source tag are this report's own — ` +
+      "the fee is the PO cell beside it times the rate. " +
       (sponsorship
-        ? "Sponsorship Value adds up its fiscal year columns as a live formula, and " +
-          "sits alongside the PO rather than inside the fee. "
-        : "Sponsorship Value sits alongside the PO and is not part of the fee. ") +
-      "Columns follow the LG Alliance Detail list in the CRM.",
+        ? "Sponsorship Value adds up its fiscal year columns as a live formula. "
+        : "") +
+      "Every money total is a live formula over the rows above it, so filtering " +
+      "the sheet moves the totals exactly as filtering the report does." +
+      (mirror.skipped.length ? ` Not carried across: ${mirror.skipped.join(", ")}.` : ""),
   });
 
   // Two columns pinned — the CRM keeps the opportunity and account in view.
   writeTableHeader(roll, rollCols, headRow, Math.min(2, rollCols.length));
+
+  // A thin legend naming each column's total the way the CRM names it, so
+  // "Sum of Sponsorship Value" and "Count all" read the same on both surfaces.
+  const hasAggregates = layout.some((c) => c.aggregate);
+  if (hasAggregates) {
+    const legend = roll.addRow({});
+    layout.forEach((col, i) => {
+      const cell = legend.getCell(i + 1 + GUTTER);
+      if (col.aggregate) cell.value = aggregateLabel(col.aggregate, col.spec.header);
+      cell.font = { name: FONT, size: 8, italic: true, color: { argb: INK_SOFT } };
+      cell.alignment = { horizontal: col.spec.money ? "right" : "left" };
+    });
+    legend.height = 13;
+    roll.views = [
+      {
+        state: "frozen",
+        ySplit: legend.number,
+        xSplit: Math.min(2, rollCols.length) + GUTTER,
+        showGridLines: false,
+      },
+    ];
+  }
+
+  /** Every row's cells, laid out once — the footers read them back. */
+  const cellsOf = new Map<LgAllianceReport["rows"][number], (string | number | null)[]>();
+  for (const r of report.rows) {
+    cellsOf.set(r, rollupValues(r, (r as unknown as { raw?: Record<string, any> }).raw || {}, layout));
+  }
 
   /** What a row contributes to the sponsorship column as the sheet writes it. */
   const yearTotalOf = (r: LgAllianceReport["rows"][number]) =>
@@ -433,81 +576,78 @@ function buildWorkbook(
   const effectiveSponsorship = (r: LgAllianceReport["rows"][number]) =>
     yearTotalOf(r) || r.sponsorshipValue || 0;
 
-  /** What one row puts in a money column, for caching a band's result. */
-  const rowMoneyAt = (r: LgAllianceReport["rows"][number], index: number): number => {
+  /** The value a footer counts for one row in one column. */
+  const valueAt = (r: LgAllianceReport["rows"][number], index: number) => {
     if (sponsorship && index === sponsorship.totalIndex) return effectiveSponsorship(r);
-    const raw = (r as unknown as { raw?: Record<string, any> }).raw || {};
-    const value = rollupValues(r, raw, layout)[index];
-    return typeof value === "number" ? value : 0;
+    return cellsOf.get(r)?.[index] ?? null;
   };
+
+  const countText = (value: number | null) =>
+    value === null ? "—" : Number.isInteger(value) ? String(value) : value.toFixed(1);
 
   /**
-   * Puts live sums in every money cell of a band, so a tier subtotal and the
-   * sheet total are read off the rows rather than baked in (Jireh, 2026-08-18:
-   * "can we make the tier totals roll up to the opportunity totals for vendor
-   * PO's?"). `source` is the block of rows a tier band covers, or the list of
-   * band rows the TOTAL adds together.
+   * A section footer, or the sheet's own — the CRM's footer row, in the CRM's
+   * words. `block` is the run of data rows a section covers; the sheet total
+   * instead names the section footers, because a range over the data would add
+   * those footers in a second time.
    */
-  const bandRollup = (
-    band: ExcelJS.Row,
+  const writeFooter = (
     rows: LgAllianceReport["rows"],
-    source: { from: number; to: number } | number[],
-  ) => {
-    if (Array.isArray(source) && !source.length) return;
-    // A tier with no deals yet still gets its band — and a range that would run
-    // backwards (`H9:H8`) is not an empty sum in Excel, it silently swallows the
-    // band's own row and reports the tier above it. An empty section is a hard
-    // zero instead.
-    const isEmptyBlock = !Array.isArray(source) && source.to < source.from;
-    layout.forEach((col, index) => {
-      if (!col.spec.money) return;
-      if (isEmptyBlock) {
-        money(band.getCell(index + 1 + GUTTER), 0);
-        return;
-      }
-      const letter = columnLetter(roll, index);
-      const formula = Array.isArray(source)
-        ? source.map((n) => `${letter}${n}`).join("+")
-        : `SUM(${letter}${source.from}:${letter}${source.to})`;
-      money(band.getCell(index + 1 + GUTTER), {
-        formula,
-        result: rows.reduce((sum, r) => sum + rowMoneyAt(r, index), 0),
-      });
+    block: { from: number; to: number } | number[],
+    opts: { label?: string; height?: number; fill?: string } = {},
+  ): ExcelJS.Row => {
+    const row = bandRow(roll, rollCols, rollCols.map(() => null), {
+      fill: opts.fill || BAND,
+      height: opts.height,
     });
+    let labelWritten = false;
+    layout.forEach((col, index) => {
+      if (!col.aggregate) return;
+      const cell = row.getCell(index + 1 + GUTTER);
+      const letter = columnLetter(roll, index);
+      const computed = computeAggregate(col.aggregate, rows.map((r) => valueAt(r, index)));
+      const formula = Array.isArray(block)
+        ? composedTotalFormula(col.aggregate, letter, block)
+        : aggregateFormula(col.aggregate, letter, block.from, block.to);
+
+      if (col.spec.money && isMoneyResult(col.aggregate, true)) {
+        money(cell, formula ? { formula, result: computed ?? 0 } : (computed ?? 0));
+      } else {
+        // A count reads as the CRM writes it — "Count all 5", not a bare 5.
+        const text = `${aggregateLabel(col.aggregate, col.spec.header)} ${countText(computed)}`;
+        if (index === 0 && opts.label) {
+          cell.value = `${opts.label} · ${text}`;
+          labelWritten = true;
+        } else {
+          cell.value = text;
+        }
+      }
+      cell.font = { name: FONT, bold: true, size: 10, color: { argb: INK } };
+    });
+    // The PO Source column has no CRM total; the sheet says how much of the
+    // block's PO is paper someone actually typed.
+    if (poSourceColumn >= 0) {
+      const entered = rows.filter((r) => r.poBasis === "po").length;
+      row.getCell(poSourceColumn + 1 + GUTTER).value = `${entered}/${rows.length} entered`;
+    }
+    if (opts.label && !labelWritten) row.getCell(1 + GUTTER).value = opts.label;
+    return row;
   };
 
-  /** A band row carrying a tier's — or the sheet's — subtotals, by column. */
-  const subtotalRow = (
-    label: string,
-    totals: typeof report.totals,
-    height?: number,
-  ) => {
+  /** A section header — the CRM's group chip, on its own row. */
+  const writeSectionHeader = (label: string) => {
     const values: SheetValue[] = rollCols.map(() => null);
     values[0] = label;
-    if (rollCols.length > 1) {
-      values[1] = `${totals.deals} ${totals.deals === 1 ? "deal" : "deals"}`;
-    }
-    const put = (key: string, value: string | number | null) => {
-      const i = indexOf(key);
-      if (i >= 0) values[i] = value;
-    };
-    put(PO_FIELD, totals.po);
-    put(PO_SOURCE_KEY, `${totals.dealsWithPo}/${totals.deals} entered`);
-    put("sponsorshipValue", totals.sponsorship);
-    put(ALLIANCE_FEE_KEY, totals.allianceFee);
-    put("totalProjectRevenue", totals.revenue);
-    put("totalProjectMargin", totals.ancMargin);
-    return bandRow(roll, rollCols, values, { fill: BAND_STRONG, height });
+    return bandRow(roll, rollCols, values, { fill: BAND_STRONG });
   };
 
-  const tierBands: number[] = [];
+  const sectionFooters: number[] = [];
   for (const tier of report.tiers) {
-    const band = subtotalRow(tier.label, tier.totals);
-    tierBands.push(band.number);
+    writeSectionHeader(tier.label);
+    const first = (roll.lastRow?.number || headRow) + 1;
 
     tier.rows.forEach((r, i) => {
-      const raw = (r as unknown as { raw?: Record<string, any> }).raw || {};
-      const row = dataRow(roll, rollCols, rollupValues(r, raw, layout), i);
+      const row = dataRow(roll, rollCols, cellsOf.get(r) as SheetValue[], i);
       // An estimated PO is flagged where it is read rather than only in the
       // note at the top, so a subtotal is never mistaken for booked paper.
       if (r.poBasis === "revenue" && poColumn >= 0) {
@@ -525,12 +665,15 @@ function buildWorkbook(
       }
     });
 
-    // The band sits above its rows, so its range starts on the next line.
-    bandRollup(band, tier.rows, { from: band.number + 1, to: band.number + tier.rows.length });
+    const footer = writeFooter(tier.rows, { from: first, to: first + tier.rows.length - 1 });
+    sectionFooters.push(footer.number);
   }
 
-  const total = subtotalRow("TOTAL", report.totals, 22);
-  bandRollup(total, report.rows, tierBands);
+  writeFooter(report.rows, sectionFooters, {
+    label: "TOTAL",
+    height: 22,
+    fill: BAND_STRONG,
+  });
 
   // ---------------------------------------------------------------- sheet 2
   const fy = wb.addWorksheet("By Fiscal Year");
@@ -807,7 +950,7 @@ export async function GET(request: NextRequest) {
   try {
     const params = new URL(request.url).searchParams;
     const scopeParam = params.get("scope");
-    const scope: ReportScope =
+    const requested: ReportScope =
       scopeParam === "open" || scopeParam === "won" || scopeParam === "all"
         ? scopeParam
         : "active";
@@ -818,16 +961,27 @@ export async function GET(request: NextRequest) {
         : ALLIANCE_RATE_DEFAULT;
 
     // A metadata failure must not cost the whole export — fall back to the
-    // report's own column set and carry on.
-    let mirror: MirroredColumns = { columns: [], skipped: [] };
+    // report's own column set, filter and order, and carry on.
+    let mirror: ViewMirror = NO_VIEW;
     try {
-      mirror = await fetchViewColumns();
+      mirror = await fetchView();
     } catch (error) {
-      console.error("[lg-alliance-report] could not read the view columns", error);
+      console.error("[lg-alliance-report] could not read the view", error);
     }
 
-    const deals = await fetchLgDeals(mirror.columns);
-    const report = buildLgAllianceReport(deals, { allianceRate, scope });
+    // The view already says which deals belong on the report, so no further
+    // scoping is applied unless the caller asks for one by hand.
+    const scope: ReportScope = scopeParam ? requested : mirror.filter ? "all" : "active";
+
+    const deals = await fetchLgDeals(mirror.columns, mirror.filter);
+    const report = buildLgAllianceReport(deals, {
+      allianceRate,
+      scope,
+      sections: mirror.sectionOrder.length
+        ? sectionsFromViewGroups(mirror.sectionOrder, mirror.sectionLabels)
+        : undefined,
+      sortRows: viewRowOrder(mirror),
+    });
 
     if (params.get("format") === "json") {
       return withRenderCors(NextResponse.json(report), request);

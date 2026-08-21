@@ -15,6 +15,7 @@
  * network.
  */
 import { businessUnitLabel } from "./lgAlliance";
+import type { AggregateOperation } from "./viewAggregates";
 
 export type ViewColumn = {
   fieldName: string;
@@ -34,7 +35,15 @@ export type MirrorColumn = ViewColumn & {
   money: boolean;
   width: number;
   wrap: boolean;
+  /**
+   * The view's own footer total for this column, when the caller laid it out
+   * with `layoutFromView`. Optional because the mirror predates footer totals.
+   */
+  aggregate?: AggregateOperation | null;
 };
+
+const aggregateOf = (column: MirrorColumn): AggregateOperation | null =>
+  column.aggregate ?? null;
 
 /**
  * Field types the mirror knows how to ask for and render. Anything else is
@@ -164,6 +173,11 @@ export function enumLabel(value: string): string {
  *
  * LG Margin was dropped from the sheet in the same pass, at his request. The
  * report still calculates it for the JSON payload; it is simply not a column.
+ *
+ * Nothing else is left out. The vendor column used to be dropped here on the
+ * reasoning that every row of an LG report names LG anyway — our reasoning,
+ * not his, and he read the sheet against the report and saw a missing column
+ * (2026-08-21). A column the report shows, the sheet shows.
  */
 export type RollupColumn = {
   /** Field name for a mirrored column, or the calculated column's own key. */
@@ -171,13 +185,13 @@ export type RollupColumn = {
   spec: { header: string; width: number; money?: boolean; wrap?: boolean; align?: "left" | "right" | "center" };
   /** Present only for columns that come from the view. */
   column?: MirrorColumn;
+  /**
+   * The footer total this column carries, straight from the view's own
+   * `aggregateOperation`, so the band under a section says what the CRM says.
+   * The two calculated columns set it themselves.
+   */
+  aggregate?: AggregateOperation | null;
 };
-
-/**
- * Columns the CRM page shows that the rollup never repeats: every row of an LG
- * report names LG as the vendor.
- */
-export const ROLLUP_OMITTED_FIELDS = new Set(["technologyVendorPartner"]);
 
 export const PO_FIELD = "poValue";
 export const PO_SOURCE_KEY = "poSource";
@@ -195,9 +209,7 @@ export function rollupLayout(
   rateLabel: string,
   drop: Set<string> = new Set(),
 ): RollupColumn[] {
-  const kept = columns.filter(
-    (c) => !ROLLUP_OMITTED_FIELDS.has(c.fieldName) && !drop.has(c.fieldName),
-  );
+  const kept = columns.filter((c) => !drop.has(c.fieldName));
 
   const poBlock = (mirrored?: MirrorColumn): RollupColumn[] => [
     mirrored
@@ -205,15 +217,21 @@ export function rollupLayout(
           key: PO_FIELD,
           column: mirrored,
           spec: { header: mirrored.label, width: 19, money: true },
+          aggregate: aggregateOf(mirrored) || "SUM",
         }
       : {
           key: PO_FIELD,
           spec: { header: "Technology Vendor PO Value", width: 19, money: true },
+          aggregate: "SUM",
         },
     // Centred so it reads as a tag on the PO rather than crowding the figure.
     { key: PO_SOURCE_KEY, spec: { header: "PO Source", width: 13, align: "center" } },
     // The fee is 8% of the PO to its left, so it sits with it.
-    { key: ALLIANCE_FEE_KEY, spec: { header: `Alliance ${rateLabel}`, width: 14, money: true } },
+    {
+      key: ALLIANCE_FEE_KEY,
+      spec: { header: `Alliance ${rateLabel}`, width: 14, money: true },
+      aggregate: "SUM",
+    },
   ];
 
   const hasPo = kept.some((c) => c.fieldName === PO_FIELD);
@@ -221,7 +239,13 @@ export function rollupLayout(
   const out: RollupColumn[] = [];
   for (const c of kept) {
     if (c.fieldName === PO_FIELD) out.push(...poBlock(c));
-    else out.push({ key: c.fieldName, column: c, spec: { header: c.label, width: c.width, money: c.money, wrap: c.wrap } });
+    else
+      out.push({
+        key: c.fieldName,
+        column: c,
+        spec: { header: c.label, width: c.width, money: c.money, wrap: c.wrap },
+        aggregate: aggregateOf(c),
+      });
   }
   // A view edit that hides the PO must not cost the sheet its subject: the
   // whole block goes back in at the front.

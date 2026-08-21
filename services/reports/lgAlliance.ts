@@ -186,7 +186,47 @@ const TIER_LABELS: Record<string, { label: string; rank: number }> = {
   },
 };
 
-const UNTIERED = { label: "Not yet tiered", rank: 9 };
+// Ranked below every named section, however many the view carries.
+const UNTIERED = { label: "Not yet tiered", rank: Number.MAX_SAFE_INTEGER };
+
+/**
+ * The section order and labels the sheet bands by.
+ *
+ * Defaults to the LG Tier field's own option order, but the CRM report is
+ * allowed to disagree with it: Jireh dragged Needs Review and Additional
+ * Technology above No Sponsorship on the saved view, so the report reads
+ * 1, 2, 3, Needs Review, Additional Technology, No Sponsorship while the
+ * field still lists No Sponsorship fourth. The view wins — it is what he is
+ * looking at when he says the export does not match (2026-08-21).
+ */
+export type SectionMeta = { rank: Record<string, number>; label: Record<string, string> };
+
+const DEFAULT_SECTIONS: SectionMeta = {
+  rank: Object.fromEntries(Object.entries(TIER_LABELS).map(([k, v]) => [k, v.rank])),
+  label: Object.fromEntries(Object.entries(TIER_LABELS).map(([k, v]) => [k, v.label])),
+};
+
+/**
+ * Turns the view's own group order into section metadata.
+ *
+ * `order` is the tier VALUES in `viewGroup.position` order; the empty string —
+ * the CRM's no-value group — is ignored, because the untiered band is placed
+ * by the report itself and only when rows are actually sitting there.
+ */
+export function sectionsFromViewGroups(
+  order: string[],
+  labels: Record<string, string> = {},
+): SectionMeta {
+  const rank: Record<string, number> = {};
+  const label: Record<string, string> = {};
+  order
+    .filter((value) => value !== "")
+    .forEach((value, i) => {
+      rank[value] = i;
+      label[value] = labels[value] || TIER_LABELS[value]?.label || humanizeStatus(value);
+    });
+  return { rank, label };
+}
 
 const BUSINESS_UNIT_LABELS: Record<string, string> = {
   LED: "LED",
@@ -282,15 +322,21 @@ function addTo(totals: MoneyTotals, row: LgDealRow): void {
  * but no cost column; when the PO basis is `po` the cost still comes from the
  * revenue/margin pair, which is the only cost ANC has recorded.
  */
-export function toDealRow(deal: LgDealInput, allianceRate: number): LgDealRow {
+export function toDealRow(
+  deal: LgDealInput,
+  allianceRate: number,
+  sections: SectionMeta = DEFAULT_SECTIONS,
+): LgDealRow {
   const revenue = deal.revenue || 0;
   const margin = deal.margin || 0;
   const hasPo = deal.poValue !== null && deal.poValue !== undefined && deal.poValue !== 0;
   const po = hasPo ? (deal.poValue as number) : revenue;
   const cost = revenue - margin;
   const allianceFee = po * allianceRate;
-  const tier = deal.tier && TIER_LABELS[deal.tier] ? deal.tier : "";
-  const meta = tier ? TIER_LABELS[tier] : UNTIERED;
+  const tier = deal.tier && sections.label[deal.tier] ? deal.tier : "";
+  const meta = tier
+    ? { label: sections.label[tier], rank: sections.rank[tier] }
+    : UNTIERED;
 
   return {
     ...deal,
@@ -337,6 +383,19 @@ export type BuildOptions = {
    * under `all`.
    */
   scope?: ReportScope;
+  /**
+   * The sections, in the order the CRM report bands them. Supplied by the
+   * caller from the saved view's own groups; absent, the LG Tier field's
+   * option order is used.
+   */
+  sections?: SectionMeta;
+  /**
+   * The row order inside each section. Supplied by the caller from the view's
+   * own sorts — his report reads alphabetically by opportunity name, and a
+   * sheet ordered biggest-PO-first is a different document however right the
+   * figures are. Absent, the report keeps its own biggest-first order.
+   */
+  sortRows?: (rows: LgDealRow[]) => LgDealRow[];
 };
 
 export function buildLgAllianceReport(
@@ -346,17 +405,24 @@ export function buildLgAllianceReport(
   const allianceRate = options.allianceRate ?? ALLIANCE_RATE_DEFAULT;
   const generatedAt = options.generatedAt || new Date().toISOString();
   const scope: ReportScope = options.scope || "active";
+  const sections = options.sections || DEFAULT_SECTIONS;
 
-  let rows = deals.map((d) => toDealRow(d, allianceRate));
+  let rows = deals.map((d) => toDealRow(d, allianceRate, sections));
   if (scope === "active") rows = rows.filter((r) => r.outcome !== "closed");
   else if (scope !== "all") rows = rows.filter((r) => r.outcome === scope);
 
-  rows.sort(
-    (a, b) =>
-      a.tierRank - b.tierRank ||
-      b.po - a.po ||
-      (a.account || "").localeCompare(b.account || ""),
-  );
+  if (options.sortRows) {
+    // The caller's order is the row order inside a section; the sections
+    // themselves are still banded by rank below.
+    rows = options.sortRows(rows);
+  } else {
+    rows.sort(
+      (a, b) =>
+        a.tierRank - b.tierRank ||
+        b.po - a.po ||
+        (a.account || "").localeCompare(b.account || ""),
+    );
+  }
 
   const tierMap = new Map<string, TierGroup>();
 
@@ -370,11 +436,14 @@ export function buildLgAllianceReport(
   //
   // "Not yet tiered" is not seeded: it is the absence of a decision rather than
   // one of the choices, so it appears only when rows are actually sitting there.
-  for (const [key, meta] of Object.entries(TIER_LABELS)) {
-    tierMap.set(meta.label, {
+  //
+  // The order is the CRM report's own (see sectionsFromViewGroups), falling
+  // back to the LG Tier field's option order when the view cannot be read.
+  for (const [key, label] of Object.entries(sections.label)) {
+    tierMap.set(label, {
       tier: key,
-      label: meta.label,
-      rank: meta.rank,
+      label,
+      rank: sections.rank[key],
       rows: [],
       totals: emptyTotals(),
     });

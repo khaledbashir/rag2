@@ -3,6 +3,7 @@ import {
   aggregateFormula,
   aggregateLabel,
   aggregateNumFmt,
+  composedTotalFormula,
   computeAggregate,
   effectiveAggregate,
   isMoneyResult,
@@ -127,6 +128,39 @@ describe("aggregateFormula", () => {
     expect(aggregateFormula("COUNT_UNIQUE_VALUES", "C", 2, 4)).toBe(
       'SUMPRODUCT((C2:C4<>"")/COUNTIF(C2:C4,C2:C4&""))',
     );
+  });
+});
+
+/**
+ * The LG rollup bands its sections, so its data rows are not one run — a
+ * range over them would add each section footer in twice.
+ */
+describe("the sheet total over banded sections", () => {
+  it("adds the section totals rather than the rows", () => {
+    expect(composedTotalFormula("SUM", "H", [9, 15, 21])).toBe("H9+H15+H21");
+  });
+
+  it("adds counts the same way — a sum of counts is the count", () => {
+    expect(composedTotalFormula("COUNT", "B", [9, 15])).toBe("B9+B15");
+    expect(composedTotalFormula("COUNT_NOT_EMPTY", "B", [9, 15])).toBe("B9+B15");
+  });
+
+  it("takes the extreme of the section extremes", () => {
+    expect(composedTotalFormula("MIN", "D", [9, 15])).toBe("MIN(D9,D15)");
+    expect(composedTotalFormula("MAX", "D", [9, 15])).toBe("MAX(D9,D15)");
+  });
+
+  // An average of averages weights small sections like large ones, and a
+  // count of uniques counts a value appearing in two sections twice. Both
+  // return null so the caller writes the figure computed over every row.
+  it("refuses the operations that do not compose", () => {
+    expect(composedTotalFormula("AVG", "D", [9, 15])).toBeNull();
+    expect(composedTotalFormula("COUNT_UNIQUE_VALUES", "D", [9, 15])).toBeNull();
+    expect(composedTotalFormula("PERCENTAGE_EMPTY", "D", [9, 15])).toBeNull();
+  });
+
+  it("has nothing to add when the sheet has no sections", () => {
+    expect(composedTotalFormula("SUM", "H", [])).toBeNull();
   });
 });
 

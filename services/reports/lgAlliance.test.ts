@@ -7,6 +7,7 @@ import {
   humanizeStatus,
   normalizeFiscalYears,
   outcomeFor,
+  sectionsFromViewGroups,
   toDealRow,
   winConfidenceLabel,
   type LgDealInput,
@@ -214,6 +215,86 @@ describe("tier grouping", () => {
       )!.totals.deals,
     ).toBe(1);
     expect(report.rowsUntiered).toBe(1);
+  });
+});
+
+/**
+ * Jireh, 2026-08-21: "the main tab is still not looking like the actual report
+ * on the CRM." The columns matched; the shape of the document did not. The
+ * report groups in the order he dragged his sections into and reads
+ * alphabetically inside each one.
+ */
+describe("the report's own sections and order (Jireh, 2026-08-21)", () => {
+  // The order on the saved view — Needs Review and Additional Technology above
+  // No Sponsorship, which is NOT the LG Tier field's option order.
+  const VIEW_GROUPS = [
+    "TIER_1", "TIER_2", "TIER_3", "NEEDS_REVIEW",
+    "ADDITIONAL_TECHNOLOGY_FROM_SPONSORSHIP", "NO_SPONSORSHIP", "",
+  ];
+  const sections = sectionsFromViewGroups(VIEW_GROUPS);
+
+  const deals = [
+    deal({ id: "a", tier: "TIER_1", name: "Washington", account: "Commanders", revenue: 40_000_000, margin: 4_000_000 }),
+    deal({ id: "b", tier: "TIER_1", name: "Carolina", account: "Panthers", revenue: 31_000_000, margin: 2_700_000 }),
+    deal({ id: "c", tier: "NO_SPONSORSHIP", name: "OBM", account: "Orange Barrel", revenue: 10_000_000, margin: 1_000_000 }),
+    deal({ id: "d", tier: "NEEDS_REVIEW", name: "ASU", account: "Arizona State", revenue: 2_000_000, margin: 400_000 }),
+  ];
+
+  it("bands the sections in the report's order, not the field's", () => {
+    const report = buildLgAllianceReport(deals, { sections });
+    expect(report.tiers.map((t) => t.label)).toEqual([
+      "Tier 1",
+      "Tier 2",
+      "Tier 3",
+      "Needs Review",
+      "Additional Technology Opportunities from Sponsorship",
+      "No Sponsorship",
+    ]);
+  });
+
+  it("keeps the untiered band last however many sections the view carries", () => {
+    const report = buildLgAllianceReport([...deals, deal({ id: "e", tier: null })], { sections });
+    expect(report.tiers[report.tiers.length - 1].label).toBe("Not yet tiered");
+  });
+
+  // The no-value group is a section on the CRM's grid, but the sheet only
+  // draws it when rows are actually sitting there — absence of a decision is
+  // not one of the choices.
+  it("ignores the view's empty group value", () => {
+    const report = buildLgAllianceReport(deals, { sections });
+    expect(report.tiers.map((t) => t.label)).not.toContain("Not yet tiered");
+    expect(sections.rank[""]).toBeUndefined();
+  });
+
+  it("takes the section labels the CRM shows when they are supplied", () => {
+    const renamed = sectionsFromViewGroups(["TIER_1"], { TIER_1: "Tier 1 — Flagship" });
+    const report = buildLgAllianceReport([deals[0]], { sections: renamed });
+    expect(report.tiers[0].label).toBe("Tier 1 — Flagship");
+  });
+
+  it("orders rows inside a section the way the caller's view does", () => {
+    const alphabetical = (rows: typeof deals extends never ? never : any[]) =>
+      [...rows].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    const report = buildLgAllianceReport(deals, { sections, sortRows: alphabetical });
+    expect(report.tiers[0].rows.map((r) => r.name)).toEqual(["Carolina", "Washington"]);
+  });
+
+  it("still reads biggest-PO-first when no view order is given", () => {
+    const report = buildLgAllianceReport(deals, { sections });
+    expect(report.tiers[0].rows.map((r) => r.name)).toEqual(["Washington", "Carolina"]);
+  });
+
+  // A tier value the CRM has and this module has never heard of must still
+  // band, or a new option silently empties a section.
+  it("bands a section the report engine does not know by name", () => {
+    const withNew = sectionsFromViewGroups(["TIER_1", "PARTNER_PROGRAM"]);
+    const report = buildLgAllianceReport(
+      [deal({ id: "z", tier: "PARTNER_PROGRAM", revenue: 1_000, margin: 100 })],
+      { sections: withNew },
+    );
+    const band = report.tiers.find((t) => t.label === "Partner Program")!;
+    expect(band.rows).toHaveLength(1);
+    expect(report.rowsUntiered).toBe(0);
   });
 });
 

@@ -147,6 +147,7 @@ describe("rollup layout (Jireh, 2026-08-17, revised 2026-08-18)", () => {
       "Opportunity Name",
       "Company",
       "LG Tier",
+      "Technology Vendor Partner",
       "Opportunity Status",
       "Technology Vendor PO Value",
       "PO Source",
@@ -174,9 +175,11 @@ describe("rollup layout (Jireh, 2026-08-17, revised 2026-08-18)", () => {
     expect(rollupLayout(view, "8%").map((c) => c.key)).not.toContain("lgMargin");
   });
 
-  // Every row of an LG report names LG as the vendor.
-  it("drops the vendor column the whole sheet is scoped to", () => {
-    expect(keys()).not.toContain("technologyVendorPartner");
+  // It used to drop this one, reasoning that every row of an LG report names
+  // LG anyway. Jireh read the sheet against the report and saw a column
+  // missing (2026-08-21): what the report shows, the sheet shows.
+  it("keeps every column the report shows, the vendor included", () => {
+    expect(keys()).toContain("technologyVendorPartner");
   });
 
   it("drops the columns the caller found empty", () => {
@@ -197,7 +200,7 @@ describe("rollup layout (Jireh, 2026-08-17, revised 2026-08-18)", () => {
   it("keeps the fee with the PO when there is no sponsorship column", () => {
     const noSponsorship = view.filter((c) => c.fieldName !== "sponsorshipValue");
     expect(rollupLayout(noSponsorship, "8%").map((c) => c.key)).toEqual([
-      "name", "company", "lgTier", "bidStatus",
+      "name", "company", "lgTier", "technologyVendorPartner", "bidStatus",
       "poValue", "poSource", "allianceFee",
       "sponsorship2031", "totalProjectRevenue", "lgNotes",
     ]);

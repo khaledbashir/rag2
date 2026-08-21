@@ -206,6 +206,38 @@ export function aggregateFormula(
   }
 }
 
+/**
+ * The grand-total formula for a sheet whose rows are broken up by section
+ * headers and footers — it adds the SECTION TOTALS, not the data rows, because
+ * a range over the data would pull the footers in with it.
+ *
+ * Only operations that compose out of per-section results get a formula: a sum
+ * of sums is the sum, a sum of counts is the count, the smallest of the section
+ * minimums is the minimum. An average of averages is not the average and a
+ * count of uniques counts duplicates twice, so those return null and the caller
+ * writes the figure the report computed over every row instead.
+ */
+export function composedTotalFormula(
+  op: AggregateOperation,
+  columnLetter: string,
+  sectionRows: number[],
+): string | null {
+  if (!sectionRows.length) return null;
+  const refs = sectionRows.map((n) => `${columnLetter}${n}`);
+  switch (op) {
+    case "SUM":
+    case "COUNT":
+    case "COUNT_EMPTY":
+    case "COUNT_NOT_EMPTY":
+    case "COUNT_TRUE":
+    case "COUNT_FALSE":
+      return refs.join("+");
+    case "MIN": return `MIN(${refs.join(",")})`;
+    case "MAX": return `MAX(${refs.join(",")})`;
+    default: return null;
+  }
+}
+
 /** Number format for the result cell. */
 export function aggregateNumFmt(
   op: AggregateOperation,
