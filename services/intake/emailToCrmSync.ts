@@ -16,6 +16,7 @@
  *    so any automated write is visible and reversible.
  */
 
+import { log } from "@/lib/logger";
 import {
   twentyGraphql,
   createOpportunityNote,

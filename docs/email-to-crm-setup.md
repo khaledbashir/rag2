@@ -100,7 +100,7 @@ Env on the app service:
 | Var | Required | What it does |
 |---|---|---|
 | `SLACK_BOT_TOKEN` | yes | Bot token for the ANC workspace (`@anc`). No token = alerts are a silent no-op. |
-| `EMAIL_CRM_SLACK_CHANNEL` | no | Catch-all channel for emails whose venue matches no pursuit channel. |
+| `EMAIL_CRM_SLACK_CHANNEL` | no | Catch-all for emails whose venue matches no pursuit channel. **Must be venue-neutral** — currently `#alerts-bid-intake` (`C0BRQNB8MMZ`). |
 | `EMAIL_CRM_SLACK_CHANNEL_MAP` | no | Explicit overrides, `{"venue keyword":"C0123456"}`. Beats name matching. |
 
 **Routing follows the workspace's own convention.** Sales keeps one channel per
@@ -109,7 +109,26 @@ pursuit — `#sales-bank-of-america-stadium-carolina-panthers` — so a venue of
 pursuit routes itself the day someone opens its channel. Matching requires
 *every* identifying word of the venue to appear in the channel name (generic
 words like "stadium", "arena", "field" are ignored), so "America First Field"
-can never land in the Bank of America channel.
+can never land in the Bank of America channel. A venue that survives as a
+single word routes only when that word names exactly one channel — "Temple"
+and "Georgetown" do, "ANC" does not.
+
+The venue is looked for in several places, because the extractor does not
+always put it in one. `clientOrVenue` sometimes leads with the owning authority
+and carries the venue in parentheses ("City of Oklahoma City / Oklahoma City
+Public Property Authority (Oklahoma City New Arena)") and sometimes the
+reverse ("Oklahoma City New Arena (Owner: …; CM: Mortenson)"); the head of
+`projectName` often names it too. Each is tried, most identifying words first.
+
+An abbreviation the channel spells out ("BofA Stadium") will not match by name —
+that is what `EMAIL_CRM_SLACK_CHANNEL_MAP` is for.
+
+**The catch-all may not be a pursuit channel.** A channel named `sales-*`
+belongs to one deal, so it is rejected as a catch-all and the alert is dropped
+with an error in the log rather than announced in the wrong deal's room. This
+is enforced, not documented-only: `EMAIL_CRM_SLACK_CHANNEL` was left pointing
+at the Panthers channel after the launch test, and every unmatched bid landed
+there for nine days.
 
 Two things gate a channel actually receiving alerts:
 

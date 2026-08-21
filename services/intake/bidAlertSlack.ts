@@ -134,29 +134,97 @@ const VENUE_STOPWORDS = new Set([
   "park", "ballpark", "coliseum", "llc", "inc", "university", "college",
 ]);
 
+/** The words that make a phrase read as a place rather than an organisation. */
+const VENUE_TYPE_WORDS =
+  /\b(stadium|arena|center|centre|field|park|ballpark|coliseum|dome|garden|bowl|forum|pavilion|complex|court|rink|track|raceway)\b/i;
+
+/** How the paperwork labels the parties that are not the venue. */
+const PARTY_LABEL =
+  /\b(?:owner|cm|gc|architect|engineer|developer|construction manager|general contractor)\s*:/i;
+
 /**
- * The venue as extracted often carries the whole ownership chain —
- * "Oklahoma City New Arena (Owner: City of Oklahoma City / Oklahoma City Public
- * Property Authority; CM: Flintco/Mortenson)". Channel matching requires every
- * identifying word to appear in the channel name, and no channel is named after
- * the CM, so the real venue has to be separated from the paperwork or the bid
- * misses its own channel and lands in the catch-all.
+ * Pulls the venue out of the string the extractor produced for `clientOrVenue`.
+ *
+ * That string arrives in two opposite shapes and the difference decides which
+ * half to keep. Sometimes the venue leads and the parentheses hold the
+ * paperwork — "Oklahoma City New Arena (Owner: City of Oklahoma City; CM:
+ * Flintco/Mortenson)". Sometimes the owning authority leads and the
+ * parentheses hold the venue — and that is what the real Mortenson email
+ * produced: "City of Oklahoma City / Oklahoma City Public Property Authority
+ * (Oklahoma City New Arena)". Stripping parentheses unconditionally, which is
+ * what this did before, threw the venue away in the second case and left the
+ * bid announcing itself as "City of Oklahoma City / Oklahoma City Public
+ * Property Authority" — matching no channel, reading like nothing.
+ *
+ * So a parenthetical wins only when it reads like a place (carries a
+ * venue-type word) and is not labelled as a party. Otherwise the outer text
+ * wins, minus any party label chain.
  */
 export function coreVenueName(venue: string): string {
-  const withoutParens = venue.replace(/\([^)]*\)/g, " ");
-  const beforeLabel = withoutParens.split(
-    /\b(?:owner|cm|gc|architect|construction manager|general contractor)\s*:/i,
-  )[0];
-  const cleaned = beforeLabel.replace(/\s+/g, " ").replace(/[\s\-–—,;/]+$/, "").trim();
+  const parentheticals = Array.from(venue.matchAll(/\(([^)]*)\)/g)).map((m) => m[1].trim());
+  const venueLike = parentheticals.find(
+    (inner) => inner && !PARTY_LABEL.test(inner) && VENUE_TYPE_WORDS.test(inner),
+  );
+  if (venueLike) return venueLike;
+
+  const outer = venue.replace(/\([^)]*\)/g, " ").split(PARTY_LABEL)[0];
+  const cleaned = outer.replace(/\s+/g, " ").replace(/[\s\-–—,;/]+$/, "").trim();
   return cleaned || venue.trim();
 }
 
 export function venueTokens(venue: string): string[] {
+  const seen = new Set<string>();
   return venue
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
-    .filter((word) => word.length > 1 && !VENUE_STOPWORDS.has(word));
+    .filter((word) => word.length > 1 && !VENUE_STOPWORDS.has(word))
+    .filter((word) => (seen.has(word) ? false : (seen.add(word), true)));
+}
+
+/**
+ * Every name the email gives us that a channel might be named after, most
+ * specific first.
+ *
+ * One cleaned venue string is not enough. The Oklahoma City bid carried the
+ * venue in three places — inside the parentheses of `clientOrVenue`, at the
+ * head of `projectName` ("Oklahoma City New Arena: Bid Package #5..."), and
+ * nowhere in the owner chain that led the field — and the routing only ever
+ * looked at the one place it was missing. Trying each in turn costs nothing:
+ * a candidate that names no channel simply falls through to the next.
+ */
+export function venueCandidates(extraction: EmailCrmExtraction | null): string[] {
+  if (!extraction) return [];
+  const raw: string[] = [];
+
+  const venue = extraction.clientOrVenue?.trim();
+  if (venue) {
+    raw.push(coreVenueName(venue));
+    for (const m of venue.matchAll(/\(([^)]*)\)/g)) {
+      if (m[1] && !PARTY_LABEL.test(m[1])) raw.push(m[1].trim());
+    }
+    raw.push(venue.replace(/\([^)]*\)/g, " ").split(PARTY_LABEL)[0].trim());
+  }
+
+  const project = extraction.projectName?.trim();
+  if (project) {
+    raw.push(project.split(":")[0].trim());
+    raw.push(project);
+  }
+
+  const byTokens = new Map<string, string[]>();
+  for (const name of raw) {
+    const tokens = venueTokens(name);
+    if (!tokens.length) continue;
+    const key = tokens.join(" ");
+    if (!byTokens.has(key)) byTokens.set(key, tokens);
+  }
+
+  // Most identifying words first — a long, specific phrase either names its own
+  // channel or names none, and either way the shorter phrases follow it.
+  return Array.from(byTokens.entries())
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([key]) => key);
 }
 
 /**
@@ -165,6 +233,12 @@ export function venueTokens(venue: string): string[] {
  * #sales-bank-of-america-stadium-carolina-panthers but never #sales-america-first-field.
  * The most specific name wins, and a channel the bot has already joined beats
  * one it has not.
+ *
+ * A name that survives tokenization as a SINGLE word is accepted only when it
+ * names exactly one channel in the workspace. "Georgetown" and "Temple" are
+ * that word and route correctly; "ANC" is also that word and touches a dozen
+ * channels, and posting a stadium bid into #anc-nyoffice because they share
+ * three letters is worse than posting nothing.
  */
 export function matchChannelByVenue(
   venue: string,
@@ -178,6 +252,7 @@ export function matchChannelByVenue(
     return tokens.every((token) => name.includes(token));
   });
   if (!hits.length) return null;
+  if (tokens.length === 1 && hits.length > 1) return null;
 
   return hits.sort((a, b) => {
     const member = Number(Boolean(b.is_member)) - Number(Boolean(a.is_member));
@@ -186,22 +261,53 @@ export function matchChannelByVenue(
   })[0];
 }
 
+/** The first candidate name that names a channel. */
+export function matchChannelForBid(
+  extraction: EmailCrmExtraction | null,
+  channels: SlackChannelSummary[],
+): SlackChannelSummary | null {
+  for (const candidate of venueCandidates(extraction)) {
+    const hit = matchChannelByVenue(candidate, channels);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * A catch-all has to be venue-neutral. `#sales-<venue>-<team>` is the
+ * workspace's convention for a SINGLE pursuit, so a channel named that way can
+ * never be the home for bids belonging to everything else.
+ *
+ * This is not hypothetical tidiness. `EMAIL_CRM_SLACK_CHANNEL` was left
+ * pointing at #sales-bank-of-america-stadium-carolina-panthers after the
+ * 2026-08-12 launch test, and with channel matching broken every bid the
+ * intake read was announced in the Panthers' deal room — an Oklahoma City
+ * arena package, Temple's LED pricing, all of it. Jireh: "we need to get these
+ * alerts fixed so they aren't going to the incorrect channels."
+ */
+export function isPursuitChannel(name: string): boolean {
+  return /^sales-/i.test(name.trim());
+}
+
 /** Channel list is stable minute to minute; one lookup serves a burst of email. */
 let channelCache: { at: number; channels: SlackChannelSummary[] } | null = null;
 const CHANNEL_CACHE_MS = 5 * 60 * 1000;
 
-export async function listSlackChannels(
-  token: string,
-  now: number = Date.now(),
-): Promise<SlackChannelSummary[]> {
-  if (channelCache && now - channelCache.at < CHANNEL_CACHE_MS) return channelCache.channels;
+/** Reset between tests; also lets an operator force a re-read after inviting the bot. */
+export function clearChannelCache(): void {
+  channelCache = null;
+}
 
+async function listChannelsOfType(
+  token: string,
+  type: "public_channel" | "private_channel",
+): Promise<SlackChannelSummary[]> {
   const channels: SlackChannelSummary[] = [];
   let cursor = "";
-  for (let page = 0; page < 12; page += 1) {
+  for (let page = 0; page < 40; page += 1) {
     const url =
       "https://slack.com/api/conversations.list?limit=200&exclude_archived=true" +
-      `&types=public_channel,private_channel${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+      `&types=${type}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     const data = (await res.json()) as {
       ok?: boolean;
@@ -210,14 +316,42 @@ export async function listSlackChannels(
       response_metadata?: { next_cursor?: string };
     };
     if (!data.ok) {
-      log.error("[bid-alert] could not list Slack channels", { error: data.error });
+      log.error("[bid-alert] could not list Slack channels", { type, error: data.error });
       break;
     }
     channels.push(...(data.channels || []));
     cursor = data.response_metadata?.next_cursor || "";
     if (!cursor) break;
   }
+  return channels;
+}
 
+/**
+ * Every channel the bot can see, fetched one type at a time.
+ *
+ * Asking `conversations.list` for `public_channel,private_channel` together
+ * looks like one efficient call and is the reason venue routing had never once
+ * matched. Slack applies the type filter after paging, so the combined query
+ * comes back in pages of about five instead of two hundred — measured on the
+ * ANC workspace, the same 325 public channels take 3 pages alone and had not
+ * finished after 40 pages combined. The old 12-page cap therefore saw the
+ * first ~46 channels and stopped, and not one of the 21 `sales-*` pursuit
+ * channels was inside that window. Per type, per pass, merged.
+ */
+export async function listSlackChannels(
+  token: string,
+  now: number = Date.now(),
+): Promise<SlackChannelSummary[]> {
+  if (channelCache && now - channelCache.at < CHANNEL_CACHE_MS) return channelCache.channels;
+
+  const byId = new Map<string, SlackChannelSummary>();
+  for (const type of ["public_channel", "private_channel"] as const) {
+    for (const channel of await listChannelsOfType(token, type)) {
+      if (channel?.id && !byId.has(channel.id)) byId.set(channel.id, channel);
+    }
+  }
+
+  const channels = Array.from(byId.values());
   channelCache = { at: now, channels };
   return channels;
 }
@@ -374,6 +508,26 @@ export function buildBidAlertMessage(
 }
 
 /**
+ * The catch-all, or null when the configured one is a single pursuit's channel.
+ * Separated out so the invariant is testable without a Slack round trip.
+ */
+export function safeFallbackChannel(
+  fallbackId: string | null,
+  channels: SlackChannelSummary[],
+): string | null {
+  if (!fallbackId) return null;
+  const configured = channels.find((c) => c.id === fallbackId);
+  if (configured && isPursuitChannel(configured.name)) {
+    log.error("[bid-alert] EMAIL_CRM_SLACK_CHANNEL is a single pursuit's channel; not posting", {
+      channel: fallbackId,
+      name: configured.name,
+    });
+    return null;
+  }
+  return fallbackId;
+}
+
+/**
  * Explicit map → pursuit channel by name → catch-all. Never throws; a lookup
  * failure just falls through to the configured default.
  */
@@ -385,18 +539,17 @@ export async function resolveDestination(
   const mapped = resolveChannel(extraction);
   if (mapped && mapped !== fallback) return mapped;
 
-  const venue = extraction?.clientOrVenue?.trim();
-  if (venue) {
-    try {
-      const match = matchChannelByVenue(coreVenueName(venue), await listSlackChannels(token));
-      if (match) return match.id;
-    } catch (error) {
-      log.error("[bid-alert] channel lookup failed; using default channel", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+  try {
+    const channels = await listSlackChannels(token);
+    const match = matchChannelForBid(extraction, channels);
+    if (match) return match.id;
+    return safeFallbackChannel(fallback, channels);
+  } catch (error) {
+    log.error("[bid-alert] channel lookup failed; using default channel", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return fallback;
   }
-  return fallback;
 }
 
 /** Posts the alert. Never throws — logs and returns false on any failure. */

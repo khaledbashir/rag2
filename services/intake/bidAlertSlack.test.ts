@@ -6,9 +6,15 @@ import {
   describeDueDateMove,
   formatDueDate,
   looksBidRelated,
+  clearChannelCache,
+  isPursuitChannel,
+  listSlackChannels,
   matchChannelByVenue,
+  matchChannelForBid,
   pickBidDueDate,
+  safeFallbackChannel,
   resolveChannel,
+  venueCandidates,
   venueTokens,
   type BidAlertContext,
 } from "./bidAlertSlack";
@@ -434,6 +440,213 @@ describe("bid-relatedness gate", () => {
   it("does not match bid words hiding inside other words", () => {
     for (const subject of ["Forbidden resource on the portal", "Wilson field walkthrough"]) {
       expect(looksBidRelated({ input: { subject, body: "" }, extraction: null })).toBe(false);
+    }
+  });
+});
+
+// The three defects behind Jireh's 2026-08-21 report — "we need to get these
+// alerts fixed so they aren't going to the incorrect channels". All three are
+// keyed to the two records that were actually in the intake table, quoted
+// verbatim, not to an invented shape of them.
+describe("the Oklahoma City misroute", () => {
+  // EmailCrmIntake cmt3b0ng4003q2spgns2armfe, 2026-08-21 18:50 UTC. Note the
+  // shape: the owning authority leads and the venue is the parenthetical — the
+  // exact inverse of the example the previous fix was written against.
+  const OKC: EmailCrmExtraction = {
+    clientOrVenue:
+      "City of Oklahoma City / Oklahoma City Public Property Authority (Oklahoma City New Arena)",
+    projectName: "Oklahoma City New Arena: Bid Package #5: Scoreboards and LED Boards (OKCNBA)",
+    summary: "Mortenson issued the RFC log for Bid Package #5.",
+    dueDates: [
+      {
+        label: "Bid Due",
+        dateIso: "2026-08-27",
+        kind: "proposal_due",
+        sourceText: "Bid Due: August 27, 2026",
+        verified: true,
+      },
+    ],
+    keyFacts: [],
+    people: [],
+    confidence: 0.9,
+  };
+
+  // The live ANC workspace, trimmed to the channels that can plausibly collide.
+  const WORKSPACE = [
+    { id: "C_OKC", name: "sales-oklahoma-city-thunder-new-arena-rfp", is_member: true },
+    { id: "C_BOFA", name: "sales-bank-of-america-stadium-carolina-panthers", is_member: true },
+    { id: "C_TEMPLE", name: "account-temple", is_member: true },
+    { id: "C_NY", name: "anc-nyoffice", is_member: true },
+    { id: "C_CELEB", name: "anc-celebrate-success", is_member: true },
+    { id: "C_ANNOUNCE", name: "announcements", is_member: true },
+  ];
+
+  it("keeps the venue when the parentheses are where the venue is", () => {
+    expect(coreVenueName(OKC.clientOrVenue)).toBe("Oklahoma City New Arena");
+  });
+
+  it("still drops the parentheses when they hold the paperwork", () => {
+    expect(
+      coreVenueName("Oklahoma City New Arena (Owner: City of Oklahoma City; CM: Mortenson)"),
+    ).toBe("Oklahoma City New Arena");
+  });
+
+  it("keeps the outer name when the parenthetical is a team, not a place", () => {
+    expect(coreVenueName("Bank of America Stadium (Carolina Panthers)")).toBe(
+      "Bank of America Stadium",
+    );
+  });
+
+  it("tries the owner chain too, and carries on past it", () => {
+    const candidates = venueCandidates(OKC);
+    const ownerChain = candidates.find((c) => c.includes("authority"));
+    expect(ownerChain).toBeDefined();
+    expect(matchChannelByVenue(ownerChain!, WORKSPACE)).toBeNull();
+
+    // Most identifying words first, and the arena is still on the list.
+    expect(candidates).toContain("oklahoma city new");
+    expect(candidates.map((c) => c.split(" ").length)).toEqual(
+      [...candidates.map((c) => c.split(" ").length)].sort((a, b) => b - a),
+    );
+  });
+
+  it("reaches the Thunder arena channel — the alert Jireh saw in the wrong room", () => {
+    expect(matchChannelForBid(OKC, WORKSPACE)?.id).toBe("C_OKC");
+  });
+
+  it("does not stray into another pursuit when its own channel does not exist", () => {
+    const withoutOkc = WORKSPACE.filter((c) => c.id !== "C_OKC");
+    expect(matchChannelForBid(OKC, withoutOkc)).toBeNull();
+  });
+
+  it("reads the venue out of the project name when the venue field has only the owner", () => {
+    const ownerOnly: EmailCrmExtraction = {
+      ...OKC,
+      clientOrVenue: "City of Oklahoma City / Oklahoma City Public Property Authority",
+    };
+    expect(matchChannelForBid(ownerOnly, WORKSPACE)?.id).toBe("C_OKC");
+  });
+
+  it("the headline names the arena, not the property authority", () => {
+    const { text } = buildBidAlertMessage(
+      { ...ERP3_CONTEXT, extraction: OKC },
+      new Date("2026-08-21T18:50:00Z"),
+    );
+    expect(text).toContain("Oklahoma City New Arena");
+    expect(text).not.toContain("Property Authority");
+  });
+});
+
+describe("a single-word venue only routes when the word names one channel", () => {
+  const WORKSPACE = [
+    { id: "C_TEMPLE", name: "account-temple", is_member: true },
+    { id: "C_NY", name: "anc-nyoffice", is_member: true },
+    { id: "C_CELEB", name: "anc-celebrate-success", is_member: true },
+    { id: "C_GTOWN", name: "sales-georgetown", is_member: true },
+  ];
+
+  it("routes Temple, because exactly one channel is named for it", () => {
+    expect(matchChannelByVenue("Temple", WORKSPACE)?.id).toBe("C_TEMPLE");
+  });
+
+  it("routes Georgetown the same way", () => {
+    expect(matchChannelByVenue("Georgetown University", WORKSPACE)?.id).toBe("C_GTOWN");
+  });
+
+  it("refuses ANC rather than posting a bid into the office channel", () => {
+    expect(matchChannelByVenue("ANC", WORKSPACE)).toBeNull();
+  });
+
+  it("still allows two identifying words to pick between several channels", () => {
+    const both = [
+      { id: "C_OLD", name: "sales-boston-redsox-archive", is_member: false },
+      { id: "C_LIVE", name: "sales-boston-redsox-2026", is_member: true },
+    ];
+    expect(matchChannelByVenue("Boston Redsox", both)?.id).toBe("C_LIVE");
+  });
+});
+
+describe("the catch-all has to be venue-neutral", () => {
+  const CHANNELS = [
+    { id: "C_BOFA", name: "sales-bank-of-america-stadium-carolina-panthers", is_member: true },
+    { id: "C_ALERTS", name: "anc-bid-alerts", is_member: true },
+  ];
+
+  it("recognises the pursuit-channel convention", () => {
+    expect(isPursuitChannel("sales-bank-of-america-stadium-carolina-panthers")).toBe(true);
+    expect(isPursuitChannel("account-temple")).toBe(false);
+    expect(isPursuitChannel("anc-bid-alerts")).toBe(false);
+  });
+
+  it("refuses to use one pursuit's channel as the home for every other bid", () => {
+    expect(safeFallbackChannel("C_BOFA", CHANNELS)).toBeNull();
+  });
+
+  it("accepts a neutral channel", () => {
+    expect(safeFallbackChannel("C_ALERTS", CHANNELS)).toBe("C_ALERTS");
+  });
+
+  it("leaves an unconfigured catch-all alone", () => {
+    expect(safeFallbackChannel(null, CHANNELS)).toBeNull();
+  });
+});
+
+// Slack applies the `types` filter after paging, so asking for both kinds at
+// once returns pages of about five instead of two hundred. Against the live
+// workspace the combined query had not finished after 40 pages while
+// public-only completed in 3 — so the old 12-page cap saw ~46 channels and not
+// one of the 21 sales-* pursuit channels was among them.
+describe("listing every channel, not the first page of a filtered stream", () => {
+  const page = (channels: Array<{ id: string; name: string }>, cursor = "") => ({
+    ok: true,
+    channels,
+    response_metadata: { next_cursor: cursor },
+  });
+
+  it("pages each type separately and merges them", async () => {
+    const asked: string[] = [];
+    const responses: Record<string, unknown[]> = {
+      public_channel: [
+        page([{ id: "C1", name: "sales-a" }], "cur1"),
+        page([{ id: "C2", name: "sales-oklahoma-city-thunder-new-arena-rfp" }]),
+      ],
+      private_channel: [page([{ id: "C3", name: "sales-private" }])],
+    };
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (url: string) => {
+      const type = url.includes("types=private_channel") ? "private_channel" : "public_channel";
+      asked.push(url);
+      return { json: async () => (responses[type] as unknown[]).shift() };
+    }) as unknown as typeof fetch;
+
+    try {
+      clearChannelCache();
+      const channels = await listSlackChannels("xoxb-test", 1_000_000);
+      expect(channels.map((c) => c.id)).toEqual(["C1", "C2", "C3"]);
+    } finally {
+      globalThis.fetch = original;
+      clearChannelCache();
+    }
+
+    // Never the combined query that truncated the list.
+    expect(asked.every((u) => !u.includes("public_channel,private_channel"))).toBe(true);
+    expect(asked.filter((u) => u.includes("types=public_channel")).length).toBe(2);
+    expect(asked.some((u) => u.includes("cursor=cur1"))).toBe(true);
+  });
+
+  it("keeps what one type returned when the other errors", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (url: string) =>
+      url.includes("types=private_channel")
+        ? { json: async () => ({ ok: false, error: "missing_scope" }) }
+        : { json: async () => page([{ id: "C1", name: "sales-a" }]) }) as unknown as typeof fetch;
+
+    try {
+      clearChannelCache();
+      expect((await listSlackChannels("xoxb-test", 2_000_000)).map((c) => c.id)).toEqual(["C1"]);
+    } finally {
+      globalThis.fetch = original;
+      clearChannelCache();
     }
   });
 });
