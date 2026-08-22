@@ -1,0 +1,4 @@
+interface:
+  display_name: "ANC Sales Brain"
+  short_description: "Route sales work through live ANC CRM context"
+  default_prompt: "Use the ANC Sales Brain to recommend the strongest evidence-backed next move."

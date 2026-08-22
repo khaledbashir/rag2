@@ -1,0 +1,4 @@
+interface:
+  display_name: "ANC List Builder"
+  short_description: "Build reviewed, deduplicated ANC target lists"
+  default_prompt: "Build a qualified ANC target list and deduplicate it against the CRM."

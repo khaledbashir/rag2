@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 
 const BaseFooter = () => {
   const pathname = usePathname();
-  if (pathname?.startsWith("/auth") || pathname?.startsWith("/estimator") || pathname?.startsWith("/catalog")) return null;
+  if (pathname?.startsWith("/auth") || pathname?.startsWith("/estimator") || pathname?.startsWith("/catalog") || pathname?.startsWith("/sales-ai")) return null;
   return (
     <footer className="container py-6 text-center text-sm text-muted-foreground">
       <p>

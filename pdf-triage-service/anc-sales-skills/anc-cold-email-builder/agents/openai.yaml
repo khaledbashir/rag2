@@ -1,0 +1,4 @@
+interface:
+  display_name: "ANC Cold Email Builder"
+  short_description: "Draft and grade evidence-backed ANC outreach"
+  default_prompt: "Draft a concise ANC sales email from the live account context."

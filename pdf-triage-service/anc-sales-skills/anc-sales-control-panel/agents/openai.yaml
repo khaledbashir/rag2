@@ -1,0 +1,4 @@
+interface:
+  display_name: "ANC Sales Control Panel"
+  short_description: "Turn live pipeline data into ranked actions"
+  default_prompt: "Build my ANC sales control panel and tell me what to do next."

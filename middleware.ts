@@ -109,6 +109,8 @@ export default auth((req) => {
     pathname.startsWith("/catalog/") ||
     pathname.startsWith("/m-and-s-sync") ||
     pathname.startsWith("/share/performance/") ||
+    // Public ANC Sales Intelligence product page.
+    pathname.startsWith("/sales-ai") ||
     // Training intake assessor bot — public shareable chat sent to CRM users.
     // (/admin/training-intake stays admin-gated; it starts with /admin.)
     pathname.startsWith("/training-intake") ||

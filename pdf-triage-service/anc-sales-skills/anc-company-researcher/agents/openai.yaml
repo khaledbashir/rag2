@@ -1,0 +1,4 @@
+interface:
+  display_name: "ANC Company Researcher"
+  short_description: "Create evidence-backed ANC account briefs"
+  default_prompt: "Research this company for ANC and recommend the strongest conversation angle."

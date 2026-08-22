@@ -22,7 +22,8 @@ const BaseNavbar = () => {
     pathname.startsWith("/estimator") ||
     pathname.startsWith("/settings") ||
     pathname.startsWith("/pipeline") ||
-    pathname.startsWith("/catalog");
+    pathname.startsWith("/catalog") ||
+    pathname.startsWith("/sales-ai");
 
   if (isAuth || isEditor) return null;
 

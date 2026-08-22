@@ -4,7 +4,7 @@ import React from "react";
 import { usePathname } from "next/navigation";
 import DashboardSidebar from "@/app/components/layout/DashboardSidebar";
 
-const SIDEBAR_EXCLUDED_PREFIXES = ["/api", "/auth", "/share", "/catalog"];
+const SIDEBAR_EXCLUDED_PREFIXES = ["/api", "/auth", "/share", "/catalog", "/sales-ai"];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
     const pathname = usePathname() || "";
