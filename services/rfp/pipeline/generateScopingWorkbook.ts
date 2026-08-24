@@ -188,6 +188,11 @@ import {
   type InstallComplexity,
 } from "@/services/rfp/productCatalog";
 import { ProductMatcher, snapDimension, type MatchedSolution } from "@/services/catalog/productMatcher";
+import {
+  compareProductNames,
+  labelProducts,
+  manufacturerFirstName,
+} from "@/lib/catalog/manufacturerFirstName";
 import { preloadRateCard, getRateSync } from "@/services/rfp/rateCardLoader";
 import {
   computeDisplays,
@@ -1886,8 +1891,11 @@ function buildLedCostSheet(
   // Columns:
   // A=Name, B=Vendor, C=Pitch(mm), D=$/SqFt, E=NITs, F=Weight(lbs/m²), G=Power(W/m²),
   // H=Cab W(mm), I=Cab H(mm), J=Module W(mm), K=Module H(mm)
-  // Helper to normalize product names (handles Prisma vs Catalog interface differences)
-  const getProductName = (p: any) => p?.name || p?.displayName || p?.model || "—";
+  // Helper to normalize product names (handles Prisma vs Catalog interface differences).
+  // This is the name as the catalog stores it, used only while the product set is
+  // being assembled and de-duplicated. What the workbook shows is the
+  // manufacturer-first label assigned once the set is final — see getProductName.
+  const getRawProductName = (p: any) => p?.name || p?.displayName || p?.model || "—";
 
   const allProducts = getAllProducts();
   const sortedProducts = [...allProducts]
@@ -1897,7 +1905,7 @@ function buildLedCostSheet(
   // Inject the full DB-backed product set so Excel dropdown changes use the
   // same cabinet/module geometry the app uses, not stale static fallbacks.
   for (const rawProduct of allResolvedProducts) {
-    const dbProdName = getProductName(rawProduct);
+    const dbProdName = getRawProductName(rawProduct);
     if (!dbProdName || dbProdName === "—") continue;
 
     const normalizedDbProduct = {
@@ -1911,7 +1919,7 @@ function buildLedCostSheet(
       dimensionsMm: (rawProduct as any).dimensionsMm || "Custom",
     } as any;
 
-    const existingIdx = sortedProducts.findIndex((p) => getProductName(p) === dbProdName);
+    const existingIdx = sortedProducts.findIndex((p) => getRawProductName(p) === dbProdName);
     if (existingIdx >= 0) {
       sortedProducts[existingIdx] = normalizedDbProduct;
     } else {
@@ -1925,9 +1933,9 @@ function buildLedCostSheet(
     if (!d.spec.selectedProductId) continue;
     const dbProd = resolveProduct(d.spec.selectedProductId);
     if (!dbProd) continue;
-    const dbProdName = getProductName(dbProd);
+    const dbProdName = getRawProductName(dbProd);
     if (!dbProdName || dbProdName === "—") continue;
-    if (sortedProducts.some((p) => getProductName(p) === dbProdName)) continue;
+    if (sortedProducts.some((p) => getRawProductName(p) === dbProdName)) continue;
 
     sortedProducts.push({
       ...dbProd,
@@ -1940,9 +1948,46 @@ function buildLedCostSheet(
       dimensionsMm: (dbProd as any).dimensionsMm || "Custom",
     } as any);
   }
-  sortedProducts.sort((a, b) => getProductName(a).localeCompare(getProductName(b)));
+  // Manufacturer-first, then alphabetical (Jireh 2026-08-24). The label leads with
+  // the vendor so one plain sort groups the list by manufacturer instead of
+  // scattering 44 OES scoring items through the LED product. Numeric-aware, so the
+  // OES block reads 2" → 4" → 17" → 42" rather than 17", 19", 2", 22".
+  sortedProducts.sort((a, b) =>
+    compareProductNames(
+      manufacturerFirstName(getRawProductName(a), a?.manufacturer),
+      manufacturerFirstName(getRawProductName(b), b?.manufacturer),
+    ),
+  );
 
-  const productNames = sortedProducts.map((p) => getProductName(p));
+  // The label is BOTH what the dropdown shows and the VLOOKUP key in column A of
+  // _Products, so it is assigned exactly once — here, against the final product set,
+  // with uniqueness guaranteed — and every later read goes through getProductName.
+  const productNames = labelProducts(
+    sortedProducts.map((p) => ({ name: getRawProductName(p), manufacturer: p?.manufacturer })),
+  );
+  const labelByProduct = new Map<any, string>();
+  const labelByRawName = new Map<string, string>();
+  sortedProducts.forEach((p, i) => {
+    labelByProduct.set(p, productNames[i]);
+    const raw = getRawProductName(p).toLowerCase().trim();
+    if (!labelByRawName.has(raw)) labelByRawName.set(raw, productNames[i]);
+  });
+
+  /**
+   * A name that arrived from the app or the DB, translated into the name this
+   * workbook uses for it. Anything the catalog does not know is passed through
+   * untouched, which is the behaviour that existed before labels.
+   */
+  const toWorkbookName = (raw: string | null | undefined): string =>
+    (raw && labelByRawName.get(raw.toLowerCase().trim())) || raw || "";
+
+  /**
+   * A product's name as the workbook shows it. Falls back through the raw name so a
+   * product resolved separately from the dropdown set — a different object carrying
+   * the same catalog entry — still resolves to its label rather than missing it.
+   */
+  const getProductName = (p: any): string =>
+    labelByProduct.get(p) ?? toWorkbookName(getRawProductName(p)) ?? "—";
 
   // DB name → product map so the _Products hidden sheet always writes the
   // authoritative cabinet/module geometry. Without this override, if any code
@@ -1952,7 +1997,7 @@ function buildLedCostSheet(
   // after the workbook recalculates on open. DB is the single source of truth.
   const dbGeometryByName = new Map<string, any>();
   for (const rawProduct of allResolvedProducts) {
-    const name = getProductName(rawProduct);
+    const name = getRawProductName(rawProduct);
     if (!name || name === "—") continue;
     dbGeometryByName.set(name.toLowerCase().trim(), rawProduct);
   }
@@ -1962,8 +2007,8 @@ function buildLedCostSheet(
     productSheet = wb.addWorksheet("_Products", { state: "veryHidden" });
     sortedProducts.forEach((p, i) => {
       const r = i + 1;
-      const dbMatch = dbGeometryByName.get(getProductName(p).toLowerCase().trim());
-      productSheet!.getCell(r, 1).value = p.name;                       // A: Name
+      const dbMatch = dbGeometryByName.get(getRawProductName(p).toLowerCase().trim());
+      productSheet!.getCell(r, 1).value = productNames[i];              // A: Name (manufacturer-first)
       productSheet!.getCell(r, 2).value = p.manufacturer || "";          // B: Vendor
       productSheet!.getCell(r, 3).value = p.pitchMm;                    // C: Pitch (mm)
 	      // D: $/SqFt — DB products use the exact rate-card cost; static fallbacks stay fully loaded.
@@ -2135,14 +2180,18 @@ function buildLedCostSheet(
     // Priority: catalog name > matched module name > pitch-based best match > extracted name
     // IMPORTANT: Determine product name FIRST, then use _Products data for cached VLOOKUP results.
     let productNameForF: string = "—";
+    // Names arriving from the app (spec/match) carry the catalog's raw name, so each
+    // is translated to this workbook's label before being tested against the list.
+    const matchedModuleName = toWorkbookName(d.match?.module?.name);
+    const specProductName = toWorkbookName(d.spec.selectedProductName);
     if (isClockLike) {
-      productNameForF = selProdName || d.spec.selectedProductName || "—";
+      productNameForF = selProdName || specProductName || "—";
     } else if (selProdName && selProdName !== "—" && productNames.includes(selProdName)) {
       productNameForF = selProdName;
-    } else if (d.match?.module?.name && productNames.includes(d.match.module.name)) {
-      productNameForF = d.match.module.name;
-    } else if (d.spec.selectedProductName && productNames.includes(d.spec.selectedProductName)) {
-      productNameForF = d.spec.selectedProductName;
+    } else if (matchedModuleName && productNames.includes(matchedModuleName)) {
+      productNameForF = matchedModuleName;
+    } else if (specProductName && productNames.includes(specProductName)) {
+      productNameForF = specProductName;
     } else {
       // No exact name match — find closest product by pitch + environment
       const pitch = effectivePitch || d.spec.pixelPitchMm || 0;
@@ -2414,10 +2463,12 @@ function buildLedCostSheet(
 
       // Resolve product name in _Products for VLOOKUP (same logic as base displays)
       let altProductName = "—";
-      if (d.match?.module?.name && productNames.includes(d.match.module.name)) {
-        altProductName = d.match.module.name;
-      } else if (d.spec.selectedProductName && productNames.includes(d.spec.selectedProductName)) {
-        altProductName = d.spec.selectedProductName;
+      const altMatchedName = toWorkbookName(d.match?.module?.name);
+      const altSpecName = toWorkbookName(d.spec.selectedProductName);
+      if (altMatchedName && productNames.includes(altMatchedName)) {
+        altProductName = altMatchedName;
+      } else if (altSpecName && productNames.includes(altSpecName)) {
+        altProductName = altSpecName;
       } else if (altPitch && altPitch > 0) {
         const env = d.spec.environment || "indoor";
         const bestMatch = chooseContextualFallbackProduct(

@@ -619,12 +619,21 @@ async function main() {
     });
 
     if (existing) {
-      // Update extendedSpecs with margin data if it was previously null
+      // This file is the source of truth for every OES row, so re-running it must
+      // restore the whole record — not just the margin. It used to write
+      // extendedSpecs alone, which is why nine display names sat in production
+      // reading "Custom Football Scoreboard (97'6" ├ù 6')": the multiplication sign
+      // had been mangled on the original insert (UTF-8 bytes decoded as CP437) and
+      // no re-run could ever put it back.
+      const { modelNumber, ...fields } = product;
       await prisma.manufacturerProduct.update({
-        where: { modelNumber: product.modelNumber },
-        data: { extendedSpecs: product.extendedSpecs },
+        where: { modelNumber },
+        data: fields,
       });
-      console.log(`  UPDATE ${product.modelNumber} — margin ${OES_MARGIN * 100}% → sell $${(product.extendedSpecs as any).unitSellPrice}`);
+      const renamed = existing.displayName !== product.displayName
+        ? ` — name "${existing.displayName}" → "${product.displayName}"`
+        : "";
+      console.log(`  UPDATE ${product.modelNumber} — margin ${OES_MARGIN * 100}% → sell $${(product.extendedSpecs as any).unitSellPrice}${renamed}`);
       skipped++;
       continue;
     }
