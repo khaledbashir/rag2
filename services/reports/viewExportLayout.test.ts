@@ -3,6 +3,7 @@ import {
   groupByViewField,
   layoutFromView,
   orderGroups,
+  resolveSectionField,
   sortByViewSorts,
   sortValue,
   type FieldMeta,
@@ -212,5 +213,26 @@ describe("orderGroups", () => {
   it("always sends the no-value section to the bottom", () => {
     const out = orderGroups([g("No Value"), g("Apple")], []);
     expect(out.map((x) => x.label)).toEqual(["Apple", "No Value"]);
+  });
+});
+
+describe("resolveSectionField", () => {
+  it("sections on the view's own grouping when it has one", () => {
+    expect(resolveSectionField("company", FIELDS, "bidStatus")?.name).toBe("company");
+  });
+
+  // Alexis, 2026-08-24: her Service Forecast view groups on nothing, and the
+  // export arrived as one 410-row alphabetical block. Every export of this
+  // object carried status sections before the mirrored layout shipped.
+  it("sections on status when the view groups on nothing", () => {
+    expect(resolveSectionField(null, FIELDS, "bidStatus")?.name).toBe("bidStatus");
+  });
+
+  it("sections on status when the view names a field the metadata no longer has", () => {
+    expect(resolveSectionField("deleted-field-id", FIELDS, "bidStatus")?.name).toBe("bidStatus");
+  });
+
+  it("returns nothing rather than guessing when the fallback field is absent", () => {
+    expect(resolveSectionField(null, { name: FIELDS.name }, "bidStatus")).toBeNull();
   });
 });

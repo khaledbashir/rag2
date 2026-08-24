@@ -27,6 +27,7 @@ import {
   groupByViewField,
   layoutFromView,
   orderGroups,
+  resolveSectionField,
   sortByViewSorts,
   type FieldMeta,
   type ViewSort,
@@ -221,9 +222,14 @@ async function renderMirrored(view: any, filter: any, fm: Record<string, Field>)
   const { columns, skipped } = layoutFromView(view.viewFields || [], fm);
   if (!columns.length) return null; // nothing renderable — fall back to classic
 
-  const groupMeta: FieldMeta | null = view.mainGroupByFieldMetadataId
-    ? fm[view.mainGroupByFieldMetadataId] || null
-    : null;
+  // Sections come from the view when the view groups, and from the pipeline
+  // status when it does not — see resolveSectionField. A flat sheet is not
+  // what any of these exports looked like before the mirror shipped.
+  const groupMeta: FieldMeta | null = resolveSectionField(
+    view.mainGroupByFieldMetadataId,
+    fm,
+    "bidStatus",
+  );
   const sorts: ViewSort[] = view.viewSorts || [];
 
   // The grouping and sort fields must be fetched even when they are not columns.
@@ -274,10 +280,27 @@ async function renderMirrored(view: any, filter: any, fm: Record<string, Field>)
     (skipped.length ? ` · not shown: ${skipped.join(", ")}` : "");
   sub.getCell(COL1).font = { name: FONT, size: 10, color: { argb: INK_SOFT } };
 
+  const hasAggregate = columns.some((c) => c.aggregate);
+  const sectioned = groups.some((g) => g.label);
+
+  // --- The roll-up, visible on open (Alexis, 2026-07-03: totals must be
+  // readable the moment the file opens, not buried after a 300-row section).
+  // Its rows are reserved here and filled at the end, once the body has told
+  // us which row each section's subtotal actually landed on.
+  // A roll-up over more sections than this is a second table, not a summary —
+  // and it would push the frozen header off the screen. The pipeline has
+  // eleven statuses; a view grouped by account can have three hundred.
+  const MAX_SUMMARY_SECTIONS = 12;
+  const showSummary = hasAggregate && sectioned && groups.length <= MAX_SUMMARY_SECTIONS;
+  const SUMMARY_TITLE_ROW = 5;
+  const SUMMARY_FIRST = SUMMARY_TITLE_ROW + 1;
+  const SUMMARY_GRAND = groups.length > 1 ? SUMMARY_FIRST + groups.length : 0;
+  const SUMMARY_LAST = SUMMARY_GRAND || SUMMARY_FIRST + groups.length - 1;
+
   // Header + a thin legend row naming each column's total the way the CRM does,
   // so "Sum of Revenue" and "Average of Probability" are never mistaken for
   // each other further down the sheet.
-  const HEAD_ROW = 5;
+  const HEAD_ROW = showSummary ? SUMMARY_LAST + 2 : 5;
   const head = ws.getRow(HEAD_ROW);
   columns.forEach((c, i) => {
     const cell = head.getCell(col(i));
@@ -287,7 +310,6 @@ async function renderMirrored(view: any, filter: any, fm: Record<string, Field>)
     cell.border = { bottom: { style: "medium", color: { argb: "FFB7B2A6" } } };
   });
   head.height = 28;
-  const hasAggregate = columns.some((c) => c.aggregate);
   const LEGEND_ROW = HEAD_ROW + 1;
   if (hasAggregate) {
     const legend = ws.getRow(LEGEND_ROW);
@@ -303,6 +325,8 @@ async function renderMirrored(view: any, filter: any, fm: Record<string, Field>)
   while (ws.lastRow!.number < (hasAggregate ? LEGEND_ROW : HEAD_ROW)) ws.addRow({});
 
   const totalRowIdxs: number[] = [];
+  /** Where each section's subtotal landed, so the roll-up can point at it. */
+  const sectionRows: { group: (typeof groups)[number]; subtotal: number }[] = [];
   const writeTotals = (
     row: ExcelJS.Row, first: number, last: number, records: any[], bold: boolean,
   ) => {
@@ -372,6 +396,7 @@ async function renderMirrored(view: any, filter: any, fm: Record<string, Field>)
       }
       writeTotals(st, dataStart, dataEnd, group.records, true);
       totalRowIdxs.push(st.number);
+      sectionRows.push({ group, subtotal: st.number });
     }
     ws.addRow({});
   }
@@ -404,6 +429,72 @@ async function renderMirrored(view: any, filter: any, fm: Record<string, Field>)
       cell.alignment = { horizontal: "right" };
     });
     gt.height = 22;
+  }
+
+  // --- Fill the reserved roll-up. Every figure is a formula pointing at the
+  // section subtotal below it, so the block and the body can never disagree,
+  // and a filter applied in Excel moves both.
+  if (showSummary && sectionRows.length) {
+    const labelCol = columns.findIndex((c) => !c.aggregate);
+    const summaryLabelCell = (row: ExcelJS.Row) =>
+      row.getCell(labelCol >= 0 ? col(labelCol) : COL1);
+
+    const title = ws.getRow(SUMMARY_TITLE_ROW);
+    title.getCell(COL1).value = `Totals by ${groupMeta?.label || "Section"}`;
+    title.getCell(COLN).value = "full breakdown below";
+    title.getCell(COLN).alignment = { horizontal: "right" };
+    title.getCell(COLN).font = { name: FONT, size: 9, color: { argb: INK_SOFT } };
+    for (let c = COL1; c <= COLN; c++) {
+      const cell = title.getCell(c);
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BAND } };
+      if (c === COL1) cell.font = { name: FONT, bold: true, size: 11, color: { argb: INK } };
+      cell.border = { bottom: { style: "thin", color: { argb: LINE } } };
+    }
+    title.height = 20;
+
+    sectionRows.forEach(({ group, subtotal }, i) => {
+      const row = ws.getRow(SUMMARY_FIRST + i);
+      summaryLabelCell(row).value = group.label;
+      summaryLabelCell(row).font = { name: FONT, size: 10, color: { argb: INK } };
+      columns.forEach((c, ci) => {
+        if (!c.aggregate) return;
+        const cell = row.getCell(col(ci));
+        const L = letterOf(col(ci));
+        const result = computeAggregate(
+          c.aggregate,
+          group.records.map((r) => cellValue(c, r, fmtDate)),
+        );
+        cell.value = { formula: `${L}${subtotal}`, result: result ?? undefined } as any;
+        cell.numFmt = aggregateNumFmt(c.aggregate, c.money, moneyNumFmt);
+        cell.font = { name: FONT, size: 10, color: { argb: INK } };
+        cell.alignment = { horizontal: "right" };
+      });
+    });
+
+    if (SUMMARY_GRAND) {
+      const g = ws.getRow(SUMMARY_GRAND);
+      summaryLabelCell(g).value = `Total — ${rows.length} record${rows.length === 1 ? "" : "s"}`;
+      summaryLabelCell(g).font = { name: FONT, bold: true, size: 10, color: { argb: INK } };
+      columns.forEach((c, ci) => {
+        if (!c.aggregate) return;
+        const cell = g.getCell(col(ci));
+        const L = letterOf(col(ci));
+        // Same rule as the bottom grand total: sum the sections only where
+        // summing them is arithmetically the same as re-aggregating the rows.
+        const result = computeAggregate(c.aggregate, rows.map((r) => cellValue(c, r, fmtDate)));
+        const terms = sectionRows.map(({ subtotal }) => `${L}${subtotal}`).join(",");
+        cell.value =
+          (c.aggregate === "SUM" || c.aggregate.startsWith("COUNT")) && terms
+            ? ({ formula: `SUM(${terms})`, result: result ?? undefined } as any)
+            : result;
+        cell.numFmt = aggregateNumFmt(c.aggregate, c.money, moneyNumFmt);
+        cell.font = { name: FONT, bold: true, size: 10, color: { argb: INK } };
+        cell.alignment = { horizontal: "right" };
+      });
+      for (let c = COL1; c <= COLN; c++) {
+        g.getCell(c).border = { top: { style: "thin", color: { argb: LINE } } };
+      }
+    }
   }
 
   const lastRow = ws.lastRow!.number;

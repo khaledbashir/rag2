@@ -193,6 +193,31 @@ export function groupByViewField<T extends Record<string, any>>(
 }
 
 /**
+ * The field the sheet cuts its sections on.
+ *
+ * A view that groups in the CRM sections on its own field. A view that does
+ * NOT group still gets sections, on `fallbackFieldName` — before the mirrored
+ * layout shipped (2026-08-21) every export of this object was cut into
+ * pipeline sections with a subtotal under each, and an ungrouped view lost
+ * them silently. Alexis opened a 410-row Service Forecast on 2026-08-24 and
+ * found one alphabetical block where seven status sections used to be.
+ *
+ * Returns null only when the fallback field is absent from the metadata map,
+ * which leaves the caller with one unlabelled group — the old flat sheet,
+ * rather than a crash.
+ */
+export function resolveSectionField(
+  mainGroupByFieldMetadataId: string | null | undefined,
+  fields: Record<string, FieldMeta>,
+  fallbackFieldName: string,
+): FieldMeta | null {
+  if (mainGroupByFieldMetadataId && fields[mainGroupByFieldMetadataId]) {
+    return fields[mainGroupByFieldMetadataId];
+  }
+  return Object.values(fields).find((f) => f.name === fallbackFieldName) || null;
+}
+
+/**
  * Orders the groups the way a reader expects.
  *
  * `preferred` carries the pipeline order the status sections have always used
