@@ -4,6 +4,7 @@ import {
   layoutFromView,
   orderGroups,
   resolveSectionField,
+  sectionOrderFromView,
   sortByViewSorts,
   sortValue,
   type FieldMeta,
@@ -213,6 +214,94 @@ describe("orderGroups", () => {
   it("always sends the no-value section to the bottom", () => {
     const out = orderGroups([g("No Value"), g("Apple")], []);
     expect(out.map((x) => x.label)).toEqual(["Apple", "No Value"]);
+  });
+});
+
+describe("sectionOrderFromView", () => {
+  const SELECT_FIELD: FieldMeta = { name: "lgTier", type: "SELECT", label: "LG Tier" };
+  const STATUS_ORDER = ["Won", "Scoping", "Lost"];
+
+  // Jireh's LG Alliance Sponsorship Detail, 2026-08-25. The saved view reads
+  // Tier 1, 2, 3, Needs Review, Additional Technology, No Sponsorship; the
+  // export opened on "Additional Technology..." with Tier 1 fourth, because
+  // none of these labels are in the status pipeline list so every section tied
+  // at the bottom rank and the tie-break sorted them alphabetically.
+  const LG_VIEW_GROUPS = [
+    { fieldValue: "TIER_1", position: 0 },
+    { fieldValue: "TIER_2", position: 1 },
+    { fieldValue: "TIER_3", position: 2 },
+    { fieldValue: "NEEDS_REVIEW", position: 3 },
+    { fieldValue: "ADDITIONAL_TECHNOLOGY_FROM_SPONSORSHIP", position: 4 },
+    { fieldValue: "NO_SPONSORSHIP", position: 5 },
+    { fieldValue: "", position: 6 },
+  ];
+
+  it("takes the section order the view was arranged in", () => {
+    expect(sectionOrderFromView(LG_VIEW_GROUPS, SELECT_FIELD, STATUS_ORDER)).toEqual([
+      "Tier 1",
+      "Tier 2",
+      "Tier 3",
+      "Needs Review",
+      "Additional Technology From Sponsorship",
+      "No Sponsorship",
+    ]);
+  });
+
+  it("puts Jireh's tiers back at the top of the sheet", () => {
+    const g = (label: string) => ({ key: label, label, records: [] as unknown[] });
+    const out = orderGroups(
+      [
+        g("Additional Technology From Sponsorship"),
+        g("Needs Review"),
+        g("No Sponsorship"),
+        g("Tier 1"),
+        g("Tier 2"),
+        g("Tier 3"),
+        g("No Value"),
+      ],
+      sectionOrderFromView(LG_VIEW_GROUPS, SELECT_FIELD, STATUS_ORDER),
+    );
+    expect(out.map((x) => x.label)).toEqual([
+      "Tier 1",
+      "Tier 2",
+      "Tier 3",
+      "Needs Review",
+      "Additional Technology From Sponsorship",
+      "No Sponsorship",
+      "No Value",
+    ]);
+  });
+
+  it("reads the saved positions, not the order the rows arrive in", () => {
+    const shuffled = [...LG_VIEW_GROUPS].reverse();
+    expect(sectionOrderFromView(shuffled, SELECT_FIELD, STATUS_ORDER)[0]).toBe("Tier 1");
+  });
+
+  it("keeps the pipeline order for a view that saved no groups", () => {
+    expect(sectionOrderFromView([], SELECT_FIELD, STATUS_ORDER)).toEqual(STATUS_ORDER);
+    expect(sectionOrderFromView(null, SELECT_FIELD, STATUS_ORDER)).toEqual(STATUS_ORDER);
+  });
+
+  it("keeps the pipeline order when the sheet is sectioning on the status fallback", () => {
+    expect(sectionOrderFromView(LG_VIEW_GROUPS, null, STATUS_ORDER)).toEqual(STATUS_ORDER);
+  });
+
+  // A group whose only entry is the CRM's no-value bucket must not become the
+  // whole order — that would rank every real section below nothing.
+  it("ignores the no-value group and falls back when it is all there is", () => {
+    expect(sectionOrderFromView([{ fieldValue: "", position: 0 }], SELECT_FIELD, STATUS_ORDER))
+      .toEqual(STATUS_ORDER);
+  });
+
+  it("passes non-select group values through untouched", () => {
+    const relation: FieldMeta = { name: "company", type: "RELATION", label: "Company" };
+    expect(
+      sectionOrderFromView(
+        [{ fieldValue: "Baltimore Ravens", position: 0 }, { fieldValue: "Chicago Fire FC", position: 1 }],
+        relation,
+        STATUS_ORDER,
+      ),
+    ).toEqual(["Baltimore Ravens", "Chicago Fire FC"]);
   });
 });
 

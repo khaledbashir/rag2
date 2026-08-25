@@ -18,6 +18,7 @@
  */
 import {
   cellValue,
+  enumLabel,
   isRenderable,
   toMirrorColumn,
   type MirrorColumn,
@@ -226,6 +227,51 @@ export function resolveSectionField(
  * does not name falls in alphabetically after it, and "No Value" goes last —
  * absence of a value is not a section anyone reads first.
  */
+/** One entry of `getView.viewGroups` — the section order saved on the view itself. */
+export type ViewGroup = {
+  fieldValue: string;
+  position: number;
+  isVisible?: boolean | null;
+};
+
+/**
+ * The section order a grouped view is actually arranged in.
+ *
+ * `orderGroups` ranks against a list of LABELS, and the only list it was ever
+ * given is the opportunity-status pipeline. That is right for a view grouped by
+ * status and wrong for every other one: when a view groups on LG Tier, none of
+ * its labels appear in the status list, every section ties at the bottom rank,
+ * and the tie-break sorts them ALPHABETICALLY. Jireh's LG Alliance export
+ * therefore opened on "Additional Technology Opportunities from Sponsorship"
+ * with Tier 1 fourth, while the view he arranged it from reads 1, 2, 3 first
+ * (2026-08-25: "first request would be Tier 1,2,3 at the top").
+ *
+ * The CRM already stores the answer — `viewGroup.position` is the order he
+ * dragged the sections into — so the export takes it from there and stops
+ * guessing. `fieldValue` holds the raw enum value while the sheet groups on the
+ * rendered label, so the values are put through the same `enumLabel` the cells
+ * use. A view with no groups saved falls back to `fallback`, which keeps the
+ * pipeline order for status sections exactly as it was.
+ */
+export function sectionOrderFromView(
+  viewGroups: ViewGroup[] | null | undefined,
+  groupMeta: FieldMeta | null,
+  fallback: string[],
+): string[] {
+  if (!groupMeta || !viewGroups?.length) return fallback;
+  const labels = [...viewGroups]
+    .sort((a, b) => a.position - b.position)
+    // The CRM's own no-value group. The sheet places "No Value" last itself,
+    // and it must not consume a rank here or it would sort before real sections.
+    .filter((g) => g.fieldValue !== "" && g.fieldValue !== null && g.fieldValue !== undefined)
+    .map((g) =>
+      groupMeta.type === "SELECT" || groupMeta.type === "MULTI_SELECT"
+        ? enumLabel(String(g.fieldValue))
+        : String(g.fieldValue),
+    );
+  return labels.length ? labels : fallback;
+}
+
 export function orderGroups<T>(groups: Group<T>[], preferred: string[]): Group<T>[] {
   const rank = new Map(preferred.map((label, i) => [label, i]));
   return [...groups].sort((a, b) => {

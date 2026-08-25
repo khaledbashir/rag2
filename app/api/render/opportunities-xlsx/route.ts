@@ -28,6 +28,7 @@ import {
   layoutFromView,
   orderGroups,
   resolveSectionField,
+  sectionOrderFromView,
   sortByViewSorts,
   type FieldMeta,
   type ViewSort,
@@ -152,6 +153,7 @@ async function fetchView(viewId: string): Promise<any> {
        viewFilters{ fieldMetadataId operand value viewFilterGroupId }
        viewFilterGroups{ id logicalOperator parentViewFilterGroupId }
        viewSorts{ fieldMetadataId direction }
+       viewGroups{ fieldValue position isVisible }
        viewFields{ fieldMetadataId isVisible position aggregateOperation } } }`,
   );
   return d.getView;
@@ -246,7 +248,12 @@ async function renderMirrored(view: any, filter: any, fm: Record<string, Field>)
   const rows = await fetchMirrored(filter, selection);
 
   const sorted = sortByViewSorts(rows, sorts, fm);
-  const groups = orderGroups(groupByViewField(sorted, groupMeta, fmtDate), STATUS_SECTION_ORDER);
+  // Sections follow the order saved on the view itself; the pipeline order is
+  // only the fallback for a view that does not group (see sectionOrderFromView).
+  const groups = orderGroups(
+    groupByViewField(sorted, groupMeta, fmtDate),
+    sectionOrderFromView(view.viewGroups, groupMeta, STATUS_SECTION_ORDER),
+  );
 
   const PAPER = "FFFAF9F6", PAPER_ALT = "FFF3F1EC", BAND = "FFECE9E1";
   const INK = "FF3A3D42", INK_SOFT = "FF74777C", LINE = "FFD7D3C9", TITLE_GREY = "FF56585B";
