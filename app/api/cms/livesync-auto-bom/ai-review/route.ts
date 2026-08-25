@@ -85,6 +85,7 @@ export async function POST(request: NextRequest) {
       liveVideo: !!raw.liveVideo,
       outdoor: !!raw.outdoor,
       physicalWidthFt: Number(raw.physicalWidthFt) > 0 ? Number(raw.physicalWidthFt) : null,
+      ribbon: raw.ribbon === true ? true : raw.ribbon === false ? false : undefined,
     }));
   const job: LivesyncJobInput = {
     screens,
@@ -110,12 +111,18 @@ export async function POST(request: NextRequest) {
     .map((l) => `${l.category} | ${l.displayName} (${l.sku}) | qty ${l.quantity} | $${l.unitPrice} | line $${l.lineTotal} | ${l.rationale}${l.flags.length ? " | FLAGS: " + l.flags.join("; ") : ""}`)
     .join("\n");
   const screenDesc = job.screens
-    .map((s) => `${s.name}: ${s.pixelWidth}x${s.pixelHeight}px${s.liveVideo ? ", live video" : ""}${s.outdoor ? ", outdoor" : ""}${s.physicalWidthFt ? `, ${s.physicalWidthFt}ft wide` : ""}`)
+    .map((s, i) => {
+      const plan = result.screenPlans[i];
+      const mapping = plan?.strip
+        ? `, RIBBON stripped onto the canvas: ${plan.strip.stripes} stripes of up to 3840px, ${plan.strip.stripesPerOutput} stacked per output (${plan.strip.stackedHeight}px = ${plan.strip.canvasFillPct}% of the canvas) -> ${plan.strip.outputs} output(s)`
+        : `, ${plan?.outputs ?? "?"} output(s) tiled the standard way`;
+      return `${s.name}: ${s.pixelWidth}x${s.pixelHeight}px${s.liveVideo ? ", live video" : ""}${s.outdoor ? ", outdoor" : ""}${s.physicalWidthFt ? `, ${s.physicalWidthFt}ft wide` : ""}${mapping}`;
+    })
     .join("\n");
 
   const systemPrompt =
     "You are a senior control-system estimation engineer at a major LED display integrator, reviewing a machine-generated Control System (media server) bill of materials for a sports venue job. " +
-    "House rules the generator followed: each server output drives up to 3840x2160; never exceed 2 outputs per server; every primary server gets a dedicated 1:1 backup; minimum 2 UI servers (8TB); audio element per server; RS-232 scoring intake on sports venues; matrix is always the next size up, never exact; ~1 rack per 12 servers; ~1 week install labor per rack; outdoor screens get climate racks per 150ft of width; licensing usually excluded on RFP jobs. " +
+    "House rules the generator followed: each server output drives up to 3840x2160; ribbon boards are mapped by STRIPPING rather than tiling — total width divided by 3840 gives the stripes, which stack down the canvas until 75% of its height (1620px) is filled before a second output is used, so a long ribbon legitimately lands on far fewer outputs than its width suggests; never exceed 2 outputs per server; every primary server gets a dedicated 1:1 backup; minimum 2 UI servers (8TB); audio element per server; RS-232 scoring intake on sports venues; matrix is always the next size up, never exact; ~1 rack per 12 servers; ~1 week install labor per rack; outdoor screens get climate racks per 150ft of width; licensing usually excluded on RFP jobs. " +
     "Your job: verify the package hangs together, call out anything that looks off or risky, list the specific questions you would ask before quoting, and suggest concrete improvements. " +
     "Do NOT change quantities or invent prices — the deterministic engine owns the numbers. Be direct and concise. Plain text with short section headings, no markdown tables.";
 

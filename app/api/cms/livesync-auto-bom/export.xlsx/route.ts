@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
         liveVideo: !!raw.liveVideo,
         outdoor: !!raw.outdoor,
         physicalWidthFt: Number(raw.physicalWidthFt) > 0 ? Number(raw.physicalWidthFt) : null,
+        ribbon: raw.ribbon === true ? true : raw.ribbon === false ? false : undefined,
       }));
     if (screens.length === 0) {
       return NextResponse.json({ error: "No valid screens." }, { status: 400 });
@@ -110,7 +111,15 @@ export async function POST(request: NextRequest) {
     sheet.getRow(2).getCell(2).value = jobName;
     sheet.getRow(2).getCell(2).font = { bold: true, size: 14 };
     sheet.getRow(3).getCell(2).value = job.screens
-      .map((s) => `${s.name} ${s.pixelWidth}x${s.pixelHeight}${s.liveVideo ? " (live video)" : ""}${s.outdoor ? " (outdoor)" : ""}`)
+      .map((s, i) => {
+        // Say how each screen was mapped onto the render canvas — a ribbon's
+        // output count only reads correctly next to its stripe count.
+        const strip = result.screenPlans[i]?.strip;
+        const mapping = strip
+          ? ` (ribbon: ${strip.stripes} stripes, ${strip.stripesPerOutput}/output → ${strip.outputs} output${strip.outputs === 1 ? "" : "s"})`
+          : "";
+        return `${s.name} ${s.pixelWidth}x${s.pixelHeight}${s.liveVideo ? " (live video)" : ""}${s.outdoor ? " (outdoor)" : ""}${mapping}`;
+      })
       .join(" · ");
 
     let row = 5;

@@ -25,6 +25,12 @@ export type LivesyncScreenInput = {
   outdoor?: boolean;
   /** Physical width in feet — drives closet/IDF and outdoor-rack counts */
   physicalWidthFt?: number | null;
+  /**
+   * Ribbon board → map to the render canvas by stripping (see
+   * `stripRibbonToCanvas`). Leave undefined to let the shape decide; set
+   * `false` to force the standard grid mapping on a long thin screen.
+   */
+  ribbon?: boolean;
 };
 
 export type LivesyncJobInput = {
@@ -80,6 +86,37 @@ export type BomLine = {
   flags: string[];
 };
 
+/**
+ * How a ribbon board lands on a render output's 3840 × 2160 canvas.
+ *
+ * Jackson Hart, 2026-08-25: "It uses a term called stripping — it's when you
+ * take the total screen width and divide it by 3840 (the size of one render
+ * output) and you stack the stripes on top of each other until you fill 75%
+ * of the canvas height, then you go to use a second output. That ensures the
+ * total canvas can be used effectively for ribbons and there is no wasted
+ * space."
+ */
+export type RibbonStripPlan = {
+  /** Total stripes the ribbon is cut into: ⌈width / 3840⌉ */
+  stripes: number;
+  /** Stripes that run the full 3840 px */
+  fullWidthStripes: number;
+  /** Width of the final short stripe; 0 when the ribbon divides evenly */
+  remainderStripeWidth: number;
+  /** How many stripes stack inside 75% of the canvas height */
+  stripesPerOutput: number;
+  /** Render outputs the ribbon actually consumes */
+  outputs: number;
+  /** 75% of the output canvas height — the stacking budget */
+  usableCanvasHeight: number;
+  /** Stacked pixel height on a full output */
+  stackedHeight: number;
+  /** Stacked height as a share of the FULL canvas, not the 75% budget */
+  canvasFillPct: number;
+  /** Stripes riding on the final (possibly part-filled) output */
+  stripesOnLastOutput: number;
+};
+
 export type ScreenPlan = {
   name: string;
   pixelWidth: number;
@@ -92,6 +129,12 @@ export type ScreenPlan = {
   dualVideoCard: boolean;
   liveVideo: boolean;
   sharedServer: boolean;
+  /** Mapped to the canvas by stripping rather than by the standard grid */
+  ribbon: boolean;
+  /** Where the ribbon call came from — the estimator, or the screen's shape */
+  ribbonSource: "explicit" | "shape" | null;
+  /** The canvas mapping, when this screen was stripped */
+  strip: RibbonStripPlan | null;
   flags: string[];
 };
 
@@ -176,6 +219,20 @@ export const OUTPUTS_PER_DUAL_SERVER = 4;
 /** A single screen larger than 7680 × 2160 must stay on one box → dual card */
 export const DUAL_CARD_W = 7680;
 export const DUAL_CARD_H = 2160;
+/**
+ * Ribbon stripping: stack stripes down the canvas until 75% of its height is
+ * filled, then move to the next output (Jackson, 2026-08-25). The remaining
+ * 25% is deliberate headroom, not spare capacity to fill.
+ */
+export const RIBBON_CANVAS_FILL = 0.75;
+/** 75% of 2160 = the stacking budget on one output */
+export const RIBBON_USABLE_H = Math.floor(OUTPUT_MAX_H * RIBBON_CANVAS_FILL);
+/**
+ * Above this stripe height, stripping saves nothing — a second stripe no
+ * longer stacks inside the budget — so a screen that tall is mapped by the
+ * standard grid unless the estimator explicitly calls it a ribbon.
+ */
+export const RIBBON_MAX_AUTO_STRIPE_H = Math.floor(RIBBON_USABLE_H / 2);
 /** ~1 rack per 12 servers */
 export const SERVERS_PER_RACK = 12;
 /** +1 workstation per 5 screens, minimum 1 */
@@ -235,6 +292,61 @@ export function outputsForScreen(pixelWidth: number, pixelHeight: number): numbe
   const w = Math.max(1, Math.ceil(pixelWidth / OUTPUT_MAX_W));
   const h = Math.max(1, Math.ceil(pixelHeight / OUTPUT_MAX_H));
   return w * h;
+}
+
+/**
+ * Map a ribbon board onto render outputs by stripping.
+ *
+ * Cut the ribbon into 3840-wide stripes, stack them down the canvas until the
+ * next one would pass 75% of the canvas height, then start the next output.
+ * A ribbon is one long band, so the standard grid mapping charges a whole
+ * output for every 3840 px of width and throws away the ~95% of canvas height
+ * a 3-ft board leaves empty — which is exactly the wasted space Jackson is
+ * describing.
+ *
+ * Returns null when the ribbon is taller than the stacking budget: there is
+ * nothing to stack, so it belongs on the standard grid.
+ */
+export function stripRibbonToCanvas(
+  pixelWidth: number,
+  pixelHeight: number
+): RibbonStripPlan | null {
+  if (!(pixelWidth > 0) || !(pixelHeight > 0)) return null;
+  if (pixelHeight > RIBBON_USABLE_H) return null;
+
+  const stripes = Math.max(1, Math.ceil(pixelWidth / OUTPUT_MAX_W));
+  const fullWidthStripes = Math.floor(pixelWidth / OUTPUT_MAX_W);
+  const remainderStripeWidth = pixelWidth - fullWidthStripes * OUTPUT_MAX_W;
+  const stripesPerOutput = Math.max(1, Math.floor(RIBBON_USABLE_H / pixelHeight));
+  const outputs = Math.ceil(stripes / stripesPerOutput);
+  const stripesOnLastOutput = stripes - (outputs - 1) * stripesPerOutput;
+  // A single-output ribbon never fills more than its own stripe count.
+  const stackedHeight = Math.min(stripes, stripesPerOutput) * pixelHeight;
+
+  return {
+    stripes,
+    fullWidthStripes,
+    remainderStripeWidth,
+    stripesPerOutput,
+    outputs,
+    usableCanvasHeight: RIBBON_USABLE_H,
+    stackedHeight,
+    canvasFillPct: Number(((stackedHeight / OUTPUT_MAX_H) * 100).toFixed(1)),
+    stripesOnLastOutput,
+  };
+}
+
+/**
+ * Does this screen's shape read as a ribbon?
+ *
+ * Two conditions, both mechanical rather than stylistic: it has to be wider
+ * than one output (otherwise there is nothing to strip), and short enough that
+ * at least two stripes stack inside the 75% budget (otherwise stripping saves
+ * nothing). Everything that clears both is at least 4.7 : 1 — a band, not a
+ * video board. The estimator can always override in either direction.
+ */
+export function isRibbonShape(pixelWidth: number, pixelHeight: number): boolean {
+  return pixelWidth > OUTPUT_MAX_W && pixelHeight > 0 && pixelHeight <= RIBBON_MAX_AUTO_STRIPE_H;
 }
 
 /**
@@ -346,25 +458,77 @@ export function buildLivesyncAutoBom(
   // repeating the same pending-Jackson sentence on every server line
   const tierBumps: { name: string; tier: string }[] = [];
 
+  // Ribbons auto-detected from their shape are named in one job-level flag, so
+  // the estimator can see the call was made and switch it off per screen.
+  const autoStripped: string[] = [];
+
   for (const screen of job.screens) {
     const flags: string[] = [];
-    const outputs = outputsForScreen(screen.pixelWidth, screen.pixelHeight);
     const area = screen.pixelWidth * screen.pixelHeight;
     const tier = storageTier(area);
     const liveVideo = !!screen.liveVideo;
-    const needsDualCard =
-      screen.pixelWidth > DUAL_CARD_W ||
-      (screen.pixelWidth > DUAL_CARD_W && screen.pixelHeight > DUAL_CARD_H) ||
-      outputs > OUTPUTS_PER_SERVER;
 
-    think(
-      "Size each screen",
-      `${screen.name} is ${screen.pixelWidth}×${screen.pixelHeight}. Each server output carries up to ${OUTPUT_MAX_W}×${OUTPUT_MAX_H}, so ` +
-        `⌈${screen.pixelWidth}/${OUTPUT_MAX_W}⌉ × ⌈${screen.pixelHeight}/${OUTPUT_MAX_H}⌉ = ${outputs} output(s). ` +
-        `Pixel area ${area.toLocaleString()} → ${tier} storage tier (bigger screen, more storage).` +
-        (liveVideo ? " Live video is specified → capture-card server class." : "") +
-        (needsDualCard && !liveVideo ? ` Wider than ${DUAL_CARD_W}px on one piece of hardware → dual-video-card server.` : "")
-    );
+    // ── Ribbon stripping vs. the standard grid ──
+    // Live video never strips: a video feed is one contiguous rectangle on the
+    // canvas, not a band that can be cut and stacked.
+    const shapeIsRibbon = !liveVideo && isRibbonShape(screen.pixelWidth, screen.pixelHeight);
+    const wantsStripping = screen.ribbon === true || (screen.ribbon !== false && shapeIsRibbon);
+    const strip = wantsStripping
+      ? stripRibbonToCanvas(screen.pixelWidth, screen.pixelHeight)
+      : null;
+    const ribbonSource: ScreenPlan["ribbonSource"] = strip
+      ? screen.ribbon === true
+        ? "explicit"
+        : "shape"
+      : null;
+
+    const gridOutputs = outputsForScreen(screen.pixelWidth, screen.pixelHeight);
+    const outputs = strip ? strip.outputs : gridOutputs;
+
+    if (screen.ribbon === true && !strip) {
+      flags.push(
+        `Marked as a ribbon, but it is ${screen.pixelHeight}px tall — past the ${RIBBON_USABLE_H}px stacking budget (75% of the ${OUTPUT_MAX_H}px canvas), so nothing stacks. Mapped on the standard grid instead.`
+      );
+    }
+    if (ribbonSource === "shape") autoStripped.push(screen.name);
+    if (strip && strip.stripesOnLastOutput < strip.stripesPerOutput && strip.outputs > 1) {
+      flags.push(
+        `Last output carries ${strip.stripesOnLastOutput} of ${strip.stripesPerOutput} stripes — the ribbon does not divide evenly across outputs.`
+      );
+    }
+
+    // A stripped ribbon is judged on the outputs it actually consumes, not its
+    // raw width: the whole point of stripping is that a 30,000px band lands on
+    // one output, and a dual-GPU box for it would be hardware nobody needs.
+    const needsDualCard = strip
+      ? outputs > OUTPUTS_PER_SERVER
+      : screen.pixelWidth > DUAL_CARD_W ||
+        (screen.pixelWidth > DUAL_CARD_W && screen.pixelHeight > DUAL_CARD_H) ||
+        outputs > OUTPUTS_PER_SERVER;
+
+    if (strip) {
+      const stripeMath =
+        strip.remainderStripeWidth > 0
+          ? `${strip.fullWidthStripes} full stripe(s) at ${OUTPUT_MAX_W}px plus a ${strip.remainderStripeWidth}px tail = ${strip.stripes} stripe(s)`
+          : `${strip.stripes} stripe(s) at ${OUTPUT_MAX_W}px, dividing evenly`;
+      think(
+        "Size each screen",
+        `${screen.name} is ${screen.pixelWidth}×${screen.pixelHeight} — a ribbon${ribbonSource === "shape" ? " by its shape" : ""}, so it is stripped onto the canvas rather than tiled. ` +
+          `Total width ÷ ${OUTPUT_MAX_W} → ${stripeMath}. Stacking them down the canvas fills 75% of ${OUTPUT_MAX_H}px = ${strip.usableCanvasHeight}px, ` +
+          `and at ${screen.pixelHeight}px per stripe that is ${strip.stripesPerOutput} stripe(s) per output (${strip.stackedHeight}px stacked, ${strip.canvasFillPct}% of the canvas) before moving to the next output → ${outputs} output(s). ` +
+          `Tiled the standard way this same ribbon would have taken ${gridOutputs} output(s). ` +
+          `Pixel area ${area.toLocaleString()} → ${tier} storage tier.`
+      );
+    } else {
+      think(
+        "Size each screen",
+        `${screen.name} is ${screen.pixelWidth}×${screen.pixelHeight}. Each server output carries up to ${OUTPUT_MAX_W}×${OUTPUT_MAX_H}, so ` +
+          `⌈${screen.pixelWidth}/${OUTPUT_MAX_W}⌉ × ⌈${screen.pixelHeight}/${OUTPUT_MAX_H}⌉ = ${outputs} output(s). ` +
+          `Pixel area ${area.toLocaleString()} → ${tier} storage tier (bigger screen, more storage).` +
+          (liveVideo ? " Live video is specified → capture-card server class." : "") +
+          (needsDualCard && !liveVideo ? ` Wider than ${DUAL_CARD_W}px on one piece of hardware → dual-video-card server.` : "")
+      );
+    }
 
     if (tier !== "4TB") {
       tierBumps.push({ name: screen.name, tier });
@@ -385,6 +549,9 @@ export function buildLivesyncAutoBom(
         dualVideoCard: false,
         liveVideo: false,
         sharedServer: true,
+        ribbon: !!strip,
+        ribbonSource,
+        strip,
         flags,
       });
       continue;
@@ -450,6 +617,9 @@ export function buildLivesyncAutoBom(
       dualVideoCard: needsDualCard && !liveVideo,
       liveVideo,
       sharedServer: false,
+      ribbon: !!strip,
+      ribbonSource,
+      strip,
       flags,
     });
   }
@@ -468,7 +638,7 @@ export function buildLivesyncAutoBom(
     const names = shareableScreens.map((s) => s.name).join(", ");
     think(
       "Select render servers",
-      `${names}: each of these is under one 4K output, so they share render hardware — up to ${OUTPUTS_PER_SERVER} outputs per box → ` +
+      `${names}: each of these lands on a single 4K output, so they share render hardware — up to ${OUTPUTS_PER_SERVER} outputs per box → ` +
         `${primaries} shared primary(ies), each with its dedicated backup → ${primaries * 2} server(s) at the ${tier} tier (storage follows the largest screen in the group; it never hurts to stay on the larger side).`
     );
     const packFlags =
@@ -780,6 +950,12 @@ export function buildLivesyncAutoBom(
   }
 
   // ── Job-level review flags ──
+  if (autoStripped.length > 0) {
+    reviewFlags.push(
+      `Mapped as ribbon board(s) from their shape — stripped onto the canvas instead of tiled: ${autoStripped.join(", ")}. ` +
+        `Set the mapping to Standard on any of these that is a single video image rather than a band.`
+    );
+  }
   if (tierBumps.length > 0) {
     reviewFlags.push(
       `Storage bumped above 4TB on: ${tierBumps.map((t) => `${t.name} (${t.tier})`).join(", ")} — exact 4/6/8 TB thresholds are pending Jackson's confirmation.`

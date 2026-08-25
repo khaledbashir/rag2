@@ -51,6 +51,14 @@ export async function POST(request: NextRequest) {
         );
       }
       const widthFt = raw.physicalWidthFt == null || raw.physicalWidthFt === "" ? null : Number(raw.physicalWidthFt);
+      // Ribbon mapping is deliberately tri-state: true forces stripping, false
+      // forces the standard grid, and absent lets the screen's shape decide.
+      const ribbon =
+        raw.ribbon === true || raw.ribbon === "true"
+          ? true
+          : raw.ribbon === false || raw.ribbon === "false"
+            ? false
+            : undefined;
       screens.push({
         name: String(raw.name || `Screen ${screens.length + 1}`),
         pixelWidth,
@@ -58,6 +66,7 @@ export async function POST(request: NextRequest) {
         liveVideo: !!raw.liveVideo,
         outdoor: !!raw.outdoor,
         physicalWidthFt: Number.isFinite(widthFt as number) && (widthFt as number) > 0 ? widthFt : null,
+        ribbon,
       });
     }
 

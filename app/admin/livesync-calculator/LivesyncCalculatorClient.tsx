@@ -10,6 +10,8 @@ type ScreenRow = {
   liveVideo: boolean;
   outdoor: boolean;
   physicalWidthFt: string;
+  /** How the screen lands on the render canvas: let the shape decide, strip it, or tile it */
+  mapping: "auto" | "ribbon" | "standard";
 };
 
 type BomLine = {
@@ -49,6 +51,19 @@ type ScreenPlan = {
   dualVideoCard: boolean;
   liveVideo: boolean;
   sharedServer: boolean;
+  ribbon: boolean;
+  ribbonSource: "explicit" | "shape" | null;
+  strip: {
+    stripes: number;
+    fullWidthStripes: number;
+    remainderStripeWidth: number;
+    stripesPerOutput: number;
+    outputs: number;
+    usableCanvasHeight: number;
+    stackedHeight: number;
+    canvasFillPct: number;
+    stripesOnLastOutput: number;
+  } | null;
 };
 
 type ReasoningStep = { phase: string; text: string };
@@ -103,6 +118,7 @@ const makePayload = (screens: ScreenRow[], sportsVenue: boolean, includeLicense:
     liveVideo: s.liveVideo,
     outdoor: s.outdoor,
     physicalWidthFt: s.physicalWidthFt ? Number(s.physicalWidthFt) : null,
+    ribbon: s.mapping === "auto" ? undefined : s.mapping === "ribbon",
   })),
 });
 
@@ -290,13 +306,14 @@ const emptyScreen = (): ScreenRow => ({
   liveVideo: false,
   outdoor: false,
   physicalWidthFt: "",
+  mapping: "auto" as const,
 });
 
 /** Typical screen types — dims match the grounded examples from Jackson's rules */
 const PRESETS: Array<{ label: string } & Partial<ScreenRow>> = [
   { label: "Main board", name: "Main Video Board", pixelWidth: "7680", pixelHeight: "1000" },
   { label: "Center-hung (live)", name: "Center Hung", pixelWidth: "5000", pixelHeight: "2000", liveVideo: true },
-  { label: "Ribbon", name: "Ribbon", pixelWidth: "3000", pixelHeight: "500" },
+  { label: "Ribbon", name: "Upper Bowl Ribbon", pixelWidth: "30720", pixelHeight: "96" },
   { label: "Concourse", name: "Concourse", pixelWidth: "1920", pixelHeight: "1080" },
 ];
 
@@ -308,7 +325,7 @@ const parseDimsPaste = (text: string): { w: string; h: string } | null => {
 
 export default function LivesyncCalculatorClient() {
   const [screens, setScreens] = useState<ScreenRow[]>([
-    { name: "Main Video Board", pixelWidth: "7680", pixelHeight: "1000", liveVideo: false, outdoor: false, physicalWidthFt: "" },
+    { name: "Main Video Board", pixelWidth: "7680", pixelHeight: "1000", liveVideo: false, outdoor: false, physicalWidthFt: "", mapping: "auto" },
   ]);
   const [sportsVenue, setSportsVenue] = useState(true);
   const [includeLicense, setIncludeLicense] = useState(false);
@@ -445,7 +462,9 @@ export default function LivesyncCalculatorClient() {
   };
 
   const openHistory = (saved: SavedCalculation) => {
-    setScreens(saved.screens);
+    // Calculations saved before canvas mapping existed carry no `mapping` —
+    // restore them on Auto rather than handing the select an undefined value.
+    setScreens(saved.screens.map((s) => ({ ...emptyScreen(), ...s })));
     setSportsVenue(saved.sportsVenue);
     setIncludeLicense(saved.includeLicense);
     setGeneratedPayload(saved.payload);
@@ -492,6 +511,7 @@ export default function LivesyncCalculatorClient() {
                 <th className="px-3 py-2">Pixel width</th>
                 <th className="px-3 py-2">Pixel height</th>
                 <th className="px-3 py-2">Physical width (ft)</th>
+                <th className="px-3 py-2">Canvas mapping</th>
                 <th className="px-3 py-2 text-center">Live video</th>
                 <th className="px-3 py-2 text-center">Outdoor</th>
                 <th className="px-3 py-2" />
@@ -541,6 +561,20 @@ export default function LivesyncCalculatorClient() {
                       value={screen.physicalWidthFt}
                       onChange={(e) => updateScreen(i, { physicalWidthFt: e.target.value })}
                     />
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <select
+                      className="w-32 px-2 py-1 rounded border border-border bg-background text-sm"
+                      value={screen.mapping}
+                      onChange={(e) =>
+                        updateScreen(i, { mapping: e.target.value as ScreenRow["mapping"] })
+                      }
+                      title="Ribbon boards are stripped onto the canvas: width ÷ 3840, stacked until 75% of the canvas height is filled, then the next output. Auto decides from the screen's shape."
+                    >
+                      <option value="auto">Auto</option>
+                      <option value="ribbon">Ribbon (strip)</option>
+                      <option value="standard">Standard (tile)</option>
+                    </select>
                   </td>
                   <td className="px-3 py-1.5 text-center">
                     <input
@@ -707,7 +741,15 @@ export default function LivesyncCalculatorClient() {
                       <td className="px-3 py-1.5 text-right font-mono text-xs">
                         {plan.pixelWidth}×{plan.pixelHeight}
                       </td>
-                      <td className="px-3 py-1.5 text-right">{plan.outputs}</td>
+                      <td className="px-3 py-1.5 text-right">
+                        {plan.outputs}
+                        {plan.strip && (
+                          <div className="text-[11px] font-normal text-muted-foreground whitespace-nowrap">
+                            {plan.strip.stripes} stripe{plan.strip.stripes === 1 ? "" : "s"} ·{" "}
+                            {plan.strip.stripesPerOutput}/output
+                          </div>
+                        )}
+                      </td>
                       <td className="px-3 py-1.5 text-right">
                         {plan.sharedServer ? (
                           <span className="text-muted-foreground">
@@ -723,6 +765,8 @@ export default function LivesyncCalculatorClient() {
                       <td className="px-3 py-1.5">{plan.storageTier}</td>
                       <td className="px-3 py-1.5 text-xs text-muted-foreground">
                         {[
+                          plan.strip &&
+                            `stripped: ${plan.pixelWidth} ÷ ${3840} = ${plan.strip.stripes} stripe(s), stacked ${plan.strip.stripesPerOutput} per output to ${plan.strip.stackedHeight}px (${plan.strip.canvasFillPct}% of canvas, budget ${plan.strip.usableCanvasHeight}px)${plan.ribbonSource === "shape" ? " — read as a ribbon from its shape" : ""}`,
                           plan.liveVideo && "live video capture",
                           plan.dualVideoCard && "dual video card",
                           plan.sharedServer && "shares a server with other small screens",

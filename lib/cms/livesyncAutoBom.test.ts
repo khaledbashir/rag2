@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLivesyncAutoBom,
+  isRibbonShape,
   outputsForScreen,
+  stripRibbonToCanvas,
   type CatalogEntry,
 } from "./livesyncAutoBom";
 
@@ -436,5 +438,188 @@ describe("flag-don't-guess behavior", () => {
       PRICING
     );
     expect(qty(result, "LIVESYNC-LICENSE")).toBe(1);
+  });
+});
+
+// ─────────────────────── Ribbon stripping (Jackson, 2026-08-25) ───────────────────────
+//
+// "Take the total screen width and divide it by 3840 (the size of one render
+// output) and you stack the stripes on top of each other until you fill 75% of
+// the canvas height, then you go to use a second output."
+
+describe("stripRibbonToCanvas — the stripping practice itself", () => {
+  it("cuts a 30,720px ring ribbon into 8 stripes that all stack on ONE output", () => {
+    const plan = stripRibbonToCanvas(30720, 96)!;
+    expect(plan.stripes).toBe(8); // 30720 / 3840, divides evenly
+    expect(plan.fullWidthStripes).toBe(8);
+    expect(plan.remainderStripeWidth).toBe(0);
+    expect(plan.usableCanvasHeight).toBe(1620); // 75% of 2160
+    expect(plan.stripesPerOutput).toBe(16); // ⌊1620 / 96⌋
+    expect(plan.outputs).toBe(1);
+    expect(plan.stackedHeight).toBe(768); // 8 × 96
+    // Tiled the standard way this same ribbon costs 8 outputs.
+    expect(outputsForScreen(30720, 96)).toBe(8);
+  });
+
+  it("carries the short tail stripe when the width does not divide evenly", () => {
+    const plan = stripRibbonToCanvas(8000, 96)!;
+    expect(plan.stripes).toBe(3);
+    expect(plan.fullWidthStripes).toBe(2);
+    expect(plan.remainderStripeWidth).toBe(320); // 8000 − 2 × 3840
+    expect(plan.outputs).toBe(1);
+  });
+
+  it("moves to a second output once the stack would pass 75%", () => {
+    // 200px stripes → ⌊1620/200⌋ = 8 stripes per output; 10 stripes needed.
+    const plan = stripRibbonToCanvas(38400, 200)!;
+    expect(plan.stripes).toBe(10);
+    expect(plan.stripesPerOutput).toBe(8);
+    expect(plan.outputs).toBe(2);
+    expect(plan.stripesOnLastOutput).toBe(2);
+    expect(plan.stackedHeight).toBe(1600); // 8 × 200, inside the 1620 budget
+  });
+
+  it("fills exactly 75% when the stripe height divides the budget", () => {
+    const plan = stripRibbonToCanvas(3840 * 5, 540)!;
+    expect(plan.stripesPerOutput).toBe(3);
+    expect(plan.stackedHeight).toBe(1620);
+    expect(plan.canvasFillPct).toBe(75);
+  });
+
+  it("never stacks past the 75% budget, at any stripe height", () => {
+    for (let h = 1; h <= 1620; h++) {
+      const plan = stripRibbonToCanvas(3840 * 40, h)!;
+      expect(plan.stackedHeight).toBeLessThanOrEqual(1620);
+      // and every stripe is accounted for on some output
+      expect(plan.stripesPerOutput * plan.outputs).toBeGreaterThanOrEqual(plan.stripes);
+    }
+  });
+
+  it("refuses to strip a screen taller than the stacking budget", () => {
+    expect(stripRibbonToCanvas(20000, 1621)).toBeNull();
+    expect(stripRibbonToCanvas(20000, 2160)).toBeNull();
+  });
+});
+
+describe("isRibbonShape — what reads as a ribbon without being told", () => {
+  it("recognises long thin bands", () => {
+    expect(isRibbonShape(30720, 96)).toBe(true); // ring ribbon
+    expect(isRibbonShape(8000, 240)).toBe(true); // fascia run
+    expect(isRibbonShape(3841, 810)).toBe(true); // boundary: 2 stripes still stack
+  });
+  it("leaves video boards alone", () => {
+    expect(isRibbonShape(7680, 1000)).toBe(false); // Jackson's main-board example
+    expect(isRibbonShape(8000, 2000)).toBe(false); // end zone
+    expect(isRibbonShape(7000, 1500)).toBe(false); // outdoor main
+    expect(isRibbonShape(3000, 96)).toBe(false); // narrower than one output: nothing to strip
+    expect(isRibbonShape(3841, 811)).toBe(false); // a 2nd stripe no longer stacks
+  });
+});
+
+describe("ribbon stripping through the BOM", () => {
+  const ribbon = { name: "Upper Bowl Ribbon", pixelWidth: 30720, pixelHeight: 96 };
+
+  it("puts a 30,720px ribbon on ONE output and a standard render pair", () => {
+    const result = buildLivesyncAutoBom({ screens: [ribbon] }, CATALOG, PRICING);
+    const plan = result.screenPlans[0];
+    expect(plan.ribbon).toBe(true);
+    expect(plan.ribbonSource).toBe("shape");
+    expect(plan.outputs).toBe(1);
+    expect(plan.strip!.stripes).toBe(8);
+    // One output → a standard 4TB render primary + its 1:1 backup, no dual GPU.
+    expect(plan.dualVideoCard).toBe(false);
+    expect(qty(result, "ANC-1U-4TB-2x4ADA-V1")).toBe(0);
+    expect(qty(result, "ANC-1U-4TB-4ADA-V1")).toBe(2);
+  });
+
+  it("costs far less hardware than the same ribbon tiled the standard way", () => {
+    const stripped = buildLivesyncAutoBom({ screens: [ribbon] }, CATALOG, PRICING);
+    const tiled = buildLivesyncAutoBom(
+      { screens: [{ ...ribbon, ribbon: false }] },
+      CATALOG,
+      PRICING
+    );
+    expect(tiled.screenPlans[0].ribbon).toBe(false);
+    expect(tiled.screenPlans[0].outputs).toBe(8);
+    expect(stripped.counts.renderServers).toBeLessThan(tiled.counts.renderServers);
+    expect(stripped.totals.grand).toBeLessThan(tiled.totals.grand);
+  });
+
+  it("explains the mapping in the reasoning trail, with the real numbers", () => {
+    const result = buildLivesyncAutoBom({ screens: [ribbon] }, CATALOG, PRICING);
+    const text = result.reasoning.map((s) => s.text).join(" ");
+    expect(text).toContain("stripped onto the canvas");
+    expect(text).toContain("8 stripe(s)");
+    expect(text).toContain("1620px");
+    expect(text).toContain("16 stripe(s) per output");
+    expect(text).toContain("would have taken 8 output(s)");
+  });
+
+  it("names auto-detected ribbons on the review list so the call can be reversed", () => {
+    const result = buildLivesyncAutoBom({ screens: [ribbon] }, CATALOG, PRICING);
+    expect(
+      result.reviewFlags.some(
+        (f) => f.includes("ribbon board(s) from their shape") && f.includes("Upper Bowl Ribbon")
+      )
+    ).toBe(true);
+  });
+
+  it("spans two outputs when the stripes overflow the canvas budget", () => {
+    const result = buildLivesyncAutoBom(
+      { screens: [{ name: "Deep Ribbon", pixelWidth: 38400, pixelHeight: 200 }] },
+      CATALOG,
+      PRICING
+    );
+    const plan = result.screenPlans[0];
+    expect(plan.outputs).toBe(2);
+    expect(plan.renderPrimaries).toBe(1); // 2 outputs still fit one server
+    expect(plan.renderServersTotal).toBe(2);
+    expect(plan.flags.some((f) => f.includes("does not divide evenly"))).toBe(true);
+  });
+
+  it("never strips a live-video screen — a feed is one contiguous image", () => {
+    const result = buildLivesyncAutoBom(
+      { screens: [{ name: "Center Hung", pixelWidth: 8000, pixelHeight: 600, liveVideo: true }] },
+      CATALOG,
+      PRICING
+    );
+    expect(result.screenPlans[0].ribbon).toBe(false);
+    expect(result.screenPlans[0].outputs).toBe(3);
+  });
+
+  it("honours an explicit ribbon call on a screen the shape would not catch", () => {
+    const result = buildLivesyncAutoBom(
+      { screens: [{ name: "Tall Fascia", pixelWidth: 11520, pixelHeight: 1200, ribbon: true }] },
+      CATALOG,
+      PRICING
+    );
+    const plan = result.screenPlans[0];
+    expect(plan.ribbon).toBe(true);
+    expect(plan.ribbonSource).toBe("explicit");
+    expect(plan.strip!.stripesPerOutput).toBe(1); // only one 1200px stripe fits
+    expect(plan.outputs).toBe(3); // so stripping saves nothing here — same as tiled
+  });
+
+  it("says so instead of guessing when a screen called a ribbon cannot be stripped", () => {
+    const result = buildLivesyncAutoBom(
+      { screens: [{ name: "Too Tall", pixelWidth: 8000, pixelHeight: 1800, ribbon: true }] },
+      CATALOG,
+      PRICING
+    );
+    const plan = result.screenPlans[0];
+    expect(plan.ribbon).toBe(false);
+    expect(plan.strip).toBeNull();
+    expect(plan.flags.some((f) => f.includes("stacking budget"))).toBe(true);
+  });
+
+  it("leaves the main video board mapping exactly as it was", () => {
+    const result = buildLivesyncAutoBom(
+      { screens: [{ name: "Main Video Board", pixelWidth: 7680, pixelHeight: 1000 }] },
+      CATALOG,
+      PRICING
+    );
+    expect(result.screenPlans[0].ribbon).toBe(false);
+    expect(result.screenPlans[0].outputs).toBe(2);
+    expect(result.screenPlans[0].renderServersTotal).toBe(2);
   });
 });
